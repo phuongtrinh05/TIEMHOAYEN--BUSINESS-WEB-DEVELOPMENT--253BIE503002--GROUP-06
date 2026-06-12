@@ -1,11 +1,297 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-</head>
-<body>
-    
-</body>
-</html>
+<header
+  class="header"
+  [class.scrolled]="isScrolled"
+> 
+    <div class="header-top">
+        
+        <div class="logo">
+            <img
+                src="assets/images/logoheader.png"
+                alt="Tiệm Hoa Yên"
+            >
+        </div>
+
+        <div class="search-box">
+
+            <i class="bi bi-search search-icon"></i>
+
+            <input
+                type="text"
+                placeholder=""
+            >
+
+            <i class="bi bi-camera camera-icon"></i>
+
+        </div>
+
+        <div class="action-icons">
+            <button>
+                <i class="bi bi-receipt"></i>
+            </button>
+
+            <button>
+                <i class="bi bi-heart"></i>
+            </button>
+
+            <button>
+                <i class="bi bi-cart3"></i>
+            </button>
+
+            <div class="account-wrapper">
+
+        <button (click)="toggleAccountMenu()">
+            <i class="bi bi-person-circle"></i>
+        </button>
+
+        <div
+            class="account-dropdown"
+            *ngIf="showAccountMenu"
+        >
+
+            <!-- Đã đăng nhập -->
+            @if(isLoggedIn){
+
+                <a routerLink="/profile">
+                    Tài khoản
+                    <i class="bi bi-person"></i>
+                </a>
+
+            }
+            <!-- Phần chung -->
+            <button (click)="toggleLanguageMenu()">
+                Ngôn ngữ
+                <i
+                    class="bi"
+                    [class.bi-chevron-right]="!showLanguageMenu"
+                    [class.bi-chevron-down]="showLanguageMenu"></i>
+            </button>
+            @if(showLanguageMenu){
+                <button
+                    class="language-item"
+                    (click)="changeLanguage('vi')"
+                >
+                    Tiếng Việt
+                </button>
+                <button
+                    class="language-item"
+                    (click)="changeLanguage('en')"
+                >
+                    English
+                </button>
+            }
+            <!-- Chưa đăng nhập -->
+            @if(!isLoggedIn){
+                <a routerLink="/login">
+                    Đăng nhập
+                    <i class="bi bi-box-arrow-in-right"></i>
+                </a>
+
+            }
+            <!-- Đã đăng nhập -->
+            @if(isLoggedIn){
+                <a (click)="logout()">
+                    Đăng xuất
+                    <i class="bi bi-box-arrow-right"></i>
+                </a>
+            }
+                </div>
+            </div>
+        </div>
+        <div
+            class="search-popup"
+            *ngIf="showSearch"
+            >
+
+                <input
+                type="text"
+                placeholder="Tìm kiếm sản phẩm..."
+                >
+        </div>
+    </div>
+
+    <nav class="menu">
+    <div class="menu-item">
+
+        <a routerLink="/">
+            Trang chủ
+        </a>
+
+    </div>
+
+    <div class="menu-item">
+
+    <a>
+        Chủ đề
+        <i class="bi bi-chevron-down"></i>
+    </a>
+
+    <div class="dropdown">
+
+        <a routerLink="/hoa-sinh-nhat">Hoa sinh nhật</a>
+        <a routerLink="/hoa-tinh-yeu">Hoa tình yêu</a>
+        <a routerLink="/hoa-cuoi">Hoa cưới</a>
+        <a routerLink="/hoa-khai-truong">Hoa khai trương</a>
+        <a routerLink="/hoa-chuc-mung">Hoa chúc mừng</a>
+        <a routerLink="/hoa-su-kien">Hoa sự kiện</a>
+        <a routerLink="/hoa-chia-buon">Hoa chia buồn</a>
+        <a routerLink="/hoa-tot-nghiep">Hoa tốt nghiệp</a>
+
+    </div>
+
+    </div>
+
+    <div class="menu-item">
+
+        <a>
+            Đối tượng
+            <i class="bi bi-chevron-down"></i>
+        </a>
+
+        <div class="dropdown">
+
+            <a routerLink="/nguoi-yeu">Người yêu</a>
+            <a routerLink="/me">Mẹ</a>
+            <a routerLink="/chong">Chồng</a>
+            <a routerLink="/vo">Vợ</a>
+            <a routerLink="/ban-trai">Bạn trai</a>
+            <a routerLink="/sep">Sếp</a>
+
+        </div>
+
+    </div>
+
+    <div class="menu-item">
+
+        <a>
+            Kiểu dáng
+            <i class="bi bi-chevron-down"></i>
+        </a>
+
+        <div class="dropdown">
+
+            <a routerLink="/bo-hoa">Bó hoa</a>
+            <a routerLink="/gio-hoa">Giỏ hoa</a>
+            <a routerLink="/hop-hoa">Hộp hoa</a>
+            <a routerLink="/khung-hoa">Khung hoa</a>
+            <a routerLink="/hop-mica">Hộp mica</a>
+            <a routerLink="/lang-khai-truong">Lẵng hoa khai trương</a>
+            <a routerLink="/gio-khai-truong">Giỏ hoa khai trương</a>
+            <a routerLink="/vong-hoa-tang">Vòng hoa tang</a>
+
+        </div>
+
+    </div>
+
+    <div class="menu-item">
+
+        <a>
+            Hoa tươi
+            <i class="bi bi-chevron-down"></i>
+        </a>
+
+        <div class="dropdown">
+
+            <a routerLink="/hoa-hong">Hoa hồng</a>
+            <a routerLink="/hoa-huong-duong">Hoa hướng dương</a>
+            <a routerLink="/hoa-dong-tien">Hoa đồng tiền</a>
+            <a routerLink="/hoa-cam-chuong">Hoa cẩm chướng</a>
+            <a routerLink="/hoa-cuc">Hoa cúc</a>
+            <a routerLink="/hoa-ly">Hoa ly</a>
+            <a routerLink="/hoa-baby">Hoa baby</a>
+            <a routerLink="/hoa-hue">Hoa huệ</a>
+            <a routerLink="/hoa-tulip">Hoa tulip</a>
+            <a routerLink="/hoa-sen">Hoa sen</a>
+            <a routerLink="/hoa-cat-tuong">Hoa cát tường</a>
+            <a routerLink="/hoa-lan">Hoa lan</a>
+
+        </div>
+
+    </div>
+
+    <div class="menu-item">
+    <a>
+        Bộ sưu tập
+        <i class="bi bi-chevron-down"></i>
+    </a>
+
+        <div class="dropdown">
+
+            <a routerLink="/20-10">Ngày 20/10</a>
+            <a routerLink="/8-3">8/3</a>
+            <a routerLink="/bo-suu-tap-hoa-cuoi">Hoa cưới</a>
+            <a routerLink="/20-11">20/11</a>
+            <a routerLink="/giang-sinh">Giáng sinh</a>
+            <a routerLink="/khuyen-mai">Khuyến mãi</a>
+            <a routerLink="/khai-giang">Khai giảng</a>
+            <a routerLink="/valentine">Valentine</a>
+            <a routerLink="/tot-nghiep">Hoa tốt nghiệp</a>
+            <a routerLink="/bo-suu-tap-moi">Bộ sưu tập mới</a>
+
+        </div>
+
+    </div>
+
+    <div class="menu-item">
+
+        <a>
+            Hỗ trợ
+            <i class="bi bi-chevron-down"></i>
+        </a>
+
+        <div class="dropdown">
+
+            <a routerLink="/danh-gia">Đánh giá</a>
+            <a routerLink="/chinh-sach">Chính sách</a>
+
+        </div>
+
+    </div>
+
+    <div class="menu-item">
+
+        <a routerLink="/blog">
+            Blog
+        </a>
+
+    </div>
+
+    <div class="menu-item">
+
+        <a>
+            Về chúng tôi
+            <i class="bi bi-chevron-down"></i>
+        </a>
+
+        <div class="dropdown">
+
+            <a routerLink="/gioi-thieu">Giới thiệu</a>
+            <a routerLink="/lien-he">Liên hệ</a>
+
+        </div>
+
+    </div>
+        <div class="menu-icons">
+            <button (click)="toggleSearch()">
+                <i class="bi bi-search"></i>
+            </button>
+
+            <button>
+                <i class="bi bi-receipt"></i>
+            </button>
+
+            <button>
+                <i class="bi bi-heart"></i>
+            </button>
+
+            <button>
+                <i class="bi bi-cart3"></i>
+            </button>
+
+            <button>
+                <i class="bi bi-person-circle"></i>
+            </button>
+
+        </div>
+
+</nav>
+</header>
