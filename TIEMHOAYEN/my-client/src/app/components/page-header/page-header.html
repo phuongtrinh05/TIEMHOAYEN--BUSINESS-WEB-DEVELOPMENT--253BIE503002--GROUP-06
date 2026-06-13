@@ -2,7 +2,217 @@
   class="header"
   [class.scrolled]="isScrolled"
 > 
-    <div class="header-top">
+    @if(showMobileMenu){
+
+    <div class="mobile-menu">
+
+        <div class="mobile-header">
+
+            <div class="mobile-top-icons">
+
+                <a routerLink="/tra-cuu">
+                    <i class="bi bi-receipt"></i>
+                </a>
+
+                <a routerLink="/login">
+                    <i class="bi bi-person-circle"></i>
+                </a>
+
+            </div>
+
+        </div>
+
+        <div class="mobile-item">
+
+        <h3 routerLink="/">
+            Trang chủ
+            <i class="bi bi-chevron-right"></i>
+        </h3>
+
+    </div>
+        <div class="mobile-item">
+             <h3 (click)="toggleTopic()">
+                Chủ đề
+                <i
+                    class="bi"
+                    [class.bi-chevron-down]="showTopic"
+                    [class.bi-chevron-right]="!showTopic">
+                </i>
+            </h3>
+            @if(showTopic){
+            <div class="mobile-submenu">
+                <a routerLink="/hoa-sinh-nhat">Hoa sinh nhật</a>
+                <a routerLink="/hoa-tinh-yeu">Hoa tình yêu</a>
+                <a routerLink="/hoa-cuoi">Hoa cưới</a>
+                <a routerLink="/hoa-khai-truong">Hoa khai trương</a>
+                <a routerLink="/hoa-chuc-mung">Hoa chúc mừng</a>
+                <a routerLink="/hoa-su-kien">Hoa sự kiện</a>
+                <a routerLink="/hoa-chia-buon">Hoa chia buồn</a>
+                <a routerLink="/hoa-tot-nghiep">Hoa tốt nghiệp</a>
+            </div>
+            }
+        </div>
+
+        <div class="mobile-item">
+            <h3 (click)="toggleTarget()">
+
+                Đối tượng
+
+                <i
+                    class="bi"
+                    [class.bi-chevron-down]="showTarget"
+                    [class.bi-chevron-right]="!showTarget">
+                </i>
+
+            </h3>
+
+            @if(showTarget){
+            <div class="mobile-submenu">
+                <a routerLink="/nguoi-yeu">Người yêu</a>
+                <a routerLink="/me">Mẹ</a>
+                <a routerLink="/chong">Chồng</a>
+                <a routerLink="/vo">Vợ</a>
+                <a routerLink="/ban-trai">Bạn trai</a>
+                <a routerLink="/sep">Sếp</a>
+            </div>}
+        </div>
+
+        <div class="mobile-item">
+            <h3 (click)="toggleStyle()">
+                Kiểu dáng
+
+                <i
+                    class="bi"
+                    [class.bi-chevron-down]="showStyle"
+                    [class.bi-chevron-right]="!showStyle">
+                </i>
+
+            </h3>
+
+            @if(showStyle){
+
+            <div class="mobile-submenu">
+                <a routerLink="/bo-hoa">Bó hoa</a>
+                <a routerLink="/gio-hoa">Giỏ hoa</a>
+                <a routerLink="/hop-hoa">Hộp hoa</a>
+                <a routerLink="/khung-hoa">Khung hoa</a>
+                <a routerLink="/hop-mica">Hộp mica</a>
+                <a routerLink="/lang-khai-truong">Lẵng hoa khai trương</a>
+                <a routerLink="/gio-khai-truong">Giỏ hoa khai trương</a>
+                <a routerLink="/vong-hoa-tang">Vòng hoa tang</a>
+            </div>}
+        </div>
+
+        <div class="mobile-item">
+             <h3 (click)="toggleFlower()">
+
+                Hoa tươi
+
+                <i
+                    class="bi"
+                    [class.bi-chevron-down]="showFlower"
+                    [class.bi-chevron-right]="!showFlower">
+                </i>
+
+            </h3>
+
+            @if(showFlower){
+
+            <div class="mobile-submenu">
+                <a routerLink="/hoa-hong">Hoa hồng</a>
+                <a routerLink="/hoa-huong-duong">Hoa hướng dương</a>
+                <a routerLink="/hoa-dong-tien">Hoa đồng tiền</a>
+                <a routerLink="/hoa-cam-chuong">Hoa cẩm chướng</a>
+                <a routerLink="/hoa-cuc">Hoa cúc</a>
+                <a routerLink="/hoa-ly">Hoa ly</a>
+                <a routerLink="/hoa-baby">Hoa baby</a>
+                <a routerLink="/hoa-hue">Hoa huệ</a>
+                <a routerLink="/hoa-tulip">Hoa tulip</a>
+                <a routerLink="/hoa-sen">Hoa sen</a>
+                <a routerLink="/hoa-cat-tuong">Hoa cát tường</a>
+                <a routerLink="/hoa-lan">Hoa lan</a>
+            </div>}
+        </div>
+
+        <div class="mobile-item">
+             <h3 (click)="toggleCollection()">
+
+                Bộ sưu tập
+
+                <i
+                    class="bi"
+                    [class.bi-chevron-down]="showCollection"
+                    [class.bi-chevron-right]="!showCollection">
+                </i>
+
+            </h3>
+
+            @if(showCollection){
+
+            <div class="mobile-submenu">
+                <a routerLink="/20-10">Ngày 20/10</a>
+                <a routerLink="/8-3">8/3</a>
+                <a routerLink="/20-11">20/11</a>
+                <a routerLink="/giang-sinh">Giáng sinh</a>
+                <a routerLink="/valentine">Valentine</a>
+            </div>}
+        </div>
+
+        <div class="mobile-item">
+             <h3 (click)="toggleSupport()">
+
+                Hỗ trợ
+
+                <i
+                    class="bi"
+                    [class.bi-chevron-down]="showSupport"
+                    [class.bi-chevron-right]="!showSupport">
+                </i>
+
+            </h3>
+
+            @if(showSupport){
+            <div class="mobile-submenu">
+
+                <a routerLink="/danh-gia">Đánh giá</a>
+                <a routerLink="/chinh-sach">Chính sách</a>
+
+            </div>}
+
+        </div>
+
+        <div class="mobile-item">
+            <h3 routerLink="/blog">
+                Blog
+                <i class="bi bi-chevron-right"></i>
+            </h3>
+        </div>
+
+        <div class="mobile-item">
+             <h3 (click)="toggleAbout()">
+
+                Về chúng tôi
+
+                <i
+                    class="bi"
+                    [class.bi-chevron-down]="showAbout"
+                    [class.bi-chevron-right]="!showAbout">
+                </i>
+
+            </h3>
+
+            @if(showAbout){
+            <div class="mobile-submenu">
+                <a routerLink="/gioi-thieu">Giới thiệu</a>
+                <a routerLink="/lien-he">Liên hệ</a>
+            </div>}
+        </div>
+
+    </div>
+
+    }
+    <div class="header-top"
+    [class.hide-header]="isScrolled">
         
         <div class="logo">
             <img
@@ -25,7 +235,7 @@
         </div>
 
         <div class="action-icons">
-            <button>
+            <button class="desktop-only">
                 <i class="bi bi-receipt"></i>
             </button>
 
@@ -36,10 +246,16 @@
             <button>
                 <i class="bi bi-cart3"></i>
             </button>
+            <button
+                class="mobile-menu-btn"
+                (click)="toggleMobileMenu()"
+            >
+                <i class="bi bi-list"></i>
+            </button>
 
             <div class="account-wrapper">
 
-        <button (click)="toggleAccountMenu()">
+        <button (click)="toggleAccountMenu()" class="account-wrapper desktop-only">
             <i class="bi bi-person-circle"></i>
         </button>
 

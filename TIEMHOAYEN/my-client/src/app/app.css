@@ -1,0 +1,28 @@
+html,
+body{
+    height:100%;
+    margin:0;
+}
+
+body{
+    min-height:100vh;
+}
+
+app-root{
+
+    min-height:100vh;
+
+    display:flex;
+
+    flex-direction:column;
+}
+
+.page-content{
+
+    flex:1 0 auto;
+}
+
+app-page-footer{
+
+    margin-top:auto;
+}
