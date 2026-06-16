@@ -1,8 +1,16 @@
-<app-page-header></app-page-header>
+<!-- @if(isHomePage){ -->
+
+    <app-page-header-2></app-page-header-2>
+
+<!-- }@else{
+
+    <app-page-header></app-page-header>
+
+} -->
 
 <div class="page-content">
     <router-outlet></router-outlet>
 </div>
 <app-chatbot-widget></app-chatbot-widget>
 
-<app-page-footer></app-page-footer>
+<app-page-footer-1></app-page-footer-1>
