@@ -1,24 +1,22 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import { connectDB } from './db';
+import { connectDB } from './db.js';
+import customerRoutes from './routes/customer.js'; // Import file route
 
 const app = express();
-
-// Middleware
 app.use(cors());
 app.use(express.json());
+app.use('/api/customers', customerRoutes);
 
-// Tạo một API mẫu cho trang chủ
 app.get('/', (req: Request, res: Response) => {
-    res.send('Server TypeScript đang hoạt động cực tốt!');
+    res.send('Backend TIEM_HOA_YEN chạy theo cấu trúc Controllers/Routes thành công!');
 });
 
-// Khởi động server sau khi kết nối DB thành công
 const PORT = 3000;
-
 (async () => {
     await connectDB();
     app.listen(PORT, () => {
-        console.log(`Server đang chạy tại cổng http://localhost:${PORT}`);
+        console.log(`Server: http://localhost:${PORT}`);
+        console.log(`Danh sách khách hàng: http://localhost:${PORT}/api/customers`);
     });
 })();
