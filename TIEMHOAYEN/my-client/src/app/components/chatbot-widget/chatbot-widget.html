@@ -1,0 +1,142 @@
+<!-- NÚT CHAT NỔI -->
+
+<button
+    class="chat-toggle"
+    *ngIf="!isOpen"
+    (click)="openChat()">
+
+    <img
+        src="assets/images/logoAI.png"
+        alt="Hoa Yên Assistant">
+
+</button>
+
+
+<!-- POPUP CHAT -->
+
+<div
+    class="chatbot-container"
+    *ngIf="isOpen">
+
+    <!-- Header Chat -->
+    <div class="chat-header">
+
+        <div class="bot-info">
+
+            <div class="avatar">
+                <div class="header-avatar">
+                    <img src="assets/images/logoAI.png" alt="AI">
+                </div>
+            </div>
+
+            <div>
+                <h2>Hoa Yên Assistant</h2>
+                <p>Hỗ trợ bạn 24/7</p>
+            </div>
+
+        </div>
+
+        <button
+            class="close-btn"
+            (click)="closeChat()">
+
+            <i class="bi bi-x-lg"></i>
+
+        </button>
+
+    </div>
+
+    <!-- Nội dung chat -->
+    <div class="chat-body">
+
+        <div class="message-row bot">
+
+            <div class="message-avatar">
+                <img
+                    src="assets/images/logoAI.png"
+                    class="chat-avatar"
+                    alt="bot">
+            </div>
+
+            <div>
+
+                <div class="message bot-message">
+                    Chào bạn! 🌸<br>
+                    Tiệm Hoa Yên rất vui được hỗ trợ bạn.
+                    Bạn đang cần mình giúp gì ạ?
+                </div>
+
+                <div class="time">10:00</div>
+
+            </div>
+
+        </div>
+
+        <div class="message-row user">
+
+            <div>
+
+                <div class="message image-message">
+
+                    <img
+                        src="assets/images/BabyCloud.png"
+                        alt="flower">
+
+                    <p>
+                        Bạn có thể tìm giúp tôi bó hoa
+                        tương tự như hình không?
+                    </p>
+
+                </div>
+
+                <div class="status">
+                    Đã gửi
+                </div>
+
+                <div class="time text-end">
+                    10:01
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Quick Actions -->
+
+    <div class="quick-actions">
+
+        <button class="btn-action">
+            Liên hệ nhân viên
+        </button>
+
+        <button class="btn-action">
+            Hoa sinh nhật
+        </button>
+
+        <button class="btn-action">
+            Khuyến mãi
+        </button>
+
+    </div>
+
+    <!-- Input -->
+
+    <div class="chat-input">
+
+        <button class="attach-btn">
+            <i class="bi bi-paperclip"></i>
+        </button>
+
+        <input
+            type="text"
+            placeholder="Nhập tin nhắn..." />
+
+        <button class="send-btn">
+            <i class="bi bi-send"></i>
+        </button>
+
+    </div>
+
+</div>

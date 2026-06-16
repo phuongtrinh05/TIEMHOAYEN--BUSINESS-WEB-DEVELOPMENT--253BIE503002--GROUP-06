@@ -2,8 +2,8 @@ import sql from 'mssql';
 
 // Cấu hình Database
 const sqlConfig: sql.config = {
-    user: 'sa',
-    password: 'Password_123#',
+    user: 'pt',
+    password: 'Pt@123456',
     server: '100.121.122.108',
     port: 1434,
     database: 'TIEM_HOA_YEN',
