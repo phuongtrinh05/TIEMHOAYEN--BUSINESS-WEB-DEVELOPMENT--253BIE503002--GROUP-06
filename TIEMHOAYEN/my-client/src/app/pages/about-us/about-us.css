@@ -1,0 +1,363 @@
+.about-page{
+    background:#FFF8F5;
+    padding-bottom:60px;
+}
+
+.hero img{
+    width:100%;
+    display:block;
+}
+
+.story-section{
+    max-width:1440px;
+    margin:50px auto;
+    padding:0 30px;
+    display:grid;
+    grid-template-columns:420px 1fr;
+    gap:50px;
+    align-items:center;
+}
+
+.story-image img{
+    width:100%;
+    border-radius:12px;
+}
+
+.story-content h2{
+    color:#731919;
+    font-size:28px;
+    margin-bottom:20px;
+}
+
+.story-content p{
+    font-size:17px;
+    line-height:1.8;
+    color:#000000;
+    margin-bottom:12px;
+}
+
+.story-content blockquote{
+    margin-top:25px;
+    color:#731919;
+    font-style:italic;
+    font-size:18px;
+}
+
+.features{
+    margin-top:40px;
+}
+
+.features h2{
+    text-align:center;
+    color:#731919;
+    font-size:24px;
+    font-weight:600;
+    margin-bottom:30px;
+}
+
+.feature-grid{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:30px;
+}
+
+.feature-card{
+    background:#F8E9E5;
+    border:1px solid #E3B78D;
+    border-radius:10px;
+    padding:18px;
+    display:flex;
+    justify-content: space-evenly;
+    align-items:center;
+    gap:14px;
+    min-height:95px;
+}
+
+.feature-icon{
+    width:42px;
+    height:42px;
+    min-width:42px;
+    border-radius:50%;
+    background:#731919;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+}
+
+.feature-icon i{
+    color:#D9B382;
+    font-size:18px;
+}
+
+.feature-content h3{
+    margin:0 0 4px;
+    font-size:16px;
+    font-weight:700;
+    color:#000000;
+}
+
+.feature-content p{
+    margin:0;
+    font-size:12px;
+    line-height:1.4;
+    color:#000000;
+}
+
+.team-section{
+    max-width:1440px;
+    margin:60px auto;
+    padding:0 30px;
+    display:grid;
+    grid-template-columns:280px 1fr;
+    gap:40px;
+}
+
+.commitment h2,
+.team h2{
+    color:#731919;
+    font-size:24px;
+    margin-bottom:25px;
+}
+
+.commit-item{
+    display:flex;
+    align-items:flex-start;
+    gap:8px;
+    margin-bottom:10px;
+}
+
+.commit-icon{
+    width:34px;
+    height:34px;
+    min-width:34px;
+    border:1px solid #731919;
+    border-radius:50%;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+}
+
+.commit-icon i{
+    color:#731919;
+    font-size:15px;
+}
+
+.commit-item h4{
+    font-size:15px;
+    margin-bottom:4px;
+    color:#000000;
+    font-weight:600;
+}
+
+.commit-item p{
+    font-size:12px;
+    line-height:1.5;
+    color:#000000;
+}
+
+.team-grid{
+    display:grid;
+    grid-template-columns:repeat(6,1fr);
+    gap:20px;
+}
+
+.member-card{
+    text-align:center;
+}
+
+.member-card img{
+    width:100%;
+    height:160px;
+    object-fit:cover;
+}
+
+.member-card h4{
+    margin-top:10px;
+    font-size:16px;
+    font-weight:600;
+    color:#000000;
+}
+
+.member-card p{
+    font-size:13px;
+    color:#000000;
+    line-height:1.4;
+}
+
+.partners{
+    max-width:1440px;
+    margin:auto;
+    padding:0 20px 40px;
+}
+
+.partners h2{
+    text-align:center;
+    color:#731919;
+    margin-bottom:30px;
+    font-size: 24px;
+}
+
+.partner-grid{
+    display:grid;
+    grid-template-columns:repeat(6,1fr);
+    gap:30px;
+    align-items:center;
+}
+
+.partner-item{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+}
+
+.partner-item img{
+    max-width:100%;
+    max-height:70px;
+    object-fit:contain;
+}
+
+.reviews{
+    margin-top:20px;
+    margin-bottom:20px;
+}
+
+.reviews h2{
+    text-align:center;
+    color:#731919;
+    font-size:24px;
+    font-weight:600;
+    margin-bottom:30px;
+}
+
+.review-wrapper{
+    display:flex;
+    align-items:center;
+    gap:20px;
+}
+
+.review-list{
+    flex:1;
+    display:grid;
+    grid-template-columns:repeat(5,1fr);
+    gap:18px;
+}
+
+.review-card{
+    background:none;
+    border:1px solid #D9B382;
+    border-radius:10px;
+    padding:16px;
+    min-height:180px;
+}
+
+.stars{
+    color:#D9B382;
+    font-size:18px;
+    margin-bottom:12px;
+    letter-spacing:2px;
+}
+
+.review-card p{
+    font-size:14px;
+    line-height:1.6;
+    color:#000000;
+    min-height:70px;
+}
+
+.review-user{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-top:15px;
+}
+
+.review-user i{
+    color:#D9B382;
+    font-size:28px;
+}
+
+.review-user h4{
+    margin:0;
+    font-size:15px;
+    font-weight:600;
+}
+
+.review-user span{
+    font-size:13px;
+    color:#000000;
+}
+
+.nav-btn{
+    width:40px;
+    height:40px;
+    border:none;
+    background:transparent;
+    cursor:pointer;
+    color:#000000;
+    font-size:28px;
+}
+
+.nav-btn:hover{
+    color:#731919;
+}
+
+/* TABLET */
+
+@media(max-width:1200px){
+
+    .team-grid{
+        grid-template-columns:repeat(3,1fr);
+    }
+
+    .partner-grid{
+        grid-template-columns:repeat(3,1fr);
+    }
+
+    .review-grid{
+        grid-template-columns:repeat(2,1fr);
+    }
+
+    .feature-grid{
+        grid-template-columns:repeat(2,1fr);
+    }
+}
+
+/* MOBILE */
+
+@media(max-width:768px){
+
+    .story-section{
+        grid-template-columns:1fr;
+    }
+
+    .team-section{
+        grid-template-columns:1fr;
+    }
+
+    .feature-grid{
+        grid-template-columns:1fr;
+    }
+
+    .team-grid{
+        grid-template-columns:repeat(2,1fr);
+    }
+
+    .partner-grid{
+        grid-template-columns:repeat(2,1fr);
+    }
+
+    .review-grid{
+        grid-template-columns:1fr;
+    }
+
+    .story-content h2,
+    .features h2,
+    .partners h2,
+    .reviews h2{
+        font-size:30px;
+    }
+
+    .about-page{
+        padding-bottom:30px;
+    }
+}

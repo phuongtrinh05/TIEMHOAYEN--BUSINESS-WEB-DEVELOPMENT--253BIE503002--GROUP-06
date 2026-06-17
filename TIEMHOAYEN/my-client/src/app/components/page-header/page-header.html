@@ -10,7 +10,7 @@
 
             <div class="mobile-top-icons">
 
-                <a routerLink="/tra-cuu">
+                <a routerLink="/order-detail">
                     <i class="bi bi-receipt"></i>
                 </a>
 
@@ -24,7 +24,7 @@
 
         <div class="mobile-item">
 
-        <h3 routerLink="/">
+        <h3 routerLink="/homepage">
             Trang chủ
             <i class="bi bi-chevron-right"></i>
         </h3>
@@ -204,7 +204,7 @@
             @if(showAbout){
             <div class="mobile-submenu">
                 <a routerLink="/gioi-thieu">Giới thiệu</a>
-                <a routerLink="/lien-he">Liên hệ</a>
+                <a routerLink="/contact">Liên hệ</a>
             </div>}
         </div>
 
@@ -235,7 +235,7 @@
         </div>
 
         <div class="action-icons">
-            <button class="desktop-only">
+            <button class="desktop-only" routerLink="/order-detail">
                 <i class="bi bi-receipt"></i>
             </button>
 
@@ -328,7 +328,7 @@
     <nav class="menu">
     <div class="menu-item">
 
-        <a routerLink="/">
+        <a routerLink="/homepage">
             Trang chủ
         </a>
 
@@ -456,7 +456,7 @@
 
         <div class="dropdown">
 
-            <a routerLink="/danh-gia">Đánh giá</a>
+            <a routerLink="/order-review">Đánh giá</a>
             <a routerLink="/chinh-sach">Chính sách</a>
 
         </div>
@@ -480,8 +480,8 @@
 
         <div class="dropdown">
 
-            <a routerLink="/gioi-thieu">Giới thiệu</a>
-            <a routerLink="/lien-he">Liên hệ</a>
+            <a routerLink="/about-us">Giới thiệu</a>
+            <a routerLink="/contact">Liên hệ</a>
 
         </div>
 
@@ -491,7 +491,8 @@
                 <i class="bi bi-search"></i>
             </button>
 
-            <button>
+            <button
+                routerLink="/order-detail">
                 <i class="bi bi-receipt"></i>
             </button>
 

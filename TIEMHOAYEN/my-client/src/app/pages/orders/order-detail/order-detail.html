@@ -1,0 +1,253 @@
+<div class="order-page">
+    <div class="breadcrumb">
+        <span>Trang chủ</span>
+        <i class="bi bi-chevron-right"></i>
+
+        <span>Tài khoản</span>
+        <i class="bi bi-chevron-right"></i>
+
+        <span>Đơn hàng của tôi</span>
+        <i class="bi bi-chevron-right"></i>
+
+        <span>#YEN1000</span>
+    </div>
+
+    <h1>Đơn hàng #{{order.id}}</h1>
+
+    <p class="order-date">
+        Đặt ngày: {{order.date}}
+    </p>
+
+    <!-- STATUS -->
+
+    <div class="status-box">
+        <div class="status-line"></div>
+        @for(step of steps; track $index){
+            <div class="status-item"
+                [class.done]="step.done"
+                [class.current]="step.current">
+                <div class="status-icon">
+                    <i class="bi {{step.icon}}"></i>
+                </div>
+                <div class="status-text">
+                    {{step.text}}
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- CONTENT -->
+
+    <div class="order-layout">
+
+        <!-- LEFT -->
+
+        <div class="shipping-card">
+
+            <h3>Thông tin giao hàng</h3>
+
+            <div class="shipping-item">
+                <div class="shipping-icon">
+                    <i class="bi bi-person"></i>
+                </div>
+
+                <div class="shipping-content">
+                    <span class="shipping-label">Người nhận:</span>
+                    <span class="shipping-value">
+                        {{order.receiver}}
+                    </span>
+                </div>
+            </div>
+
+            <div class="shipping-item">
+                <div class="shipping-icon">
+                    <i class="bi bi-telephone"></i>
+                </div>
+
+                <div class="shipping-content">
+                    <span class="shipping-label">Số điện thoại:</span>
+                    <span class="shipping-value">
+                        {{order.phone}}
+                    </span>
+                </div>
+            </div>
+
+            <div class="shipping-item">
+                <div class="shipping-icon">
+                    <i class="bi bi-calendar-event"></i>
+                </div>
+
+                <div class="shipping-content">
+                    <span class="shipping-label">Ngày giao hàng:</span>
+                    <span class="shipping-value">
+                        {{order.deliveryDate}}
+                    </span>
+                </div>
+            </div>
+
+            <div class="shipping-item">
+                <div class="shipping-icon">
+                    <i class="bi bi-clock"></i>
+                </div>
+
+                <div class="shipping-content">
+                    <span class="shipping-label">Khung giờ giao:</span>
+                    <span class="shipping-value">
+                        {{order.deliveryTime}}
+                    </span>
+                </div>
+            </div>
+
+            <div class="shipping-item">
+                <div class="shipping-icon">
+                    <i class="bi bi-geo-alt"></i>
+                </div>
+
+                <div class="shipping-content">
+                    <span class="shipping-label">Địa chỉ:</span>
+                    <span class="shipping-value">
+                        {{order.address}}
+                    </span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- RIGHT -->
+
+        <div>
+
+            <div class="card-message">
+
+                <h3>Lời nhắn thiệp</h3>
+                <p>
+                    "{{order.cardMessage}}"
+                </p>
+
+            </div>
+
+            <h3 class="section-title">
+                Danh sách sản phẩm
+            </h3>
+
+            <table class="product-table">
+
+                <thead>
+                    <tr>
+                        <th>Sản phẩm</th>
+                        <th>Đơn giá</th>
+                        <th>Số lượng</th>
+                        <th>Thành tiền</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    @for(product of products; track product.name){
+
+                    <tr>
+
+                        <td class="product-info">
+
+                            <img
+                                [src]="product.image">
+
+                            <span>
+                                {{product.name}}
+                            </span>
+
+                        </td>
+
+                        <td>
+                            {{product.price | number}}đ
+                        </td>
+
+                        <td>
+                            {{product.quantity}}
+                        </td>
+
+                        <td>
+                            {{
+                                product.price * product.quantity
+                                | number
+                            }}đ
+                        </td>
+
+                    </tr>
+
+                    }
+
+                </tbody>
+
+            </table>
+
+            <div class="bottom-grid">
+
+                <div class="payment-summary">
+
+                    <h3>Tổng thanh toán</h3>
+
+                    <div>
+                        <span>Tạm tính</span>
+                        <span>520.000đ</span>
+                    </div>
+
+                    <div>
+                        <span>Phí ship</span>
+                        <span>30.000đ</span>
+                    </div>
+
+                    <div>
+                        <span>Voucher</span>
+                        <span class="discount">
+                            -52.000đ
+                        </span>
+                    </div>
+
+                    <hr>
+
+                    <div class="total">
+                        <span>Tổng cộng</span>
+                        <span>498.000đ</span>
+                    </div>
+
+                    <div class="method">
+                        <span>Phương thức thanh toán</span>
+                        <span>{{order.paymentMethod}}</span>
+                    </div>
+
+                </div>
+
+                <div class="action-card">
+
+                    <h3>Thao tác đơn hàng</h3>
+
+                    <button>
+                        <i class="bi bi-arrow-repeat"></i>
+                        Đặt lại đơn này
+                    </button>
+
+                    <button>
+                        <i class="bi bi-trash"></i>
+                        Hủy đơn hàng
+                    </button>
+
+                    <button routerLink="/order-review">
+                        <i class="bi bi-star"></i>
+                        Viết đánh giá
+                    </button>
+
+                    <button>
+                        <i class="bi bi-cash-coin"></i>
+                        Trả hàng & hoàn tiền
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>

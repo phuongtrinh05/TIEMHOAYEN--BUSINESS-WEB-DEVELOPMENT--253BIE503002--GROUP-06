@@ -1,0 +1,129 @@
+<div class="contact-page">
+    <div class="breadcrumb">
+        <a routerLink="/">
+            Về chúng tôi
+        </a>
+        <span>></span>
+        <span>Liên hệ</span>
+    </div>
+    <h1>Liên hệ với Tiệm Hoa Yên</h1>
+    <p class="description">
+        Chúng tôi luôn sẵn sàng lắng nghe và hỗ trợ bạn.
+        Hãy gửi cho chúng tôi thông tin,
+        Tiệm Hoa Yên sẽ phản hồi bạn sớm nhất có thể!
+    </p>
+    <div class="contact-layout">
+        <div class="left-column">
+            <div class="contact-form">
+                <label>Họ và Tên</label>
+                <input
+                    type="text"
+                    placeholder="Nhập Họ và Tên"
+                    [(ngModel)]="fullName">
+                <label>Số điện thoại / Email</label>
+                <input
+                    type="text"
+                    placeholder="Nhập số điện thoại hoặc email"
+                    [(ngModel)]="phone">
+                <label>Chủ đề</label>
+                <div class="custom-select">
+                    <div class="selected"
+                        (click)="showSubject = !showSubject">
+                        {{ subject || 'Chọn chủ đề' }}
+                        <i class="bi"
+                        [class.bi-chevron-down]="!showSubject"
+                        [class.bi-chevron-up]="showSubject">
+                        </i>
+                    </div>
+                    @if(showSubject){
+                        <div class="options">
+                            <div class="option"
+                                (click)="selectSubject('Tư vấn sản phẩm')">
+                                Tư vấn sản phẩm
+                            </div>
+                            <div class="option"
+                                (click)="selectSubject('Đặt hàng')">
+                                Đặt hàng
+                            </div>
+                            <div class="option"
+                                (click)="selectSubject('Khiếu nại')">
+                                Khiếu nại
+                            </div>
+                        </div>
+                    }
+                </div>
+                <label>Nội dung</label>
+                <textarea
+                    rows="8"
+                    placeholder="Nhập nội dung tin nhắn của bạn..."
+                    [(ngModel)]="message"></textarea>
+                <button
+                    class="btn-send"
+                    (click)="sendContact()">
+                    <i class="bi bi-send"></i>
+                    Gửi
+                </button>
+                <div class="security">
+                    <i class="bi bi-shield-lock"></i>
+                    Thông tin của bạn được bảo mật tuyệt đối.
+                </div>
+            </div>
+            <div class="contact-info">
+                <h3>Thông tin liên hệ nhanh</h3>
+                <div class="info-item">
+                    <i class="bi bi-telephone"></i>
+                    <div>
+                        Hotline:
+                        <br>
+                        0909 477 488
+                    </div>
+                </div>
+                <div class="info-item">
+                    <i class="bi bi-envelope"></i>
+                    <div>
+                        Email:
+                        <br>
+                        tiemhoayen@gmail.com
+                    </div>
+                </div>
+                <div class="info-item">
+                    <i class="bi bi-geo-alt"></i>
+                    <div>
+                        16 Lý Chính Thắng,
+                        Quận 3,
+                        TP Hồ Chí Minh
+                    </div>
+                </div>
+                <div class="info-item">
+                    <i class="bi bi-clock"></i>
+                    <div>
+                        8:00 - 20:00
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="map-box">
+            <iframe
+                src="https://maps.google.com/maps?q=16%20Lý%20Chính%20Thắng%20Quận%203&t=&z=13&ie=UTF8&iwloc=&output=embed">
+            </iframe>
+        </div>
+    </div>
+    <div class="faq">
+        <h2>Các câu hỏi thường gặp</h2>
+        @for(item of faqs; track $index){
+            <div class="faq-item">
+                <div
+                    class="faq-header"
+                    (click)="toggleFaq($index)">
+                    {{item.question}}
+                    <i class="bi bi-chevron-down"></i>
+                </div>
+                @if(faqOpen === $index){
+                    <div class="faq-content">
+                        {{item.answer}}
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
