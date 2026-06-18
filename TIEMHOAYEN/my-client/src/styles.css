@@ -13,7 +13,7 @@
     --color-scarlet-red: #E52B2B;
     --primary-color:#731919;
     --text-color:#000000;
-    --background-color:#FFF8F5;
+    --color-blush-white:#FFF8F5;
     --accent-color:#D9B382;
 
      /* Font */
@@ -30,7 +30,7 @@
 
 body{
     font-family: var(--font-body);
-    background-color: var(--background-color);
+    background-color: var(--color-blush-white);
     color: var(--text-color);
 }
 
