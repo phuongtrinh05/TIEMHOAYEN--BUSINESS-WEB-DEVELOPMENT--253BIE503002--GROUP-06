@@ -3,6 +3,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "rootDir": "./src",
     "outDir": "./out-tsc/app",
     "types": [
       "node"
@@ -10,7 +11,7 @@
   },
   "include": [
     "src/**/*.ts"
-  ],
+, "src/app/pages/category/category.ts"  ],
   "exclude": [
     "src/**/*.spec.ts"
   ]

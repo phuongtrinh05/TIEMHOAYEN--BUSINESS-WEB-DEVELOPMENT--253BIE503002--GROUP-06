@@ -1,0 +1,148 @@
+<div
+    class="admin-sidebar"
+    [class.collapsed]="isCollapsed">
+
+    <!-- Logo -->
+    
+    <div class="sidebar-logo">
+        <img src="assets/images/logo-main.png" alt="Tiệm Hoa Yên" *ngIf="!isCollapsed">
+        <button  type="button" class="collapse-btn" (click)="toggleSidebar()">
+            <i class="bi bi-layout-sidebar-inset"></i>
+        </button>
+    </div>
+
+    <!-- Menu -->
+
+    <div class="menu-section">
+
+        <p class="menu-title">Main menu</p>
+
+        <a
+            routerLink="/dashboard"
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            class="menu-item">
+            <i class="bi bi-house"></i>
+            <span>Dashboard</span>
+        </a>
+
+        <a
+            routerLink="/orders"
+            routerLinkActive="active"
+            class="menu-item">
+            <i class="bi bi-cart"></i>
+            <span>Đơn hàng</span>
+        </a>
+
+        <a
+            routerLink="/payments"
+            routerLinkActive="active"
+            class="menu-item">
+            <i class="bi bi-credit-card"></i>
+            <span>Thanh toán</span>
+        </a>
+
+        <a
+            routerLink="/products"
+            routerLinkActive="active"
+            class="menu-item">
+            <i class="bi bi-box-seam"></i>
+            <span>Sản phẩm</span>
+        </a>
+
+        <a
+            routerLink="/materials"
+            routerLinkActive="active"
+            class="menu-item">
+            <i class="bi bi-flower1"></i>
+            <span>Nguyên vật liệu</span>
+        </a>
+
+        <a
+            routerLink="/customers"
+            routerLinkActive="active"
+            class="menu-item">
+            <i class="bi bi-people"></i>
+            <span>Khách hàng</span>
+        </a>
+
+        <a
+            routerLink="/promotions"
+            routerLinkActive="active"
+            class="menu-item">
+            <i class="bi bi-ticket-perforated"></i>
+            <span>Khuyến mãi</span>
+        </a>
+
+        <a
+            routerLink="/customer-service"
+            routerLinkActive="active"
+            class="menu-item">
+            <i class="bi bi-chat-square-heart"></i>
+            <span>Chăm sóc khách hàng</span>
+        </a>
+
+        <a
+            routerLink="/content"
+            routerLinkActive="active"
+            class="menu-item">
+            <i class="bi bi-star"></i>
+            <span>Nội dung</span>
+        </a>
+
+        <a
+            routerLink="/design-library"
+            routerLinkActive="active"
+            class="menu-item">
+            <i class="bi bi-image"></i>
+            <span>Thư viện thiết kế 3D</span>
+        </a>
+
+    </div>
+
+    <div class="menu-section">
+
+        <p class="menu-title">Admin</p>
+
+        <a
+            routerLink="/admin-account"
+            routerLinkActive="active"
+            class="menu-item">
+            <i class="bi bi-person-gear"></i>
+            <span>Tài khoản quản trị</span>
+        </a>
+
+        <a
+            routerLink="/roles"
+            routerLinkActive="active"
+            class="menu-item">
+            <i class="bi bi-gear"></i>
+            <span>Phân quyền</span>
+        </a>
+
+    </div>
+
+    <!-- Footer -->
+
+    <div class="sidebar-footer">
+
+        <div class="admin-info">
+            <i class="bi bi-person-circle"></i>
+
+            <div>
+                <h4>Tiệm Hoa Yên</h4>
+                <span>thoath1234&#64;stu...</span>
+            </div>
+
+            <i class="bi bi-box-arrow-right"></i>
+        </div>
+
+        <button class="store-btn">
+            <i class="bi bi-shop"></i>
+            Cửa hàng của bạn
+            <i class="bi bi-box-arrow-up-right"></i>
+        </button>
+
+    </div>
+
+</div>
