@@ -1,0 +1,190 @@
+* {
+    box-sizing: border-box;
+}
+
+:host {
+    display: block;
+}
+
+.blog-detail-page {
+    min-height: 100vh;
+    padding: 54px 0 64px;
+    background-color: #fff8f4;
+    color: #17110f;
+    font-family: "Nunito Sans", sans-serif;
+}
+
+.detail-layout {
+    width: min(1120px, calc(100% - 80px));
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 330px;
+    gap: 52px;
+    align-items: start;
+}
+
+.detail-main {
+    min-width: 0;
+}
+
+.detail-main h1 {
+    max-width: 720px;
+    margin: 0 0 24px;
+    font-size: 40px;
+    line-height: 1.25;
+    font-weight: 900;
+}
+
+.detail-date {
+    margin: 0 0 38px;
+    font-size: 17px;
+}
+
+.detail-hero-img {
+    width: 100%;
+    height: 345px;
+    display: block;
+    object-fit: cover;
+    margin-bottom: 30px;
+}
+
+.intro-list {
+    margin: 0 0 52px;
+    padding-left: 28px;
+}
+
+.intro-list li {
+    font-size: 18px;
+    line-height: 1.45;
+}
+
+.detail-main h3 {
+    margin: 0 0 44px;
+    color: #841719;
+    font-size: 21px;
+    font-weight: 900;
+}
+
+.detail-main p + h3 {
+    margin-top: 50px;
+}
+
+.detail-main p {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.45;
+}
+
+.detail-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.sidebar-box,
+.share-box {
+    background-color: #ffffff;
+    padding: 22px 24px;
+}
+
+.sidebar-box h2,
+.share-box h2 {
+    margin: 0 0 20px;
+    color: #841719;
+    font-size: 20px;
+    font-weight: 900;
+}
+
+.latest-item {
+    display: grid;
+    grid-template-columns: 105px 1fr;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.latest-item:last-child {
+    margin-bottom: 0;
+}
+
+.latest-item img {
+    width: 105px;
+    height: 72px;
+    object-fit: cover;
+}
+
+.latest-item h4 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    line-height: 1.35;
+    font-weight: 900;
+}
+
+.latest-item span {
+    font-size: 13px;
+}
+
+.share-box {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.share-box h2 {
+    margin: 0;
+    color: #17110f;
+}
+
+.facebook-btn {
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 50%;
+    background-color: #1778f2;
+    color: #ffffff;
+    font-size: 25px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.copy-btn {
+    height: 34px;
+    border: none;
+    border-radius: 6px;
+    background-color: #841719;
+    color: #e1b67d;
+    padding: 0 18px;
+    font-size: 15px;
+    font-weight: 900;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+@media screen and (max-width: 980px) {
+    .detail-layout {
+        width: min(100% - 32px, 1120px);
+        grid-template-columns: 1fr;
+    }
+}
+
+@media screen and (max-width: 560px) {
+    .detail-main h1 {
+        font-size: 30px;
+    }
+
+    .detail-hero-img {
+        height: 240px;
+    }
+
+    .latest-item {
+        grid-template-columns: 90px 1fr;
+    }
+
+    .latest-item img {
+        width: 90px;
+        height: 64px;
+    }
+
+    .share-box {
+        flex-wrap: wrap;
+    }
+}
