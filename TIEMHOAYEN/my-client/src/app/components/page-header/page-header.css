@@ -491,3 +491,99 @@ outline:none;
 .mobile-top-icons a:hover{
     transform:scale(1.15);
 }
+.popup-overlay{
+    position:fixed;
+    inset:0;
+
+    background:rgba(0,0,0,.75);
+
+    display:flex;
+    justify-content:center;
+    align-items:center;
+
+    z-index:99999;
+}
+
+.lookup-popup{
+    width:700px;
+    max-width:90%;
+
+    background:#F8F4F1;
+    border-radius:20px;
+
+    padding:40px;
+}
+
+.lookup-popup h2{
+    text-align:center;
+    color:#731919;
+    font-size:42px;
+    margin-bottom:30px;
+}
+
+.lookup-form{
+    border:1px solid #731919;
+    border-radius:16px;
+
+    padding:30px;
+    margin-bottom:30px;
+}
+
+.form-row{
+    display:flex;
+    align-items:center;
+    margin-bottom:20px;
+}
+
+.form-row:last-child{
+    margin-bottom:0;
+}
+
+.form-row label{
+    width:180px;
+
+    color:#731919;
+    font-size:24px;
+    font-weight:600;
+}
+
+.form-row input{
+    flex:1;
+
+    height:60px;
+
+    border:1px solid #B3B3B3;
+    border-radius:12px;
+
+    padding:0 20px;
+    font-size:22px;
+}
+
+.btn-search{
+    width:100%;
+    height:70px;
+
+    border:none;
+    border-radius:12px;
+
+    background:#D9B382;
+    color:#731919;
+
+    font-size:32px;
+    font-weight:700;
+}
+
+.btn-later{
+    display:block;
+
+    margin:20px auto 0;
+
+    border:none;
+    background:none;
+
+    color:#731919;
+    text-decoration:underline;
+    font-size:24px;
+
+    cursor:pointer;
+}

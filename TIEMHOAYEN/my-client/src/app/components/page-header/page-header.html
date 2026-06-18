@@ -10,7 +10,7 @@
 
             <div class="mobile-top-icons">
 
-                <a routerLink="/order-detail">
+                <a (click)="openLookupPopup()">
                     <i class="bi bi-receipt"></i>
                 </a>
 
@@ -31,7 +31,7 @@
 
     </div>
         <div class="mobile-item">
-             <h3 (click)="toggleTopic()">
+            <h3 (click)="toggleTopic()">
                 Chủ đề
                 <i
                     class="bi"
@@ -39,17 +39,15 @@
                     [class.bi-chevron-right]="!showTopic">
                 </i>
             </h3>
+
             @if(showTopic){
-            <div class="mobile-submenu">
-                <a routerLink="/hoa-sinh-nhat">Hoa sinh nhật</a>
-                <a routerLink="/hoa-tinh-yeu">Hoa tình yêu</a>
-                <a routerLink="/hoa-cuoi">Hoa cưới</a>
-                <a routerLink="/hoa-khai-truong">Hoa khai trương</a>
-                <a routerLink="/hoa-chuc-mung">Hoa chúc mừng</a>
-                <a routerLink="/hoa-su-kien">Hoa sự kiện</a>
-                <a routerLink="/hoa-chia-buon">Hoa chia buồn</a>
-                <a routerLink="/hoa-tot-nghiep">Hoa tốt nghiệp</a>
-            </div>
+                <div class="mobile-submenu">
+                    @for (topic of topics; track topic.CHU_DE_ID) {
+                        <a [routerLink]="['/chu-de', topic.CHU_DE_ID]">
+                            {{ topic.TEN_CHU_DE }}
+                        </a>
+                    }
+                </div>
             }
         </div>
 
@@ -148,14 +146,14 @@
             </h3>
 
             @if(showCollection){
-
-            <div class="mobile-submenu">
-                <a routerLink="/20-10">Ngày 20/10</a>
-                <a routerLink="/8-3">8/3</a>
-                <a routerLink="/20-11">20/11</a>
-                <a routerLink="/giang-sinh">Giáng sinh</a>
-                <a routerLink="/valentine">Valentine</a>
-            </div>}
+                <div class="mobile-submenu">
+                    @for (collection of collections; track collection.BO_SUU_TAP_ID) {
+                        <a [routerLink]="['/bo-suu-tap', collection.BO_SUU_TAP_ID]">
+                            {{ collection.TEN_BO_SUU_TAP }}
+                        </a>
+                    }
+                </div>
+            }
         </div>
 
         <div class="mobile-item">
@@ -235,7 +233,7 @@
         </div>
 
         <div class="action-icons">
-            <button class="desktop-only" routerLink="/order-detail">
+            <button class="desktop-only" (click)="openLookupPopup()">
                 <i class="bi bi-receipt"></i>
             </button>
 
@@ -342,16 +340,11 @@
     </a>
 
     <div class="dropdown">
-
-        <a routerLink="/hoa-sinh-nhat">Hoa sinh nhật</a>
-        <a routerLink="/hoa-tinh-yeu">Hoa tình yêu</a>
-        <a routerLink="/hoa-cuoi">Hoa cưới</a>
-        <a routerLink="/hoa-khai-truong">Hoa khai trương</a>
-        <a routerLink="/hoa-chuc-mung">Hoa chúc mừng</a>
-        <a routerLink="/hoa-su-kien">Hoa sự kiện</a>
-        <a routerLink="/hoa-chia-buon">Hoa chia buồn</a>
-        <a routerLink="/hoa-tot-nghiep">Hoa tốt nghiệp</a>
-
+        @for (topic of topics; track topic.CHU_DE_ID) {
+            <a [routerLink]="['/chu-de', topic.CHU_DE_ID]">
+                {{ topic.TEN_CHU_DE }}
+            </a>
+        }
     </div>
 
     </div>
@@ -425,26 +418,18 @@
     </div>
 
     <div class="menu-item">
-    <a>
-        Bộ sưu tập
-        <i class="bi bi-chevron-down"></i>
-    </a>
+        <a>
+            Bộ sưu tập
+            <i class="bi bi-chevron-down"></i>
+        </a>
 
         <div class="dropdown">
-
-            <a routerLink="/20-10">Ngày 20/10</a>
-            <a routerLink="/8-3">8/3</a>
-            <a routerLink="/bo-suu-tap-hoa-cuoi">Hoa cưới</a>
-            <a routerLink="/20-11">20/11</a>
-            <a routerLink="/giang-sinh">Giáng sinh</a>
-            <a routerLink="/khuyen-mai">Khuyến mãi</a>
-            <a routerLink="/khai-giang">Khai giảng</a>
-            <a routerLink="/valentine">Valentine</a>
-            <a routerLink="/tot-nghiep">Hoa tốt nghiệp</a>
-            <a routerLink="/bo-suu-tap-moi">Bộ sưu tập mới</a>
-
+            @for (collection of collections; track collection.BO_SUU_TAP_ID) {
+                <a [routerLink]="['/bo-suu-tap', collection.BO_SUU_TAP_ID]">
+                    {{ collection.TEN_BO_SUU_TAP }}
+                </a>
+            }
         </div>
-
     </div>
 
     <div class="menu-item">
@@ -492,7 +477,7 @@
             </button>
 
             <button
-                routerLink="/order-detail">
+                (click)="openLookupPopup()">
                 <i class="bi bi-receipt"></i>
             </button>
 
@@ -512,3 +497,36 @@
 
 </nav>
 </header>
+@if(showLookupPopup){
+<div class="popup-overlay">
+    <div class="lookup-popup">
+        <h2>Tra cứu đơn hàng</h2>
+        <div class="lookup-form">
+            <div class="form-row">
+                <label>Mã đơn hàng:</label>
+                <input
+                    type="text"
+                    placeholder="Nhập mã đơn hàng"
+                    [(ngModel)]="orderCode">
+            </div>
+            <div class="form-row">
+                <label>Số điện thoại:</label>
+                <input
+                    type="text"
+                    placeholder="Nhập số điện thoại"
+                    [(ngModel)]="phone">
+            </div>
+        </div>
+        <button
+            class="btn-search"
+            (click)="lookupOrder()">
+            Tra cứu
+        </button>
+        <button
+            class="btn-later"
+            (click)="closeLookupPopup()">
+            Để sau
+        </button>
+    </div>
+</div>
+}
