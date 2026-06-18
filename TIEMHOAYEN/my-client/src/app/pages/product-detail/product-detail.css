@@ -1,0 +1,418 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* ---------- BASE ---------- */
+.product-detail-page {
+    font-family: 'Nunito Sans', sans-serif;
+    background-color: #fff8f5;
+    color: #2c2c2c;
+    min-height: 100vh;
+    padding: 32px 40px;
+}
+
+/* ---------- PRODUCT MAIN ---------- */
+.product-section {
+    width: 100%;
+}
+
+.product-container {
+    max-width: 1180px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 520px 1fr;
+    gap: 36px;
+    align-items: start;
+}
+
+/* ---------- PRODUCT IMAGES ---------- */
+.product-images {
+    width: 100%;
+}
+
+.main-image {
+    width: 100%;
+    height: 560px;
+    object-fit: cover;
+    display: block;
+}
+
+.thumbnail-list {
+    display: flex;
+    gap: 18px;
+    margin-top: 16px;
+}
+
+.thumbnail {
+    width: 118px;
+    height: 118px;
+    object-fit: cover;
+    border: 2px solid transparent;
+    cursor: pointer;
+}
+
+.thumbnail.active {
+    border-color: #d9b382;
+}
+
+/* ---------- PRODUCT INFO ---------- */
+.product-info {
+    padding-top: 4px;
+}
+
+.product-info h1 {
+    font-size: 30px;
+    font-weight: 800;
+    color: #1f1f1f;
+    margin-bottom: 8px;
+    line-height: 1.35;
+}
+
+.sku {
+    font-size: 15px;
+    color: #777;
+    margin-bottom: 12px;
+}
+
+.rating-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 15px;
+    color: #777;
+    margin-bottom: 14px;
+}
+
+.stars {
+    color: #d9a45f;
+    letter-spacing: 2px;
+}
+
+.divider {
+    width: 1px;
+    height: 18px;
+    background-color: #ccc;
+}
+
+.product-info hr {
+    border: none;
+    border-top: 1px solid #ddd0cb;
+    margin: 12px 0 28px;
+}
+
+.price-box {
+    margin-bottom: 28px;
+}
+
+.sale-price {
+    font-size: 28px;
+    font-weight: 800;
+    color: #731919;
+    margin-bottom: 18px;
+}
+
+.old-price-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.old-price {
+    font-size: 17px;
+    color: #888;
+    text-decoration: line-through;
+}
+
+.discount {
+    font-size: 15px;
+    color: #333;
+}
+
+.stock {
+    color: #e52b2b;
+    font-size: 16px;
+    margin-bottom: 34px;
+}
+
+.quantity-row {
+    display: flex;
+    align-items: center;
+    gap: 26px;
+    margin-bottom: 34px;
+    font-size: 16px;
+}
+
+.quantity-control {
+    display: flex;
+    align-items: center;
+    border: 1px solid #d9b382;
+    border-radius: 6px;
+    overflow: hidden;
+    height: 30px;
+}
+
+.quantity-control button {
+    width: 32px;
+    height: 30px;
+    border: none;
+    background: #fff8f5;
+    color: #731919;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.quantity-control input {
+    width: 48px;
+    height: 30px;
+    border: none;
+    text-align: center;
+    background-color: #fff8f5;
+    font-size: 15px;
+    outline: none;
+}
+
+/* ---------- BUTTONS ---------- */
+.action-buttons {
+    display: flex;
+    gap: 24px;
+}
+
+.action-buttons button {
+    width: 210px;
+    height: 54px;
+    border-radius: 8px;
+    font-size: 17px;
+    font-weight: 800;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.25s;
+}
+
+.add-cart-btn {
+    background-color: transparent;
+    color: #731919;
+    border: 2px solid #d9b382;
+}
+
+.add-cart-btn:hover {
+    background-color: #fff1e7;
+}
+
+.buy-now-btn {
+    background-color: transparent;
+    color: #731919;
+    border: 2px solid #d9b382;
+}
+
+.buy-now-btn:hover {
+    background-color: #731919;
+    color: #fff;
+    border-color: #731919;
+}
+
+/* ---------- DESCRIPTION ---------- */
+.description-section,
+.review-section,
+.related-section {
+    max-width: 1180px;
+    margin: 44px auto 0;
+}
+
+.description-section {
+    border-top: 1px solid #ddd0cb;
+    padding-top: 24px;
+}
+
+.description-section h2,
+.review-section h2,
+.related-section h2 {
+    font-size: 20px;
+    font-weight: 800;
+    margin-bottom: 20px;
+}
+
+.description-content {
+    font-size: 16px;
+    line-height: 1.7;
+    color: #333;
+}
+
+.description-content ul {
+    margin-left: 24px;
+}
+
+/* ---------- REVIEW ---------- */
+.review-section {
+    border-top: 1px solid #ddd0cb;
+    padding-top: 24px;
+}
+
+.review-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 22px;
+}
+
+.review-header p {
+    color: #777;
+    font-size: 13px;
+    margin-top: 6px;
+}
+
+.rating-summary {
+    width: 130px;
+    height: 70px;
+    border: 1px solid #f0d8c5;
+    border-radius: 12px;
+    background-color: #fffdfb;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.rating-summary strong {
+    font-size: 34px;
+    color: #111;
+    line-height: 1;
+}
+
+.rating-summary span {
+    color: #d9a45f;
+    letter-spacing: 2px;
+}
+
+.review-card {
+    position: relative;
+    background-color: #fff;
+    border: 1px solid #e8b988;
+    border-radius: 10px;
+    padding: 22px 28px;
+    margin-bottom: 24px;
+}
+
+.review-user {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.review-user img {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.review-user h4 {
+    font-size: 14px;
+    font-weight: 800;
+    margin-bottom: 3px;
+}
+
+.review-user p {
+    font-size: 12px;
+    color: #777;
+}
+
+.review-stars {
+    position: absolute;
+    top: 24px;
+    right: 28px;
+    color: #d9a45f;
+    font-size: 13px;
+    letter-spacing: 1px;
+}
+
+.review-content {
+    font-size: 15px;
+    line-height: 1.7;
+}
+
+/* ---------- RELATED PRODUCTS ---------- */
+.related-section {
+    padding-bottom: 40px;
+}
+
+.related-list {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 42px;
+}
+
+.related-card {
+    text-align: center;
+}
+
+.related-card img {
+    width: 100%;
+    height: 180px;
+    object-fit: cover;
+    margin-bottom: 16px;
+}
+
+.related-card h3 {
+    font-size: 16px;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+
+.related-card p {
+    font-size: 19px;
+    color: #111;
+    margin-bottom: 10px;
+}
+
+.related-card button {
+    border: 1px solid #d9b382;
+    background-color: transparent;
+    color: #9b2a1f;
+    padding: 6px 18px;
+    border-radius: 6px;
+    font-size: 15px;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.related-card button:hover {
+    background-color: #731919;
+    color: white;
+    border-color: #731919;
+}
+
+/* ---------- MORE BUTTON ---------- */
+.more-button-wrap {
+    text-align: center;
+    margin-top: 28px;
+}
+
+.more-button-wrap button {
+    border: none;
+    background-color: #731919;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.more-button-wrap button:hover {
+    background-color: #5d1212;
+}
+
+/* ---------- HIDE NUMBER INPUT SPINNER ---------- */
+.quantity-control input::-webkit-outer-spin-button,
+.quantity-control input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.quantity-control input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
