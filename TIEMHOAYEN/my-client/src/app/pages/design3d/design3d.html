@@ -1,0 +1,167 @@
+<div class="design3d-page" [class.sidebar-collapsed]="isSidebarCollapsed">
+
+    <!-- KHU VỰC THIẾT KẾ -->
+    <div class="canvas-area">
+
+        <!-- Tool bên phải -->
+        <div class="floating-tools">
+            <button class="tool-btn"><i class="bi bi-zoom-in"></i></button>
+            <button class="tool-btn"><i class="bi bi-zoom-out"></i></button>
+            <button class="tool-btn">
+                <img src="assets/icons/design3d_3D.svg" alt="3D" width="18" height="18">
+            </button>
+        </div>
+
+        <!-- Tool dưới -->
+        <div class="bottom-toolbar">
+            <button class="toolbar-btn">
+                <i class="bi bi-arrow-clockwise"></i>
+                <span>Quay lại</span>
+            </button>
+
+            <button
+            class="toolbar-btn danger"
+            (click)="clearAllFlowers()"
+            >
+            <i class="bi bi-trash3"></i>
+            <span>Xóa tất cả</span>
+            </button>
+
+            <button class="toolbar-btn" (click)="openInfo()">
+                <i class="bi bi-info-circle"></i>
+                <span>Thông tin</span>
+            </button>
+        </div>
+
+    </div> <!-- Đóng canvas-area -->
+
+    <!-- POPUP THÔNG TIN -->
+    <div class="info-overlay" *ngIf="showInfo" (click)="showInfo = false">
+        <div class="info-popup" (click)="$event.stopPropagation()">
+
+            <div class="info-popup-header">
+                <span><i class="bi bi-info-circle"></i> Thông tin - Hướng dẫn</span>
+                <button class="info-close-btn" (click)="showInfo = false">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            <div class="info-overlay" *ngIf="showInfo" (click)="showInfo = false">
+                <div class="info-popup-simple" (click)="$event.stopPropagation()">
+                    <button
+                        class="popup-close-btn"
+                        (click)="showInfo = false">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    <h5>HƯỚNG DẪN SỬ DỤNG NHANH</h5>
+
+                    <ol>
+                        <li>Chọn loại hoa từ danh sách bên phải.</li>
+                        <li>Điều chỉnh số lượng bằng nút (+) và (-).</li>
+                        <li>Chọn màu sắc mong muốn cho bó hoa.</li>
+                        <li>Xem trước mô hình 3D và sử dụng các nút phóng to, thu nhỏ hoặc xoay để quan sát.</li>
+                        <li>Lưu thiết kế khi hoàn thành.</li>
+                    </ol>
+
+                    <p>
+                        <i class="bi bi-lightbulb-fill"></i>
+                        <strong>Mẹo:</strong>
+                        Hãy kết hợp nhiều loại hoa và màu sắc để tạo nên bó hoa mang phong cách riêng của bạn.
+                    </p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+
+        <div class="sidebar-header">
+            <h4 class="sidebar-title">Danh sách hoa</h4>
+            <button class="toggle-sidebar-btn" (click)="toggleSidebar()">
+                <i class="bi" [class.bi-chevron-right]="!isSidebarCollapsed" [class.bi-chevron-left]="isSidebarCollapsed"></i>
+            </button>
+        </div>
+
+        <div class="sidebar-body">
+
+            <!-- Hoa đã chọn -->
+            <div *ngIf="selectedFlowers.length === 0" class="empty-state">
+                Chưa có hoa nào được chọn
+            </div>
+            <div
+                class="flower-selected"
+                *ngFor="let flower of selectedFlowers">
+                <img [src]="flower.image" [alt]="flower.name">
+
+                <div class="flower-info">
+                    <div>{{ flower.name }}</div>
+
+                    <select
+                        class="flower-color-select"
+                        [(ngModel)]="flower.selectedColor"
+                    >
+                        <option
+                            *ngFor="let color of flower.colors"
+                            [value]="color"
+                        >
+                            {{ color }}
+                        </option>
+                    </select>
+                </div>
+
+                <div class="quantity-box">
+                    <button (click)="decreaseQuantity(flower)">-</button>
+
+                    <span>{{ flower.quantity }}</span>
+
+                    <button (click)="increaseQuantity(flower)">+</button>
+                </div>
+
+                <button
+                    class="delete-btn"
+                    (click)="removeFlower(flower)"
+                >
+                    <i class="bi bi-trash3"></i>
+                </button>
+            </div>            
+            <!-- Tổng quan -->
+            <div class="summary-section">
+                <small>TỔNG QUAN THIẾT KẾ</small>
+                
+                <h5 *ngIf="selectedFlowers.length > 0">
+                {{ getTotalFlowers() }} bông / {{ getTotalTypes() }} loại
+                </h5>
+
+                <h5 *ngIf="selectedFlowers.length === 0">
+                Chưa có hoa nào
+                </h5>
+
+                <button class="update-btn">
+                    <i class="bi bi-arrow-repeat"></i> Cập nhật
+                </button>
+                <button class="save-btn">
+                    <i class="bi bi-floppy"></i> Lưu thiết kế
+                </button>
+            </div>
+
+            <!-- Loại hoa -->
+            <div class="flower-library">
+                <h5>Loại hoa</h5>
+                <div class="flower-grid">
+                    <div
+                        class="flower-item"
+                        *ngFor="let flower of flowers"
+                        (click)="addFlower(flower)"
+                    >
+                        <img [src]="flower.image" [alt]="flower.name">
+                        <p>{{ flower.name }}</p>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /sidebar-body -->
+    </div><!-- /sidebar -->
+
+</div>
