@@ -8,12 +8,19 @@ import {
 } from '@angular/core';
 
 import { isPlatformBrowser } from '@angular/common';
+import { ActivatedRoute, Router } from '@angular/router';
+import { Subscription } from 'rxjs';
+
+import {
+  CategoryProductService,
+  CategoryProduct
+} from '../../services/category-product.service';
 
 type FilterGroup = 'chuDe' | 'kieuDang' | 'hoaTuoi' | 'doiTuong' | 'mauSac';
 type SortValue = 'default' | 'priceAsc' | 'priceDesc' | 'nameAsc' | 'nameDesc';
 
 interface Product {
-  id: number;
+  id: string;
   name: string;
   price: number;
   image: string;
@@ -29,7 +36,8 @@ interface Product {
   encapsulation: ViewEncapsulation.None,
 })
 export class CategoryComponent implements AfterViewInit, OnDestroy {
-  constructor(@Inject(PLATFORM_ID) private platformId: object) {}
+  pageTitle = 'Sản phẩm';
+
   private readonly PAGE_SIZE = 16;
   private readonly PRODUCT_IMAGES = 'assets/images/category/';
 
@@ -44,6 +52,8 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   private emptyMessage!: HTMLParagraphElement;
   private sortSelect!: HTMLSelectElement;
 
+  private routeSubscription?: Subscription;
+
   private readonly selectedFilters: Record<FilterGroup, Set<string>> = {
     chuDe: new Set<string>(),
     kieuDang: new Set<string>(),
@@ -53,27 +63,34 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   };
 
   private readonly baseProducts: Product[] = [
-    this.createProduct(1, 'Serenity Rose', 699000, 'serenity-rose.jpg', '🌸', ['Sinh nhật'], ['Bó hoa'], ['Hoa hồng'], ['Bạn gái', 'Người yêu'], ['Hồng']),
-    this.createProduct(2, 'Pink Blossom', 799000, 'pink-blossom.jpg', '💐', ['Sinh nhật'], ['Bó hoa'], ['Hoa hồng'], ['Bạn gái', 'Mẹ'], ['Hồng']),
-    this.createProduct(3, 'Golden Sunshine', 899000, 'golden-sunshine.jpg', '🌻', ['Sinh nhật', 'Chúc mừng'], ['Bó hoa'], ['Hoa hướng dương'], ['Sếp'], ['Vàng']),
-    this.createProduct(4, 'Crimson Love', 999000, 'crimson-love.jpg', '🌹', ['Sinh nhật', 'Tình yêu'], ['Bó hoa'], ['Hoa hồng'], ['Người yêu', 'Vợ'], ['Đỏ']),
-    this.createProduct(5, 'White Elegance', 899000, 'white-elegance.jpg', '🤍', ['Sinh nhật', 'Cưới'], ['Bó hoa'], ['Hoa ly'], ['Mẹ', 'Vợ'], ['Trắng']),
-    this.createProduct(6, 'Lavender Dream', 899000, 'lavender-dream.jpg', '💜', ['Sinh nhật'], ['Bó hoa'], ['Hoa hồng'], ['Bạn gái'], ['Tím']),
-    this.createProduct(7, 'Tulip Romance', 1099000, 'tulip-romance.jpg', '🌷', ['Sinh nhật', 'Tình yêu'], ['Bó hoa'], ['Hoa tulip'], ['Người yêu', 'Vợ'], ['Hồng']),
-    this.createProduct(8, 'Sweet Garden', 999000, 'sweet-garden.jpg', '🌺', ['Sinh nhật'], ['Giỏ hoa'], ['Hoa hồng', 'Hoa cúc'], ['Mẹ'], ['Hồng']),
-    this.createProduct(9, 'Ocean Bloom', 1199000, 'ocean-bloom.jpg', '🩵', ['Sinh nhật'], ['Bó hoa'], ['Hoa baby'], ['Bạn gái'], ['Xanh']),
-    this.createProduct(10, 'Peach Melody', 799000, 'peach-melody.jpg', '🍑', ['Sinh nhật'], ['Giỏ hoa'], ['Hoa hồng'], ['Mẹ'], ['Cam', 'Hồng']),
-    this.createProduct(11, 'Royal Orchid', 1499000, 'royal-orchid.jpg', '💜', ['Sinh nhật', 'Khai trương'], ['Hộp hoa'], ['Hoa Lan'], ['Sếp'], ['Tím']),
-    this.createProduct(12, 'Golden Wish', 899000, 'golden-wish.jpg', '🎁', ['Sinh nhật', 'Chúc mừng'], ['Hộp hoa'], ['Hoa hồng'], ['Sếp', 'Mẹ'], ['Xanh', 'Trắng']),
-    this.createProduct(13, 'Baby Cloud', 599000, 'baby-cloud.jpg', '☁️', ['Sinh nhật'], ['Giỏ hoa'], ['Hoa baby', 'Hoa hồng'], ['Bạn gái'], ['Hồng', 'Trắng']),
-    this.createProduct(14, 'Dreamy Pink', 1099000, 'dreamy-pink.jpg', '🌸', ['Sinh nhật', 'Tình yêu'], ['Giỏ hoa'], ['Hoa hồng'], ['Người yêu', 'Vợ'], ['Hồng']),
-    this.createProduct(15, 'Burgundy Luxury', 1299000, 'burgundy-luxury.jpg', '🍷', ['Sinh nhật', 'Tình yêu'], ['Hộp hoa'], ['Hoa hồng'], ['Người yêu'], ['Đỏ']),
-    this.createProduct(16, 'Orchid Grace', 1599000, 'orchid-grace.jpg', '🌺', ['Sinh nhật'], ['Hoa hộp Mica'], ['Hoa Lan'], ['Mẹ', 'Sếp'], ['Tím']),
-    this.createProduct(17, 'Sunflower Joy', 649000, 'sunflower-joy.jpg', '🌻', ['Sinh nhật'], ['Bó hoa'], ['Hoa hướng dương'], ['Bạn gái', 'Sếp'], ['Vàng']),
-    this.createProduct(18, 'Cherry Delight', 749000, 'cherry-delight.jpg', '🌸', ['Sinh nhật'], ['Bó hoa'], ['Hoa hồng', 'Hoa baby'], ['Bạn gái'], ['Hồng', 'Trắng']),
+    this.createProduct(1, 'Serenity Rose', 699000, 'serenity-rose.jpg', '🌸', ['Hoa sinh nhật'], ['Bó hoa'], ['Hoa hồng'], ['Bạn gái', 'Người yêu'], ['Hồng']),
+    this.createProduct(2, 'Pink Blossom', 799000, 'pink-blossom.jpg', '💐', ['Hoa sinh nhật'], ['Bó hoa'], ['Hoa hồng'], ['Bạn gái', 'Mẹ'], ['Hồng']),
+    this.createProduct(3, 'Golden Sunshine', 899000, 'golden-sunshine.jpg', '🌻', ['Hoa sinh nhật', 'Hoa chúc mừng'], ['Bó hoa'], ['Hoa hướng dương'], ['Sếp'], ['Vàng']),
+    this.createProduct(4, 'Crimson Love', 999000, 'crimson-love.jpg', '🌹', ['Hoa sinh nhật', 'Hoa tình yêu'], ['Bó hoa'], ['Hoa hồng'], ['Người yêu', 'Vợ'], ['Đỏ']),
+    this.createProduct(5, 'White Elegance', 899000, 'white-elegance.jpg', '🤍', ['Hoa sinh nhật', 'Hoa cưới'], ['Bó hoa'], ['Hoa ly'], ['Mẹ', 'Vợ'], ['Trắng']),
+    this.createProduct(6, 'Lavender Dream', 899000, 'lavender-dream.jpg', '💜', ['Hoa sinh nhật'], ['Bó hoa'], ['Hoa hồng'], ['Bạn gái'], ['Tím']),
+    this.createProduct(7, 'Tulip Romance', 1099000, 'tulip-romance.jpg', '🌷', ['Hoa sinh nhật', 'Hoa tình yêu'], ['Bó hoa'], ['Hoa tulip'], ['Người yêu', 'Vợ'], ['Hồng']),
+    this.createProduct(8, 'Sweet Garden', 999000, 'sweet-garden.jpg', '🌺', ['Hoa sinh nhật'], ['Giỏ hoa'], ['Hoa hồng', 'Hoa cúc'], ['Mẹ'], ['Hồng']),
+    this.createProduct(9, 'Ocean Bloom', 1199000, 'ocean-bloom.jpg', '🩵', ['Hoa sinh nhật'], ['Bó hoa'], ['Hoa baby'], ['Bạn gái'], ['Xanh']),
+    this.createProduct(10, 'Peach Melody', 799000, 'peach-melody.jpg', '🍑', ['Hoa sinh nhật'], ['Giỏ hoa'], ['Hoa hồng'], ['Mẹ'], ['Cam', 'Hồng']),
+    this.createProduct(11, 'Royal Orchid', 1499000, 'royal-orchid.jpg', '💜', ['Hoa sinh nhật', 'Hoa khai trương'], ['Hộp hoa'], ['Hoa Lan'], ['Sếp'], ['Tím']),
+    this.createProduct(12, 'Golden Wish', 899000, 'golden-wish.jpg', '🎁', ['Hoa sinh nhật', 'Hoa chúc mừng'], ['Hộp hoa'], ['Hoa hồng'], ['Sếp', 'Mẹ'], ['Xanh', 'Trắng']),
+    this.createProduct(13, 'Baby Cloud', 599000, 'baby-cloud.jpg', '☁️', ['Hoa sinh nhật'], ['Giỏ hoa'], ['Hoa baby', 'Hoa hồng'], ['Bạn gái'], ['Hồng', 'Trắng']),
+    this.createProduct(14, 'Dreamy Pink', 1099000, 'dreamy-pink.jpg', '🌸', ['Hoa sinh nhật', 'Hoa tình yêu'], ['Giỏ hoa'], ['Hoa hồng'], ['Người yêu', 'Vợ'], ['Hồng']),
+    this.createProduct(15, 'Burgundy Luxury', 1299000, 'burgundy-luxury.jpg', '🍷', ['Hoa sinh nhật', 'Hoa tình yêu'], ['Hộp hoa'], ['Hoa hồng'], ['Người yêu'], ['Đỏ']),
+    this.createProduct(16, 'Orchid Grace', 1599000, 'orchid-grace.jpg', '🌺', ['Hoa sinh nhật'], ['Hoa hộp Mica'], ['Hoa Lan'], ['Mẹ', 'Sếp'], ['Tím']),
+    this.createProduct(17, 'Sunflower Joy', 649000, 'sunflower-joy.jpg', '🌻', ['Hoa sinh nhật'], ['Bó hoa'], ['Hoa hướng dương'], ['Bạn gái', 'Sếp'], ['Vàng']),
+    this.createProduct(18, 'Cherry Delight', 749000, 'cherry-delight.jpg', '🌸', ['Hoa sinh nhật'], ['Bó hoa'], ['Hoa hồng', 'Hoa baby'], ['Bạn gái'], ['Hồng', 'Trắng']),
   ];
 
-  private readonly products: Product[] = this.createProductData();
+  private products: Product[] = [];
+
+  constructor(
+    @Inject(PLATFORM_ID) private platformId: object,
+    private route: ActivatedRoute,
+    private router: Router,
+    private categoryProductService: CategoryProductService
+  ) {}
 
   ngAfterViewInit(): void {
     if (
@@ -102,11 +119,103 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       this.initFilterInputs();
       this.initFilterCollapse();
       this.initSort();
+      this.loadDataFromRoute();
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.routeSubscription?.unsubscribe();
+  }
+
+  private loadDataFromRoute(): void {
+    this.routeSubscription = this.route.paramMap.subscribe((params) => {
+      const id = params.get('id');
+      const path = this.route.snapshot.routeConfig?.path || '';
+
+      this.clearSelectedFilters();
+      this.uncheckAllCheckboxes();
+      this.currentPage = 1;
+
+      if (!id) {
+        this.pageTitle = 'Sản phẩm';
+        this.products = this.createProductData();
+        this.render();
+        return;
+      }
+
+      if (path.startsWith('chu-de')) {
+        this.loadProductsByTopic(id);
+        return;
+      }
+
+      this.pageTitle = 'Sản phẩm';
+      this.products = this.createProductData();
       this.render();
     });
   }
 
-  ngOnDestroy(): void {}
+  private loadProductsByTopic(topicId: string): void {
+    this.categoryProductService.getProductsByTopic(topicId).subscribe({
+      next: (res) => {
+        const topicName = res.topic?.TEN_CHU_DE || 'Sản phẩm';
+
+        this.pageTitle = topicName;
+
+        this.products = res.products.map((item) =>
+          this.mapDbProductToProduct(item)
+        );
+
+        this.selectedFilters.chuDe.add(topicName);
+
+        setTimeout(() => {
+          this.syncCheckbox('chuDe', topicName, true);
+          this.currentPage = 1;
+          this.render();
+        });
+      },
+      error: (err) => {
+        console.error('Lỗi lấy sản phẩm theo chủ đề:', err);
+
+        this.pageTitle = 'Không tìm thấy chủ đề';
+        this.products = [];
+        this.render();
+      }
+    });
+  }
+
+  private mapDbProductToProduct(item: CategoryProduct): Product {
+    return {
+      id: item.SAN_PHAM_ID,
+      name: item.TEN_SAN_PHAM,
+      price: item.GIA_KHUYEN_MAI || item.GIA || 0,
+      image: this.normalizeImageUrl(item.HINH_ANH),
+      icon: '🌸',
+      filters: {
+        chuDe: item.TEN_CHU_DE ? [item.TEN_CHU_DE] : [],
+        kieuDang: item.KIEU_DANG ? [item.KIEU_DANG] : [],
+        hoaTuoi: [],
+        doiTuong: [],
+        mauSac: []
+      }
+    };
+  }
+
+  private normalizeImageUrl(url: string | null | undefined): string {
+    if (!url) return '';
+
+    const value = String(url).trim();
+
+    if (
+      value.startsWith('http://') ||
+      value.startsWith('https://') ||
+      value.startsWith('assets/') ||
+      value.startsWith('/')
+    ) {
+      return value;
+    }
+
+    return `assets/images/products/${value}`;
+  }
 
   private getElements(): void {
     this.productGrid = document.querySelector<HTMLDivElement>('#productGrid')!;
@@ -131,7 +240,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     mauSac: string[]
   ): Product {
     return {
-      id,
+      id: String(id),
       name,
       price,
       image: this.PRODUCT_IMAGES + fileName,
@@ -157,7 +266,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
       result.push({
         ...seed,
-        id,
+        id: String(id),
         name,
         price: seed.price + ((id % 5) * 50000),
       });
@@ -217,23 +326,33 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   private renderProducts(items: Product[]): void {
     this.emptyMessage.hidden = items.length > 0;
 
-    this.productGrid.innerHTML = items.map((item) => `
-      <article class="product-card">
-        <div class="product-image-wrap">
-          <img src="${item.image}" alt="${item.name}" loading="lazy">
-          <div class="product-image-fallback">${item.icon}</div>
-          <button class="wishlist-btn" type="button" aria-label="Thêm ${item.name} vào yêu thích">♡</button>
-        </div>
+    this.productGrid.innerHTML = items.map((item) => {
+      const safeName = this.escapeHtml(item.name);
+      const safeImage = this.escapeHtml(item.image);
+      const safeIcon = this.escapeHtml(item.icon);
 
-        <h2 class="product-name">${item.name}</h2>
-        <p class="product-price">${this.formatPrice(item.price)}</p>
+      return `
+        <article class="product-card">
+          <div class="product-image-wrap">
+            ${
+              item.image
+                ? `<img src="${safeImage}" alt="${safeName}" loading="lazy">`
+                : ''
+            }
+            <div class="product-image-fallback" style="${item.image ? '' : 'display:flex'}">${safeIcon}</div>
+            <button class="wishlist-btn" type="button" aria-label="Thêm ${safeName} vào yêu thích">♡</button>
+          </div>
 
-        <div class="card-actions">
-          <button class="buy-btn" type="button">MUA NGAY</button>
-          <button class="cart-btn" type="button" aria-label="Thêm ${item.name} vào giỏ hàng">🛒</button>
-        </div>
-      </article>
-    `).join('');
+          <h2 class="product-name">${safeName}</h2>
+          <p class="product-price">${this.formatPrice(item.price)}</p>
+
+          <div class="card-actions">
+            <button class="buy-btn" type="button">MUA NGAY</button>
+            <button class="cart-btn" type="button" aria-label="Thêm ${safeName} vào giỏ hàng">🛒</button>
+          </div>
+        </article>
+      `;
+    }).join('');
 
     this.productGrid.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
       img.addEventListener('error', () => {
@@ -256,10 +375,12 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
     (Object.keys(this.selectedFilters) as FilterGroup[]).forEach((group) => {
       this.selectedFilters[group].forEach((value) => {
+        const safeValue = this.escapeHtml(value);
+
         chips.push(`
           <span class="selected-chip">
-            ${value}
-            <button type="button" data-group="${group}" data-value="${value}" aria-label="Gỡ ${value}">×</button>
+            ${safeValue}
+            <button type="button" data-group="${group}" data-value="${safeValue}" aria-label="Gỡ ${safeValue}">×</button>
           </span>
         `);
       });
@@ -274,6 +395,12 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       button.addEventListener('click', () => {
         const group = button.dataset['group'] as FilterGroup;
         const value = button.dataset['value'] ?? '';
+
+        // Không cho xóa chip Chủ đề, vì trang category luôn cần đúng 1 chủ đề.
+        if (group === 'chuDe') {
+          this.syncCheckbox(group, value, true);
+          return;
+        }
 
         this.selectedFilters[group].delete(value);
         this.syncCheckbox(group, value, false);
@@ -335,12 +462,31 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   }
 
   private syncCheckbox(group: FilterGroup, value: string, checked: boolean): void {
+    const normalizedValue = this.normalizeText(value);
+
     document.querySelectorAll<HTMLInputElement>('.filter-content input[type="checkbox"]').forEach((checkbox) => {
       const checkboxGroup = checkbox.dataset['group'];
+      const checkboxValue = this.getCheckboxValue(checkbox);
+      const normalizedCheckboxValue = this.normalizeText(checkboxValue);
 
-      if (checkboxGroup === group && checkbox.value === value) {
+      if (
+        checkboxGroup === group &&
+        normalizedCheckboxValue === normalizedValue
+      ) {
         checkbox.checked = checked;
       }
+    });
+  }
+
+  private uncheckAllCheckboxes(): void {
+    document.querySelectorAll<HTMLInputElement>('.filter-content input[type="checkbox"]').forEach((checkbox) => {
+      checkbox.checked = false;
+    });
+  }
+
+  private clearSelectedFilters(): void {
+    (Object.keys(this.selectedFilters) as FilterGroup[]).forEach((group) => {
+      this.selectedFilters[group].clear();
     });
   }
 
@@ -348,15 +494,63 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     document.querySelectorAll<HTMLInputElement>('.filter-content input[type="checkbox"]').forEach((checkbox) => {
       checkbox.addEventListener('change', () => {
         const group = checkbox.dataset['group'] as FilterGroup;
-        const value = checkbox.value;
+        const value = this.getCheckboxValue(checkbox);
 
-        if (checkbox.checked) this.selectedFilters[group].add(value);
-        else this.selectedFilters[group].delete(value);
+        // Nhóm Chủ đề: chỉ được chọn 1 và phải chuyển route để gọi API mới.
+        if (group === 'chuDe') {
+          if (!checkbox.checked) {
+            checkbox.checked = true;
+            return;
+          }
+
+          document
+            .querySelectorAll<HTMLInputElement>('input[data-group="chuDe"]')
+            .forEach((topicCheckbox) => {
+              if (topicCheckbox !== checkbox) {
+                topicCheckbox.checked = false;
+              }
+            });
+
+          this.selectedFilters.chuDe.clear();
+          this.selectedFilters.chuDe.add(value);
+
+          const topicId = checkbox.dataset['id'];
+
+          if (topicId) {
+            this.router.navigate(['/chu-de', topicId]);
+            return;
+          }
+
+          this.currentPage = 1;
+          this.render();
+          return;
+        }
+
+        // Các nhóm khác vẫn được chọn nhiều.
+        if (checkbox.checked) {
+          this.selectedFilters[group].add(value);
+        } else {
+          this.selectedFilters[group].delete(value);
+        }
 
         this.currentPage = 1;
         this.render();
       });
     });
+  }
+
+  private getCheckboxValue(checkbox: HTMLInputElement): string {
+    const label = checkbox.closest('label');
+    const labelText = label?.textContent?.trim();
+
+    return labelText || checkbox.value;
+  }
+
+  private normalizeText(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
   }
 
   private initFilterCollapse(): void {
@@ -377,5 +571,14 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       this.currentPage = 1;
       this.render();
     });
+  }
+
+  private escapeHtml(value: string): string {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 }

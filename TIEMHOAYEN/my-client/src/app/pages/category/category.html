@@ -1,131 +1,167 @@
-<!-- <!DOCTYPE html>
-<html lang="vi">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hoa sinh nhật</title>
+<main class="category-page">
+  <h1 class="page-title">{{ pageTitle }}</h1>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="category.css" />
-</head>
-<body> -->
-  <main class="category-page">
-    <h1 class="page-title">Hoa sinh nhật</h1>
+  <section class="selected-filter-row" id="selectedFilterRow" hidden>
+    <span class="selected-filter-title">Bộ lọc đang chọn:</span>
+    <div class="selected-filter-list" id="selectedFilterList"></div>
+  </section>
 
-    <section class="selected-filter-row" id="selectedFilterRow" hidden>
-      <span class="selected-filter-title">Bộ lọc đang chọn:</span>
-      <div class="selected-filter-list" id="selectedFilterList"></div>
+  <section class="category-layout">
+    <aside class="filter-sidebar" aria-label="Bộ lọc sản phẩm">
+
+      <div class="filter-group">
+        <button class="filter-title" type="button" aria-expanded="true">
+          <span>Chủ đề</span>
+          <span class="chevron">⌃</span>
+        </button>
+
+        <div class="filter-content">
+          <label>
+            <input type="checkbox" data-group="chuDe" data-id="CD001" value="Hoa sinh nhật">
+            Hoa sinh nhật
+          </label>
+
+          <label>
+            <input type="checkbox" data-group="chuDe" data-id="CD002" value="Hoa tình yêu">
+            Hoa tình yêu
+          </label>
+
+          <label>
+            <input type="checkbox" data-group="chuDe" data-id="CD007" value="Hoa cưới">
+            Hoa cưới
+          </label>
+
+          <label>
+            <input type="checkbox" data-group="chuDe" data-id="CD005" value="Hoa Tết">
+            Hoa Tết
+          </label>
+
+          <label>
+            <input type="checkbox" data-group="chuDe" data-id="CD003" value="Hoa khai trương">
+            Hoa khai trương
+          </label>
+
+          <label>
+            <input type="checkbox" data-group="chuDe" data-id="CD004" value="Hoa chúc mừng">
+            Hoa chúc mừng
+          </label>
+
+          <label>
+            <input type="checkbox" data-group="chuDe" data-id="CD008" value="Hoa sự kiện">
+            Hoa sự kiện
+          </label>
+
+          <label>
+            <input type="checkbox" data-group="chuDe" data-id="CD006" value="Hoa Chia Buồn">
+            Hoa Chia Buồn
+          </label>
+
+          <label>
+            <input type="checkbox" data-group="chuDe" data-id="CD009" value="Hoa tốt nghiệp">
+            Hoa tốt nghiệp
+          </label>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <button class="filter-title" type="button" aria-expanded="true">
+          <span>Kiểu dáng</span>
+          <span class="chevron">⌃</span>
+        </button>
+
+        <div class="filter-content">
+          <label><input type="checkbox" data-group="kieuDang" value="Bó hoa"> Bó hoa</label>
+          <label><input type="checkbox" data-group="kieuDang" value="Giỏ hoa"> Giỏ hoa</label>
+          <label><input type="checkbox" data-group="kieuDang" value="Hộp hoa"> Hộp hoa</label>
+          <label><input type="checkbox" data-group="kieuDang" value="Khung hoa"> Khung hoa</label>
+          <label><input type="checkbox" data-group="kieuDang" value="Hộp mica"> Hộp mica</label>
+          <label><input type="checkbox" data-group="kieuDang" value="Lẵng hoa khai trương"> Lẵng hoa khai trương</label>
+          <label><input type="checkbox" data-group="kieuDang" value="Giỏ hoa khai trương"> Giỏ hoa khai trương</label>
+          <label><input type="checkbox" data-group="kieuDang" value="Vòng hoa tang"> Vòng hoa tang</label>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <button class="filter-title" type="button" aria-expanded="true">
+          <span>Hoa tươi</span>
+          <span class="chevron">⌃</span>
+        </button>
+
+        <div class="filter-content">
+          <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Hồng"> Hoa Hồng</label>
+          <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Ly"> Hoa Ly</label>
+          <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Lan"> Hoa Lan</label>
+          <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Baby"> Hoa Baby</label>
+          <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Hướng Dương"> Hoa Hướng Dương</label>
+          <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Tulip"> Hoa Tulip</label>
+          <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Cúc Tana"> Hoa Cúc Tana</label>
+          <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Cúc"> Hoa Cúc</label>
+          <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Sen"> Hoa Sen</label>
+          <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Cát Tường"> Hoa Cát Tường</label>
+          <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Đồng Tiền"> Hoa Đồng Tiền</label>
+          <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Cẩm Chướng"> Hoa Cẩm Chướng</label>
+          <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Huệ"> Hoa Huệ</label>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <button class="filter-title" type="button" aria-expanded="true">
+          <span>Đối tượng</span>
+          <span class="chevron">⌃</span>
+        </button>
+
+        <div class="filter-content">
+          <label><input type="checkbox" data-group="doiTuong" value="Người yêu"> Người yêu</label>
+          <label><input type="checkbox" data-group="doiTuong" value="Vợ"> Vợ</label>
+          <label><input type="checkbox" data-group="doiTuong" value="Bạn Trai"> Bạn Trai</label>
+          <label><input type="checkbox" data-group="doiTuong" value="Mẹ"> Mẹ</label>
+          <label><input type="checkbox" data-group="doiTuong" value="Sếp"> Sếp</label>
+          <label><input type="checkbox" data-group="doiTuong" value="Chồng"> Chồng</label>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <button class="filter-title" type="button" aria-expanded="true">
+          <span>Màu sắc</span>
+          <span class="chevron">⌃</span>
+        </button>
+
+        <div class="filter-content">
+          <label><input type="checkbox" data-group="mauSac" value="Trắng"> Trắng</label>
+          <label><input type="checkbox" data-group="mauSac" value="Đỏ"> Đỏ</label>
+          <label><input type="checkbox" data-group="mauSac" value="Hồng"> Hồng</label>
+          <label><input type="checkbox" data-group="mauSac" value="Cam"> Cam</label>
+          <label><input type="checkbox" data-group="mauSac" value="Tím"> Tím</label>
+          <label><input type="checkbox" data-group="mauSac" value="Vàng"> Vàng</label>
+          <label><input type="checkbox" data-group="mauSac" value="Xanh"> Xanh</label>
+        </div>
+      </div>
+
+    </aside>
+
+    <section class="product-section">
+      <div class="sort-row">
+        <label for="sortSelect">Sắp xếp:</label>
+
+        <select id="sortSelect">
+          <option value="default"></option>
+          <option value="priceAsc">Giá thấp đến cao</option>
+          <option value="priceDesc">Giá cao đến thấp</option>
+          <option value="nameAsc">Tên A - Z</option>
+          <option value="nameDesc">Tên Z - A</option>
+        </select>
+      </div>
+
+      <div class="product-grid" id="productGrid"></div>
+
+      <p class="empty-message" id="emptyMessage" hidden>
+        Không có sản phẩm phù hợp với bộ lọc.
+      </p>
+
+      <div class="bottom-row">
+        <div class="pagination" id="pagination"></div>
+        <p class="result-count" id="resultCount"></p>
+      </div>
     </section>
-
-    <section class="category-layout">
-      <aside class="filter-sidebar" aria-label="Bộ lọc sản phẩm">
-        <div class="filter-group">
-          <button class="filter-title" type="button" aria-expanded="true">
-            <span>Chủ đề</span><span class="chevron">⌃</span>
-          </button>
-          <div class="filter-content">
-            <label><input type="checkbox" data-group="chuDe" value="Sinh nhật"> Hoa Sinh nhật</label>
-            <label><input type="checkbox" data-group="chuDe" value="Tình yêu"> Hoa tình yêu</label>
-            <label><input type="checkbox" data-group="chuDe" value="Cưới"> Hoa cưới</label>
-            <label><input type="checkbox" data-group="chuDe" value="Tết"> Hoa Tết</label>
-            <label><input type="checkbox" data-group="chuDe" value="Khai trương"> Hoa khai trương</label>
-            <label><input type="checkbox" data-group="chuDe" value="Chúc mừng"> Hoa chúc mừng</label>
-            <label><input type="checkbox" data-group="chuDe" value="Sự kiện"> Hoa sự kiện</label>
-            <label><input type="checkbox" data-group="chuDe" value="Chia buồn"> Hoa chia buồn</label>
-            <label><input type="checkbox" data-group="chuDe" value="Tốt nghiệp"> Hoa tốt nghiệp</label>
-          </div>
-        </div>
-
-        <div class="filter-group">
-          <button class="filter-title" type="button" aria-expanded="true">
-            <span>Kiểu dáng</span><span class="chevron">⌃</span>
-          </button>
-          <div class="filter-content">
-            <label><input type="checkbox" data-group="kieuDang" value="Bó hoa"> Bó hoa</label>
-            <label><input type="checkbox" data-group="kieuDang" value="Giỏ hoa"> Giỏ hoa</label>
-            <label><input type="checkbox" data-group="kieuDang" value="Hộp hoa"> Hộp hoa</label>
-            <label><input type="checkbox" data-group="kieuDang" value="Khung hoa"> Khung hoa</label>
-            <label><input type="checkbox" data-group="kieuDang" value="Hoa hộp Mica"> Hoa hộp Mica</label>
-            <label><input type="checkbox" data-group="kieuDang" value="Lẵng hoa khai trương"> Lẵng hoa khai trương</label>
-            <label><input type="checkbox" data-group="kieuDang" value="Giỏ hoa khai trương"> Giỏ hoa khai trương</label>
-            <label><input type="checkbox" data-group="kieuDang" value="Vòng hoa tang"> Vòng hoa tang</label>
-          </div>
-        </div>
-
-        <div class="filter-group">
-          <button class="filter-title" type="button" aria-expanded="true">
-            <span>Hoa tươi</span><span class="chevron">⌃</span>
-          </button>
-          <div class="filter-content">
-            <label><input type="checkbox" data-group="hoaTuoi" value="Hoa hồng"> Hoa hồng</label>
-            <label><input type="checkbox" data-group="hoaTuoi" value="Hoa hướng dương"> Hoa hướng dương</label>
-            <label><input type="checkbox" data-group="hoaTuoi" value="Hoa đồng tiền"> Hoa đồng tiền</label>
-            <label><input type="checkbox" data-group="hoaTuoi" value="Hoa cẩm chướng"> Hoa cẩm chướng</label>
-            <label><input type="checkbox" data-group="hoaTuoi" value="Hoa cúc"> Hoa cúc</label>
-            <label><input type="checkbox" data-group="hoaTuoi" value="Hoa ly"> Hoa ly</label>
-            <label><input type="checkbox" data-group="hoaTuoi" value="Hoa baby"> Hoa baby</label>
-            <label><input type="checkbox" data-group="hoaTuoi" value="Hoa huệ"> Hoa huệ</label>
-            <label><input type="checkbox" data-group="hoaTuoi" value="Hoa tulip"> Hoa tulip</label>
-            <label><input type="checkbox" data-group="hoaTuoi" value="Hoa sen"> Hoa sen</label>
-            <label><input type="checkbox" data-group="hoaTuoi" value="Hoa cát tường"> Hoa cát tường</label>
-            <label><input type="checkbox" data-group="hoaTuoi" value="Hoa Lan"> Hoa Lan</label>
-          </div>
-        </div>
-
-        <div class="filter-group">
-          <button class="filter-title" type="button" aria-expanded="true">
-            <span>Đối tượng</span><span class="chevron">⌃</span>
-          </button>
-          <div class="filter-content">
-            <label><input type="checkbox" data-group="doiTuong" value="Người yêu"> Người yêu</label>
-            <label><input type="checkbox" data-group="doiTuong" value="Mẹ"> Mẹ</label>
-            <label><input type="checkbox" data-group="doiTuong" value="Vợ"> Vợ</label>
-            <label><input type="checkbox" data-group="doiTuong" value="Chồng"> Chồng</label>
-            <label><input type="checkbox" data-group="doiTuong" value="Bạn gái"> Bạn gái</label>
-            <label><input type="checkbox" data-group="doiTuong" value="Sếp"> Sếp</label>
-          </div>
-        </div>
-
-        <div class="filter-group">
-          <button class="filter-title" type="button" aria-expanded="true">
-            <span>Màu sắc</span><span class="chevron">⌃</span>
-          </button>
-          <div class="filter-content">
-            <label><input type="checkbox" data-group="mauSac" value="Trắng"> Trắng</label>
-            <label><input type="checkbox" data-group="mauSac" value="Đỏ"> Đỏ</label>
-            <label><input type="checkbox" data-group="mauSac" value="Hồng"> Hồng</label>
-            <label><input type="checkbox" data-group="mauSac" value="Cam"> Cam</label>
-            <label><input type="checkbox" data-group="mauSac" value="Tím"> Tím</label>
-            <label><input type="checkbox" data-group="mauSac" value="Vàng"> Vàng</label>
-            <label><input type="checkbox" data-group="mauSac" value="Xanh"> Xanh</label>
-          </div>
-        </div>
-      </aside>
-
-      <section class="product-section">
-        <div class="sort-row">
-          <label for="sortSelect">Sắp xếp:</label>
-          <select id="sortSelect">
-            <option value="default"></option>
-            <option value="priceAsc">Giá thấp đến cao</option>
-            <option value="priceDesc">Giá cao đến thấp</option>
-            <option value="nameAsc">Tên A - Z</option>
-            <option value="nameDesc">Tên Z - A</option>
-          </select>
-        </div>
-
-        <div class="product-grid" id="productGrid"></div>
-        <p class="empty-message" id="emptyMessage" hidden>Không có sản phẩm phù hợp với bộ lọc.</p>
-
-        <div class="bottom-row">
-          <div class="pagination" id="pagination"></div>
-          <p class="result-count" id="resultCount"></p>
-        </div>
-      </section>
-    </section>
-  </main>
-<!-- 
-</body>
-</html> -->
+  </section>
+</main>
