@@ -31,15 +31,9 @@
               }
             ],
             "styles": [
-<<<<<<< HEAD
                 "node_modules/bootstrap/dist/css/bootstrap.min.css",
                 "node_modules/bootstrap-icons/font/bootstrap-icons.css",
                 "src/styles.css"
-=======
-              "node_modules/bootstrap/dist/css/bootstrap.min.css",
-              "node_modules/bootstrap-icons/font/bootstrap-icons.css",
-              "src/styles.css"
->>>>>>> 30cc77f (Update homepage)
             ],
             "scripts": [
               "node_modules/bootstrap/dist/js/bootstrap.min.js"
