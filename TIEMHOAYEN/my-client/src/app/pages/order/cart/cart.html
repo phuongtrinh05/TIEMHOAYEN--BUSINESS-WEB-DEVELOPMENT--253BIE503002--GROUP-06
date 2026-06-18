@@ -1,0 +1,164 @@
+<app-page-header></app-page-header>
+<section class="cart-page">
+
+  <!-- Breadcrumb -->
+  <div class="cart-breadcrumb">
+    <a routerLink="/">Trang chủ</a>
+    <i class="bi bi-chevron-right"></i>
+    <span>Giỏ hàng</span>
+  </div>
+
+  <h2 class="cart-title">Giỏ hàng của bạn ({{ getSelectedCount() }})</h2>
+
+  <div class="cart-layout">
+
+    <!-- Danh sách sản phẩm -->
+    <div class="cart-list">
+
+      <!-- Header bảng -->
+      <div class="cart-table-header">
+        <div class="col-check">
+          <input
+            type="checkbox"
+            [checked]="isAllSelected()"
+            (change)="toggleSelectAll($event)"
+          >
+        </div>
+        <div class="col-product">Sản phẩm</div>
+        <div class="col-price">Đơn giá</div>
+        <div class="col-qty">Số lượng</div>
+        <div class="col-total">Thành tiền</div>
+        <div class="col-delete">
+          <i class="bi bi-trash"></i>
+        </div>
+      </div>
+
+      <!-- Danh sách sản phẩm -->
+      <div class="cart-item" *ngFor="let item of cartItems">
+        <div class="col-check">
+          <input
+            type="checkbox"
+            [(ngModel)]="item.selected"
+          >
+        </div>
+
+        <div class="col-product">
+          <img [src]="item.image" [alt]="item.name" class="item-image">
+          <div class="item-info">
+            <p class="item-name">{{ item.name }}</p>
+            <p class="item-meta">Kiểu dáng: {{ item.style }}</p>
+            <p class="item-meta">{{ item.occasion }}</p>
+          </div>
+        </div>
+
+        <div class="col-price">
+          <span class="item-price">{{ formatPrice(item.price) }}</span>
+          <span class="item-original-price" *ngIf="item.originalPrice">{{ formatPrice(item.originalPrice) }}</span>
+        </div>
+
+        <div class="col-qty">
+          <div class="qty-control">
+            <button (click)="decreaseQty(item)">-</button>
+            <span>{{ item.quantity }}</span>
+            <button (click)="increaseQty(item)">+</button>
+          </div>
+        </div>
+
+        <div class="col-total">
+          <span class="item-total">{{ formatPrice(item.price * item.quantity) }}</span>
+        </div>
+
+        <div class="col-delete">
+          <button class="btn-delete" (click)="removeItem(item)">
+            <i class="bi bi-trash"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Trống giỏ hàng -->
+      <div class="cart-empty" *ngIf="cartItems.length === 0">
+        <i class="bi bi-cart-x"></i>
+        <p>Giỏ hàng của bạn đang trống</p>
+        <a routerLink="/category" class="btn-shop">Mua sắm ngay</a>
+      </div>
+
+    </div>
+
+    <!-- Tóm tắt đơn hàng -->
+    <div class="cart-summary">
+      <h3 class="summary-title">Tóm tắt đơn hàng</h3>
+
+      <div class="summary-row">
+        <span>Tạm tính:</span>
+        <span>{{ formatPrice(getSubtotal()) }}</span>
+      </div>
+
+      <div class="summary-row">
+        <span>Phí ship:</span>
+        <span>{{ formatPrice(shippingFee) }}</span>
+      </div>
+
+      <div class="summary-row voucher-row" *ngIf="voucherDiscount > 0">
+        <span class="voucher-tag">Voucher giảm</span>
+        <span class="discount-value">-{{ formatPrice(voucherDiscount) }}</span>
+      </div>
+
+      <div class="summary-row voucher-row" *ngIf="shippingDiscount > 0">
+        <span class="voucher-tag">Voucher ship</span>
+        <span class="discount-value">-{{ formatPrice(shippingDiscount) }}</span>
+      </div>
+
+      <div class="summary-total">
+        <span>Tổng cộng</span>
+        <span class="total-value">{{ formatPrice(getTotal()) }}</span>
+      </div>
+
+      <button class="btn-order" routerLink="/checkout">Đặt hàng</button>
+
+      <div class="summary-guarantees">
+        <div class="guarantee-item">
+          <i class="bi bi-heart"></i>
+          <span>Cam kết hoa tươi 100%</span>
+        </div>
+        <div class="guarantee-item">
+          <i class="bi bi-clock"></i>
+          <span>Giao hàng đúng giờ</span>
+        </div>
+        <div class="guarantee-item">
+          <i class="bi bi-shield-check"></i>
+          <span>Thanh toán bảo mật</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Gợi ý sản phẩm mua kèm -->
+  <div class="cart-suggestions">
+    <h3 class="suggestions-title">Gợi ý sản phẩm mua kèm</h3>
+
+    <div class="suggestions-wrapper">
+      <button class="btn-nav btn-prev" (click)="prevSlide()">
+        <i class="bi bi-chevron-left"></i>
+      </button>
+
+      <div class="suggestions-list">
+        <div class="suggestion-card" *ngFor="let product of getSuggestedProducts()">
+          <img [src]="product.image" [alt]="product.name" class="suggestion-image">
+          <p class="suggestion-name">{{ product.name }}</p>
+          <p class="suggestion-price">{{ formatPrice(product.price) }}</p>
+          <button class="btn-add-cart" (click)="addToCart(product)">
+            <i class="bi bi-cart-plus"></i>
+            Thêm giỏ hàng
+          </button>
+        </div>
+      </div>
+
+      <button class="btn-nav btn-next" (click)="nextSlide()">
+        <i class="bi bi-chevron-right"></i>
+      </button>
+    </div>
+  </div>
+
+</section>
+<app-page-footer></app-page-footer>

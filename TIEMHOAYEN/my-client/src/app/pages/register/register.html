@@ -1,0 +1,248 @@
+<app-page-header-2></app-page-header-2>
+<section class="register-page">
+  <!-- Bên trái: ảnh nền + highlight -->
+  <div class="register-left">
+    <div class="register-left__overlay"></div>
+
+    <div class="register-left__content">
+      <p class="register-left__slogan">
+        Gửi trao yêu thương<br>
+        qua những bó hoa tươi thắm
+      </p>
+
+      <div class="register-left__features">
+        <div class="feature-item">
+          <div class="feature-item__icon">
+            <i class="bi bi-heart"></i>
+          </div>
+          <div class="feature-item__text">
+            <span class="feature-item__title">Hoa tươi mỗi ngày</span>
+            <span class="feature-item__desc">Tuyển chọn chất lượng</span>
+          </div>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-item__icon">
+            <i class="bi bi-box-seam"></i>
+          </div>
+          <div class="feature-item__text">
+            <span class="feature-item__title">Giao hàng nhanh chóng</span>
+            <span class="feature-item__desc">Đảm bảo đúng hẹn</span>
+          </div>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-item__icon">
+            <i class="bi bi-shield-check"></i>
+          </div>
+          <div class="feature-item__text">
+            <span class="feature-item__title">Thanh toán an toàn</span>
+            <span class="feature-item__desc">Bảo mật thông tin</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bên phải: form đăng ký -->
+  <div class="register-right">
+    <div class="register-card">
+      <h1 class="register-card__title">Đăng ký</h1>
+
+      <form class="register-form" (ngSubmit)="onSubmit()" #registerForm="ngForm" novalidate>
+
+        <!-- Họ và Tên -->
+        <div class="form-group">
+          <label class="form-label" for="fullName">Họ và Tên</label>
+          <div class="input-wrapper">
+            <i class="bi bi-person input-icon"></i>
+            <input
+              type="text"
+              id="fullName"
+              name="fullName"
+              class="form-input"
+              [class.is-invalid]="fullName.invalid && fullName.touched"
+              placeholder="Nhập Họ và Tên"
+              [(ngModel)]="formData.fullName"
+              #fullName="ngModel"
+              required
+              minlength="2"
+            >
+          </div>
+          <span class="error-msg" *ngIf="fullName.invalid && fullName.touched">
+            Vui lòng nhập họ và tên (tối thiểu 2 ký tự).
+          </span>
+        </div>
+
+        <!-- Giới tính -->
+        <div class="form-group">
+          <label class="form-label">Giới tính</label>
+          <div class="gender-group">
+            <label class="gender-option">
+              <input
+                type="radio"
+                name="gender"
+                value="nu"
+                [(ngModel)]="formData.gender"
+              >
+              <span>Nữ</span>
+            </label>
+            <label class="gender-option">
+              <input
+                type="radio"
+                name="gender"
+                value="nam"
+                [(ngModel)]="formData.gender"
+              >
+              <span>Nam</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Số điện thoại & Email -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="phone">Số điện thoại</label>
+            <div class="input-wrapper">
+              <i class="bi bi-telephone input-icon"></i>
+              <input
+                type="tel"
+                id="phone"
+                name="phone"
+                class="form-input"
+                [class.is-invalid]="phone.invalid && phone.touched"
+                placeholder="Nhập số điện thoại"
+                [(ngModel)]="formData.phone"
+                #phone="ngModel"
+                required
+                pattern="^(0[3|5|7|8|9])+([0-9]{8})$"
+              >
+            </div>
+            <span class="error-msg" *ngIf="phone.invalid && phone.touched">
+              Số điện thoại không hợp lệ.
+            </span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="email">
+              Email <span class="optional">(không bắt buộc)</span>
+            </label>
+            <div class="input-wrapper">
+              <i class="bi bi-envelope input-icon"></i>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                class="form-input"
+                [class.is-invalid]="email.invalid && email.touched"
+                placeholder="Nhập Email"
+                [(ngModel)]="formData.email"
+                #email="ngModel"
+                email
+              >
+            </div>
+            <span class="error-msg" *ngIf="email.invalid && email.touched">
+              Email không hợp lệ.
+            </span>
+          </div>
+        </div>
+
+        <!-- Mật khẩu & Xác nhận -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="password">Mật khẩu</label>
+            <div class="input-wrapper">
+              <i class="bi bi-lock input-icon"></i>
+              <input
+                [type]="showPassword ? 'text' : 'password'"
+                id="password"
+                name="password"
+                class="form-input"
+                [class.is-invalid]="password.invalid && password.touched"
+                placeholder="Nhập mật khẩu"
+                [(ngModel)]="formData.password"
+                #password="ngModel"
+                required
+                minlength="6"
+              >
+              <button
+                type="button"
+                class="toggle-password"
+                (click)="togglePassword()"
+                aria-label="Hiện/ẩn mật khẩu"
+              >
+                <i class="bi" [ngClass]="showPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
+              </button>
+            </div>
+            <span class="error-msg" *ngIf="password.invalid && password.touched">
+              Mật khẩu tối thiểu 6 ký tự.
+            </span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="confirmPassword">Xác nhận mật khẩu</label>
+            <div class="input-wrapper">
+              <i class="bi bi-lock input-icon"></i>
+              <input
+                [type]="showConfirmPassword ? 'text' : 'password'"
+                id="confirmPassword"
+                name="confirmPassword"
+                class="form-input"
+                [class.is-invalid]="confirmPassword.touched && formData.password !== formData.confirmPassword"
+                placeholder="Nhập lại mật khẩu"
+                [(ngModel)]="formData.confirmPassword"
+                #confirmPassword="ngModel"
+                required
+              >
+              <button
+                type="button"
+                class="toggle-password"
+                (click)="toggleConfirmPassword()"
+                aria-label="Hiện/ẩn xác nhận mật khẩu"
+              >
+                <i class="bi" [ngClass]="showConfirmPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
+              </button>
+            </div>
+            <span class="error-msg" *ngIf="confirmPassword.touched && formData.password !== formData.confirmPassword">
+              Mật khẩu không khớp.
+            </span>
+          </div>
+        </div>
+
+        <!-- Nút đăng ký -->
+        <button
+          type="submit"
+          class="btn-register"
+          [disabled]="registerForm.invalid || formData.password !== formData.confirmPassword || !formData.agreeTerms"
+        >
+          Đăng ký
+        </button>
+
+        <!-- Đồng ý điều khoản -->
+        <div class="terms-group">
+          <input
+            type="checkbox"
+            id="agreeTerms"
+            name="agreeTerms"
+            [(ngModel)]="formData.agreeTerms"
+          >
+          <label for="agreeTerms">
+            Tôi đồng ý với
+            <a routerLink="/policy/registration-terms-conditions" class="terms-link">Điều khoản và Điều kiện</a>
+            và đã đọc
+            <a routerLink="/policy/privacy-policy" class="terms-link">Chính sách bảo mật</a>
+            của Tiệm Hoa Yên.
+          </label>
+        </div>
+
+        <!-- Link đăng nhập -->
+        <p class="login-redirect">
+          Bạn có tài khoản?
+          <a routerLink="/login" class="login-link">Đăng nhập ngay</a>
+        </p>
+
+      </form>
+    </div>
+  </div>
+</section>
+<app-page-footer-2></app-page-footer-2>

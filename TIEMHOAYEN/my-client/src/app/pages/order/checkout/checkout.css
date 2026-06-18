@@ -1,0 +1,373 @@
+/* =========================
+   CHECKOUT PAGE
+========================= */
+
+.checkout-page {
+  min-height: 100vh;
+  background-color: var(--background-color);
+  padding: 24px clamp(16px, 4vw, 60px) 40px;
+  font-family: var(--font-body);
+}
+
+/* =========================
+   TOAST
+========================= */
+
+.checkout-toast {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #1a1a1a;
+  color: #fff;
+  border-radius: 10px;
+  padding: 14px 20px;
+  margin-bottom: 24px;
+  font-size: 0.92rem;
+}
+
+.checkout-toast__icon {
+  width: 36px;
+  height: 36px;
+  background: var(--primary-color);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 1rem;
+  color: #fff;
+}
+
+/* =========================
+   LAYOUT
+========================= */
+
+.checkout-body {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.checkout-left {
+  flex: 1 1 62%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.checkout-right {
+  flex: 0 0 340px;
+  position: sticky;
+  top: 24px;
+}
+
+/* =========================
+   CARD CHUNG
+========================= */
+
+.checkout-card {
+  background: #fff;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(115, 25, 25, 0.06);
+}
+
+.checkout-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-color);
+  border-bottom: 1px solid #f0e8e0;
+}
+
+.checkout-card__header i {
+  font-size: 1.1rem;
+  color: var(--accent-color);
+}
+
+.checkout-card__body {
+  padding: 16px 20px;
+}
+
+/* =========================
+   INFO GRID
+========================= */
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 24px;
+}
+
+.info-item {
+  display: flex;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.info-item--full {
+  grid-column: 1 / -1;
+}
+
+.info-label {
+  color: #999;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.info-value {
+  color: var(--text-color);
+  font-weight: 500;
+}
+
+.info-value--accent {
+  color: var(--color-scarlet-red);
+  font-weight: 600;
+}
+
+/* =========================
+   PRODUCT LIST
+========================= */
+
+.product-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.product-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.product-item__img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.product-item__info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.product-item__name {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text-color);
+}
+
+.product-item__qty {
+  font-size: 0.82rem;
+  color: #999;
+}
+
+.product-item__price {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-color);
+  white-space: nowrap;
+}
+
+/* =========================
+   PAYMENT CARD
+========================= */
+
+.checkout-payment .checkout-card__header {
+  color: var(--primary-color);
+}
+
+.checkout-payment .checkout-card__header i {
+  color: var(--primary-color);
+}
+
+/* QR */
+.payment-qr {
+  padding: 16px 20px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.payment-qr__label {
+  font-size: 0.85rem;
+  color: #999;
+  margin: 0;
+}
+
+.payment-qr__img {
+  width: 160px;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid #f0e8e0;
+}
+
+/* Bank info */
+.payment-bank {
+  padding: 14px 20px;
+  border-top: 1px solid #f0e8e0;
+}
+
+.payment-bank__title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+
+.payment-bank__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  padding: 4px 0;
+}
+
+.payment-bank__label {
+  color: #999;
+}
+
+.payment-bank__value {
+  color: var(--text-color);
+  text-align: right;
+}
+
+.payment-bank__value--bold {
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+/* Guarantees */
+.payment-guarantees {
+  padding: 12px 20px;
+  border-top: 1px solid #f0e8e0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.payment-guarantee {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: #666;
+  line-height: 1.4;
+}
+
+.payment-guarantee i {
+  color: var(--primary-color);
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* Summary */
+.payment-summary {
+  padding: 14px 20px 18px;
+  border-top: 1px solid #f0e8e0;
+}
+
+.payment-summary__row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.88rem;
+  color: #666;
+  padding: 4px 0;
+}
+
+.payment-summary__total {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0e8e0;
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-color);
+}
+
+.payment-summary__total-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.payment-summary__total-price {
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  color: var(--color-scarlet-red);
+  font-weight: 700;
+}
+
+.payment-summary__vat {
+  font-size: 0.75rem;
+  color: #999;
+  font-weight: 400;
+}
+
+/* =========================
+   FOOTER - NÚT QUAY LẠI
+========================= */
+
+.checkout-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 28px;
+}
+
+.btn-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 32px;
+  background: #fff;
+  border: 1.5px solid var(--primary-color);
+  border-radius: 10px;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--primary-color);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.btn-back:hover {
+  background: var(--primary-color);
+  color: #fff;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media (max-width: 900px) {
+  .checkout-body {
+    flex-direction: column;
+  }
+
+  .checkout-right {
+    flex: none;
+    width: 100%;
+    position: static;
+  }
+}
+
+@media (max-width: 600px) {
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+}

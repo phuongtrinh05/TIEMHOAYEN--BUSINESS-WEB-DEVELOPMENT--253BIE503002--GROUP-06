@@ -1,0 +1,156 @@
+<app-page-header-2></app-page-header-2>
+
+<section class="login-page">
+  <!-- Bên trái: ảnh nền + highlight -->
+  <div class="login-left">
+    <div class="login-left__content">
+      <p class="login-left__slogan">
+        Gửi trao yêu thương<br>
+        qua những bó hoa tươi thắm
+      </p>
+
+      <div class="login-left__features">
+        <div class="feature-item">
+          <div class="feature-item__icon">
+            <i class="bi bi-heart"></i>
+          </div>
+          <div class="feature-item__text">
+            <span class="feature-item__title">Hoa tươi mỗi ngày</span>
+            <span class="feature-item__desc">Tuyển chọn chất lượng</span>
+          </div>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-item__icon">
+            <i class="bi bi-box-seam"></i>
+          </div>
+          <div class="feature-item__text">
+            <span class="feature-item__title">Giao hàng nhanh chóng</span>
+            <span class="feature-item__desc">Đảm bảo đúng hẹn</span>
+          </div>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-item__icon">
+            <i class="bi bi-shield-check"></i>
+          </div>
+          <div class="feature-item__text">
+            <span class="feature-item__title">Thanh toán an toàn</span>
+            <span class="feature-item__desc">Bảo mật thông tin</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bên phải: form đăng nhập -->
+  <div class="login-right">
+    <div class="login-card">
+      <h1 class="login-card__title">Đăng nhập</h1>
+
+      <form class="login-form" (ngSubmit)="onSubmit()" #loginForm="ngForm" novalidate>
+
+        <!-- Số điện thoại -->
+        <div class="form-group">
+          <label class="form-label" for="phone">Số điện thoại</label>
+          <div class="input-wrapper">
+            <i class="bi bi-telephone input-icon"></i>
+            <input
+              type="tel"
+              id="phone"
+              name="phone"
+              class="form-input"
+              [class.is-invalid]="phone.invalid && phone.touched"
+              placeholder="Nhập số điện thoại"
+              [(ngModel)]="formData.phone"
+              #phone="ngModel"
+              required
+              pattern="^(0[3|5|7|8|9])+([0-9]{8})$"
+            >
+          </div>
+          <span class="error-msg" *ngIf="phone.invalid && phone.touched">
+            Số điện thoại không hợp lệ.
+          </span>
+        </div>
+
+        <!-- Mật khẩu -->
+        <div class="form-group">
+          <label class="form-label" for="password">Mật khẩu</label>
+          <div class="input-wrapper">
+            <i class="bi bi-lock input-icon"></i>
+            <input
+              [type]="showPassword ? 'text' : 'password'"
+              id="password"
+              name="password"
+              class="form-input"
+              [class.is-invalid]="password.invalid && password.touched"
+              placeholder="Nhập mật khẩu"
+              [(ngModel)]="formData.password"
+              #password="ngModel"
+              required
+              minlength="6"
+            >
+            <button
+              type="button"
+              class="toggle-password"
+              (click)="togglePassword()"
+              aria-label="Hiện/ẩn mật khẩu"
+            >
+              <i class="bi" [ngClass]="showPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
+            </button>
+          </div>
+          <span class="error-msg" *ngIf="password.invalid && password.touched">
+            Mật khẩu tối thiểu 6 ký tự.
+          </span>
+        </div>
+
+        <!-- Ghi nhớ & Quên mật khẩu -->
+        <div class="login-options">
+          <label class="remember-option">
+            <input
+              type="checkbox"
+              name="rememberMe"
+              [(ngModel)]="formData.rememberMe"
+            >
+            <span>Ghi nhớ đăng nhập</span>
+          </label>
+          <a routerLink="/forgot-password" class="forgot-link">Quên mật khẩu?</a>
+        </div>
+
+        <!-- Nút đăng nhập -->
+        <button
+          type="submit"
+          class="btn-login"
+          [disabled]="loginForm.invalid"
+        >
+          Đăng nhập
+        </button>
+
+        <!-- Divider -->
+        <div class="divider">
+          <span>hoặc</span>
+        </div>
+
+        <!-- Đăng nhập mạng xã hội -->
+        <div class="social-login">
+          <button type="button" class="btn-social btn-google" (click)="loginWithGoogle()">
+            <img src="assets/images/gg.png" alt="Google">
+            Đăng nhập với Google
+          </button>
+          <button type="button" class="btn-social btn-facebook" (click)="loginWithFacebook()">
+            <img src="assets/images/fbook.png" alt="Facebook">
+            Đăng nhập với Facebook
+          </button>
+        </div>
+
+        <!-- Link đăng ký -->
+        <p class="register-redirect">
+          Bạn chưa có tài khoản?
+          <a routerLink="/register" class="register-link">Đăng ký ngay</a>
+        </p>
+
+      </form>
+    </div>
+  </div>
+</section>
+<app-page-header-2></app-page-header-2>
