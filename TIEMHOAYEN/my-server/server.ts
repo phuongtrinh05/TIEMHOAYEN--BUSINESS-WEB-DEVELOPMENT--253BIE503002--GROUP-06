@@ -40,6 +40,8 @@ import imageRequestRoutes from './routes/imageRequest.js';
 import blogRoutes from './routes/blog.js';
 import collectionRoutes from './routes/collection.js';
 import collectionProductRoutes from './routes/collectionProduct.js';
+import styleRoutes from './routes/style.js';
+import categoryProductRoutes from './routes/categoryProduct.js';
 
 const app = express();
 
@@ -85,6 +87,8 @@ app.use('/api/image-requests', imageRequestRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/collections', collectionRoutes);
 app.use('/api/collection-products', collectionProductRoutes);
+app.use('/api/styles', styleRoutes);
+app.use('/api/category-products', categoryProductRoutes);
 
 app.get('/', (req: Request, res: Response) => {
     res.send('Backend TIEM_HOA_YEN đang chạy!');
@@ -136,5 +140,6 @@ const PORT = 3000;
     console.log(`  /api/blogs`);
     console.log(`  /api/collections`);
     console.log(`  /api/collection-products`);
+    console.log('  /api/styles');
     });
 })();
