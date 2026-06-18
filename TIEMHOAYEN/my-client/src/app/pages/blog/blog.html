@@ -1,0 +1,137 @@
+<section class="blog-page" *ngIf="currentView === 'list'">
+  <div class="blog-banner">
+    <img src="assets/images/blog.png" alt="Blog Tiệm Hoa Yên">
+  </div>
+
+  <main class="blog-list-wrapper">
+    <article
+      class="blog-item"
+      *ngFor="let post of posts"
+      [class.is-clickable]="post.id === 1"
+      (click)="openFirstBlog(post)"
+    >
+      <div class="blog-item-image">
+        <img [src]="post.image" [alt]="post.title">
+      </div>
+
+      <div class="blog-item-content">
+        <h2>{{ post.title }}</h2>
+        <p>{{ post.excerpt }}</p>
+        <span>Ngày đăng tải: {{ post.date }}</span>
+      </div>
+    </article>
+
+    <button class="load-more-btn" type="button">
+      Xem thêm <span>⌄</span>
+    </button>
+  </main>
+</section>
+
+<section class="blog-detail-page" *ngIf="currentView === 'detail'">
+  <main class="detail-layout">
+    <article class="detail-main">
+      <button class="back-btn" type="button" (click)="backToList()">← Quay lại Blog</button>
+
+      <h1>Ý nghĩa về hoa hồng: Màu sắc và số lượng bạn đã biết chưa?</h1>
+      <p class="detail-date">Ngày đăng tải: 20/02/2026</p>
+
+      <img class="detail-hero-img" src="blog.png" alt="Ý nghĩa hoa hồng">
+
+      <ul class="intro-list">
+        <li>Biểu tượng của tình yêu, sự lãng mạn và tình cảm sâu sắc.</li>
+        <li>Thể hiện sự quý trọng, tôn vinh và cảm xúc trân trọng đối với người nhận.</li>
+        <li>
+          Trong văn hóa phương Tây, hoa hồng thường tượng trưng cho tình yêu đôi lứa,
+          còn trong một số nền văn hóa khác, cũng có thể là sự biết ơn, ngưỡng mộ hoặc chúc mừng.
+        </li>
+      </ul>
+
+      <h3>Ý nghĩa theo màu sắc</h3>
+
+      <p>
+        Đỏ: Tình yêu nồng cháy, say đắm, lòng can đảm, sự tôn trọng<br>
+        Hồng nhạt: Tình cảm nhẹ nhàng, sự ngưỡng mộ, cảm giác ngọt ngào, dịu dàng<br>
+        Hồng đậm: Lời cảm ơn chân thành, sự trân trọng<br>
+        Trắng: Sự tinh khiết, trong sáng, hòa bình, khởi đầu mới<br>
+        Vàng: Niềm vui, sự hạnh phúc, tình bạn, sự quan tâm<br>
+        Cam: Nhiệt huyết, khao khát, năng lượng tích cực<br>
+        Tím / tím nhạt: Sự say mê, quyến quý, thần bí
+      </p>
+
+      <h3>Ý nghĩa theo số lượng hoa hồng</h3>
+
+      <p>
+        1: Tình yêu duy nhất, sự chân thành<br>
+        3: “Anh/em yêu em/anh”, sự yêu thương<br>
+        6: Sự quan tâm, nhớ nhung, mong muốn ở bên<br>
+        9: Tình yêu vĩnh cửu, không thay đổi<br>
+        10: Hoàn hảo, sự trọn vẹn<br>
+        12: Tình yêu trọn vẹn, dành tặng cho người quan trọng nhất<br>
+        24: Tình yêu cả ngày lẫn đêm, sự chu đáo liên tục<br>
+        50: Tình yêu mãnh liệt, vượt thời gian, lời hứa bền lâu<br>
+        99: Tình yêu vĩnh cửu, nguyện ở bên nhau mãi mãi<br>
+        108: Thể hiện sự cầu chúc cho tình yêu hoàn hảo, gắn bó bền lâu
+      </p>
+    </article>
+
+    <aside class="detail-sidebar">
+      <section class="sidebar-box">
+        <h2>Bài mới nhất</h2>
+
+        <article class="latest-item" *ngFor="let item of latestPosts">
+          <img [src]="item.image" [alt]="item.title">
+
+          <div>
+            <h4>{{ item.title }}</h4>
+            <span>{{ item.date }}</span>
+          </div>
+        </article>
+      </section>
+
+      <section class="sidebar-box">
+        <h2>Sản phẩm liên quan</h2>
+
+        <article class="related-product" *ngFor="let product of relatedProducts">
+          <img [src]="product.image" [alt]="product.name">
+
+          <div>
+            <h4>{{ product.name }}</h4>
+            <p>{{ formatPrice(product.price) }}</p>
+          </div>
+
+          <button type="button">🛒</button>
+        </article>
+
+        <button class="view-all-btn" type="button">Xem tất cả ›</button>
+      </section>
+
+      <section class="share-box">
+        <h2>Chia sẻ bài viết:</h2>
+        <button class="facebook-btn" type="button">f</button>
+        <button class="copy-btn" type="button">Copy link</button>
+      </section>
+    </aside>
+  </main>
+
+  <section class="comment-section">
+    <h2>Bình luận (3)</h2>
+
+    <div class="comment-form">
+      <input type="text" placeholder="Nhập bình luận của bạn">
+      <button type="button">Gửi</button>
+    </div>
+
+    <article class="comment-item" *ngFor="let comment of comments">
+      <div class="comment-avatar">⌾</div>
+
+      <div>
+        <h4>{{ comment.name }}</h4>
+        <p>{{ comment.content }}</p>
+        <button type="button">Trả lời</button>
+        <span>♡</span>
+      </div>
+    </article>
+
+    <button class="all-comment-btn" type="button">Xem tất cả bình luận ›</button>
+  </section>
+</section>
