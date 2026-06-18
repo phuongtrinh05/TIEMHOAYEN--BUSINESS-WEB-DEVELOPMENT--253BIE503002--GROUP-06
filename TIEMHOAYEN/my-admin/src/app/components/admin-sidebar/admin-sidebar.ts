@@ -18,7 +18,6 @@ export class AdminSidebar {
   isCollapsed = false;
 
   toggleSidebar(){
-    alert('CLICK');
     this.isCollapsed = !this.isCollapsed;
   }
 

@@ -13,13 +13,39 @@
 
 /* Thu gọn */
 .admin-sidebar.collapsed{
-    transform:translateX(-100%);
+    width:70px;
 }
-.admin-sidebar.collapsed .sidebar-logo img,
-.admin-sidebar.collapsed .menu-item span,
-.admin-sidebar.collapsed .menu-title,
 .admin-sidebar.collapsed .sidebar-footer{
     display:none;
+}
+
+.admin-sidebar.collapsed .menu-item span,
+.admin-sidebar.collapsed .menu-title{
+    display:none;
+}
+
+.admin-sidebar.collapsed .sidebar-logo{
+    justify-content:center;
+}
+
+.admin-sidebar.collapsed .collapse-btn{
+    display:block;
+}
+
+.sidebar-toggle{
+  position:fixed;
+  left:10px;
+  top:10px;
+  z-index:9999;
+
+  width:45px;
+  height:45px;
+
+  border:none;
+  border-radius:8px;
+
+  background:#731919;
+  color:white;
 }
 /* Logo */
 
@@ -94,7 +120,7 @@
 /* Active */
 
 .menu-item.active{
-    background:var(--primary-color);
+    background:#731919;
     color:#D9B382;
 }
 
