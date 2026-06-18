@@ -21,6 +21,20 @@ import {
   TopicService,
   Topic
 } from '../../services/topic.service';
+import {
+  TargetService,
+  Target
+} from '../../services/target.service';
+
+import {
+  FlowerService,
+  Flower
+} from '../../services/flower.service';
+
+import {
+  StyleService,
+  Style
+} from '../../services/style.service';
 
 @Component({
   selector: 'app-page-header',
@@ -83,17 +97,27 @@ export class PageHeader implements OnInit {
 
   collections: Collection[] = [];
   topics: Topic[] = [];
+  targets: Target[] = [];
+  flowers: Flower[] = [];
+  styles: Style[] = [];
+
 
   constructor(
     private elementRef: ElementRef,
     private collectionService: CollectionService,
     private topicService: TopicService,
+    private targetService: TargetService,
+    private flowerService: FlowerService,
+    private styleService: StyleService,
     private router: Router
   ) {}
 
   ngOnInit(): void {
     this.getCollections();
     this.getTopics();
+    this.getTargets();
+    this.getFlowers();
+    this.getStyles();
   }
 
   getCollections(): void {
@@ -119,6 +143,39 @@ export class PageHeader implements OnInit {
     });
   }
 
+  getTargets(): void {
+    this.targetService.getAll().subscribe({
+      next: (data) => {
+        this.targets = data;
+        console.log('Danh sách đối tượng:', this.targets);
+      },
+      error: (err) => {
+        console.error('Lỗi lấy đối tượng:', err);
+      }
+    });
+  }
+  getFlowers(): void {
+    this.flowerService.getAll().subscribe({
+      next: (data) => {
+        this.flowers = data;
+        console.log('Danh sách hoa tươi:', this.flowers);
+      },
+      error: (err) => {
+        console.error('Lỗi lấy hoa tươi:', err);
+      }
+    });
+  }
+  getStyles(): void {
+    this.styleService.getAll().subscribe({
+      next: (data) => {
+        this.styles = data;
+        console.log('Danh sách kiểu dáng:', this.styles);
+      },
+      error: (err) => {
+        console.error('Lỗi lấy kiểu dáng:', err);
+      }
+    });
+  }
   @HostListener('window:scroll')
   onScroll() {
     this.isScrolled = window.scrollY > 100;

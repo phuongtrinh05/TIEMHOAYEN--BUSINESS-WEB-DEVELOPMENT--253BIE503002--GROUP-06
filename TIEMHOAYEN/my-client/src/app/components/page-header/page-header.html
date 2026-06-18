@@ -65,14 +65,14 @@
             </h3>
 
             @if(showTarget){
-            <div class="mobile-submenu">
-                <a routerLink="/nguoi-yeu">Người yêu</a>
-                <a routerLink="/me">Mẹ</a>
-                <a routerLink="/chong">Chồng</a>
-                <a routerLink="/vo">Vợ</a>
-                <a routerLink="/ban-trai">Bạn trai</a>
-                <a routerLink="/sep">Sếp</a>
-            </div>}
+                <div class="mobile-submenu">
+                    @for (target of targets; track target.DOI_TUONG_ID) {
+                        <a [routerLink]="['/doi-tuong', target.DOI_TUONG_ID]">
+                            {{ target.TEN_DOI_TUONG }}
+                        </a>
+                    }
+                </div>
+            }
         </div>
 
         <div class="mobile-item">
@@ -88,17 +88,14 @@
             </h3>
 
             @if(showStyle){
-
-            <div class="mobile-submenu">
-                <a routerLink="/bo-hoa">Bó hoa</a>
-                <a routerLink="/gio-hoa">Giỏ hoa</a>
-                <a routerLink="/hop-hoa">Hộp hoa</a>
-                <a routerLink="/khung-hoa">Khung hoa</a>
-                <a routerLink="/hop-mica">Hộp mica</a>
-                <a routerLink="/lang-khai-truong">Lẵng hoa khai trương</a>
-                <a routerLink="/gio-khai-truong">Giỏ hoa khai trương</a>
-                <a routerLink="/vong-hoa-tang">Vòng hoa tang</a>
-            </div>}
+                <div class="mobile-submenu">
+                    @for (style of styles; track style.KIEU_DANG) {
+                        <a [routerLink]="['/kieu-dang', style.KIEU_DANG]">
+                            {{ style.KIEU_DANG }}
+                        </a>
+                    }
+                </div>
+            }
         </div>
 
         <div class="mobile-item">
@@ -115,21 +112,14 @@
             </h3>
 
             @if(showFlower){
-
-            <div class="mobile-submenu">
-                <a routerLink="/hoa-hong">Hoa hồng</a>
-                <a routerLink="/hoa-huong-duong">Hoa hướng dương</a>
-                <a routerLink="/hoa-dong-tien">Hoa đồng tiền</a>
-                <a routerLink="/hoa-cam-chuong">Hoa cẩm chướng</a>
-                <a routerLink="/hoa-cuc">Hoa cúc</a>
-                <a routerLink="/hoa-ly">Hoa ly</a>
-                <a routerLink="/hoa-baby">Hoa baby</a>
-                <a routerLink="/hoa-hue">Hoa huệ</a>
-                <a routerLink="/hoa-tulip">Hoa tulip</a>
-                <a routerLink="/hoa-sen">Hoa sen</a>
-                <a routerLink="/hoa-cat-tuong">Hoa cát tường</a>
-                <a routerLink="/hoa-lan">Hoa lan</a>
-            </div>}
+                <div class="mobile-submenu">
+                    @for (flower of flowers; track flower.HOA_TUOI_ID) {
+                        <a [routerLink]="['/hoa-tuoi', flower.HOA_TUOI_ID]">
+                            {{ flower.TEN_HOA_TUOI }}
+                        </a>
+                    }
+                </div>
+            }
         </div>
 
         <div class="mobile-item">
@@ -357,14 +347,11 @@
         </a>
 
         <div class="dropdown">
-
-            <a routerLink="/nguoi-yeu">Người yêu</a>
-            <a routerLink="/me">Mẹ</a>
-            <a routerLink="/chong">Chồng</a>
-            <a routerLink="/vo">Vợ</a>
-            <a routerLink="/ban-trai">Bạn trai</a>
-            <a routerLink="/sep">Sếp</a>
-
+            @for (target of targets; track target.DOI_TUONG_ID) {
+                <a [routerLink]="['/doi-tuong', target.DOI_TUONG_ID]">
+                    {{ target.TEN_DOI_TUONG }}
+                </a>
+            }
         </div>
 
     </div>
@@ -377,16 +364,11 @@
         </a>
 
         <div class="dropdown">
-
-            <a routerLink="/bo-hoa">Bó hoa</a>
-            <a routerLink="/gio-hoa">Giỏ hoa</a>
-            <a routerLink="/hop-hoa">Hộp hoa</a>
-            <a routerLink="/khung-hoa">Khung hoa</a>
-            <a routerLink="/hop-mica">Hộp mica</a>
-            <a routerLink="/lang-khai-truong">Lẵng hoa khai trương</a>
-            <a routerLink="/gio-khai-truong">Giỏ hoa khai trương</a>
-            <a routerLink="/vong-hoa-tang">Vòng hoa tang</a>
-
+            @for (style of styles; track style.KIEU_DANG) {
+                <a [routerLink]="['/kieu-dang', style.KIEU_DANG]">
+                    {{ style.KIEU_DANG }}
+                </a>
+            }
         </div>
 
     </div>
@@ -399,20 +381,11 @@
         </a>
 
         <div class="dropdown">
-
-            <a routerLink="/hoa-hong">Hoa hồng</a>
-            <a routerLink="/hoa-huong-duong">Hoa hướng dương</a>
-            <a routerLink="/hoa-dong-tien">Hoa đồng tiền</a>
-            <a routerLink="/hoa-cam-chuong">Hoa cẩm chướng</a>
-            <a routerLink="/hoa-cuc">Hoa cúc</a>
-            <a routerLink="/hoa-ly">Hoa ly</a>
-            <a routerLink="/hoa-baby">Hoa baby</a>
-            <a routerLink="/hoa-hue">Hoa huệ</a>
-            <a routerLink="/hoa-tulip">Hoa tulip</a>
-            <a routerLink="/hoa-sen">Hoa sen</a>
-            <a routerLink="/hoa-cat-tuong">Hoa cát tường</a>
-            <a routerLink="/hoa-lan">Hoa lan</a>
-
+            @for (flower of flowers; track flower.HOA_TUOI_ID) {
+                <a [routerLink]="['/hoa-tuoi', flower.HOA_TUOI_ID]">
+                    {{ flower.TEN_HOA_TUOI }}
+                </a>
+            }
         </div>
 
     </div>
