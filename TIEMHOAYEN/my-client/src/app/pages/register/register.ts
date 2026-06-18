@@ -1,10 +1,11 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+
 import { PageHeader2 } from '../../components/page-header-2/page-header-2';
 import { PageFooter2 } from '../../components/page-footer-2/page-footer-2';
-
+import { RegisterService } from '../../services/register.service';
 
 @Component({
   selector: 'app-register',
@@ -15,11 +16,19 @@ import { PageFooter2 } from '../../components/page-footer-2/page-footer-2';
 })
 export class RegisterComponent {
 
-  // Trạng thái hiện/ẩn mật khẩu
+  constructor(
+    private registerService: RegisterService,
+    private cdr: ChangeDetectorRef,
+    private ngZone: NgZone
+  ) {}
+
   showPassword = false;
   showConfirmPassword = false;
+  submitted = false;
+  showSuccessPopup = false;
+  phoneError = '';
+  emailError = '';
 
-  // Dữ liệu form
   formData = {
     fullName: '',
     gender: '',
@@ -30,30 +39,71 @@ export class RegisterComponent {
     agreeTerms: false,
   };
 
-  /** Hiện/ẩn mật khẩu */
-  togglePassword(): void {
-    this.showPassword = !this.showPassword;
-  }
+  togglePassword(): void { this.showPassword = !this.showPassword; }
+  toggleConfirmPassword(): void { this.showConfirmPassword = !this.showConfirmPassword; }
 
-  /** Hiện/ẩn xác nhận mật khẩu */
-  toggleConfirmPassword(): void {
-    this.showConfirmPassword = !this.showConfirmPassword;
-  }
-
-  /** Xử lý submit form đăng ký */
   onSubmit(): void {
-    if (this.formData.password !== this.formData.confirmPassword) {
-      alert('Mật khẩu xác nhận không khớp!');
-      return;
-    }
+    this.submitted = true;
+    this.phoneError = '';
+    this.emailError = '';
 
-    if (!this.formData.agreeTerms) {
-      alert('Vui lòng đồng ý với điều khoản và điều kiện!');
-      return;
-    }
+    if (
+      !this.formData.fullName ||
+      !this.formData.phone ||
+      !this.formData.password ||
+      !this.formData.confirmPassword ||
+      !this.formData.gender
+    ) return;
 
-    // TODO: Gọi API đăng ký khi có backend
-    console.log('Dữ liệu đăng ký:', this.formData);
-    alert('Đăng ký thành công! (Giả lập)');
+    if (!/^(0[35789])\d{8}$/.test(this.formData.phone)) return;
+
+    if (this.formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.formData.email)) return;
+
+    if (this.formData.password.length < 8) return;
+
+    if (this.formData.password !== this.formData.confirmPassword) return;
+
+    if (!this.formData.agreeTerms) return;
+
+    const payload = {
+      TEN: this.formData.fullName,
+      GIOI_TINH: this.formData.gender,
+      SDT: this.formData.phone,
+      EMAIL: this.formData.email?.trim() || null,
+      MAT_KHAU: this.formData.password
+    };
+
+    this.registerService.register(payload).subscribe({
+      next: (res) => {
+        this.ngZone.run(() => {
+          console.log('Đăng ký thành công:', res);
+          this.showSuccessPopup = true;
+        });
+      },
+      error: (err) => {
+        this.ngZone.run(() => {
+          console.error('Lỗi status:', err.status);
+          console.error('Lỗi body:', err.error);
+
+          if (err.status === 409) {
+            const field = err.error?.field;
+            const message = err.error?.message || '';
+            if (field === 'phone') {
+              this.phoneError = message;
+            } else if (field === 'email') {
+              this.emailError = message;
+            }
+          } else {
+            console.error('Lỗi server không xác định:', err);
+          }
+        });
+      }
+    });
+  }
+
+  closeSuccessPopup(): void {
+    this.ngZone.run(() => {
+      this.showSuccessPopup = false;
+    });
   }
 }
