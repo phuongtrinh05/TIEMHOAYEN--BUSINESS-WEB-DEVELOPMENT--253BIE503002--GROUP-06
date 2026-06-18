@@ -1,0 +1,19 @@
+.header-2{
+    width:100%;
+    height:100px;
+    background:#FFF8F5;
+    display:flex;
+    flex-wrap: wrap;
+    justify-content:center;
+    align-items:center;
+    border-bottom:1px solid #e5d7c8;
+}
+
+.header-2 img{
+
+    height:90px;
+
+    width:auto;
+
+    object-fit:contain;
+}

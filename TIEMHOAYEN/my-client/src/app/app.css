@@ -2,10 +2,8 @@ html,
 body{
     height:100%;
     margin:0;
-}
-
-body{
     min-height:100vh;
+    background:#FFF8F5;
 }
 
 app-root{
@@ -20,9 +18,19 @@ app-root{
 .page-content{
 
     flex:1 0 auto;
+    width:100%;
+    background:#FFF8F5;
 }
 
 app-page-footer{
 
     margin-top:auto;
+}
+:host{
+
+    display:flex;
+
+    flex-direction:column;
+
+    min-height:100vh;
 }

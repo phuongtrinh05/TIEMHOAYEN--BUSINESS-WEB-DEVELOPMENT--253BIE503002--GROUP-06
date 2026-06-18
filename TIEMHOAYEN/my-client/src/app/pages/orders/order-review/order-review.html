@@ -1,0 +1,101 @@
+<div class="review-page">
+    <div class="breadcrumb">
+        <span>Tài khoản</span>
+        <i class="bi bi-chevron-right"></i>
+
+        <span>Đơn hàng của tôi</span>
+        <i class="bi bi-chevron-right"></i>
+
+        <span>#YEN1000</span>
+        <i class="bi bi-chevron-right"></i>
+
+        <span>Đánh giá</span>
+    </div>
+
+    <div class="review-layout">
+        <div>
+            <h1>Viết đánh giá của bạn</h1>
+            <div class="review-card">
+                <h3>Đánh giá của bạn</h3>
+                <div class="rating-stars">
+                    @for(star of [1,2,3,4,5]; track star){
+                        <i
+                            class="bi"
+                            [class.bi-star-fill]="selectedRating >= star"
+                            [class.bi-star]="selectedRating < star"
+                            (click)="setRating(star)">
+                        </i>
+
+                    }
+
+                </div>
+
+                <p class="rating-note">
+                    Cho Tiệm biết bạn đánh giá nhiều sao nhé!
+                </p>
+
+                <label>Nội dung đánh giá</label>
+
+                <textarea
+                    rows="6"
+                    [(ngModel)]="reviewText"
+                    placeholder="Chia sẻ cảm nhận của bạn về sản phẩm của Tiệm Hoa Yên nhé...">
+                </textarea>
+
+                <label>Thêm hình ảnh</label>
+                <div class="upload-box">
+                    <i class="bi bi-plus-lg"></i>
+                    <span>Thêm ảnh</span>
+                </div>
+
+                <div
+                    class="checkbox-row"
+                    (click)="hideReviewer = !hideReviewer">
+
+                    <i
+                        class="bi"
+                        [class.bi-square]="!hideReviewer"
+                        [class.bi-check-square-fill]="hideReviewer">
+                    </i>
+
+                    <span>Ẩn thông tin người đánh giá</span>
+
+                </div>
+
+                <button
+                    class="submit-btn"
+                    (click)="submitReview()">
+
+                    <i class="bi bi-send"></i>
+
+                    Gửi đánh giá
+
+                </button>
+
+            </div>
+
+        </div>
+
+        <!-- RIGHT -->
+
+        <div>
+
+            <h1>Các đánh giá trước đây</h1>
+
+            <div class="history-card">
+
+                <div class="empty-state">
+
+                    <i class="bi bi-envelope"></i>
+
+                    <span>Không có đánh giá nào</span>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>

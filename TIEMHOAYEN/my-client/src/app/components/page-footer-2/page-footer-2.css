@@ -1,0 +1,46 @@
+.footer-2{
+
+    width:100%;
+
+    background:#FFF8F5;
+
+    border-top:1px solid #D9D9D9;
+}
+
+.footer-2-container{
+
+    max-width:1440px;
+
+    margin:auto;
+
+    min-height:52px;
+
+    padding:0 30px;
+
+    display:flex;
+
+    justify-content:space-between;
+
+    align-items:center;
+}
+
+.copyright,
+.hotline{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:8px;
+
+    color:#731919;
+
+    font-size:16px;
+
+    font-weight:500;
+}
+
+.copyright i,
+.hotline i{
+    font-size:14px;
+}

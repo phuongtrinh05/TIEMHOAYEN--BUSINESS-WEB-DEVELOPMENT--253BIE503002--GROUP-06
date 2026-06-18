@@ -1,0 +1,97 @@
+<header
+  class="header-1"
+  [class.scrolled]="isScrolled"> 
+    <div class="header-top"
+    [class.hide-header]="isScrolled">
+        <div class="logo">
+            <img
+                src="assets/images/logo-main.png"
+                alt="Tiệm Hoa Yên"
+            >
+        </div>
+
+        <div class="search-box">
+            <i class="bi bi-search search-icon"></i>
+            <input
+                type="text"
+                placeholder="">
+            <i class="bi bi-camera camera-icon"></i>
+        </div>
+        <div class="action-icons">
+            <button class="desktop-only">
+                <i class="bi bi-receipt"></i>
+            </button>
+
+            <button>
+                <i class="bi bi-heart"></i>
+            </button>
+
+            <button>
+                <i class="bi bi-cart3"></i>
+            </button>
+
+            <div class="account-wrapper">
+
+        <button (click)="toggleAccountMenu()" class="account-wrapper desktop-only">
+            <i class="bi bi-person-circle"></i>
+        </button>
+        <div
+            class="account-dropdown"
+            *ngIf="showAccountMenu"
+        >
+            <!-- Đã đăng nhập -->
+            @if(isLoggedIn){
+
+                <a routerLink="/profile">
+                    Tài khoản
+                    <i class="bi bi-person"></i>
+                </a>
+            }
+            <!-- Phần chung -->
+            <button (click)="toggleLanguageMenu()">
+                Ngôn ngữ
+                <i
+                    class="bi"
+                    [class.bi-chevron-right]="!showLanguageMenu"
+                    [class.bi-chevron-down]="showLanguageMenu"></i>
+            </button>
+            @if(showLanguageMenu){
+                <button
+                    class="language-item"
+                    (click)="changeLanguage('vi')"
+                >
+                    Tiếng Việt
+                </button>
+                <button
+                    class="language-item"
+                    (click)="changeLanguage('en')"
+                >
+                    English
+                </button>
+            }
+            <!-- Chưa đăng nhập -->
+            @if(!isLoggedIn){
+                <a routerLink="/login">
+                    Đăng nhập
+                    <i class="bi bi-box-arrow-in-right"></i>
+                </a>
+            }
+            <!-- Đã đăng nhập -->
+            @if(isLoggedIn){
+                <a (click)="logout()">
+                    Đăng xuất
+                    <i class="bi bi-box-arrow-right"></i>
+                </a>
+            }
+                </div>
+            </div>
+        </div>
+        <div
+            class="search-popup"
+            *ngIf="showSearch">
+                <input
+                type="text"
+                placeholder="Tìm kiếm sản phẩm...">
+        </div>
+    </div>
+</header>

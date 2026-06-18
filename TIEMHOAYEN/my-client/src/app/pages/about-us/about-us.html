@@ -1,0 +1,271 @@
+<div class="about-page">
+
+    <!-- HERO -->
+    <section class="hero">
+        <img
+            src="assets/images/about-us-banner.png"
+            alt="Tiệm Hoa Yên">
+    </section>
+
+    <!-- STORY -->
+    <section class="story-section">
+
+        <div class="story-image">
+            <img
+                src="assets/images/about-us-hoa.png"
+                alt="Hoa">
+        </div>
+
+        <div class="story-content">
+
+            <h2>Câu chuyện của Tiệm Hoa Yên</h2>
+
+            <p>
+                Tiệm Hoa Yên được bắt đầu từ một tình yêu nhỏ với những đóa hoa
+                và mong muốn mang đến niềm vui cho mọi người.
+            </p>
+
+            <p>
+                Chúng tôi hiểu rằng, trong cuộc sống bận rộn, đôi khi một bó hoa
+                tươi kịp lúc có thể thay bạn nói lên những điều yêu thương nhất.
+            </p>
+
+            <p>
+                Vì thế, Tiệm Hoa Yên luôn chú trọng hoa tươi nhất,
+                thiết kế bằng cả trái tim và giao bằng sự chân thành,
+                để mỗi khoảnh khắc của bạn đều trở nên ý nghĩa và đáng nhớ.
+            </p>
+
+            <blockquote>
+                “Gửi yêu thương qua từng đóa hoa,
+                trao hạnh phúc trong từng khoảnh khắc.”
+            </blockquote>
+
+        </div>
+
+    </section>
+
+    <!-- FEATURES -->
+
+    <section class="features">
+
+        <h2>Điểm nổi bật của chúng tôi</h2>
+
+        <div class="feature-grid">
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="bi bi-truck"></i>
+                </div>
+
+                <div class="feature-content">
+                    <h3>Giao trong 2 giờ</h3>
+                    <p>
+                        Giao nhanh nội thành chỉ trong 2 giờ,
+                        đúng giờ đúng hẹn
+                    </p>
+                </div>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="bi bi-flower1"></i>
+                </div>
+
+                <div class="feature-content">
+                    <h3>Hoa tươi đảm bảo</h3>
+                    <p>
+                        100% hoa tươi mỗi ngày,
+                        đảm bảo đẹp - bền - tươi lâu.
+                    </p>
+                </div>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="bi bi-chat-heart"></i>
+                </div>
+
+                <div class="feature-content">
+                    <h3>Tư vấn ý nghĩa</h3>
+                    <p>
+                        Tư vấn tận tâm giúp bạn chọn đúng
+                        hoa - đúng thông điệp.
+                    </p>
+                </div>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="bi bi-arrow-repeat"></i>
+                </div>
+
+                <div class="feature-content">
+                    <h3>Đổi trả dễ dàng</h3>
+                    <p>
+                        Đổi trả linh hoạt nếu sản phẩm
+                        không đúng cam kết.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="team-section">
+
+    <!-- CAM KẾT -->
+
+        <div class="commitment">
+
+            <h2>Cam kết từ Tiệm Hoa Yên</h2>
+
+            <div class="commit-item">
+
+                <div class="commit-icon">
+                    <i class="bi bi-patch-check"></i>
+                </div>
+
+                <div>
+                    <h4>Hoa tươi 100% mỗi ngày</h4>
+                    <p>
+                        Nhập hoa mới mỗi ngày,
+                        nói không với hoa kém chất lượng.
+                    </p>
+                </div>
+
+            </div>
+
+            <div class="commit-item">
+
+                <div class="commit-icon">
+                    <i class="bi bi-truck"></i>
+                </div>
+
+                <div>
+                    <h4>Giao đúng - giao đủ - giao đẹp</h4>
+                    <p>
+                        Đúng mẫu, đúng thời gian,
+                        đúng thông điệp yêu thương.
+                    </p>
+                </div>
+
+            </div>
+
+            <div class="commit-item">
+
+                <div class="commit-icon">
+                    <i class="bi bi-shield-lock"></i>
+                </div>
+
+                <div>
+                    <h4>Bảo mật thông tin khách hàng</h4>
+                    <p>
+                        Thông tin cá nhân được bảo mật tuyệt đối.
+                    </p>
+                </div>
+
+            </div>
+
+            <div class="commit-item">
+
+                <div class="commit-icon">
+                    <i class="bi bi-headset"></i>
+                </div>
+
+                <div>
+                    <h4>Hỗ trợ tận tâm 24/7</h4>
+                    <p>
+                        Luôn sẵn sàng lắng nghe và hỗ trợ mọi lúc.
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- TEAM -->
+
+        <div class="team">
+
+            <h2>Đội ngũ của chúng tôi</h2>
+
+            <div class="team-grid">
+
+                @for(member of teamMembers; track member.name){
+
+                    <div class="member-card">
+
+                        <img
+                            [src]="member.image"
+                            [alt]="member.name">
+
+                        <h4>{{ member.name }}</h4>
+
+                        <p>{{ member.role }}</p>
+
+                    </div>
+
+                }
+
+            </div>
+
+        </div>
+
+    </section>
+    <!-- PARTNERS -->
+
+    <section class="partners">
+
+        <h2>Đối tác của chúng tôi</h2>
+
+        <div class="partner-grid">
+
+            @for(partner of partners; track partner){
+
+                <div class="partner-item">
+                    <img [src]="partner" alt="Partner">
+                </div>
+
+            }
+
+        </div>
+
+    </section>
+
+    <!-- REVIEWS -->
+    <section class="reviews">
+    <h2>Khách hàng nói gì về Tiệm Hoa Yên</h2>
+        <div class="review-wrapper">
+            <button class="nav-btn left">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            <div class="review-list">
+                @for(review of reviews; track review.name){
+                    <div class="review-card">
+                        <div class="stars">
+                            <i class="bi bi-star-fill"></i>
+                            <i class="bi bi-star-fill"></i>
+                            <i class="bi bi-star-fill"></i>
+                            <i class="bi bi-star-fill"></i>
+                            <i class="bi bi-star-fill"></i>
+                        </div>
+                        <p>
+                            {{ review.content }}
+                        </p>
+                        <div class="review-user">
+                            <i class="bi bi-person-circle"></i>
+                            <div>
+                                <h4>{{ review.name }}</h4>
+                                <span>{{ review.date }}</span>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+            <button class="nav-btn right">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+    </section>
+
+</div>
