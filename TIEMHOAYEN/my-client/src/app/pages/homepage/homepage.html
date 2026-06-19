@@ -21,7 +21,6 @@
             </button>
         </div>
     </section>
-
     <!-- BENEFIT -->
     <section class="benefits">
         <div class="benefit-item">
@@ -53,35 +52,18 @@
             </div>
         </div>
     </section>
-
     <!-- FLOWER 3D -->
-    <section class="flower-3d" routerLink="/design3d">
+    <section class="flower-3d" routerlink="/design3d">
         <img
             src="assets/images/homepage-Banner3D.png"
             alt="Thiết kế hoa 3D">
     </section>
-
-    <!-- BỘ SƯU TẬP TỪ DB -->
-    <section class="collection-tags-section">
-        <h2>BỘ SƯU TẬP</h2>
-        <div class="collection-tags">
-            @for(col of collections; track col.BO_SUU_TAP_ID) {
-                <a
-                    class="tag-item"
-                    [routerLink]="['/category']"
-                    [queryParams]="{ collection: col.BO_SUU_TAP_ID }">
-                    {{ col.TEN_BO_SUU_TAP }}
-                </a>
-            }
-        </div>
-    </section>
-
     <!-- NEW COLLECTION -->
     <section class="collection">
         <h2>BỘ SƯU TẬP MỚI</h2>
         <div class="product-grid">
-            @for(item of newCollection; track item.name) {
-                <div class="product-card" [routerLink]="item.link">
+            @for(item of newCollection; track item.name){
+                <div class="product-card"  [routerLink]="item.link">
                     <img
                         [src]="item.image"
                         [alt]="item.name">
@@ -90,8 +72,14 @@
                         {{item.price}}
                     </div>
                     <div class="product-action">
-                        <a class="btn-buy" routerLink="/checkout">MUA NGAY</a>
-                        <a class="btn-cart" routerLink="/cart">
+                        <a
+                            class="btn-buy"
+                            routerLink="/checkout">
+                            MUA NGAY
+                        </a>
+                        <a
+                            class="btn-cart"
+                            routerLink="/cart">
                             <i class="bi bi-cart3"></i>
                         </a>
                     </div>
@@ -110,22 +98,31 @@
             src="assets/images/homepage-banner-sale.png"
             alt="sale banner">
     </section>
-
     <!-- SALE PRODUCTS -->
     <section class="collection">
         <h2>SẢN PHẨM GIẢM GIÁ</h2>
         <div class="product-grid">
-            @for(item of saleProducts; track item.name) {
-                <div class="product-card" [routerLink]="item.link">
+            @for(item of saleProducts; track item.name){
+                <div class="product-card"  [routerLink]="item.link">
                     <img
                         [src]="item.image"
                         [alt]="item.name">
                     <h3>{{item.name}}</h3>
-                    <div class="old-price">{{item.oldPrice}}</div>
-                    <div class="price">{{item.price}}</div>
+                    <div class="old-price">
+                        {{item.oldPrice}}
+                    </div>
+                    <div class="price">
+                        {{item.price}}
+                    </div>
                     <div class="product-action">
-                        <a class="btn-buy" routerLink="/checkout">MUA NGAY</a>
-                        <a class="btn-cart" routerLink="/cart">
+                        <a
+                            class="btn-buy"
+                            routerLink="/checkout">
+                            MUA NGAY
+                        </a>
+                        <a
+                            class="btn-cart"
+                            routerLink="/cart">
                             <i class="bi bi-cart3"></i>
                         </a>
                     </div>
@@ -142,16 +139,24 @@
     <section class="collection">
         <h2>SẢN PHẨM BÁN CHẠY</h2>
         <div class="product-grid">
-            @for(item of bestSellerProducts; track item.name) {
-                <div class="product-card" [routerLink]="item.link">
+            @for(item of bestSellerProducts; track item.name){
+                <div class="product-card"  [routerLink]="item.link">
                     <img
                         [src]="item.image"
                         [alt]="item.name">
                     <h3>{{item.name}}</h3>
-                    <div class="price">{{item.price}}</div>
+                    <div class="price">
+                        {{item.price}}
+                    </div>
                     <div class="product-action">
-                        <a class="btn-buy" routerLink="/checkout">MUA NGAY</a>
-                        <a class="btn-cart" routerLink="/cart">
+                        <a
+                            class="btn-buy"
+                            routerLink="/checkout">
+                            MUA NGAY
+                        </a>
+                        <a
+                            class="btn-cart"
+                            routerLink="/cart">
                             <i class="bi bi-cart3"></i>
                         </a>
                     </div>
@@ -172,7 +177,7 @@
                 <i class="bi bi-chevron-left"></i>
             </button>
             <div class="review-grid">
-                @for(item of customerReviews; track item.image) {
+                @for(item of customerReviews; track item.image){
                     <div class="review-card">
                         <img
                             [src]="item.image"
@@ -188,14 +193,16 @@
     </section>
 
     <!-- BLOG -->
+
     <section class="blog-section">
         <h2>BLOG</h2>
         <div class="blog-grid">
-            @for(item of blogs; track item.title) {
+            @for(item of blogs; track item.title){
                 <div class="blog-card" [routerLink]="item.link">
                     <img
                         [src]="item.image"
                         [alt]="item.title">
+
                     <h3>{{item.title}}</h3>
                 </div>
             }
@@ -206,4 +213,3 @@
         </button>
     </section>
 
-</div>
