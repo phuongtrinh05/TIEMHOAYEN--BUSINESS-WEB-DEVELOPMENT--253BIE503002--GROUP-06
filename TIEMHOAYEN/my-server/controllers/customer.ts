@@ -89,6 +89,7 @@ export const registerCustomer = async (req: Request, res: Response) => {
 };
 export const loginCustomer = async (req: Request, res: Response) => {
     try {
+
         const { SDT, MAT_KHAU } = req.body;
 
         if (!SDT || !MAT_KHAU) {
@@ -99,23 +100,29 @@ export const loginCustomer = async (req: Request, res: Response) => {
 
         const pool = await connectDB();
 
-        const result = await pool.request()
+        // Kiểm tra SĐT trước
+        const phoneResult = await pool.request()
             .input('SDT', sql.NVarChar, SDT)
-            .input('MAT_KHAU', sql.NVarChar, MAT_KHAU)
             .query(`
                 SELECT *
                 FROM KHACH_HANG
                 WHERE SDT = @SDT
-                AND MAT_KHAU = @MAT_KHAU
             `);
 
-        if (result.recordset.length === 0) {
-            return res.status(401).json({
-                message: 'Sai số điện thoại hoặc mật khẩu.'
+        if (phoneResult.recordset.length === 0) {
+            return res.status(404).json({
+                message: 'Số điện thoại không tồn tại.'
             });
         }
 
-        const customer = result.recordset[0];
+        const customer = phoneResult.recordset[0];
+
+        // Kiểm tra mật khẩu
+        if (customer.MAT_KHAU !== MAT_KHAU) {
+            return res.status(401).json({
+                message: 'Mật khẩu không chính xác.'
+            });
+        }
 
         return res.status(200).json({
             message: 'Đăng nhập thành công.',

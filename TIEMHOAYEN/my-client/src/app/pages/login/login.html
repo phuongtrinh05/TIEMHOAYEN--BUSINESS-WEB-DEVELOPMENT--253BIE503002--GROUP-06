@@ -8,7 +8,6 @@
         Gửi trao yêu thương<br>
         qua những bó hoa tươi thắm
       </p>
-
       <div class="login-left__features">
         <div class="feature-item">
           <div class="feature-item__icon">
@@ -60,17 +59,23 @@
               id="phone"
               name="phone"
               class="form-input"
-              [class.is-invalid]="phone.invalid && phone.touched"
+              [class.is-invalid]="phone.invalid && (phone.touched || submitted)"
               placeholder="Nhập số điện thoại"
               [(ngModel)]="formData.phone"
               #phone="ngModel"
               required
-              pattern="^(0[3|5|7|8|9])+([0-9]{8})$"
+              pattern="^0[0-9]{9}$"
             >
           </div>
-          <span class="error-msg" *ngIf="phone.invalid && phone.touched">
+          <span class="error-msg" *ngIf="phone.invalid && (phone.touched || submitted)" >
+          <ng-container *ngIf="phone.errors?.['required']">
+            Vui lòng nhập số điện thoại.
+          </ng-container>
+
+          <ng-container *ngIf="phone.errors?.['pattern']">
             Số điện thoại không hợp lệ.
-          </span>
+          </ng-container>
+        </span>
         </div>
 
         <!-- Mật khẩu -->
@@ -83,12 +88,12 @@
               id="password"
               name="password"
               class="form-input"
-              [class.is-invalid]="password.invalid && password.touched"
+              [class.is-invalid]="password.invalid && (password.touched || submitted)"
               placeholder="Nhập mật khẩu"
               [(ngModel)]="formData.password"
               #password="ngModel"
               required
-              minlength="6"
+              minlength="8"
             >
             <button
               type="button"
@@ -99,11 +104,25 @@
               <i class="bi" [ngClass]="showPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
             </button>
           </div>
-          <span class="error-msg" *ngIf="password.invalid && password.touched">
-            Mật khẩu tối thiểu 6 ký tự.
-          </span>
-        </div>
+          <span
+          class="error-msg"
+          *ngIf="password.invalid && (password.touched || submitted)"
+        >
+          <ng-container *ngIf="password.errors?.['required']">
+            Vui lòng nhập mật khẩu.
+          </ng-container>
 
+          <ng-container *ngIf="password.errors?.['minlength']">
+            Vui lòng nhập mật khẩu ít nhất 8 ký tự.
+          </ng-container>
+        </span>
+        </div>
+        <span
+          class="error-msg"
+          *ngIf="loginError && password.valid && phone.valid"
+        >
+          {{ loginError }}
+        </span>
         <!-- Ghi nhớ & Quên mật khẩu -->
         <div class="login-options">
           <label class="remember-option">
@@ -114,14 +133,23 @@
             >
             <span>Ghi nhớ đăng nhập</span>
           </label>
-          <a routerLink="/forgot-password" class="forgot-link">Quên mật khẩu?</a>
+          <button
+            type="button"
+            class="forgot-link forgot-button"
+            (click)="openForgotPasswordPopup()"
+          >
+            Quên mật khẩu?
+          </button>
         </div>
 
         <!-- Nút đăng nhập -->
         <button
           type="submit"
           class="btn-login"
-          [disabled]="loginForm.invalid"
+          [class.is-default]="loginForm.pristine"
+          [class.is-disabled]="!loginForm.pristine && loginForm.invalid"
+          [class.is-ready]="loginForm.valid"
+          
         >
           Đăng nhập
         </button>
@@ -153,4 +181,89 @@
     </div>
   </div>
 </section>
-<app-page-header-2></app-page-header-2>
+
+<!-- POPUP QUÊN MẬT KHẨU -->
+<div class="forgot-popup-overlay" *ngIf="showForgotPasswordPopup">
+  <div class="forgot-popup">
+    <button type="button" class="popup-close" (click)="closeForgotPasswordPopup()">
+      <i class="bi bi-x-lg"></i>
+    </button>
+    <h2 class="forgot-popup__title">Quên mật khẩu</h2>
+
+    <p class="forgot-popup__desc">
+      Vui lòng nhập số điện thoại để nhận mã OTP
+    </p>
+
+    <input
+      type="tel"
+      class="forgot-popup__input"
+      placeholder="Nhập số điện thoại"
+      [(ngModel)]="forgotPhone"
+    >
+
+    <button
+      type="button"
+      class="forgot-popup__button"
+      [class.is-default]="!forgotPhone"
+      [class.is-disabled]="forgotPhone && !isForgotPhoneValid()"
+      [class.is-ready]="isForgotPhoneValid()"
+      [disabled]="!isForgotPhoneValid()"
+      (click)="sendOtp()"
+    >
+      Gửi
+    </button>
+  </div>
+</div>
+
+<!-- POPUP NHẬP MÃ OTP -->
+<div class="otp-popup-overlay" *ngIf="showOtpPopup">
+  <div class="otp-popup">
+    <button type="button" class="popup-close" (click)="closeOtpPopup()">
+      <i class="bi bi-x-lg"></i>
+    </button>
+    <h2 class="otp-popup__title">Xác minh mã code</h2>
+
+    <p class="otp-popup__desc">
+      Chúng tôi đã gửi mã code gồm 6 số đến số điện thoại của bạn.<br>
+      Hãy nhập vào các ô dưới đây
+    </p>
+
+    <div class="otp-popup__inputs">
+      <input
+        *ngFor="let value of otpValues; let i = index"
+        [id]="'otp-' + i"
+        type="text"
+        inputmode="numeric"
+        maxlength="1"
+        class="otp-popup__input"
+        [value]="otpValues[i]"
+        (keydown)="onOtpKeydown($event, i)"
+        (paste)="onOtpPaste($event)"
+      >
+    </div>
+
+    <button
+      type="button"
+      class="otp-popup__button"
+      [class.is-default]="isOtpEmpty()"
+      [class.is-disabled]="!isOtpEmpty() && !isOtpValid()"
+      [class.is-ready]="isOtpValid()"
+      [disabled]="!isOtpValid()"
+      (click)="verifyOtp()"
+    >
+      Gửi
+    </button>
+
+    <div class="otp-popup__resend">
+      <span>Bạn chưa nhận được mã?</span>
+      <button
+        type="button"
+        class="otp-popup__resend-button"
+        (click)="resendOtp()"
+      >
+        Gửi mã mới
+      </button>
+    </div>
+  </div>
+</div>
+<app-page-footer-2></app-page-footer-2>
