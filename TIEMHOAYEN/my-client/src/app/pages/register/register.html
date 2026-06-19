@@ -77,11 +77,11 @@
           <label class="form-label gender-label">Giới tính</label>
           <div class="gender-group">
             <label class="gender-option">
-              <input type="radio" name="gender" value="nu" [(ngModel)]="formData.gender" required>
+              <input type="radio" name="gender" value="nu" [(ngModel)]="formData.gender" required [class.is-invalid]="submitted && !formData.gender">
               <span>Nữ</span>
             </label>
             <label class="gender-option">
-              <input type="radio" name="gender" value="nam" [(ngModel)]="formData.gender" required>
+              <input type="radio" name="gender" value="nam" [(ngModel)]="formData.gender" required [class.is-invalid]="submitted && !formData.gender">
               <span>Nam</span>
             </label>
           </div>
@@ -239,7 +239,6 @@
     </p>
     <img class="success-popup__voucher" src="assets/images/register-voucher.png" alt="Voucher YEN20">
     <button type="button" class="success-popup__button" routerLink="/homepage">Bắt đầu mua sắm</button>
-    <button type="button" class="success-popup__later" (click)="closeSuccessPopup()">Để sau</button>
   </div>
 </div>
 

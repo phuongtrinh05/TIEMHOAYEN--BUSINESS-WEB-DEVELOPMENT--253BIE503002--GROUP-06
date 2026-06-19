@@ -1,4 +1,4 @@
-import { Component, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -18,8 +18,7 @@ export class RegisterComponent {
 
   constructor(
     private registerService: RegisterService,
-    private cdr: ChangeDetectorRef,
-    private ngZone: NgZone
+    private cdr: ChangeDetectorRef
   ) {}
 
   showPassword = false;
@@ -75,35 +74,31 @@ export class RegisterComponent {
 
     this.registerService.register(payload).subscribe({
       next: (res) => {
-        this.ngZone.run(() => {
-          console.log('Đăng ký thành công:', res);
-          this.showSuccessPopup = true;
-        });
+        this.showSuccessPopup = true;
+        this.cdr.detectChanges();
       },
       error: (err) => {
-        this.ngZone.run(() => {
-          console.error('Lỗi status:', err.status);
-          console.error('Lỗi body:', err.error);
+        console.error('Lỗi status:', err.status);
+        console.error('Lỗi body:', err.error);
 
-          if (err.status === 409) {
-            const field = err.error?.field;
-            const message = err.error?.message || '';
-            if (field === 'phone') {
-              this.phoneError = message;
-            } else if (field === 'email') {
-              this.emailError = message;
-            }
-          } else {
-            console.error('Lỗi server không xác định:', err);
+        if (err.status === 409) {
+          const field = err.error?.field;
+          const message = err.error?.message || '';
+          if (field === 'phone') {
+            this.phoneError = message;
+          } else if (field === 'email') {
+            this.emailError = message;
           }
-        });
+          this.cdr.detectChanges();
+        } else {
+          console.error('Lỗi server không xác định:', err);
+        }
       }
     });
   }
 
   closeSuccessPopup(): void {
-    this.ngZone.run(() => {
-      this.showSuccessPopup = false;
-    });
+    this.showSuccessPopup = false;
+    this.cdr.detectChanges();
   }
 }

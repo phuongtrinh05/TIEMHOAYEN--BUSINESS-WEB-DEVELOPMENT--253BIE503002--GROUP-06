@@ -244,6 +244,9 @@
   gap: 36px;
 }
 
+.gender-option input[type="radio"].is-invalid {
+  border-color: #e53935;
+}
 .gender-option {
   display: flex;
   align-items: center;
