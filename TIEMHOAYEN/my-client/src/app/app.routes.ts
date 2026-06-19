@@ -17,6 +17,7 @@ import { OrderList } from './pages/order/order-list/order-list';
 
 import { OrderDetail } from './pages/orders/order-detail/order-detail';
 import { OrderReview } from './pages/orders/order-review/order-review';
+import { ProductDetailComponent } from './pages/product-detail/product-detail';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'homepage', pathMatch: 'full' },
@@ -26,7 +27,7 @@ export const routes: Routes = [
   { path: 'about-us', component: AboutUs },
   { path: 'account', component: AccountComponent },
   { path: 'blog', component: BlogComponent },
-  { path: 'category', component: CategoryComponent },
+  { path: 'chu-de/:id', component: CategoryComponent },
   { path: 'design3d', component: Design3d },
 
   { path: 'login', component: LoginComponent },
@@ -39,6 +40,17 @@ export const routes: Routes = [
 
   { path: 'order-detail', component: OrderDetail },
   { path: 'order-review', component: OrderReview },
+  { path: 'chu-de/:id', component: CategoryComponent },
+  { path: 'doi-tuong/:id', component: CategoryComponent },
+  { path: 'kieu-dang/:id', component: CategoryComponent },
+  { path: 'hoa-tuoi/:id', component: CategoryComponent },
+  { path: 'bo-suu-tap/:id', component: CategoryComponent },
+  { path: 'hoa-tuoi/:id', component: CategoryComponent },
+  { path: 'kieu-dang/:id', component: CategoryComponent },
+  { path: 'doi-tuong/:id', component: CategoryComponent },
+  { path: 'mau-sac/:id', component: CategoryComponent },
+  { path: 'bo-suu-tap/:id', component: CategoryComponent },
+  { path: 'product-detail/:id', component: ProductDetailComponent },
 
   { path: '**', redirectTo: 'homepage' }
 ];

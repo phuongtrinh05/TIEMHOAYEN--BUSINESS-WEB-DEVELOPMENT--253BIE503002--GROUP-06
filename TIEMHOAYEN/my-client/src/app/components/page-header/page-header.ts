@@ -293,4 +293,14 @@ export class PageHeader implements OnInit {
     this.closeAllSubMenus();
     this.showAbout = !current;
   }
+  goToTopic(topicId: string): void {
+    if (!topicId) return;
+
+    this.closeAllSubMenus();
+    this.showMobileMenu = false;
+    this.showAccountMenu = false;
+    this.showLanguageMenu = false;
+
+    this.router.navigate(['/chu-de', topicId]);
+  }
 }

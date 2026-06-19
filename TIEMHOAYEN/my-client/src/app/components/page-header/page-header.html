@@ -43,7 +43,10 @@
             @if(showTopic){
                 <div class="mobile-submenu">
                     @for (topic of topics; track topic.CHU_DE_ID) {
-                        <a [routerLink]="['/chu-de', topic.CHU_DE_ID]">
+                        <a
+                            href="javascript:void(0)"
+                            (click)="goToTopic(topic.CHU_DE_ID)"
+                        >
                             {{ topic.TEN_CHU_DE }}
                         </a>
                     }
@@ -331,7 +334,10 @@
 
     <div class="dropdown">
         @for (topic of topics; track topic.CHU_DE_ID) {
-            <a [routerLink]="['/chu-de', topic.CHU_DE_ID]">
+            <a
+                href="javascript:void(0)"
+                (click)="goToTopic(topic.CHU_DE_ID)"
+            >
                 {{ topic.TEN_CHU_DE }}
             </a>
         }

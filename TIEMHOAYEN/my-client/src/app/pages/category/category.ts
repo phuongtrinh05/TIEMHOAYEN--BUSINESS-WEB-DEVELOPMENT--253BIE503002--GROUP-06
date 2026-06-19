@@ -22,7 +22,9 @@ type SortValue = 'default' | 'priceAsc' | 'priceDesc' | 'nameAsc' | 'nameDesc';
 interface Product {
   id: string;
   name: string;
-  price: number;
+  price: number; // giá dùng để sắp xếp
+  originalPrice: number;
+  salePrice: number | null;
   image: string;
   icon: string;
   filters: Record<FilterGroup, string[]>;
@@ -84,6 +86,17 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   ];
 
   private products: Product[] = [];
+  private readonly topicNameById: Record<string, string> = {
+    CD001: 'Hoa sinh nhật',
+    CD002: 'Hoa tình yêu',
+    CD003: 'Hoa khai trương',
+    CD004: 'Hoa chúc mừng',
+    CD005: 'Hoa Tết',
+    CD006: 'Hoa Chia Buồn',
+    CD007: 'Hoa cưới',
+    CD008: 'Hoa sự kiện',
+    CD009: 'Hoa tốt nghiệp',
+  };
 
   constructor(
     @Inject(PLATFORM_ID) private platformId: object,
@@ -147,6 +160,26 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.loadProductsByTopic(id);
         return;
       }
+      if (path.startsWith('hoa-tuoi')) {
+        this.loadProductsByFlower(id);
+        return;
+      }
+      if (path.startsWith('kieu-dang')) {
+        this.loadProductsByStyle(id);
+        return;
+      }
+      if (path.startsWith('doi-tuong')) {
+        this.loadProductsByTarget(id);
+        return;
+      }
+      if (path.startsWith('mau-sac')) {
+        this.loadProductsByColor(id);
+        return;
+      }
+      if (path.startsWith('bo-suu-tap')) {
+        this.loadProductsByCollection(id);
+        return;
+      }
 
       this.pageTitle = 'Sản phẩm';
       this.products = this.createProductData();
@@ -155,20 +188,37 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   }
 
   private loadProductsByTopic(topicId: string): void {
+    const topicNameFromId = this.topicNameById[topicId] || 'Sản phẩm';
+
+    this.clearSelectedFilters();
+    this.uncheckAllCheckboxes();
+
+    this.pageTitle = topicNameFromId;
+    this.products = [];
+    this.selectedFilters.chuDe.add(topicNameFromId);
+    this.syncTopicCheckboxById(topicId, true);
+    this.render();
+
     this.categoryProductService.getProductsByTopic(topicId).subscribe({
       next: (res) => {
-        const topicName = res.topic?.TEN_CHU_DE || 'Sản phẩm';
+        const topicName = res.topic?.TEN_CHU_DE || topicNameFromId;
 
-        this.pageTitle = topicName;
+        this.clearSelectedFilters();
+        this.uncheckAllCheckboxes();
+
+        this.pageTitle = 'Sản phẩm';
 
         this.products = res.products.map((item) =>
-          this.mapDbProductToProduct(item)
+          this.mapDbProductToProduct({
+            ...item,
+            TEN_CHU_DE: topicName
+          })
         );
 
         this.selectedFilters.chuDe.add(topicName);
 
         setTimeout(() => {
-          this.syncCheckbox('chuDe', topicName, true);
+          this.syncTopicCheckboxById(topicId, true);
           this.currentPage = 1;
           this.render();
         });
@@ -178,24 +228,262 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
         this.pageTitle = 'Không tìm thấy chủ đề';
         this.products = [];
+        this.clearSelectedFilters();
+        this.uncheckAllCheckboxes();
+        this.render();
+      }
+    });
+  }
+  private loadProductsByFlower(flowerId: string): void {
+    this.clearSelectedFilters();
+    this.uncheckAllCheckboxes();
+    this.currentPage = 1;
+    this.products = [];
+    this.pageTitle = 'Sản phẩm hoa tươi';
+    this.render();
+
+    this.categoryProductService.getProductsByFlower(flowerId).subscribe({
+      next: (res) => {
+        const flowerName = res.flower?.TEN_HOA_TUOI || 'Hoa tươi';
+
+        this.clearSelectedFilters();
+        this.uncheckAllCheckboxes();
+
+        this.pageTitle = 'Sản phẩm';
+
+        this.products = res.products.map((item) =>
+          this.mapDbProductToProduct({
+            ...item,
+            TEN_HOA_TUOI: flowerName
+          })
+        );
+
+        this.selectedFilters.hoaTuoi.add(flowerName);
+
+        setTimeout(() => {
+          this.syncCheckbox('hoaTuoi', flowerName, true);
+          this.currentPage = 1;
+          this.render();
+        });
+      },
+      error: (err) => {
+        console.error('Lỗi lấy sản phẩm theo hoa tươi:', err);
+
+        this.pageTitle = 'Không tìm thấy hoa tươi';
+        this.products = [];
+        this.clearSelectedFilters();
+        this.uncheckAllCheckboxes();
+        this.render();
+      }
+    });
+  }
+  private loadProductsByStyle(style: string): void {
+    const decodedStyle = decodeURIComponent(style);
+
+    this.clearSelectedFilters();
+    this.uncheckAllCheckboxes();
+    this.currentPage = 1;
+    this.products = [];
+    this.pageTitle = decodedStyle;
+    this.selectedFilters.kieuDang.add(decodedStyle);
+    this.syncCheckbox('kieuDang', decodedStyle, true);
+    this.render();
+
+    this.categoryProductService.getProductsByStyle(decodedStyle).subscribe({
+      next: (res) => {
+        const styleName = res.style?.KIEU_DANG || decodedStyle;
+
+        this.clearSelectedFilters();
+        this.uncheckAllCheckboxes();
+
+        this.pageTitle = 'Sản phẩm';
+
+        this.products = res.products.map((item) =>
+          this.mapDbProductToProduct({
+            ...item,
+            KIEU_DANG: styleName
+          })
+        );
+
+        this.selectedFilters.kieuDang.add(styleName);
+
+        setTimeout(() => {
+          this.syncCheckbox('kieuDang', styleName, true);
+          this.currentPage = 1;
+          this.render();
+        });
+      },
+      error: (err) => {
+        console.error('Lỗi lấy sản phẩm theo kiểu dáng:', err);
+
+        this.pageTitle = 'Không tìm thấy kiểu dáng';
+        this.products = [];
+        this.clearSelectedFilters();
+        this.uncheckAllCheckboxes();
+        this.render();
+      }
+    });
+  }
+  private loadProductsByTarget(targetId: string): void {
+    this.clearSelectedFilters();
+    this.uncheckAllCheckboxes();
+
+    this.currentPage = 1;
+    this.products = [];
+    this.pageTitle = 'Sản phẩm';
+    this.render();
+
+    this.categoryProductService.getProductsByTarget(targetId).subscribe({
+      next: (res) => {
+        const targetName = res.target?.TEN_DOI_TUONG || 'Đối tượng';
+
+        this.clearSelectedFilters();
+        this.uncheckAllCheckboxes();
+
+        this.pageTitle = 'Sản phẩm';
+        
+        this.products = res.products.map((item) =>
+          this.mapDbProductToProduct({
+            ...item,
+            TEN_DOI_TUONG: targetName
+          })
+        );
+
+        this.selectedFilters.doiTuong.add(targetName);
+
+        setTimeout(() => {
+          this.syncCheckbox('doiTuong', targetName, true);
+          this.currentPage = 1;
+          this.render();
+        });
+      },
+      error: (err) => {
+        console.error('Lỗi lấy sản phẩm theo đối tượng:', err);
+
+        this.pageTitle = 'Không tìm thấy đối tượng';
+        this.products = [];
+        this.clearSelectedFilters();
+        this.uncheckAllCheckboxes();
         this.render();
       }
     });
   }
 
+  private loadProductsByColor(colorId: string): void {
+    this.clearSelectedFilters();
+    this.uncheckAllCheckboxes();
+
+    this.currentPage = 1;
+    this.products = [];
+    this.pageTitle = 'Sản phẩm theo màu sắc';
+    this.render();
+
+    this.categoryProductService.getProductsByColor(colorId).subscribe({
+      next: (res) => {
+        const colorName = res.color?.TEN_MAU_SAC || 'Màu sắc';
+
+        this.clearSelectedFilters();
+        this.uncheckAllCheckboxes();
+
+        this.pageTitle = 'Sản phẩm';
+
+        this.products = res.products.map((item) =>
+          this.mapDbProductToProduct({
+            ...item,
+            TEN_MAU_SAC: colorName
+          })
+        );
+
+        this.selectedFilters.mauSac.add(colorName);
+
+        setTimeout(() => {
+          this.syncCheckbox('mauSac', colorName, true);
+          this.currentPage = 1;
+          this.render();
+        });
+      },
+      error: (err) => {
+        console.error('Lỗi lấy sản phẩm theo màu sắc:', err);
+
+        this.pageTitle = 'Không tìm thấy màu sắc';
+        this.products = [];
+        this.clearSelectedFilters();
+        this.uncheckAllCheckboxes();
+        this.render();
+      }
+    });
+  }
+  private loadProductsByCollection(collectionId: string): void {
+    this.clearSelectedFilters();
+    this.uncheckAllCheckboxes();
+
+    this.currentPage = 1;
+    this.products = [];
+    this.pageTitle = 'Bộ sưu tập';
+    this.render();
+
+    this.categoryProductService.getProductsByCollection(collectionId).subscribe({
+      next: (res) => {
+        const collectionName = res.collection?.TEN_BO_SUU_TAP || 'Bộ sưu tập';
+
+        this.clearSelectedFilters();
+        this.uncheckAllCheckboxes();
+
+        // Chỉ Bộ sưu tập mới đổi title thành tên bộ sưu tập.
+        this.pageTitle = collectionName;
+
+        this.products = res.products.map((item) =>
+          this.mapDbProductToProduct({
+            ...item,
+            TEN_BO_SUU_TAP: collectionName
+          })
+        );
+
+        this.currentPage = 1;
+        this.render();
+      },
+      error: (err) => {
+        console.error('Lỗi lấy sản phẩm theo bộ sưu tập:', err);
+
+        this.pageTitle = 'Không tìm thấy bộ sưu tập';
+        this.products = [];
+        this.clearSelectedFilters();
+        this.uncheckAllCheckboxes();
+        this.render();
+      }
+    });
+  }
   private mapDbProductToProduct(item: CategoryProduct): Product {
+    const originalPrice = Number(item.GIA ?? 0);
+    const rawSalePrice = item.GIA_KHUYEN_MAI;
+
+    const salePriceNumber =
+      rawSalePrice === null || rawSalePrice === undefined
+        ? null
+        : Number(rawSalePrice);
+
+    const hasSalePrice =
+      salePriceNumber !== null &&
+      !Number.isNaN(salePriceNumber) &&
+      salePriceNumber > 0 &&
+      salePriceNumber < originalPrice;
+
+    const finalPrice = hasSalePrice ? salePriceNumber : originalPrice;
+
     return {
       id: item.SAN_PHAM_ID,
       name: item.TEN_SAN_PHAM,
-      price: item.GIA_KHUYEN_MAI || item.GIA || 0,
+      price: finalPrice,
+      originalPrice: originalPrice,
+      salePrice: hasSalePrice ? salePriceNumber : null,
       image: this.normalizeImageUrl(item.HINH_ANH),
       icon: '🌸',
       filters: {
         chuDe: item.TEN_CHU_DE ? [item.TEN_CHU_DE] : [],
         kieuDang: item.KIEU_DANG ? [item.KIEU_DANG] : [],
-        hoaTuoi: [],
-        doiTuong: [],
-        mauSac: []
+        hoaTuoi: this.parseFilterList(item.TEN_HOA_TUOI_LIST),
+        doiTuong: this.parseFilterList(item.TEN_DOI_TUONG_LIST),
+        mauSac: this.parseFilterList(item.TEN_MAU_SAC_LIST)
       }
     };
   }
@@ -243,6 +531,8 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       id: String(id),
       name,
       price,
+      originalPrice: price,
+      salePrice: null,
       image: this.PRODUCT_IMAGES + fileName,
       icon,
       filters: { chuDe, kieuDang, hoaTuoi, doiTuong, mauSac },
@@ -264,11 +554,15 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       const seed = result[(id - 1) % this.baseProducts.length];
       const name = `${extraNames[(id - 19) % extraNames.length]} ${Math.ceil((id - 18) / extraNames.length)}`;
 
+      const newPrice = seed.price + ((id % 5) * 50000);
+
       result.push({
         ...seed,
         id: String(id),
         name,
-        price: seed.price + ((id % 5) * 50000),
+        price: newPrice,
+        originalPrice: newPrice,
+        salePrice: null,
       });
 
       id++;
@@ -277,10 +571,15 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     return result;
   }
 
-  private formatPrice(price: number): string {
-    return price.toLocaleString('vi-VN') + 'đ';
-  }
+  private formatPrice(price: number | string | null | undefined): string {
+    const value = Number(price);
 
+    if (Number.isNaN(value)) {
+      return '0đ';
+    }
+
+    return value.toLocaleString('vi-VN') + 'đ';
+  }
   private getSelectedCount(): number {
     return Object.values(this.selectedFilters).reduce((total, group) => total + group.size, 0);
   }
@@ -330,6 +629,14 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       const safeName = this.escapeHtml(item.name);
       const safeImage = this.escapeHtml(item.image);
       const safeIcon = this.escapeHtml(item.icon);
+      const priceHtml = item.salePrice !== null
+        ? `
+          <p class="product-old-price">${this.formatPrice(item.originalPrice)}</p>
+          <p class="product-price">${this.formatPrice(item.salePrice)}</p>
+        `
+        : `
+          <p class="product-price">${this.formatPrice(item.originalPrice)}</p>
+        `;
 
       return `
         <article class="product-card">
@@ -344,7 +651,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
           </div>
 
           <h2 class="product-name">${safeName}</h2>
-          <p class="product-price">${this.formatPrice(item.price)}</p>
+          ${priceHtml}
 
           <div class="card-actions">
             <button class="buy-btn" type="button">MUA NGAY</button>
@@ -460,7 +767,13 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
     this.resultCount.textContent = `Hiển thị ${startIndex + 1}-${startIndex + pageLength}/${total} sản phẩm`;
   }
-
+  private syncTopicCheckboxById(topicId: string, checked: boolean): void {
+    document
+      .querySelectorAll<HTMLInputElement>('input[data-group="chuDe"]')
+      .forEach((checkbox) => {
+        checkbox.checked = checkbox.dataset['id'] === topicId ? checked : false;
+      });
+  }
   private syncCheckbox(group: FilterGroup, value: string, checked: boolean): void {
     const normalizedValue = this.normalizeText(value);
 
@@ -495,8 +808,9 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       checkbox.addEventListener('change', () => {
         const group = checkbox.dataset['group'] as FilterGroup;
         const value = this.getCheckboxValue(checkbox);
+        const path = this.route.snapshot.routeConfig?.path || '';
 
-        // Nhóm Chủ đề: chỉ được chọn 1 và phải chuyển route để gọi API mới.
+        // Chủ đề: luôn chuyển route vì chủ đề là danh mục chính.
         if (group === 'chuDe') {
           if (!checkbox.checked) {
             checkbox.checked = true;
@@ -517,6 +831,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
           const topicId = checkbox.dataset['id'];
 
           if (topicId) {
+            this.syncTopicCheckboxById(topicId, true);
             this.router.navigate(['/chu-de', topicId]);
             return;
           }
@@ -526,7 +841,86 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
           return;
         }
 
-        // Các nhóm khác vẫn được chọn nhiều.
+        // Kiểu dáng:
+        // - Nếu đang ở trang /kieu-dang/... thì chọn kiểu dáng khác sẽ chuyển route.
+        // - Nếu đang ở /chu-de/... thì chỉ lọc thêm trong danh sách sản phẩm hiện tại.
+        if (group === 'kieuDang') {
+          if (path.startsWith('kieu-dang')) {
+            if (!checkbox.checked) {
+              this.selectedFilters.kieuDang.delete(value);
+              this.currentPage = 1;
+              this.render();
+              return;
+            }
+
+            document
+              .querySelectorAll<HTMLInputElement>('input[data-group="kieuDang"]')
+              .forEach((styleCheckbox) => {
+                if (styleCheckbox !== checkbox) {
+                  styleCheckbox.checked = false;
+                }
+              });
+
+            this.selectedFilters.kieuDang.clear();
+            this.selectedFilters.kieuDang.add(value);
+
+            this.router.navigate(['/kieu-dang', value]);
+            return;
+          }
+
+          // Nếu đang ở trang chủ đề hoặc trang hoa tươi,
+          // Kiểu dáng chỉ là bộ lọc phụ, không chuyển route.
+          if (checkbox.checked) {
+            this.selectedFilters.kieuDang.add(value);
+          } else {
+            this.selectedFilters.kieuDang.delete(value);
+          }
+
+          this.currentPage = 1;
+          this.render();
+          return;
+        }
+        if (group === 'mauSac') {
+          const path = this.route.snapshot.routeConfig?.path || '';
+
+          if (path.startsWith('mau-sac')) {
+            if (!checkbox.checked) {
+              checkbox.checked = true;
+              return;
+            }
+
+            document
+              .querySelectorAll<HTMLInputElement>('input[data-group="mauSac"]')
+              .forEach((colorCheckbox) => {
+                if (colorCheckbox !== checkbox) {
+                  colorCheckbox.checked = false;
+                }
+              });
+
+            this.selectedFilters.mauSac.clear();
+            this.selectedFilters.mauSac.add(value);
+
+            const colorId = checkbox.dataset['id'];
+
+            if (colorId) {
+              this.router.navigate(['/mau-sac', colorId]);
+            }
+
+            return;
+          }
+
+          if (checkbox.checked) {
+            this.selectedFilters.mauSac.add(value);
+          } else {
+            this.selectedFilters.mauSac.delete(value);
+          }
+
+          this.currentPage = 1;
+          this.render();
+          return;
+        }
+
+        // Hoa tươi, Đối tượng, Màu sắc: lọc phụ, không chuyển route.
         if (checkbox.checked) {
           this.selectedFilters[group].add(value);
         } else {
@@ -580,5 +974,14 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  private parseFilterList(value: string | null | undefined): string[] {
+    if (!value) return [];
+
+    return value
+      .split('|')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
   }
 }

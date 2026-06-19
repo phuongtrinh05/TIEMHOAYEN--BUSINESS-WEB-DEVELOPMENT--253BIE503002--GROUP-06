@@ -427,3 +427,27 @@ select {
 .selected-filter-row[hidden] {
   display: none !important;
 }
+
+.category-page,
+.category-page *,
+.category-page button,
+.category-page input,
+.category-page select {
+  font-family: "Nunito Sans", sans-serif !important;
+}
+
+.product-old-price {
+  margin: 8px 0 4px;
+  font-size: 18px;
+  font-weight: 500;
+  color: #777;
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+}
+
+.product-price {
+  margin: 4px 0 18px;
+  font-size: 24px;
+  font-weight: 900;
+  color: #8b1e1e;
+}
