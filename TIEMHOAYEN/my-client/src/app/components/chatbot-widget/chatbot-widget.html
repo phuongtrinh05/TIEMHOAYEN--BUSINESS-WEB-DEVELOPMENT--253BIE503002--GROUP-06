@@ -1,142 +1,188 @@
 <!-- NÚT CHAT NỔI -->
-
-<button
-    class="chat-toggle"
-    *ngIf="!isOpen"
-    (click)="openChat()">
-
-    <img
-        src="assets/images/logoAI.png"
-        alt="Hoa Yên Assistant">
-
+<button class="chat-toggle" *ngIf="!isOpen" (click)="openChat()">
+  <img src="assets/images/logoAI.png" alt="Hoa Yên Assistant">
 </button>
 
-
 <!-- POPUP CHAT -->
+<div class="chatbot-container" *ngIf="isOpen">
 
-<div
-    class="chatbot-container"
-    *ngIf="isOpen">
+  <!-- Header -->
+  <div class="chat-header">
+    <div class="bot-info">
+      <div class="avatar">
+        <div class="header-avatar">
+          <img src="assets/images/logoAI.png" alt="AI">
+        </div>
+      </div>
+      <div>
+        <h2>Hoa Yên Assistant</h2>
+        <p>Hỗ trợ bạn 24/7</p>
+      </div>
+    </div>
+    <button class="close-btn" (click)="closeChat()">
+      <i class="bi bi-x-lg"></i>
+    </button>
+  </div>
 
-    <!-- Header Chat -->
-    <div class="chat-header">
+  <div class="guest-contact-panel" *ngIf="showGuestContactForm">
+    <div class="guest-contact-head">
+      <div>
+        <h3>Chat với nhân viên tư vấn</h3>
+        <p>Để nhân viên hỗ trợ chính xác hơn, bạn để lại thông tin nhé.</p>
+      </div>
+      <button type="button" (click)="closeGuestContactForm()">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
 
-        <div class="bot-info">
+    <div class="guest-contact-body">
+      <label>
+        <span>Họ và tên *</span>
+        <input type="text" [(ngModel)]="guestContact.name" placeholder="Nhập tên của bạn">
+      </label>
 
-            <div class="avatar">
-                <div class="header-avatar">
-                    <img src="assets/images/logoAI.png" alt="AI">
-                </div>
-            </div>
+      <label>
+        <span>Số điện thoại *</span>
+        <input type="tel" [(ngModel)]="guestContact.phone" placeholder="Nhập số điện thoại">
+      </label>
 
-            <div>
-                <h2>Hoa Yên Assistant</h2>
-                <p>Hỗ trợ bạn 24/7</p>
-            </div>
+      <label>
+        <span>Email</span>
+        <input type="email" [(ngModel)]="guestContact.email" placeholder="Nhập email nếu có">
+      </label>
+
+      <button type="button" class="guest-start-btn" (click)="submitGuestContactForm()">
+        <i class="bi bi-send-fill"></i>
+        Bắt đầu trò chuyện
+      </button>
+    </div>
+  </div>
+
+  <!-- Chat Body -->
+  <div class="chat-body" #chatBody>
+
+    <div *ngFor="let msg of messages" [class]="'message-row ' + msg.role">
+
+      <!-- Avatar bot -->
+      <div class="message-avatar" *ngIf="msg.role === 'bot'">
+        <img src="assets/images/logoAI.png" alt="bot">
+      </div>
+
+      <div>
+        <!-- Ảnh -->
+        <div
+          class="message bot-message"
+          *ngIf="msg.role === 'bot'">
+
+          <img
+            *ngIf="msg.imageUrl"
+            [src]="msg.imageUrl"
+            alt="flower"
+            class="chat-image">
+
+          <div>
+            {{ msg.content }}
+          </div>
 
         </div>
 
-        <button
-            class="close-btn"
-            (click)="closeChat()">
+        <!-- Text user -->
+        <div class="message bot-message"
+     *ngIf="msg.type === 'text'
+            && msg.role === 'user'
+            && !msg.imageUrl">
+          {{ msg.content }}
+        </div>
+        <div
+          class="message bot-message"
+          *ngIf="msg.role === 'user' && msg.imageUrl">
 
-            <i class="bi bi-x-lg"></i>
+          <img
+            [src]="msg.imageUrl"
+            class="chat-image"
+            alt="preview">
 
-        </button>
-
-    </div>
-
-    <!-- Nội dung chat -->
-    <div class="chat-body">
-
-        <div class="message-row bot">
-
-            <div class="message-avatar">
-                <img
-                    src="assets/images/logoAI.png"
-                    class="chat-avatar"
-                    alt="bot">
-            </div>
-
-            <div>
-
-                <div class="message bot-message">
-                    Chào bạn! 🌸<br>
-                    Tiệm Hoa Yên rất vui được hỗ trợ bạn.
-                    Bạn đang cần mình giúp gì ạ?
-                </div>
-
-                <div class="time">10:00</div>
-
-            </div>
+          <div *ngIf="msg.content">
+            {{ msg.content }}
+          </div>
 
         </div>
-
-        <div class="message-row user">
-
-            <div>
-
-                <div class="message image-message">
-
-                    <img
-                        src="assets/images/BabyCloud.png"
-                        alt="flower">
-
-                    <p>
-                        Bạn có thể tìm giúp tôi bó hoa
-                        tương tự như hình không?
-                    </p>
-
-                </div>
-
-                <div class="status">
-                    Đã gửi
-                </div>
-
-                <div class="time text-end">
-                    10:01
-                </div>
-
-            </div>
-
+        <div class="time" [class.text-end]="msg.role === 'user'">
+          {{ msg.time }}
         </div>
+      </div>
 
     </div>
 
-    <!-- Quick Actions -->
-
-    <div class="quick-actions">
-
-        <button class="btn-action">
-            Liên hệ nhân viên
-        </button>
-
-        <button class="btn-action">
-            Hoa sinh nhật
-        </button>
-
-        <button class="btn-action">
-            Khuyến mãi
-        </button>
-
+    <!-- Loading -->
+    <div class="message-row bot" *ngIf="isLoading">
+      <div class="message-avatar">
+        <img src="assets/images/logoAI.png" alt="bot">
+      </div>
+      <div class="message bot-message typing-indicator">
+        <span class="typing-dots">
+          <i></i><i></i><i></i>
+        </span>
+      </div>
     </div>
 
-    <!-- Input -->
+  </div>
 
-    <div class="chat-input">
+  <!-- Quick Actions -->
+  <div class="quick-actions">
+    <button class="btn-action" (click)="sendQuickAction('Liên hệ nhân viên')">
+      Liên hệ nhân viên
+    </button>
+    <button class="btn-action" (click)="sendQuickAction('Tạo một bó Hoa sinh nhật')">
+     Tạo một bó Hoa sinh nhật
+    </button>
+    <button class="btn-action" (click)="sendQuickAction('Chương trình khuyến mãi')">
+      Chương trình khuyến mãi
+    </button>
+    <button class="btn-action" (click)="sendQuickAction('Hoa tốt nghiệp')">
+     Hoa tốt nghiệp
+    </button>
+  </div>
 
-        <button class="attach-btn">
-            <i class="bi bi-paperclip"></i>
-        </button>
-
-        <input
-            type="text"
-            placeholder="Nhập tin nhắn..." />
-
-        <button class="send-btn">
-            <i class="bi bi-send"></i>
-        </button>
-
+  <!-- Input -->
+  <div class="attachment-preview" *ngIf="selectedImageDataUrl">
+    <img [src]="selectedImageDataUrl" alt="selected image">
+    <div class="attachment-info">
+      <span>{{ selectedFile?.name }}</span>
+      <small>Gõ thêm tin nhắn rồi bấm gửi</small>
     </div>
+    <button type="button" class="attachment-remove" (click)="clearSelectedFile()">
+      <i class="bi bi-x-lg"></i>
+    </button>
+  </div>
 
+  <div class="chat-input">
+    <button class="attach-btn" (click)="fileInput.click()">
+      <i class="bi bi-paperclip"></i>
+    </button>
+    <input
+      #fileInput
+      type="file"
+      accept="image/*"
+      hidden
+      (change)="onFileSelected($event)">
+    <textarea
+      #msgInput
+      placeholder="Nhập tin nhắn..."
+      [(ngModel)]="inputText"
+      (keydown)="onEnter($event)"
+      (input)="autoResize(msgInput)"
+      rows="1"></textarea>
+    <button class="send-btn" (click)="sendMessage()" [disabled]="isLoading">
+      <i class="bi bi-send"></i>
+    </button>
+  </div>
 </div>
+<a
+  class="zalo-button"
+  href="https://zalo.me/0786941361"
+  target="_blank">
+
+  <img src="assets/images/zalo.webp" alt="Zalo">
+
+</a>

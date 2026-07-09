@@ -1,97 +1,749 @@
 <header
-  class="header-1"
-  [class.scrolled]="isScrolled"> 
-    <div class="header-top"
-    [class.hide-header]="isScrolled">
-        <div class="logo">
-            <img
-                src="assets/images/logo-main.png"
-                alt="Tiệm Hoa Yên"
+  class="header"
+  [class.scrolled]="isScrolled"
+>
+  @if(showMobileMenu){
+    <div class="mobile-menu">
+
+      <div class="mobile-header">
+        <div class="mobile-top-icons">
+
+          <a
+            role="button"
+            title="Tra cứu đơn hàng"
+            aria-label="Tra cứu đơn hàng"
+            (click)="openLookupPopup()"
+          >
+            <i class="bi bi-receipt" aria-hidden="true"></i>
+          </a>
+
+          <div class="notification-wrapper" (mouseenter)="onNotificationHoverEnter()" (mouseleave)="onNotificationHoverLeave()">
+            <button
+              type="button"
+              class="notification-toggle-btn"
+              (click)="toggleNotifications()"
             >
-        </div>
-
-        <div class="search-box">
-            <i class="bi bi-search search-icon"></i>
-            <input
-                type="text"
-                placeholder="">
-            <i class="bi bi-camera camera-icon"></i>
-        </div>
-        <div class="action-icons">
-            <button class="desktop-only">
-                <i class="bi bi-receipt"></i>
+              <i class="bi bi-bell"></i>
+              @if(unreadNotificationCount > 0){
+                <span class="notif-badge">{{ notificationBadgeText }}</span>
+              }
             </button>
 
-            <button>
-                <i class="bi bi-heart"></i>
-            </button>
+            @if(showNotifications){
+              <div class="notification-dropdown">
+                <div class="notification-dropdown-header">Thông báo</div>
 
-            <button>
-                <i class="bi bi-cart3"></i>
-            </button>
+                <div class="notification-list">
+                  @if(notifications.length === 0){
+                    <div class="notification-empty">Chưa có thông báo nào</div>
+                  } @else {
+                    @for(item of notifications; track item.id){
+                      <button
+                        type="button"
+                        class="notification-item"
+                        [class.is-unread]="!item.isRead"
+                        (click)="goToNotification(item)"
+                      >
+                        <div class="notification-icon {{ getNotificationIconClass(item) }}">
+                          <i class="bi {{ getNotificationIcon(item) }}"></i>
+                        </div>
 
-            <div class="account-wrapper">
+                        <span class="notification-body">
+                          <strong class="notification-title">{{ item.title }}</strong>
+                          <span class="notification-message">{{ item.message }}</span>
+                          <span class="notification-time">{{ item.time }} - {{ item.date }}</span>
+                        </span>
 
-        <button (click)="toggleAccountMenu()" class="account-wrapper desktop-only">
-            <i class="bi bi-person-circle"></i>
-        </button>
-        <div
-            class="account-dropdown"
-            *ngIf="showAccountMenu"
-        >
-            <!-- Đã đăng nhập -->
-            @if(isLoggedIn){
-
-                <a routerLink="/profile">
-                    Tài khoản
-                    <i class="bi bi-person"></i>
-                </a>
-            }
-            <!-- Phần chung -->
-            <button (click)="toggleLanguageMenu()">
-                Ngôn ngữ
-                <i
-                    class="bi"
-                    [class.bi-chevron-right]="!showLanguageMenu"
-                    [class.bi-chevron-down]="showLanguageMenu"></i>
-            </button>
-            @if(showLanguageMenu){
-                <button
-                    class="language-item"
-                    (click)="changeLanguage('vi')"
-                >
-                    Tiếng Việt
-                </button>
-                <button
-                    class="language-item"
-                    (click)="changeLanguage('en')"
-                >
-                    English
-                </button>
-            }
-            <!-- Chưa đăng nhập -->
-            @if(!isLoggedIn){
-                <a routerLink="/login">
-                    Đăng nhập
-                    <i class="bi bi-box-arrow-in-right"></i>
-                </a>
-            }
-            <!-- Đã đăng nhập -->
-            @if(isLoggedIn){
-                <a (click)="logout()">
-                    Đăng xuất
-                    <i class="bi bi-box-arrow-right"></i>
-                </a>
-            }
+                        <span class="notification-dot" [class.is-read]="item.isRead"></span>
+                      </button>
+                    }
+                  }
                 </div>
-            </div>
+              </div>
+            }
+          </div>
+
+          @if(isLoggedIn){
+            <a routerLink="/account" class="mobile-account-link">
+              @if(customerAvatar){
+                <img
+                  class="mobile-account-avatar"
+                  [src]="customerAvatar"
+                  [alt]="customerDisplayName"
+                  (error)="onAvatarError()"
+                >
+              } @else {
+                <span class="mobile-account-avatar-fallback">
+                  {{ customerInitial }}
+                </span>
+              }
+            </a>
+          } @else {
+            <a routerLink="/login">
+              <i class="bi bi-person-circle"></i>
+            </a>
+          }
+
         </div>
-        <div
-            class="search-popup"
-            *ngIf="showSearch">
-                <input
-                type="text"
-                placeholder="Tìm kiếm sản phẩm...">
+      </div>
+
+      <div class="mobile-item">
+        <h3 routerLink="/homepage">
+          Trang chủ
+          <i class="bi bi-chevron-right"></i>
+        </h3>
+      </div>
+
+      <div class="mobile-item">
+        <h3 (click)="toggleTopic()">
+          Chủ đề
+          <i
+            class="bi"
+            [class.bi-chevron-down]="showTopic"
+            [class.bi-chevron-right]="!showTopic">
+          </i>
+        </h3>
+
+        @if(showTopic){
+          <div class="mobile-submenu">
+            @for (topic of topics; track topic.CHU_DE_ID) {
+              <a
+                href="javascript:void(0)"
+                (click)="goToTopic(topic.CHU_DE_ID)"
+              >
+                {{ topic.TEN_CHU_DE }}
+              </a>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="mobile-item">
+        <h3 (click)="toggleTarget()">
+          Đối tượng
+          <i
+            class="bi"
+            [class.bi-chevron-down]="showTarget"
+            [class.bi-chevron-right]="!showTarget">
+          </i>
+        </h3>
+
+        @if(showTarget){
+          <div class="mobile-submenu">
+            @for (target of targets; track target.DOI_TUONG_ID) {
+              <a [routerLink]="['/doi-tuong', target.DOI_TUONG_ID]">
+                {{ target.TEN_DOI_TUONG }}
+              </a>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="mobile-item">
+        <h3 (click)="toggleStyle()">
+          Kiểu dáng
+          <i
+            class="bi"
+            [class.bi-chevron-down]="showStyle"
+            [class.bi-chevron-right]="!showStyle">
+          </i>
+        </h3>
+
+        @if(showStyle){
+          <div class="mobile-submenu">
+            @for (style of styles; track style.KIEU_DANG) {
+              <a [routerLink]="['/kieu-dang', style.KIEU_DANG]">
+                {{ style.KIEU_DANG }}
+              </a>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="mobile-item">
+        <h3 (click)="toggleFlower()">
+          Hoa tươi
+          <i
+            class="bi"
+            [class.bi-chevron-down]="showFlower"
+            [class.bi-chevron-right]="!showFlower">
+          </i>
+        </h3>
+
+        @if(showFlower){
+          <div class="mobile-submenu">
+            @for (flower of flowers; track flower.HOA_TUOI_ID) {
+              <a [routerLink]="['/hoa-tuoi', flower.HOA_TUOI_ID]">
+                {{ flower.TEN_HOA_TUOI }}
+              </a>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="mobile-item">
+        <h3 (click)="toggleCollection()">
+          Bộ sưu tập
+          <i
+            class="bi"
+            [class.bi-chevron-down]="showCollection"
+            [class.bi-chevron-right]="!showCollection">
+          </i>
+        </h3>
+
+        @if(showCollection){
+          <div class="mobile-submenu">
+            @for (collection of collections; track collection.BO_SUU_TAP_ID) {
+              <a [routerLink]="['/bo-suu-tap', collection.BO_SUU_TAP_ID]">
+                {{ collection.TEN_BO_SUU_TAP }}
+              </a>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="mobile-item">
+        <h3 (click)="toggleSupport()">
+          Hỗ trợ
+          <i
+            class="bi"
+            [class.bi-chevron-down]="showSupport"
+            [class.bi-chevron-right]="!showSupport">
+          </i>
+        </h3>
+
+        @if(showSupport){
+          <div class="mobile-submenu">
+            <a routerLink="/order-review">Đánh giá</a>
+            <a routerLink="/policy/order">Chính sách</a>
+          </div>
+        }
+      </div>
+
+      <div class="mobile-item">
+        <h3 routerLink="/blog">
+          Blog
+          <i class="bi bi-chevron-right"></i>
+        </h3>
+      </div>
+
+      <div class="mobile-item">
+        <h3 (click)="toggleAbout()">
+          Về chúng tôi
+          <i
+            class="bi"
+            [class.bi-chevron-down]="showAbout"
+            [class.bi-chevron-right]="!showAbout">
+          </i>
+        </h3>
+
+        @if(showAbout){
+          <div class="mobile-submenu">
+            <a routerLink="/about-us">Giới thiệu</a>
+            <a routerLink="/contact">Liên hệ</a>
+          </div>
+        }
+      </div>
+
+      <div class="mobile-item mobile-language-item">
+        <h3 (click)="toggleLanguageMenu()">
+          Ngôn ngữ
+          <span class="mobile-language-current">{{ currentLanguage === 'vi' ? 'VI' : 'EN' }}</span>
+          <i
+            class="bi"
+            [class.bi-chevron-down]="showLanguageMenu"
+            [class.bi-chevron-right]="!showLanguageMenu">
+          </i>
+        </h3>
+
+        @if(showLanguageMenu){
+          <div class="mobile-submenu mobile-language-submenu">
+            <button
+              type="button"
+              [class.active]="currentLanguage === 'vi'"
+              (click)="changeLanguage('vi')"
+            >
+              Tiếng Việt
+            </button>
+
+            <button
+              type="button"
+              [class.active]="currentLanguage === 'en'"
+              (click)="changeLanguage('en')"
+            >
+              English
+            </button>
+          </div>
+        }
+      </div>
+
+      @if(isLoggedIn){
+        <div class="mobile-item">
+          <h3 routerLink="/account">
+            Tài khoản
+            <i class="bi bi-person"></i>
+          </h3>
         </div>
+
+        <div class="mobile-item">
+          <h3 (click)="logout()">
+            Đăng xuất
+            <i class="bi bi-box-arrow-right"></i>
+          </h3>
+        </div>
+      } @else {
+        <div class="mobile-item">
+          <h3 routerLink="/login">
+            Đăng nhập
+            <i class="bi bi-box-arrow-in-right"></i>
+          </h3>
+        </div>
+      }
+
     </div>
+  }
+
+  <div class="header-top">
+    <a class="logo" routerLink="/homepage">
+      <img
+        src="assets/images/logo-main.png"
+        alt="Tiệm Hoa Yên"
+      >
+    </a>
+
+    <div class="search-box">
+      <i
+        class="bi bi-search search-icon"
+        (click)="submitSearch()">
+      </i>
+
+      <input
+        type="text"
+        placeholder="Tìm kiếm sản phẩm..."
+        [(ngModel)]="searchKeyword"
+        (focus)="openSearchPanel()"
+        (input)="onSearchInput()"
+        (keyup.enter)="submitSearch()"
+      >
+
+      <div class="camera-search-wrapper">
+        <button
+          type="button"
+          class="camera-icon-btn"
+          (click)="toggleImageSearchMenu()"
+        >
+          <i class="bi bi-camera camera-icon"></i>
+        </button>
+
+        @if(showImageSearchMenu){
+          <div class="image-search-menu">
+            <button type="button" (click)="triggerCameraCapture()">
+              <i class="bi bi-camera-fill"></i>
+              <span>Chụp ảnh</span>
+            </button>
+
+            <button type="button" (click)="triggerImageUpload()">
+              <i class="bi bi-image"></i>
+              <span>Tải ảnh lên</span>
+            </button>
+          </div>
+        }
+      </div>
+
+      @if(showSearchSuggestions && (searchKeyword.trim() || isSearchLoading || searchResults.length > 0)){
+        <div class="search-result-panel">
+          @if(searchResults.length > 0){
+            @for(product of searchResults; track product.id){
+              <button
+                type="button"
+                class="search-result-item"
+                (click)="goToSearchProduct(product)">
+                <img
+                  [src]="product.image"
+                  [alt]="product.name"
+                >
+
+                <span class="search-result-info">
+                  <strong>{{ product.name }}</strong>
+
+                  @if(product.meta){
+                    <span class="search-result-meta">
+                      {{ product.meta }}
+                    </span>
+                  }
+
+                  <span class="search-result-price">
+                    @if(product.hasDiscount && product.salePrice !== null){
+                      <span class="search-sale-price">
+                        {{ formatSearchPrice(product.salePrice) }}
+                      </span>
+
+                      <span class="search-old-price">
+                        {{ formatSearchPrice(product.originalPrice) }}
+                      </span>
+                    } @else {
+                      <span class="search-normal-price">
+                        {{ formatSearchPrice(product.finalPrice) }}
+                      </span>
+                    }
+                  </span>
+                </span>
+              </button>
+            }
+          } @else {
+            <div class="search-state">
+              {{ searchMessage || 'Không tìm thấy sản phẩm phù hợp.' }}
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="action-icons">
+      <button
+        type="button"
+        class="search-toggle-btn"
+        (click)="toggleSearch()"
+      >
+        <i class="bi bi-search"></i>
+      </button>
+
+      <button
+        type="button"
+        class="desktop-only"
+        title="Tra cứu đơn hàng"
+        aria-label="Tra cứu đơn hàng"
+        (click)="openLookupPopup()"
+      >
+        <i class="bi bi-receipt" aria-hidden="true"></i>
+      </button>
+
+      <div class="notification-wrapper desktop-only" (mouseenter)="onNotificationHoverEnter()" (mouseleave)="onNotificationHoverLeave()">
+        <button
+          type="button"
+          class="notification-toggle-btn"
+          (click)="toggleNotifications()"
+        >
+          <i class="bi bi-bell"></i>
+          @if(unreadNotificationCount > 0){
+            <span class="notif-badge">{{ notificationBadgeText }}</span>
+          }
+        </button>
+
+        @if(showNotifications){
+          <div class="notification-dropdown">
+            <div class="notification-dropdown-header">Thông báo</div>
+
+            <div class="notification-list">
+              @if(notifications.length === 0){
+                <div class="notification-empty">Chưa có thông báo nào</div>
+              } @else {
+                @for(item of notifications; track item.id){
+                  <button
+                    type="button"
+                    class="notification-item"
+                    [class.is-unread]="!item.isRead"
+                    (click)="goToNotification(item)"
+                  >
+                    <div class="notification-icon {{ getNotificationIconClass(item) }}">
+                          <i class="bi {{ getNotificationIcon(item) }}"></i>
+                        </div>
+
+                    <span class="notification-body">
+                      <strong class="notification-title">{{ item.title }}</strong>
+                      <span class="notification-message">{{ item.message }}</span>
+                      <span class="notification-time">{{ item.time }} - {{ item.date }}</span>
+                    </span>
+
+                    <span class="notification-dot" [class.is-read]="item.isRead"></span>
+                  </button>
+                }
+              }
+            </div>
+          </div>
+        }
+      </div>
+
+      <div class="cart-wrapper" (mouseenter)="onCartHoverEnter()" (mouseleave)="onCartHoverLeave()">
+        <button
+          type="button"
+          class="cart-icon-button"
+          (click)="toggleCartMenu()"
+        >
+          <i class="bi bi-cart3"></i>
+
+          <span
+            class="cart-badge"
+            *ngIf="cartCount > 0"
+          >
+            {{ cartBadgeText }}
+          </span>
+        </button>
+
+        @if(showCartMenu){
+          <div class="cart-dropdown">
+            <div class="cart-dropdown-header">Giỏ hàng của bạn</div>
+
+            <div class="cart-dropdown-list">
+              @if(cartItems.length === 0){
+                <div class="cart-dropdown-empty">Giỏ hàng đang trống</div>
+              } @else {
+                @for(item of cartItems; track item.id){
+                  <button
+                    type="button"
+                    class="cart-dropdown-item"
+                    (click)="goToCart()"
+                  >
+                    <img [src]="item.image" [alt]="item.name">
+
+                    <span class="cart-dropdown-info">
+                      <strong>{{ item.name }}</strong>
+                      <span class="cart-dropdown-qty">
+                        SL: {{ item.quantity }} × {{ formatCartPrice(item.price) }}
+                      </span>
+                    </span>
+                  </button>
+                }
+              }
+            </div>
+
+            @if(cartItems.length > 0){
+              <button
+                type="button"
+                class="cart-dropdown-footer"
+                (click)="goToCart()"
+              >
+                Xem giỏ hàng ({{ cartCount }})
+              </button>
+            }
+          </div>
+        }
+      </div>
+
+      <button
+        type="button"
+        class="mobile-menu-btn"
+        (click)="toggleMobileMenu()"
+      >
+        <i class="bi bi-list"></i>
+      </button>
+
+      <div class="account-wrapper" (mouseenter)="onAccountHoverEnter()" (mouseleave)="onAccountHoverLeave()">
+        <button
+          type="button"
+          (click)="toggleAccountMenu()"
+          class="account-button desktop-only"
+        >
+          @if(isLoggedIn){
+            @if(customerAvatar){
+              <img
+                class="account-avatar"
+                [src]="customerAvatar"
+                [alt]="customerDisplayName"
+                (error)="onAvatarError()"
+              >
+            } @else {
+              <span class="account-avatar-fallback">
+                {{ customerInitial }}
+              </span>
+            }
+
+            <span class="account-name">
+              {{ customerDisplayName }}
+            </span>
+          } @else {
+            <i class="bi bi-person-circle"></i>
+          }
+        </button>
+
+        <div
+          class="account-dropdown"
+          *ngIf="showAccountMenu"
+        >
+          @if(isLoggedIn){
+            <div class="account-user-summary">
+              @if(customerAvatar){
+                <img
+                  class="account-dropdown-avatar"
+                  [src]="customerAvatar"
+                  [alt]="customerDisplayName"
+                  (error)="onAvatarError()"
+                >
+              } @else {
+                <span class="account-dropdown-avatar-fallback">
+                  {{ customerInitial }}
+                </span>
+              }
+
+              <div class="account-user-info">
+                <strong>{{ customerDisplayName }}</strong>
+                @if(currentCustomer?.SDT){
+                  <span>{{ currentCustomer.SDT }}</span>
+                }
+              </div>
+            </div>
+
+            <a
+              routerLink="/account"
+              (click)="showAccountMenu = false"
+            >
+              Tài khoản
+              <i class="bi bi-person"></i>
+            </a>
+          }
+
+          <button
+            type="button"
+            (click)="toggleLanguageMenu()"
+          >
+            Ngôn ngữ
+            <i
+              class="bi"
+              [class.bi-chevron-right]="!showLanguageMenu"
+              [class.bi-chevron-down]="showLanguageMenu">
+            </i>
+          </button>
+
+          @if(showLanguageMenu){
+            <button
+              type="button"
+              class="language-item"
+              (click)="changeLanguage('vi')"
+            >
+              Tiếng Việt
+            </button>
+
+            <button
+              type="button"
+              class="language-item"
+              (click)="changeLanguage('en')"
+            >
+              English
+            </button>
+          }
+
+          @if(!isLoggedIn){
+            <a
+              routerLink="/login"
+              (click)="showAccountMenu = false"
+            >
+              Đăng nhập
+              <i class="bi bi-box-arrow-in-right"></i>
+            </a>
+          }
+
+          @if(isLoggedIn){
+            <button
+              type="button"
+              (click)="logout()"
+            >
+              Đăng xuất
+              <i class="bi bi-box-arrow-right"></i>
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="search-popup"
+      *ngIf="showSearch"
+    >
+      <div class="search-popup-input-wrapper">
+        <i
+          class="bi bi-search search-icon"
+          (click)="submitSearch()">
+        </i>
+
+        <input
+          type="text"
+          placeholder="Tìm kiếm sản phẩm..."
+          [(ngModel)]="searchKeyword"
+          (focus)="openSearchPanel()"
+          (input)="onSearchInput()"
+          (keyup.enter)="submitSearch()"
+        >
+
+        <div class="camera-search-wrapper">
+          <button
+            type="button"
+            class="camera-icon-btn"
+            (click)="toggleImageSearchMenu()"
+          >
+            <i class="bi bi-camera camera-icon"></i>
+          </button>
+
+          @if(showImageSearchMenu){
+            <div class="image-search-menu">
+              <button type="button" (click)="triggerCameraCapture()">
+                <i class="bi bi-camera-fill"></i>
+                <span>Chụp ảnh</span>
+              </button>
+
+              <button type="button" (click)="triggerImageUpload()">
+                <i class="bi bi-image"></i>
+                <span>Tải ảnh lên</span>
+              </button>
+            </div>
+          }
+        </div>
+      </div>
+
+      @if(showSearchSuggestions && (searchKeyword.trim() || isSearchLoading || searchResults.length > 0)){
+        <div class="search-result-panel search-result-panel-small">
+          @if(searchResults.length > 0){
+            @for(product of searchResults; track product.id){
+              <button
+                type="button"
+                class="search-result-item"
+                (click)="goToSearchProduct(product)">
+                <img
+                  [src]="product.image"
+                  [alt]="product.name"
+                >
+
+                <span class="search-result-info">
+                  <strong>{{ product.name }}</strong>
+
+                  @if(product.meta){
+                    <span class="search-result-meta">
+                      {{ product.meta }}
+                    </span>
+                  }
+
+                  <span class="search-result-price">
+                    @if(product.hasDiscount && product.salePrice !== null){
+                      <span class="search-sale-price">
+                        {{ formatSearchPrice(product.salePrice) }}
+                      </span>
+
+                      <span class="search-old-price">
+                        {{ formatSearchPrice(product.originalPrice) }}
+                      </span>
+                    } @else {
+                      <span class="search-normal-price">
+                        {{ formatSearchPrice(product.finalPrice) }}
+                      </span>
+                    }
+                  </span>
+                </span>
+              </button>
+            }
+          } @else {
+            <div class="search-state">
+              {{ searchMessage || 'Không tìm thấy sản phẩm phù hợp.' }}
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+
+  <input
+    #uploadFileInput
+    type="file"
+    accept="image/*"
+    class="visually-hidden-input"
+    (change)="onImageSearchFileSelected($event)"
+  >
 </header>

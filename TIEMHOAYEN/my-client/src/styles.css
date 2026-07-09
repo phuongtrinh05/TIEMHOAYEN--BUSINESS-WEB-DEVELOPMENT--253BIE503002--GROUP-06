@@ -1,12 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,700;1,6..12,700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wdth,wght@0,6..12,75..125,200;1,6..12,75..125,200&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wdth,wght@0,6..12,75..125,300;1,6..12,75..125,300&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wdth,wght@0,6..12,75..125,500;1,6..12,75..125,500&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wdth,wght@0,6..12,75..125,600;1,6..12,75..125,600&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wdth,wght@0,6..12,75..125,700;1,6..12,75..125,700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wdth,wght@0,6..12,75..125,800;1,6..12,75..125,800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wdth,wght@0,6..12,75..125,900;1,6..12,75..125,900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wdth,wght@0,6..12,75..125,200..900;1,6..12,75..125,200..900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
 :root{
 
     /* Màu thương hiệu */
@@ -15,6 +7,13 @@
     --text-color:#000000;
     --color-blush-white:#FFF8F5;
     --accent-color:#D9B382;
+    --header-gradient: linear-gradient(
+        135deg,
+        rgba(251,247,242,.95) 0%,
+        rgba(245,232,216,.92) 40%,
+        rgba(236,213,181,.88) 75%,
+        rgba(217,179,130,.72) 100%
+    );
 
      /* Font */
     --font-heading: 'Playfair Display', serif;
@@ -32,6 +31,7 @@ body{
     font-family: var(--font-body);
     background-color: var(--color-blush-white);
     color: var(--text-color);
+    background:var(--header-gradient);
 }
 
 h1, h2{

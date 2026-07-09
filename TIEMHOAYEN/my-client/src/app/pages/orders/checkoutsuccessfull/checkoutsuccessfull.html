@@ -1,0 +1,24 @@
+<div class="success-overlay">
+  <div class="success-box">
+
+    <button type="button" class="popup-close" (click)="closePopup()">
+      <i class="bi bi-x-lg"></i>
+    </button>
+
+    <div class="success-icon">
+      <i class="bi bi-check-lg"></i>
+    </div>
+
+    <p class="success-message">Thanh toán thành công</p>
+
+    <div class="success-actions">
+      <button type="button" class="btn-view-order" (click)="viewOrderDetail()">
+        Xem đơn hàng
+      </button>
+      <button type="button" class="btn-continue-shop" routerLink="/homepage">
+        Tiếp tục mua sắm
+      </button>
+    </div>
+
+  </div>
+</div>

@@ -1,0 +1,185 @@
+/* =========================
+   FAIL OVERLAY
+========================= */
+
+.fail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+/* =========================
+   FAIL BOX
+========================= */
+
+.fail-box {
+  width: 100%;
+  max-width: 420px;
+  background: var(--primary-color);
+  border: 1.5px solid var(--accent-color);
+  border-radius: 16px;
+  padding: 40px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+}
+
+/* =========================
+   NÚT ĐÓNG (X)
+========================= */
+
+.popup-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.3rem;
+  color: #aaa;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.popup-close:hover {
+  color: var(--color-scarlet-red);
+}
+
+/* =========================
+   ICON
+========================= */
+
+.fail-icon {
+  width: 72px;
+  height: 72px;
+  border: 2.5px solid var(--accent-color);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.fail-icon i {
+  font-size: 32px;
+  color: var(--accent-color);
+}
+
+/* =========================
+   MESSAGE
+========================= */
+
+.fail-message {
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 28px;
+}
+
+/* =========================
+   ACTIONS
+========================= */
+
+.fail-actions {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+}
+
+.btn-retry,
+.btn-continue-shop {
+  flex: 1;
+  height: 44px;
+  border: 1.5px solid var(--accent-color);
+  border-radius: 10px;
+  background: rgba(217, 179, 130, 0.15);
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.btn-retry:hover,
+.btn-continue-shop:hover {
+  background: var(--accent-color);
+  color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
+/* =========================
+   RESPONSIVE - MOBILE
+========================= */
+
+@media (max-width: 768px) {
+  .fail-box {
+    max-width: 90%;
+    padding: 32px 24px;
+  }
+
+  .fail-actions {
+    flex-direction: column;
+  }
+}
+
+.fail-detail {
+  width: 100%;
+  border: 1px solid rgba(217, 179, 130, 0.45);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.fail-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  color: #fff;
+  font-size: 0.88rem;
+}
+
+.fail-detail-row span {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.fail-detail-row strong {
+  color: var(--accent-color);
+  text-align: right;
+}
+
+.fail-sub-message {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: -8px 0 20px;
+}
+
+.fail-error {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.86rem;
+  margin: 0 0 16px;
+}
+
+.btn-retry:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}

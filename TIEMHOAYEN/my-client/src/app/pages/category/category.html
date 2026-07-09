@@ -1,9 +1,32 @@
 <main class="category-page">
-  <h1 class="page-title">{{ pageTitle }}</h1>
+  <nav class="category-breadcrumb" id="categoryBreadcrumb" aria-label="Breadcrumb">
+    <a routerLink="/category">Sản phẩm</a>
+  </nav>
 
   <section class="selected-filter-row" id="selectedFilterRow" hidden>
     <span class="selected-filter-title">Bộ lọc đang chọn:</span>
     <div class="selected-filter-list" id="selectedFilterList"></div>
+  </section>
+
+  <section class="mobile-filter-row" aria-label="Bộ lọc rút gọn">
+    <div class="mobile-filter-field">
+      <label for="mobileFilterGroup">Lọc sản phẩm:</label>
+      <select id="mobileFilterGroup">
+        <option value="" selected disabled>Lọc sản phẩm</option>
+        <option value="chuDe">Chủ đề</option>
+        <option value="doiTuong">Đối tượng</option>
+        <option value="kieuDang">Kiểu dáng</option>
+        <option value="hoaTuoi">Hoa tươi</option>
+        <option value="mauSac">Màu sắc</option>
+      </select>
+    </div>
+
+    <div class="mobile-filter-field">
+      <label for="mobileFilterValue">Mục lọc:</label>
+      <select id="mobileFilterValue" disabled>
+        <option value="" selected>Chọn mục lọc</option>
+      </select>
+    </div>
   </section>
 
   <section class="category-layout">
@@ -73,11 +96,11 @@
           <label><input type="checkbox" data-group="kieuDang" value="Bình hoa"> Bình hoa</label>
           <label><input type="checkbox" data-group="kieuDang" value="Bó hoa"> Bó hoa</label>
           <label><input type="checkbox" data-group="kieuDang" value="Giỏ hoa"> Giỏ hoa</label>
-          <label><input type="checkbox" data-group="kieuDang" value="Giỏ hoa khai trưởng"> Giỏ hoa khai trương</label>
+          <label><input type="checkbox" data-group="kieuDang" value="Giỏ hoa khai trương"> Giỏ hoa khai trương</label>
           <label><input type="checkbox" data-group="kieuDang" value="Hộp hoa"> Hộp hoa</label>
           <label><input type="checkbox" data-group="kieuDang" value="Hộp Hoa Tươi"> Hộp Hoa Tươi</label>
           <label><input type="checkbox" data-group="kieuDang" value="Khung hoa"> Khung hoa</label>
-          <label><input type="checkbox" data-group="kieuDang" value="Lẵng hoa Khai Trường"> Lẵng hoa Khai Trương</label>
+          <label><input type="checkbox" data-group="kieuDang" value="Lẵng hoa Khai Trương"> Lẵng hoa Khai Trương</label>
           <label><input type="checkbox" data-group="kieuDang" value="Vòng Hoa Tang"> Vòng Hoa Tang</label>
         </div>
       </div>
@@ -145,7 +168,7 @@
         <label for="sortSelect">Sắp xếp:</label>
 
         <select id="sortSelect">
-          <option value="default"></option>
+          <option value="default">Mặc định</option>
           <option value="priceAsc">Giá thấp đến cao</option>
           <option value="priceDesc">Giá cao đến thấp</option>
           <option value="nameAsc">Tên A - Z</option>

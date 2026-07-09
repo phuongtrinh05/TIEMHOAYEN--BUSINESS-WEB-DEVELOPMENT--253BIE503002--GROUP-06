@@ -1,101 +1,240 @@
 <div class="review-page">
-    <div class="breadcrumb">
-        <span>Tài khoản</span>
-        <i class="bi bi-chevron-right"></i>
+  <div class="breadcrumb" *ngIf="selectedOrder">
+    <span class="breadcrumb-link" (click)="goBackToOrderPicker()">
+      Đánh giá
+    </span>
+    <i class="bi bi-chevron-right"></i>
+    <span>#{{ selectedOrder.orderId }}</span>
+  </div>
 
-        <span>Đơn hàng của tôi</span>
-        <i class="bi bi-chevron-right"></i>
-
-        <span>#YEN1000</span>
-        <i class="bi bi-chevron-right"></i>
-
-        <span>Đánh giá</span>
+  <div class="review-selected-bar" *ngIf="selectedOrder && selectedProduct && !showPicker">
+    <div class="selected-product-mini">
+      <img [src]="selectedProduct.image || defaultImage" [alt]="selectedProduct.productName">
+      <div>
+        <div class="selected-product-title">{{ selectedProduct.productName }}</div>
+        <div class="selected-product-meta">
+          Đơn {{ selectedOrder.orderId }} · {{ formatDate(selectedOrder.createdAt) }} · x{{ selectedProduct.quantity }}
+        </div>
+      </div>
     </div>
 
-    <div class="review-layout">
-        <div>
-            <h1>Viết đánh giá của bạn</h1>
-            <div class="review-card">
-                <h3>Đánh giá của bạn</h3>
-                <div class="rating-stars">
-                    @for(star of [1,2,3,4,5]; track star){
-                        <i
-                            class="bi"
-                            [class.bi-star-fill]="selectedRating >= star"
-                            [class.bi-star]="selectedRating < star"
-                            (click)="setRating(star)">
-                        </i>
+    <button type="button" class="btn-change-product" (click)="onChangeProductClick()">
+      Đổi sản phẩm đánh giá
+    </button>
+  </div>
 
-                    }
+  <div class="review-layout">
+    <div>
+      <h1>Viết đánh giá của bạn</h1>
 
-                </div>
+      <div class="review-card">
+        <ng-container *ngIf="!selectedOrder || !selectedProduct || showPicker">
+          <div class="picker-header">
+            <h3>Chọn sản phẩm cần đánh giá</h3>
 
-                <p class="rating-note">
-                    Cho Tiệm biết bạn đánh giá nhiều sao nhé!
-                </p>
+            <button
+              type="button"
+              class="btn-link-back"
+              *ngIf="selectedOrder && selectedProduct"
+              (click)="goBack()">
+              <i class="bi bi-chevron-left"></i> Quay lại
+            </button>
+          </div>
 
-                <label>Nội dung đánh giá</label>
+          <p class="modal-desc" *ngIf="isLoggedIn">
+            Chọn đơn hàng đã giao thành công, sau đó chọn sản phẩm bạn muốn đánh giá.
+          </p>
 
-                <textarea
-                    rows="6"
-                    [(ngModel)]="reviewText"
-                    placeholder="Chia sẻ cảm nhận của bạn về sản phẩm của Tiệm Hoa Yên nhé...">
-                </textarea>
+          <p class="modal-desc" *ngIf="!isLoggedIn">
+            Vui lòng nhập mã đơn hàng và số điện thoại người nhận để xác thực đơn hàng.
+          </p>
 
-                <label>Thêm hình ảnh</label>
-                <div class="upload-box">
-                    <i class="bi bi-plus-lg"></i>
-                    <span>Thêm ảnh</span>
-                </div>
-
-                <div
-                    class="checkbox-row"
-                    (click)="hideReviewer = !hideReviewer">
-
-                    <i
-                        class="bi"
-                        [class.bi-square]="!hideReviewer"
-                        [class.bi-check-square-fill]="hideReviewer">
-                    </i>
-
-                    <span>Ẩn thông tin người đánh giá</span>
-
-                </div>
-
-                <button
-                    class="submit-btn"
-                    (click)="submitReview()">
-
-                    <i class="bi bi-send"></i>
-
-                    Gửi đánh giá
-
-                </button>
-
+          <div class="guest-lookup" *ngIf="pickerStep === 'guest-lookup'">
+            <div class="lookup-field">
+              <label>Mã đơn hàng</label>
+              <input
+                type="text"
+                [(ngModel)]="guestOrderCode"
+                placeholder="Ví dụ: YEN16010"
+                (keyup.enter)="lookupGuestOrder()">
             </div>
 
-        </div>
-
-        <!-- RIGHT -->
-
-        <div>
-
-            <h1>Các đánh giá trước đây</h1>
-
-            <div class="history-card">
-
-                <div class="empty-state">
-
-                    <i class="bi bi-envelope"></i>
-
-                    <span>Không có đánh giá nào</span>
-
-                </div>
-
+            <div class="lookup-field">
+              <label>Số điện thoại người nhận</label>
+              <input
+                type="tel"
+                [(ngModel)]="guestPhone"
+                placeholder="Ví dụ: 0975 378 161"
+                maxlength="12"
+                (input)="onGuestPhoneInput($event)"
+                (keyup.enter)="lookupGuestOrder()">
             </div>
 
-        </div>
+            <button type="button" class="btn-primary-soft" (click)="lookupGuestOrder()" [disabled]="loadingGuestLookup">
+              {{ loadingGuestLookup ? 'Đang kiểm tra...' : 'Kiểm tra đơn hàng' }}
+            </button>
+          </div>
 
+          <div class="order-picker" *ngIf="pickerStep === 'order'">
+            <div class="review-loading" *ngIf="loadingOrders">Đang tải đơn hàng...</div>
+
+            <button
+              type="button"
+              class="order-option"
+              *ngFor="let order of orders"
+              (click)="selectOrder(order)">
+              <span>
+                <strong>{{ order.orderId }}</strong>
+                <small>{{ formatDate(order.createdAt) }} · {{ order.items.length }} sản phẩm</small>
+              </span>
+              <span>{{ formatPrice(order.total) }}</span>
+            </button>
+          </div>
+
+          <div class="product-picker" *ngIf="pickerStep === 'product' && selectedOrder">
+            <div class="selected-order-title">
+              Đơn {{ selectedOrder.orderId }} · {{ formatDate(selectedOrder.createdAt) }}
+            </div>
+
+            <button
+              type="button"
+              class="product-option"
+              *ngFor="let product of selectedOrder.items"
+              [class.is-reviewed]="product.reviewed"
+              (click)="selectProduct(product)">
+              <img [src]="product.image || defaultImage" [alt]="product.productName">
+              <span class="product-option-info">
+                <strong>{{ product.productName }}</strong>
+                <small>x{{ product.quantity }} · {{ formatPrice(product.price) }}</small>
+              </span>
+              <span class="reviewed-badge" *ngIf="product.reviewed">Đã đánh giá</span>
+            </button>
+          </div>
+
+          <p class="picker-error" *ngIf="pickerError">{{ pickerError }}</p>
+        </ng-container>
+
+        <ng-container *ngIf="selectedOrder && selectedProduct && !showPicker">
+          <h3>Đánh giá của bạn</h3>
+
+          <div class="rating-stars">
+            <i
+              class="bi"
+              *ngFor="let star of [1,2,3,4,5]"
+              [class.bi-star-fill]="selectedRating >= star"
+              [class.bi-star]="selectedRating < star"
+              (click)="setRating(star)">
+            </i>
+          </div>
+
+          <p class="rating-note">Cho Tiệm biết bạn đánh giá nhiều sao nhé!</p>
+
+          <h3>Nội dung đánh giá</h3>
+          <textarea
+            rows="6"
+            [(ngModel)]="reviewText"
+            placeholder="Chia sẻ cảm nhận của bạn về sản phẩm của Tiệm Hoa Yên nhé...">
+          </textarea>
+
+          <h3>Thêm hình ảnh</h3>
+
+          <input
+            #reviewImageInput
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            hidden
+            (change)="onReviewImagesSelected($event)">
+
+          <div class="image-upload-row">
+            <div class="image-preview-item" *ngFor="let image of imagePreviewUrls; let i = index">
+              <img [src]="image" [alt]="'Ảnh đánh giá ' + (i + 1)">
+              <button type="button" class="btn-remove-image" (click)="removeReviewImage(i)">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              class="upload-box"
+              [disabled]="selectedFiles.length >= 5 || submitting"
+              [class.is-disabled]="selectedFiles.length >= 5 || submitting"
+              (click)="reviewImageInput.click()">
+              <i class="bi bi-plus-lg"></i>
+              <span>
+                {{ selectedFiles.length > 0 ? selectedFiles.length + '/5 ảnh đã chọn' : 'Thêm ảnh' }}
+              </span>
+            </button>
+          </div>
+
+          <p class="image-note">
+            Tối đa 5 ảnh, mỗi ảnh tối đa 5MB. Hỗ trợ JPG, PNG, WEBP.
+          </p>
+
+          <div class="checkbox-row" (click)="hideReviewer = !hideReviewer">
+            <i
+              class="bi"
+              [class.bi-square]="!hideReviewer"
+              [class.bi-check-square-fill]="hideReviewer">
+            </i>
+            <span>Ẩn thông tin người đánh giá</span>
+          </div>
+
+          <p class="submit-message" *ngIf="submitMessage">{{ submitMessage }}</p>
+
+          <button
+            class="submit-btn"
+            [disabled]="!canSubmit"
+            [class.is-disabled]="!canSubmit"
+            (click)="submitReview()">
+            <i class="bi" [ngClass]="submitting ? 'bi-hourglass-split' : 'bi-send'"></i>
+            {{ submitting ? 'Đang gửi...' : 'Gửi đánh giá' }}
+          </button>
+        </ng-container>
+      </div>
     </div>
+
+    <div>
+      <h1>Các đánh giá trước đây</h1>
+
+      <div class="history-card">
+        <div class="empty-state" *ngIf="!loadingReviews && previousReviews.length === 0">
+          <i class="bi bi-envelope"></i>
+          <span>Không có đánh giá nào</span>
+        </div>
+
+        <div class="review-loading" *ngIf="loadingReviews">
+          Đang tải đánh giá...
+        </div>
+
+        <div class="history-list" *ngIf="!loadingReviews && previousReviews.length > 0">
+          <div class="history-item" *ngFor="let item of previousReviews">
+            <div class="history-head">
+              <strong>{{ item.customerName || 'Khách hàng ẩn danh' }}</strong>
+              <span>{{ formatDate(item.createdAt) }}</span>
+            </div>
+
+            <div class="history-stars">
+              <i
+                class="bi"
+                *ngFor="let star of [1,2,3,4,5]"
+                [class.bi-star-fill]="item.rating >= star"
+                [class.bi-star]="item.rating < star">
+              </i>
+            </div>
+
+            <p>{{ item.content }}</p>
+
+            <div class="history-images" *ngIf="item.images && item.images.length > 0">
+              <img
+                *ngFor="let image of item.images"
+                [src]="image"
+                alt="Ảnh đánh giá">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
 </div>

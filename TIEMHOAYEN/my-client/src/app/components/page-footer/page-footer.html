@@ -13,75 +13,36 @@
 
         <!-- Cột 1 -->
         <div class="footer-column">
-
             <h3>Về Tiệm Hoa Yên</h3>
-
-            <a routerLink="/gioi-thieu">
-                Giới thiệu
-            </a>
-
-            <a routerLink="/danh-gia">
-                Đánh giá
-            </a>
-
-            <a routerLink="/blog">
-                Blog
-            </a>
-
-            <a routerLink="/lien-he">
-                Liên hệ
-            </a>
+            <a (click)="navigate('/about-us')">Giới thiệu</a>
+            <a (click)="navigate('/order-review')">Đánh giá</a>
+            <a (click)="navigate('/blog')">Blog</a>
+            <a (click)="navigate('/contact')">Liên hệ</a>
 
         </div>
 
-        <!-- Cột 2 -->
         <div class="footer-column">
 
             <h3>Chính sách</h3>
 
-            <a routerLink="/bao-mat">
-                Chính sách bảo mật
-            </a>
-
-            <a routerLink="/giao-nhan">
-                Chính sách giao nhận
-            </a>
-
-            <a routerLink="/thanh-toan">
-                Chính sách thanh toán
-            </a>
-
-            <a routerLink="/doi-tra">
-                Chính sách đổi trả & hoàn tiền
-            </a>
-
-            <a routerLink="/faq">
-                Câu hỏi thường gặp
-            </a>
-
-            <a routerLink="/dat-hang">
-                Chính sách đặt hàng
-            </a>
-
-            <a routerLink="/thanh-vien">
-                Chính sách thành viên
-            </a>
-            <a routerLink="/">
-                Chính sách chăm sóc khách hàng
+            <a (click)="navigate('/privacy-policy')">Chính sách bảo mật</a>
+            <a (click)="navigate('/delivery-policy')">Chính sách giao nhận</a>
+            <a (click)="navigate('/payment-policy')">Chính sách thanh toán</a>
+            <a (click)="navigate('/return-policy')">Chính sách đổi trả & hoàn tiền</a>
+            <a (click)="navigate('/order-policy')">Chính sách đặt hàng</a>
+            <a (click)="navigate('/membership-policy')">Chính sách thành viên</a>
+            <a (click)="navigate('/customer-support-policy')">
+            Chính sách chăm sóc khách hàng
             </a>
 
         </div>
 
-        <!-- Cột 3 -->
         <div class="footer-column contact">
-
             <h3>Liên hệ</h3>
-
             <p>
                 <i class="bi bi-telephone"></i>
                 Hotline: 0909 477 488
             </p>
-
             <p>
                 <i class="bi bi-envelope"></i>
                 Email: tiemhoayen@gmail.com
@@ -94,25 +55,18 @@
             </p>
 
             <div class="socials">
-
                 <a href="#">
                     <i class="bi bi-facebook"></i>
                 </a>
-
                 <a href="#">
                     <i class="bi bi-instagram"></i>
                 </a>
 
             </div>
-
         </div>
-
     </div>
-
     <div class="footer-bottom">
-
         © 2025 Tiệm Hoa Yên. All rights reserved.
-
     </div>
 
 </footer>

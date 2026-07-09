@@ -1,0 +1,809 @@
+<div class="order-registrant-page">
+  <div class="order-registrant-container">
+
+    <!-- ==================== CỘT TRÁI: FORM ==================== -->
+    <div class="or-left">
+      <h2 class="or-main-title">Thông tin đặt hàng</h2>
+
+      <form class="or-form" (ngSubmit)="onSubmit(orForm)" #orForm="ngForm" novalidate>
+
+        <!-- ===== 1 KHUNG TRẮNG DUY NHẤT ===== -->
+        <div class="or-block">
+
+          <h3 class="or-block__title">1. Thông tin người nhận</h3>
+
+          <!-- Họ tên & Điện thoại -->
+          <div class="form-row-2">
+            <div class="form-group">
+              <div class="input-wrapper">
+                <i class="bi bi-person input-icon"></i>
+                <input
+                  type="text"
+                  name="fullName"
+                  class="form-input"
+                  placeholder="Họ tên"
+                  [(ngModel)]="formData.fullName"
+                  #fullName="ngModel"
+                  required>
+              </div>
+
+              <span class="error-msg" *ngIf="fullName.invalid && (fullName.touched || orForm.submitted)">
+                Vui lòng nhập họ tên.
+              </span>
+            </div>
+
+            <div class="form-group">
+              <div class="input-wrapper">
+                <i class="bi bi-telephone input-icon"></i>
+                <input
+                  type="tel"
+                  name="phone"
+                  class="form-input"
+                  [class.is-invalid]="phone.invalid && (phone.touched || orForm.submitted)"
+                  placeholder="Điện thoại"
+                  [(ngModel)]="formData.phone"
+                  (input)="onPhoneInput($event)"
+                  #phone="ngModel"
+                  required
+                  pattern="^0[0-9]{3} [0-9]{3} [0-9]{3}$|^0[0-9]{9}$"
+                  maxlength="12">
+              </div>
+
+              <span class="error-msg" *ngIf="phone.invalid && (phone.touched || orForm.submitted)">
+                <ng-container *ngIf="phone.errors?.['required']">
+                  Vui lòng nhập số điện thoại.
+                </ng-container>
+
+                <ng-container *ngIf="phone.errors?.['pattern']">
+                  Số điện thoại không hợp lệ.
+                </ng-container>
+              </span>
+            </div>
+          </div>
+
+          <!-- Địa chỉ dropdown -->
+          <div class="form-group form-group--address">
+            <div class="input-wrapper address-trigger" (click)="toggleAddressDropdown()">
+              <i class="bi bi-geo-alt input-icon"></i>
+
+              <input
+                type="text"
+                name="address"
+                class="form-input"
+                placeholder="Địa chỉ"
+                [value]="selectedAddress?.fullAddress || formData.address || ''"
+                readonly>
+
+              <i
+                class="bi bi-chevron-down input-icon-right"
+                [class.rotated]="showAddressDropdown">
+              </i>
+            </div>
+
+            <!-- Dropdown địa chỉ -->
+            <div
+              class="address-dropdown"
+              *ngIf="showAddressDropdown"
+              (click)="$event.stopPropagation()">
+
+              <button
+                type="button"
+                class="btn-add-address"
+                (click)="openAddAddressModal()">
+                <i class="bi bi-plus-lg"></i>
+                Thêm địa chỉ
+              </button>
+
+              <div
+                class="address-item"
+                *ngFor="let addr of savedAddresses"
+                [class.is-selected]="selectedAddress?.id === addr.id"
+                (click)="selectAddress(addr)">
+
+                <div class="address-item__radio">
+                  <span
+                    class="radio-dot"
+                    [class.active]="selectedAddress?.id === addr.id">
+                  </span>
+                </div>
+
+                <div class="address-item__info">
+                  <span class="address-item__name">Người nhận: {{ addr.name }}</span>
+                  <span class="address-item__phone">Số điện thoại: {{ addr.phone }}</span>
+                  <span class="address-item__addr">Địa chỉ: {{ addr.fullAddress }}</span>
+                </div>
+
+                <div class="address-item__actions">
+                  <span class="address-badge" *ngIf="addr.isDefault">Mặc định</span>
+
+                  <button
+                    type="button"
+                    class="btn-addr-action"
+                    (click)="editAddress(addr, $event)">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+
+                  <button
+                    type="button"
+                    class="btn-addr-action btn-addr-delete"
+                    (click)="deleteAddress(addr, $event)">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hình thức giao hàng -->
+          <div class="shipping-method-block">
+            <p class="section-label">Hình thức giao hàng</p>
+
+            <div class="shipping-methods">
+              <label
+                class="shipping-option"
+                *ngFor="let method of shippingMethods"
+                [class.is-selected]="formData.shippingMethod === method.value">
+
+                <input
+                  type="radio"
+                  name="shippingMethod"
+                  [value]="method.value"
+                  [(ngModel)]="formData.shippingMethod"
+                  (ngModelChange)="onShippingMethodChange()">
+
+                <i
+                  class="bi shipping-icon"
+                  [ngClass]="method.value === 'fast' ? 'bi-lightning-charge' : 'bi-truck'">
+                </i>
+
+                <span class="shipping-option__content">
+                  <span class="shipping-option__title">{{ method.label }}</span>
+                  <span class="shipping-option__desc">{{ method.desc }}</span>
+                </span>
+              </label>
+            </div>
+
+            <p class="shipping-estimate">
+              Thời gian dự kiến: {{ shippingTimeEstimate }}
+            </p>
+          </div>
+
+          <h3 class="or-block__title or-block__title--spaced">2. Thời gian giao hàng</h3>
+
+          <!-- Ngày giao & Thời gian giao -->
+          <div class="form-row-2">
+            <div class="form-group">
+              <div class="date-input-wrap">
+                <input
+                  type="text"
+                  name="deliveryDate"
+                  class="form-input"
+                  [(ngModel)]="formData.deliveryDate"
+                  (ngModelChange)="onDeliveryDateChange()"
+                  placeholder="DD/MM/YYYY"
+                  pattern="^$|^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/[0-9]{4}$"
+                  required
+                  #deliveryDate="ngModel"
+                  [class.is-invalid]="(deliveryDate.invalid && (deliveryDate.touched || orForm.submitted)) || deliveryScheduleError">
+
+                <button
+                  type="button"
+                  class="date-picker-btn"
+                  (click)="deliveryDatePicker.showPicker()">
+                  <i class="bi bi-calendar3"></i>
+                </button>
+
+                <input
+                  #deliveryDatePicker
+                  type="date"
+                  class="date-picker-hidden"
+                  [min]="minDeliveryIsoDate"
+                  [value]="toIsoDate(formData.deliveryDate)"
+                  (change)="onDeliveryDatePicked($event)">
+              </div>
+
+              <span class="error-msg" *ngIf="deliveryDate.invalid && (deliveryDate.touched || orForm.submitted)">
+                <ng-container *ngIf="deliveryDate.errors?.['required']">
+                  Vui lòng nhập ngày giao hàng.
+                </ng-container>
+
+                <ng-container *ngIf="deliveryDate.errors?.['pattern']">
+                  Ngày giao không hợp lệ.
+                </ng-container>
+              </span>
+            </div>
+
+            <div class="form-group">
+              <div class="time-input-wrap">
+                <input
+                  type="text"
+                  name="deliveryTime"
+                  class="form-input"
+                  [(ngModel)]="formData.deliveryTime"
+                  (ngModelChange)="validateDeliverySchedule()"
+                  placeholder="HH:MM"
+                  pattern="^$|^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                  required
+                  #deliveryTime="ngModel"
+                  [class.is-invalid]="(deliveryTime.invalid && (deliveryTime.touched || orForm.submitted)) || deliveryScheduleError">
+
+                <button
+                  type="button"
+                  class="time-picker-btn"
+                  (click)="deliveryTimePicker.showPicker()">
+                  <i class="bi bi-clock"></i>
+                </button>
+
+                <input
+                  #deliveryTimePicker
+                  type="time"
+                  class="time-picker-hidden"
+                  [value]="formData.deliveryTime"
+                  (change)="onDeliveryTimePicked($event)">
+              </div>
+
+              <span class="error-msg" *ngIf="deliveryTime.invalid && (deliveryTime.touched || orForm.submitted)">
+                <ng-container *ngIf="deliveryTime.errors?.['required']">
+                  Vui lòng nhập giờ giao hàng.
+                </ng-container>
+
+                <ng-container *ngIf="deliveryTime.errors?.['pattern']">
+                  Giờ giao không hợp lệ.
+                </ng-container>
+              </span>
+            </div>
+          </div>
+
+          <span class="error-msg delivery-schedule-error" *ngIf="deliveryScheduleError">
+            {{ deliveryScheduleError }}
+          </span>
+
+          <h3 class="or-block__title or-block__title--spaced">3. Lời nhắn cho người nhận</h3>
+
+          <!-- Lời nhắn người nhận -->
+          <textarea
+            name="noteReceiver"
+            class="form-textarea"
+            placeholder="Lời nhắn cho người nhận"
+            [(ngModel)]="formData.noteReceiver"
+            rows="3">
+          </textarea>
+
+          <h3 class="or-block__title or-block__title--spaced">4. Lời nhắn cho shop</h3>
+
+          <!-- Lời nhắn shop -->
+          <textarea
+            name="noteShop"
+            class="form-textarea"
+            placeholder="Lời nhắn cho shop"
+            [(ngModel)]="formData.noteShop"
+            rows="3">
+          </textarea>
+
+          <!-- ===== TÙY CHỌN THÊM ===== -->
+          <div class="extra-options extra-options--spaced">
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="hideSender"
+                [(ngModel)]="formData.hideSender">
+              <span>Ẩn thông tin người gửi</span>
+            </label>
+
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="requestVAT"
+                [(ngModel)]="formData.requestVAT">
+              <span>Yêu cầu hóa đơn VAT</span>
+            </label>
+
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="sendZaloPhoto"
+                [(ngModel)]="formData.sendZaloPhoto">
+              <span>Gửi ảnh hoàn thành qua zalo</span>
+            </label>
+          </div>
+
+          <!-- ===== VOUCHER ===== -->
+          <div class="voucher-section voucher-section--spaced">
+            <div class="voucher-left">
+              <p class="section-label">Voucher</p>
+
+              <div class="voucher-input-row">
+                <input
+                  type="text"
+                  name="voucherCode"
+                  class="form-input voucher-input"
+                  placeholder="Nhập mã voucher"
+                  [(ngModel)]="formData.voucherCode"
+                  (ngModelChange)="onVoucherCodeChange()">
+
+                <button
+                  type="button"
+                  class="btn-apply-voucher"
+                  [class.is-active]="formData.voucherCode"
+                  (click)="applyVoucher()">
+                  Áp dụng
+                </button>
+              </div>
+
+              <span class="error-msg voucher-error" *ngIf="voucherError">
+                {{ voucherError }}
+              </span>
+            </div>
+
+            <div class="voucher-right">
+              <p class="section-label">Chọn Voucher có sẵn</p>
+
+              <div class="voucher-select-wrapper" (click)="toggleVoucherDropdown()">
+                <span class="voucher-select-text">
+                  {{ selectedVoucher ? selectedVoucher.code : 'Chọn voucher' }}
+                </span>
+
+                <i
+                  class="bi bi-chevron-down"
+                  [class.rotated]="showVoucherDropdown">
+                </i>
+
+                <!-- Dropdown voucher -->
+                <div
+                  class="voucher-dropdown"
+                  *ngIf="showVoucherDropdown"
+                  (click)="$event.stopPropagation()">
+
+                  <div
+                    class="voucher-item"
+                    *ngFor="let v of availableVouchers"
+                    (click)="selectVoucher(v)">
+
+                    <div class="voucher-item__badge">{{ v.code }}</div>
+
+                    <div class="voucher-item__info">
+                      <span class="voucher-item__title">{{ v.title }}</span>
+                      <span class="voucher-item__desc">{{ v.desc }}</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      class="btn-use-voucher"
+                      [class.is-used]="selectedVoucher?.code === v.code">
+                      {{ selectedVoucher?.code === v.code ? 'Đang dùng' : 'Sử dụng' }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== ĐIỂM THƯỞNG ===== -->
+          <div
+            class="loyalty-row loyalty-row--spaced"
+            *ngIf="maxLoyaltyPoints > 0; else noLoyaltyPoints">
+
+            <span class="section-label loyalty-label">
+              Sử dụng {{ maxLoyaltyPoints }} điểm thưởng
+            </span>
+
+            <button
+              type="button"
+              class="loyalty-toggle"
+              role="switch"
+              [attr.aria-checked]="useLoyaltyPoints"
+              [class.is-on]="useLoyaltyPoints"
+              (click)="toggleLoyaltyPoints()">
+              <span class="loyalty-toggle__knob"></span>
+            </button>
+          </div>
+
+          <ng-template #noLoyaltyPoints>
+            <div class="loyalty-row loyalty-row--spaced loyalty-row--empty">
+              <i class="bi bi-info-circle"></i>
+              <span class="loyalty-empty-text">Bạn không có điểm thưởng để sử dụng</span>
+            </div>
+          </ng-template>
+
+          <!-- ===== PHƯƠNG THỨC THANH TOÁN ===== -->
+          <div class="payment-block">
+            <p class="section-label">Phương thức thanh toán</p>
+
+            <div class="payment-methods">
+              <label
+                class="payment-option"
+                *ngFor="let method of paymentMethods"
+                [class.is-selected]="formData.paymentMethod === method.value"
+                (click)="selectPaymentMethod(method.value)">
+
+                <input
+                  type="radio"
+                  name="paymentMethod"
+                  [value]="method.value"
+                  [(ngModel)]="formData.paymentMethod"
+                  (ngModelChange)="onPaymentMethodChange($event)">
+
+                <img
+                  *ngIf="method.logo"
+                  [src]="method.logo"
+                  [alt]="method.label"
+                  class="payment-logo">
+
+                <i
+                  *ngIf="!method.logo"
+                  class="bi {{ method.icon }} payment-icon">
+                </i>
+
+                <span>{{ method.label }}</span>
+              </label>
+            </div>
+
+            <p class="payment-card-error" *ngIf="paymentCardError">
+              {{ paymentCardError }}
+            </p>
+          </div>
+
+        </div>
+        <!-- ===== KẾT THÚC KHUNG TRẮNG ===== -->
+
+      </form>
+    </div>
+
+    <!-- ==================== CỘT PHẢI: ĐƠN HÀNG ==================== -->
+    <div class="or-right">
+      <h2 class="or-main-title">Thông tin đơn hàng</h2>
+
+      <div class="or-summary">
+        <!-- Danh sách sản phẩm -->
+        <div class="or-items">
+          <div class="or-empty" *ngIf="orderItems.length === 0">
+            Chưa có sản phẩm nào được chọn từ giỏ hàng.
+          </div>
+
+          <div class="or-item" *ngFor="let item of orderItems">
+            <img
+              [src]="item.image"
+              [alt]="item.name"
+              class="or-item__img">
+
+            <div class="or-item__info">
+              <span class="or-item__name">{{ item.name }}</span>
+              <span class="or-item__qty">x{{ item.qty }}</span>
+            </div>
+
+            <span class="or-item__price">
+              {{ item.price | number:'1.0-0' }}đ
+            </span>
+          </div>
+        </div>
+
+        <div class="or-divider"></div>
+
+        <!-- Tổng tiền -->
+        <div class="or-pricing">
+          <div class="pricing-row">
+            <span>Tạm tính:</span>
+            <span class="pricing-value">{{ subtotal | number:'1.0-0' }}đ</span>
+          </div>
+
+          <div class="pricing-row">
+            <span>Hình thức giao hàng:</span>
+            <span class="pricing-value">{{ shippingMethodName }}</span>
+          </div>
+
+          <div class="pricing-row">
+            <span>Phí ship:</span>
+            <span class="pricing-value">{{ shippingFee | number:'1.0-0' }}đ</span>
+          </div>
+
+          <div class="pricing-row" *ngIf="productVoucherDiscount > 0">
+            <span>Voucher sản phẩm:</span>
+            <span class="discount-value">
+              -{{ productVoucherDiscount | number:'1.0-0' }}đ
+            </span>
+          </div>
+
+          <div class="pricing-row" *ngIf="shippingVoucherDiscount > 0">
+            <span>Voucher phí ship:</span>
+            <span class="discount-value">
+              -{{ shippingVoucherDiscount | number:'1.0-0' }}đ
+            </span>
+          </div>
+
+          <div class="pricing-row" *ngIf="loyaltyDiscount > 0">
+            <span>Điểm thưởng:</span>
+            <span class="discount-value">
+              -{{ loyaltyDiscount | number:'1.0-0' }}đ
+            </span>
+          </div>
+        </div>
+
+        <div class="or-divider"></div>
+
+        <div class="pricing-row pricing-total">
+          <span>Tổng cộng</span>
+
+          <div class="total-block">
+            <span class="total-amount">{{ total | number:'1.0-0' }}đ</span>
+            <span class="total-vat">(Đã bao gồm VAT)</span>
+          </div>
+        </div>
+
+        <div class="or-divider" *ngIf="showDepositPolicy"></div>
+
+        <div class="or-pricing" *ngIf="showDepositPolicy">
+          <div class="pricing-row pricing-row--policy">
+            <span>Chính sách thanh toán:</span>
+            <span class="pricing-value">{{ currentPaymentPolicy?.note }}</span>
+          </div>
+
+          <div class="pricing-row" *ngIf="depositAmount > 0">
+            <span>Tiền cọc:</span>
+            <span class="pricing-value">{{ depositAmount | number:'1.0-0' }}đ</span>
+          </div>
+
+          <div class="pricing-row" *ngIf="depositAmount > 0">
+            <span>Còn lại:</span>
+            <span class="pricing-value">{{ remainingAmount | number:'1.0-0' }}đ</span>
+          </div>
+        </div>
+
+        <p class="payment-card-error" *ngIf="submitOrderError">
+          {{ submitOrderError }}
+        </p>
+
+        <button
+          type="button"
+          class="btn-order"
+          [class.is-ready]="orForm.valid && !isSubmittingOrder && formData.paymentMethod !== 'card' && !isPaymentMethodDisabled(formData.paymentMethod)"
+          (click)="onSubmit(orForm)">
+          {{ isSubmittingOrder ? 'Đang thanh toán...' : 'Thanh toán' }}
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== MODAL THÊM/SỬA ĐỊA CHỈ ===== -->
+<div
+  class="modal-overlay"
+  *ngIf="showAddAddressModal"
+  (click)="closeAddAddressModalByOverlay($event)">
+
+  <div class="address-modal-box">
+    <button
+      type="button"
+      class="popup-close"
+      (click)="closeAddAddressModal()">
+      <i class="bi bi-x-lg"></i>
+    </button>
+
+    <h2 class="address-modal-title">{{ addressModalTitle }}</h2>
+
+    <form
+      class="address-modal-form"
+      (ngSubmit)="saveNewAddress(addAddressForm)"
+      #addAddressForm="ngForm"
+      novalidate>
+
+      <div class="address-modal-field">
+        <label class="address-modal-label" for="reg-address-fullName">
+          Họ và tên:
+        </label>
+
+        <div class="address-modal-input-group">
+          <input
+            type="text"
+            id="reg-address-fullName"
+            name="fullName"
+            class="address-modal-input"
+            [(ngModel)]="newAddress.fullName"
+            required
+            minlength="2"
+            #addressFullName="ngModel"
+            [class.is-invalid]="addressFullName.invalid && (addressFullName.touched || addAddressForm.submitted)">
+
+          <span
+            class="error-msg"
+            *ngIf="addressFullName.errors?.['required'] && (addressFullName.touched || addAddressForm.submitted)">
+            Vui lòng nhập họ và tên.
+          </span>
+
+          <span
+            class="error-msg"
+            *ngIf="addressFullName.errors?.['minlength'] && (addressFullName.touched || addAddressForm.submitted)">
+            Vui lòng nhập họ và tên (tối thiểu 2 ký tự).
+          </span>
+        </div>
+      </div>
+
+      <div class="address-modal-field">
+        <label class="address-modal-label" for="reg-address-phone">
+          Số điện thoại:
+        </label>
+
+        <div class="address-modal-input-group">
+          <input
+            type="tel"
+            id="reg-address-phone"
+            name="phone"
+            class="address-modal-input"
+            [(ngModel)]="newAddress.phone"
+            (input)="onNewAddressPhoneInput($event)"
+            required
+            pattern="^0[0-9]{3} [0-9]{3} [0-9]{3}$"
+            #addressPhone="ngModel"
+            [class.is-invalid]="addressPhone.invalid && (addressPhone.touched || addAddressForm.submitted)">
+
+          <span
+            class="error-msg"
+            *ngIf="addressPhone.errors?.['required'] && (addressPhone.touched || addAddressForm.submitted)">
+            Vui lòng nhập số điện thoại.
+          </span>
+
+          <span
+            class="error-msg"
+            *ngIf="addressPhone.errors?.['pattern'] && (addressPhone.touched || addAddressForm.submitted)">
+            Số điện thoại không hợp lệ.
+          </span>
+        </div>
+      </div>
+
+      <div class="address-modal-field">
+        <label class="address-modal-label" for="reg-address-province">
+          Tỉnh:
+        </label>
+
+        <div class="address-modal-input-group">
+          <div class="address-select-wrap">
+            <div class="address-custom-select-wrap">
+              <button
+                type="button"
+                id="reg-address-province"
+                class="address-custom-select"
+                [class.has-value]="newAddress.provinceCode"
+                [class.is-invalid]="!newAddress.provinceCode && addAddressForm.submitted"
+                (click)="toggleAddressFieldDropdown('province', false)">
+                <span>{{ selectedProvinceName || 'Tỉnh/Thành phố' }}</span>
+                <i class="bi bi-chevron-down address-select-icon" *ngIf="!newAddress.provinceCode"></i>
+              </button>
+
+              <div class="address-custom-options" *ngIf="openAddressDropdown === 'province'">
+                <button
+                  type="button"
+                  class="address-custom-option"
+                  *ngFor="let province of provinces"
+                  [class.active]="province.code === newAddress.provinceCode"
+                  (click)="selectProvince(province)">
+                  {{ province.name }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <span class="error-msg" *ngIf="!newAddress.provinceCode && addAddressForm.submitted">
+            Vui lòng chọn tỉnh/thành phố.
+          </span>
+        </div>
+      </div>
+
+      <div class="address-modal-field">
+        <label class="address-modal-label" for="reg-address-district">
+          Quận/huyện:
+        </label>
+
+        <div class="address-modal-input-group">
+          <div class="address-select-wrap">
+            <div class="address-custom-select-wrap">
+              <button
+                type="button"
+                id="reg-address-district"
+                class="address-custom-select"
+                [class.has-value]="newAddress.districtCode"
+                [class.is-invalid]="!newAddress.districtCode && addAddressForm.submitted"
+                (click)="toggleAddressFieldDropdown('district', !newAddress.provinceCode)">
+                <span>{{ selectedDistrictName || 'Quận/Huyện' }}</span>
+                <i class="bi bi-chevron-down address-select-icon" *ngIf="!newAddress.districtCode"></i>
+              </button>
+
+              <div class="address-custom-options" *ngIf="openAddressDropdown === 'district'">
+                <button
+                  type="button"
+                  class="address-custom-option"
+                  *ngFor="let district of availableDistricts"
+                  [class.active]="district.code === newAddress.districtCode"
+                  (click)="selectDistrict(district)">
+                  {{ district.name }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <span class="error-msg" *ngIf="!newAddress.districtCode && addAddressForm.submitted">
+            Vui lòng chọn quận/huyện.
+          </span>
+        </div>
+      </div>
+
+      <div class="address-modal-field">
+        <label class="address-modal-label" for="reg-address-ward">
+          Phường/xã:
+        </label>
+
+        <div class="address-modal-input-group">
+          <div class="address-select-wrap">
+            <div class="address-custom-select-wrap">
+              <button
+                type="button"
+                id="reg-address-ward"
+                class="address-custom-select"
+                [class.has-value]="newAddress.wardCode"
+                [class.is-invalid]="!newAddress.wardCode && addAddressForm.submitted"
+                (click)="toggleAddressFieldDropdown('ward', !newAddress.districtCode)">
+                <span>{{ selectedWardName || 'Phường/Xã' }}</span>
+                <i class="bi bi-chevron-down address-select-icon" *ngIf="!newAddress.wardCode"></i>
+              </button>
+
+              <div class="address-custom-options" *ngIf="openAddressDropdown === 'ward'">
+                <button
+                  type="button"
+                  class="address-custom-option"
+                  *ngFor="let ward of availableWards"
+                  [class.active]="ward.code === newAddress.wardCode"
+                  (click)="selectWard(ward)">
+                  {{ ward.name }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <span class="error-msg" *ngIf="!newAddress.wardCode && addAddressForm.submitted">
+            Vui lòng chọn phường/xã.
+          </span>
+        </div>
+      </div>
+
+      <div class="address-modal-field">
+        <label class="address-modal-label" for="reg-address-detail">
+          Địa chỉ cụ thể:
+        </label>
+
+        <div class="address-modal-input-group">
+          <textarea
+            id="reg-address-detail"
+            name="detail"
+            class="address-modal-input address-detail-textarea"
+            [(ngModel)]="newAddress.detail"
+            required
+            #addressDetail="ngModel"
+            [class.is-invalid]="addressDetail.invalid && (addressDetail.touched || addAddressForm.submitted)">
+          </textarea>
+
+          <span
+            class="error-msg"
+            *ngIf="addressDetail.invalid && (addressDetail.touched || addAddressForm.submitted)">
+            Vui lòng nhập địa chỉ cụ thể.
+          </span>
+        </div>
+      </div>
+
+      <div class="address-modal-field address-default-field">
+        <div></div>
+
+        <label class="address-default-check">
+          <input
+            type="checkbox"
+            name="isDefault"
+            [(ngModel)]="newAddress.isDefault">
+          <span>Địa chỉ mặc định</span>
+        </label>
+      </div>
+
+      <button type="submit" class="address-modal-save">
+        Lưu
+      </button>
+
+    </form>
+  </div>
+</div>

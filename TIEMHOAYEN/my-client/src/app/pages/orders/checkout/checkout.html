@@ -1,0 +1,377 @@
+<section class="checkout-page" *ngIf="order as order">
+  <div
+    class="checkout-toast"
+    [class.checkout-toast--success]="isPaymentSuccess"
+    [class.checkout-toast--failed]="isPaymentFailed"
+  >
+    <div class="checkout-toast__icon">
+      <i class="bi" [ngClass]="isPaymentFailed ? 'bi-x-lg' : 'bi-check-lg'"></i>
+    </div>
+
+    <div class="checkout-toast__content">
+      <strong>{{ isPaymentSuccess ? 'Thanh toán thành công' : isPaymentFailed ? 'Thanh toán thất bại' : 'Xác nhận thanh toán' }}</strong>
+      <span *ngIf="!isPaymentSuccess && !isPaymentFailed">
+        Vui lòng kiểm tra lại thông tin đơn hàng trước khi thanh toán.
+      </span>
+
+      <span *ngIf="isPaymentSuccess">
+        Đơn hàng đã chuyển sang trạng thái chờ xử lý.
+      </span>
+
+      <span *ngIf="isPaymentFailed">
+        Đơn hàng đã hết thời gian thanh toán hoặc thanh toán thất bại.
+      </span>
+    </div>
+  </div>
+
+  <div class="checkout-body">
+    <div class="checkout-left">
+      <!-- Thông tin người nhận -->
+      <div class="checkout-card">
+        <div class="checkout-card__header">
+          <i class="bi bi-person"></i>
+          <span>Thông tin người nhận</span>
+        </div>
+
+        <div class="checkout-card__body">
+          <div class="info-grid info-grid--receiver">
+            <div class="info-item">
+              <span class="info-label">Họ tên:</span>
+              <span class="info-value">{{ order.receiver.name }}</span>
+            </div>
+
+            <div class="info-item info-item--full">
+              <span class="info-label">Địa chỉ:</span>
+              <span class="info-value">{{ order.receiver.address }}</span>
+            </div>
+
+            <div class="info-item">
+              <span class="info-label">Số điện thoại:</span>
+              <span class="info-value">{{ order.receiver.phone }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Thông tin người gửi -->
+      <div class="checkout-card">
+        <div class="checkout-card__header">
+          <i class="bi bi-person"></i>
+          <span>Thông tin người gửi</span>
+        </div>
+
+        <div class="checkout-card__body">
+          <ng-container *ngIf="!order.flags.hideSender; else hiddenSender">
+            <div class="info-grid info-grid--sender">
+              <div class="info-item">
+                <span class="info-label">Họ tên:</span>
+                <span class="info-value">{{ order.sender.name }}</span>
+              </div>
+
+              <div class="info-item">
+                <span class="info-label">Số điện thoại:</span>
+                <span class="info-value">{{ order.sender.phone }}</span>
+              </div>
+
+              <div class="info-item">
+                <span class="info-label">Email:</span>
+                <span class="info-value" [class.info-value--empty]="!order.sender.email">
+                  {{ order.sender.email || 'Không có' }}
+                </span>
+              </div>
+            </div>
+          </ng-container>
+
+          <ng-template #hiddenSender>
+            <div class="info-item info-item--full">
+              <span class="info-label">Người gửi:</span>
+              <span class="info-value info-value--accent">Ẩn thông tin người gửi</span>
+            </div>
+          </ng-template>
+        </div>
+      </div>
+
+      <!-- Thời gian giao hàng -->
+      <div class="checkout-card">
+        <div class="checkout-card__header">
+          <i class="bi bi-calendar3"></i>
+          <span>Thời gian giao hàng</span>
+        </div>
+
+        <div class="checkout-card__body">
+          <div class="info-grid info-grid--delivery">
+            <div class="info-item">
+              <span class="info-label">Ngày giao:</span>
+              <span class="info-value" [class.info-value--empty]="!order.delivery.date">
+                {{ order.delivery.date || 'Chưa chọn' }}
+              </span>
+            </div>
+
+            <div class="info-item">
+              <span class="info-label">Giờ giao:</span>
+              <span class="info-value" [class.info-value--empty]="!order.delivery.time">
+                {{ order.delivery.time || 'Chưa chọn' }}
+              </span>
+            </div>
+
+            <div class="info-item info-item--full">
+              <span class="info-label">Lời nhắn cho người nhận:</span>
+              <span class="info-value info-value--accent">
+                {{ order.delivery.message || 'Không có' }}
+              </span>
+            </div>
+
+            <div class="info-item info-item--full">
+              <span class="info-label">Lời nhắn cho shop:</span>
+              <span class="info-value" [class.info-value--empty]="!order.delivery.noteShop">
+                {{ order.delivery.noteShop || 'Không có' }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sản phẩm -->
+      <div class="checkout-card">
+        <div class="checkout-card__header">
+          <i class="bi bi-bag"></i>
+          <span>Sản phẩm</span>
+        </div>
+
+        <div class="checkout-card__body">
+          <div class="product-list">
+            <div class="product-item" *ngFor="let item of order.products">
+              <img [src]="item.image" [alt]="item.name" class="product-item__img" />
+
+              <div class="product-item__info">
+                <span class="product-item__name">{{ item.name }}</span>
+                <span class="product-item__qty">x{{ item.qty }}</span>
+              </div>
+
+              <span class="product-item__price">{{ item.price | number:'1.0-0' }}đ</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cột phải -->
+    <div class="checkout-right">
+      <div class="checkout-card checkout-payment">
+        <div class="checkout-card__header checkout-card__header--payment">
+          <div class="payment-title">
+            <i class="bi bi-credit-card"></i>
+            <span>Thanh toán đơn hàng</span>
+          </div>
+
+          <strong
+            class="payment-countdown"
+            [class.is-danger]="remainingSeconds <= 60 && !isPaymentSuccess && !isPaymentFailed"
+            [class.is-success]="isPaymentSuccess"
+            [class.is-failed]="isPaymentFailed"
+          >
+            {{ isPaymentSuccess ? 'OK' : isPaymentFailed ? 'Hết hạn' : formattedCountdown }}
+          </strong>
+        </div>
+
+        <div class="payment-method-summary">
+          <span>Phương thức:</span>
+          <strong>{{ order.payment.methodName }}</strong>
+        </div>
+
+        <div class="payment-amount-box">
+          <span *ngIf="isCodPayment">Số tiền cần thanh toán trước:</span>
+          <span *ngIf="!isCodPayment">Số tiền cần thanh toán:</span>
+          <strong>{{ order.payment.amountToPay | number:'1.0-0' }}đ</strong>
+        </div>
+
+        <div
+          class="payment-qr"
+          *ngIf="!isPaymentSuccess && !isPaymentFailed && (isOnlinePayment || order.payment.amountToPay > 0)"
+        >
+          <p class="payment-qr__label">Quét mã để thanh toán</p>
+          <img
+            src="assets/images/checkout-qrcode.png"
+            alt="QR thanh toán"
+            class="payment-qr__img"
+          />
+        </div>
+
+        <div
+          class="payment-bank"
+          *ngIf="!isPaymentSuccess && !isPaymentFailed && (isOnlinePayment || order.payment.amountToPay > 0)"
+        >
+          <p class="payment-bank__title">THÔNG TIN CHUYỂN KHOẢN</p>
+
+          <div class="payment-bank__row">
+            <span class="payment-bank__label">Ngân hàng:</span>
+            <span class="payment-bank__value">{{ order.payment.bank }}</span>
+          </div>
+
+          <div class="payment-bank__row">
+            <span class="payment-bank__label">Số tài khoản:</span>
+            <span class="payment-bank__value">{{ order.payment.accountNumber }}</span>
+          </div>
+
+          <div class="payment-bank__row">
+            <span class="payment-bank__label">Chủ tài khoản:</span>
+            <span class="payment-bank__value payment-bank__value--bold">
+              {{ order.payment.accountName }}
+            </span>
+          </div>
+
+          <div class="payment-bank__row">
+            <span class="payment-bank__label">Nội dung CK:</span>
+            <span class="payment-bank__value payment-bank__value--bold">
+              {{ order.payment.content }}
+            </span>
+          </div>
+        </div>
+
+        <div class="payment-state-box payment-state-box--success" *ngIf="isPaymentSuccess">
+          Thanh toán thành công. Hệ thống đang chuyển sang trang hoàn tất đơn hàng.
+        </div>
+
+        <div class="payment-state-box payment-state-box--failed" *ngIf="isPaymentFailed">
+          Đơn hàng đã hết thời gian thanh toán hoặc thanh toán thất bại.
+        </div>
+
+        <div class="payment-guarantees">
+          <div class="payment-guarantee">
+            <i class="bi bi-shield-check"></i>
+            <span>COD chỉ cần thanh toán tiền cọc nếu đơn hàng có yêu cầu cọc.</span>
+          </div>
+
+          <div class="payment-guarantee">
+            <i class="bi bi-shield-check"></i>
+            <span>Momo, VNPay và chuyển khoản thanh toán toàn bộ tổng đơn hàng.</span>
+          </div>
+
+          <div class="payment-guarantee">
+            <i class="bi bi-shield-check"></i>
+            <span>Sản phẩm trong giỏ hàng chỉ được xóa sau khi thanh toán thành công.</span>
+          </div>
+        </div>
+
+        <div class="payment-summary">
+          <div class="payment-summary__row">
+            <span>Tạm tính:</span>
+            <span>{{ order.summary.subtotal | number:'1.0-0' }}đ</span>
+          </div>
+
+          <div class="payment-summary__row">
+            <span>Phí ship gốc:</span>
+            <span>{{ order.summary.baseShippingFee | number:'1.0-0' }}đ</span>
+          </div>
+
+          <div class="payment-summary__row" *ngIf="order.summary.shippingVoucherDiscount > 0">
+            <span>Voucher phí ship:</span>
+            <span class="text-danger">
+              -{{ order.summary.shippingVoucherDiscount | number:'1.0-0' }}đ
+            </span>
+          </div>
+
+          <div class="payment-summary__row">
+            <span>Phí ship còn lại:</span>
+            <span>{{ order.summary.shipping | number:'1.0-0' }}đ</span>
+          </div>
+
+          <div class="payment-summary__row" *ngIf="order.summary.productVoucherDiscount > 0">
+            <span>Voucher sản phẩm:</span>
+            <span class="text-danger">
+              -{{ order.summary.productVoucherDiscount | number:'1.0-0' }}đ
+            </span>
+          </div>
+
+          <div class="payment-summary__row" *ngIf="order.summary.loyaltyDiscount > 0">
+            <span>Điểm thưởng:</span>
+            <span class="text-danger">
+              -{{ order.summary.loyaltyDiscount | number:'1.0-0' }}đ
+            </span>
+          </div>
+
+          <div class="payment-summary__row" *ngIf="isCodPayment && order.summary.depositAmount > 0">
+            <span>Tiền cọc:</span>
+            <span>{{ order.summary.depositAmount | number:'1.0-0' }}đ</span>
+          </div>
+
+          <div class="payment-summary__row" *ngIf="isCodPayment && order.summary.remainingAmount > 0">
+            <span>Còn lại khi nhận hàng:</span>
+            <span>{{ order.summary.remainingAmount | number:'1.0-0' }}đ</span>
+          </div>
+
+          <div class="payment-summary__total">
+            <span>Tổng cộng:</span>
+
+            <div class="payment-summary__total-right">
+              <span class="payment-summary__total-price">
+                {{ order.summary.total | number:'1.0-0' }}đ
+              </span>
+              <small class="payment-summary__vat">
+                {{ order.flags.requestVAT ? 'Có xuất hóa đơn VAT' : 'Chưa gồm VAT bổ sung' }}
+              </small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="checkout-result-overlay"
+    *ngIf="isPaymentSuccess || isPaymentFailed"
+    role="dialog"
+    aria-modal="true"
+    (click)="closeCheckoutResultPopup()">
+    <div class="checkout-result-box" (click)="$event.stopPropagation()">
+      <button
+        type="button"
+        class="checkout-result-close"
+        (click)="closeCheckoutResultPopup()">
+        <i class="bi bi-x-lg"></i>
+      </button>
+
+      <div
+        class="checkout-result-icon"
+        [class.checkout-result-icon--failed]="isPaymentFailed">
+        <i class="bi" [ngClass]="isPaymentFailed ? 'bi-x-lg' : 'bi-check-lg'"></i>
+      </div>
+
+      <p class="checkout-result-message">
+        {{ isPaymentSuccess ? 'Thanh toán thành công' : 'Thanh toán thất bại' }}
+      </p>
+
+      <p class="checkout-result-sub-message" *ngIf="isPaymentFailed">
+        Đơn hàng đã hết thời gian thanh toán hoặc thanh toán thất bại.
+      </p>
+
+      <p class="checkout-result-error" *ngIf="checkoutResultError">
+        {{ checkoutResultError }}
+      </p>
+
+      <div class="checkout-result-actions" *ngIf="isPaymentSuccess">
+        <button type="button" class="checkout-result-action" (click)="viewOrderDetail()">
+          Xem đơn hàng
+        </button>
+
+        <button type="button" class="checkout-result-action" (click)="continueShopping()">
+          Tiếp tục mua sắm
+        </button>
+      </div>
+
+      <div class="checkout-result-actions" *ngIf="isPaymentFailed">
+        <button
+          type="button"
+          class="checkout-result-action"
+          [disabled]="isRetryingPayment"
+          (click)="retryPayment()">
+          {{ isRetryingPayment ? 'Đang tạo mã...' : 'Thử lại' }}
+        </button>
+
+        <button type="button" class="checkout-result-action" (click)="continueShopping()">
+          Tiếp tục mua sắm
+        </button>
+      </div>
+    </div>
+  </div>
+</section>

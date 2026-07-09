@@ -1,25 +1,33 @@
 <div class="product-detail-page">
 
+    <nav class="product-breadcrumb" *ngIf="product.name" aria-label="Breadcrumb">
+        <span>{{ breadcrumbGroupLabel }}</span>
+
+        <i class="product-breadcrumb__separator bi bi-chevron-right" aria-hidden="true"></i>
+
+        <span>{{ product.name }}</span>
+    </nav>
+
     <!-- PRODUCT MAIN -->
-    <section class="product-section">
+    <section class="product-section" *ngIf="!isLoading || product.name">
         <div class="product-container">
 
             <!-- LEFT: PRODUCT IMAGE -->
             <div class="product-images">
-                <img class="main-image" [src]="product.image" [alt]="product.name">
+                <img
+                    class="main-image"
+                    [src]="selectedImage || product.image"
+                    [alt]="product.name">
 
-                <div class="thumbnail-list">
-                    <img
-                        class="thumbnail active"
-                        [src]="product.image"
-                        [alt]="product.name"
-                    >
-
-                    <img
-                        class="thumbnail"
-                        [src]="product.image"
-                        [alt]="product.name"
-                    >
+                <div class="thumbnail-list" *ngIf="product.images.length > 0">
+                    @for(image of product.images; track image) {
+                        <img
+                            class="thumbnail"
+                            [class.active]="(selectedImage || product.image) === image"
+                            [src]="image"
+                            [alt]="product.name"
+                            (click)="selectImage(image)">
+                    }
                 </div>
             </div>
 
@@ -30,8 +38,14 @@
                 <p class="sku">SKU: {{ product.sku }}</p>
 
                 <div class="rating-row">
-                    <span class="stars">★★★★★</span>
-                    <span>{{ product.rating }}</span>
+                    <span class="stars dynamic-stars" aria-label="Điểm đánh giá">
+                        <i
+                            class="bi"
+                            *ngFor="let star of stars"
+                            [ngClass]="getStarIcon(star, product.rating)">
+                        </i>
+                    </span>
+                    <span>{{ formatRating(product.rating) }}</span>
                     <span class="divider"></span>
                     <span>{{ product.reviewCount }} đánh giá</span>
                     <span class="divider"></span>
@@ -41,41 +55,105 @@
                 <hr>
 
                 <div class="price-box">
-                    <p class="sale-price">{{ product.salePrice | number }}đ</p>
+                    <div class="price-line">
+                        <p class="sale-price">
+                            {{ product.salePrice | number }}đ
+                        </p>
 
-                    <div class="old-price-row">
-                        <span class="old-price">{{ product.oldPrice | number }}đ</span>
-                        <span class="discount">-{{ product.discount }}%</span>
+                        <span class="old-price" *ngIf="product.oldPrice">
+                            {{ product.oldPrice | number }}đ
+                        </span>
+
+                        <span class="discount" *ngIf="product.oldPrice">
+                            -{{ product.discount }}%
+                        </span>
                     </div>
+
+                    <p class="vat-note">
+                        *Giá đã bao gồm phí VAT
+                    </p>
                 </div>
 
-                <p class="stock">Hiện đang có sẵn</p>
+                <p class="stock">
+                    {{ product.status || 'Hiện đang có sẵn' }}
+                </p>
 
                 <div class="quantity-row">
                     <span>Số lượng</span>
 
                     <div class="quantity-control">
                         <button type="button" (click)="decreaseQuantity()">-</button>
+
                         <input
                             type="number"
                             [value]="quantity"
                             [min]="1"
                             [max]="maxQuantity"
                             (input)="onQuantityInput($event)"
-                            (blur)="validateQuantity()"
-                        >
+                            (blur)="validateQuantity()">
+
                         <button type="button" (click)="increaseQuantity()">+</button>
                     </div>
+
+                    <button
+                        type="button"
+                        class="detail-wishlist-btn"
+                        [class.is-active]="isFavorite"
+                        [disabled]="isWishlistPending"
+                        (click)="toggleWishlist()"
+                        [attr.aria-label]="isFavorite ? 'Bỏ khỏi yêu thích' : 'Thêm vào yêu thích'">
+                        <i class="bi" [ngClass]="isFavorite ? 'bi-heart-fill' : 'bi-heart'"></i>
+                    </button>
                 </div>
 
                 <div class="action-buttons">
-                    <button class="add-cart-btn" type="button" (click)="addToCart()">
-                        Thêm giỏ hàng
+                    <button
+                        class="add-cart-btn"
+                        type="button"
+                        (click)="addToCart()">
+                        Thêm vào giỏ hàng
                     </button>
 
-                    <button class="buy-now-btn" type="button" (click)="buyNow()">
+                    <button
+                        class="buy-now-btn"
+                        type="button"
+                        (click)="buyNow()">
                         Mua ngay
                     </button>
+                </div>
+
+                <div class="product-benefits" aria-label="Cam kết dịch vụ">
+                    <div class="product-benefit">
+                        <i class="bi bi-truck"></i>
+                        <div>
+                            <strong>GIAO HÀNG NHANH</strong>
+                            <span>Giao hỏa tốc</span>
+                        </div>
+                    </div>
+
+                    <div class="product-benefit">
+                        <i class="bi bi-flower1"></i>
+                        <div>
+                            <strong>HOA TƯƠI MỖI NGÀY</strong>
+                            <span>Cam kết hoa tươi<br>100% mỗi ngày</span>
+                        </div>
+                    </div>
+
+                    <div class="product-benefit">
+                        <i class="bi bi-gem"></i>
+                        <div>
+                            <strong>THIẾT KẾ TINH TẾ</strong>
+                            <span>Kiểu dáng sang<br>trọng độc đáo</span>
+                        </div>
+                    </div>
+
+                    <div class="product-benefit">
+                        <i class="bi bi-shield-lock"></i>
+                        <div>
+                            <strong>THANH TOÁN AN TOÀN</strong>
+                            <span>Bảo mật tuyệt đối, nhiều<br>phương thức</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -87,19 +165,7 @@
         <h2>Mô tả chi tiết</h2>
 
         <div class="description-content">
-            <p>
-                {{ product.name }} được thiết kế với các loại hoa:
-            </p>
-
-            <ul>
-                <li>50 Bông Cam Spirit</li>
-                <li>Lá + Phụ Liệu</li>
-            </ul>
-
-            <p>
-                {{ product.name }} tượng trưng cho ngọn lửa nhiệt huyết, luôn sẵn sàng
-                chinh phục mục tiêu và bước tới thành công mới.
-            </p>
+            <p>{{ product.description }}</p>
         </div>
     </section>
 
@@ -112,14 +178,27 @@
             </div>
 
             <div class="rating-summary">
-                <strong>{{ product.rating }}</strong>
-                <span>★★★★★</span>
+                <strong>{{ formatRating(product.rating) }}</strong>
+                <span class="summary-stars">
+                    <i
+                        class="bi"
+                        *ngFor="let star of stars"
+                        [ngClass]="getStarIcon(star, product.rating)">
+                    </i>
+                </span>
             </div>
+        </div>
+
+        <div class="review-empty" *ngIf="!isLoading && reviews.length === 0">
+            <i class="bi bi-chat-square-heart"></i>
+            <span>Chưa có đánh giá nào cho sản phẩm này</span>
         </div>
 
         <div class="review-card" *ngFor="let review of reviews">
             <div class="review-user">
-                <img [src]="review.avatar" [alt]="review.name">
+                <img
+                    [src]="review.avatar"
+                    [alt]="review.name">
 
                 <div>
                     <h4>{{ review.name }}</h4>
@@ -127,14 +206,49 @@
                 </div>
             </div>
 
-            <div class="review-stars">★★★★★</div>
+            <div class="review-stars">
+                <i
+                    class="bi"
+                    *ngFor="let star of stars"
+                    [ngClass]="getStarIcon(star, review.rating)">
+                </i>
+            </div>
 
             <p class="review-content">
                 {{ review.content }}
             </p>
+
+            <div class="review-image-list" *ngIf="review.images.length > 0">
+                <button
+                    type="button"
+                    class="review-image-thumb"
+                    *ngFor="let image of visibleReviewImages(review); let imageIndex = index"
+                    (click)="openReviewImage(review, imageIndex)">
+                    <img [src]="image" alt="Ảnh đánh giá">
+
+                    <span
+                        class="review-image-more"
+                        *ngIf="imageIndex === 3 && remainingImageCount(review) > 0">
+                        +{{ remainingImageCount(review) }}
+                    </span>
+                </button>
+            </div>
+
+            <div class="shop-reply" *ngIf="review.shopReply">
+                <div class="shop-reply__head">
+                    <span class="shop-reply__badge">Tiệm Hoa Yên</span>
+                    <span class="shop-reply__date" *ngIf="review.shopReplyDate">
+                        {{ formatRelativeTime(review.shopReplyDate) }}
+                    </span>
+                </div>
+
+                <p class="shop-reply__content">
+                    {{ review.shopReply }}
+                </p>
+            </div>
         </div>
 
-        <div class="more-button-wrap">
+        <div class="more-button-wrap" *ngIf="reviews.length > 0">
             <button type="button">Xem thêm</button>
         </div>
     </section>
@@ -144,20 +258,102 @@
         <h2>Gợi ý liên quan</h2>
 
         <div class="related-list">
-            <div class="related-card" *ngFor="let item of relatedProducts">
-                <img [src]="item.image" [alt]="item.name">
+            <div
+                class="related-card"
+                *ngFor="let item of relatedProducts"
+                role="link"
+                tabindex="0"
+                (click)="goToRelatedProduct(item)"
+                (keydown.enter)="goToRelatedProduct(item)"
+                (keydown.space)="goToRelatedProduct(item); $event.preventDefault()">
+                <div class="related-media">
+                    <span class="related-badge" *ngIf="item.originalPrice">
+                        -{{ ((item.originalPrice - item.price) / item.originalPrice * 100) | number:'1.0-0' }}%
+                    </span>
 
-                <h3>{{ item.name }}</h3>
+                    <img
+                        [src]="item.image"
+                        [alt]="item.name" />
 
-                <p>{{ item.price | number }}đ</p>
+                    <button
+                        type="button"
+                        class="related-wishlist-btn"
+                        [class.is-active]="item.isFavorite"
+                        [disabled]="item.isWishlistPending"
+                        (click)="toggleRelatedWishlist(item, $event)"
+                        [attr.aria-label]="item.isFavorite ? 'Bỏ khỏi yêu thích' : 'Thêm vào yêu thích'">
+                        <i class="bi" [ngClass]="item.isFavorite ? 'bi-heart-fill' : 'bi-heart'"></i>
+                    </button>
+                </div>
 
-                <button type="button">Mua ngay</button>
+                <h3>
+                    {{ item.name }}
+                </h3>
+
+                <div class="related-price-row">
+                    <p class="related-price">{{ item.price | number }}đ</p>
+                    <p class="related-old-price" *ngIf="item.originalPrice">
+                        {{ item.originalPrice | number }}đ
+                    </p>
+                </div>
+
+                <div class="related-actions">
+                    <button
+                        class="related-buy-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); buyRelatedProduct(item)">
+                        Mua ngay
+                    </button>
+
+                    <button
+                        class="related-cart-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); addRelatedToCart(item)"
+                        [attr.aria-label]="'Thêm ' + item.name + ' vào giỏ hàng'">
+                        <i class="bi bi-cart3"></i>
+                    </button>
+                </div>
             </div>
         </div>
 
         <div class="more-button-wrap">
-            <button type="button">Xem tất cả</button>
+            <button type="button" (click)="goToCurrentTopic()">
+                Xem tất cả
+            </button>
         </div>
     </section>
 
+    <!-- IMAGE VIEWER -->
+    <div class="review-image-modal-backdrop" *ngIf="activeImageViewer" (click)="closeReviewImage()">
+        <div class="review-image-modal" (click)="$event.stopPropagation()">
+            <button type="button" class="review-image-close" (click)="closeReviewImage()">
+                <i class="bi bi-x-lg"></i>
+            </button>
+
+            <button
+                type="button"
+                class="review-image-nav review-image-nav--prev"
+                *ngIf="activeImageViewer.images.length > 1"
+                (click)="previousReviewImage()">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+
+            <img
+                class="review-image-full"
+                [src]="activeImageViewer.images[activeImageViewer.index]"
+                alt="Ảnh đánh giá chi tiết">
+
+            <button
+                type="button"
+                class="review-image-nav review-image-nav--next"
+                *ngIf="activeImageViewer.images.length > 1"
+                (click)="nextReviewImage()">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+
+            <div class="review-image-counter">
+                {{ activeImageViewer.index + 1 }} / {{ activeImageViewer.images.length }}
+            </div>
+        </div>
+    </div>
 </div>

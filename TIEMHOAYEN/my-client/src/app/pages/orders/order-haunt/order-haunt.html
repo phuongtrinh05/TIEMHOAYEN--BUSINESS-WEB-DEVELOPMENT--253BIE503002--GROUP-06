@@ -1,0 +1,645 @@
+<div class="order-page">
+  <div class="order-container">
+
+    <!-- ==================== CỘT TRÁI: FORM ==================== -->
+    <div class="order-left">
+      <h2 class="order-section-main-title">Thông tin đặt hàng</h2>
+
+      <form class="order-form" (ngSubmit)="onSubmit(orderForm)" #orderForm="ngForm" novalidate>
+
+        <!-- ===== 1 KHUNG TRẮNG DUY NHẤT ===== -->
+        <div class="order-block">
+
+          <!-- 1. Thông tin người gửi -->
+          <h3 class="order-block__title">1. Thông tin người gửi</h3>
+
+          <div class="form-row-3">
+            <div class="form-group">
+              <div class="input-wrapper">
+                <i class="bi bi-person input-icon"></i>
+                <input
+                  type="text"
+                  name="senderName"
+                  class="form-input"
+                  [class.is-invalid]="senderName.invalid && (senderName.touched || orderForm.submitted)"
+                  placeholder="Họ tên"
+                  [(ngModel)]="formData.senderName"
+                  #senderName="ngModel"
+                  required>
+              </div>
+
+              <span class="error-msg" *ngIf="senderName.invalid && (senderName.touched || orderForm.submitted)">
+                Vui lòng nhập họ tên.
+              </span>
+            </div>
+
+            <div class="form-group">
+              <div class="input-wrapper">
+                <i class="bi bi-telephone input-icon"></i>
+                <input
+                  type="tel"
+                  name="senderPhone"
+                  class="form-input"
+                  [class.is-invalid]="senderPhone.invalid && (senderPhone.touched || orderForm.submitted)"
+                  placeholder="Điện thoại"
+                  [(ngModel)]="formData.senderPhone"
+                  (input)="onSenderPhoneInput($event)"
+                  #senderPhone="ngModel"
+                  required
+                  pattern="^0[0-9]{3} [0-9]{3} [0-9]{3}$|^0[0-9]{9}$"
+                  maxlength="12">
+              </div>
+
+              <span class="error-msg" *ngIf="senderPhone.invalid && (senderPhone.touched || orderForm.submitted)">
+                <ng-container *ngIf="senderPhone.errors?.['required']">
+                  Vui lòng nhập số điện thoại.
+                </ng-container>
+
+                <ng-container *ngIf="senderPhone.errors?.['pattern']">
+                  Số điện thoại không hợp lệ.
+                </ng-container>
+              </span>
+            </div>
+
+            <div class="form-group">
+              <div class="input-wrapper">
+                <i class="bi bi-envelope input-icon"></i>
+                <input
+                  type="email"
+                  name="senderEmail"
+                  class="form-input"
+                  placeholder="Email (không bắt buộc)"
+                  [(ngModel)]="formData.senderEmail"
+                  #senderEmail="ngModel"
+                  email>
+              </div>
+            </div>
+          </div>
+
+          <div class="delivery-type-group">
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="deliverToSelf"
+                [(ngModel)]="formData.deliverToSelf"
+                (change)="onDeliverToSelfChange()">
+              <span>Giao cho tôi</span>
+            </label>
+
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="deliverToOther"
+                [(ngModel)]="formData.deliverToOther"
+                (change)="onDeliverToOtherChange()">
+              <span>Giao cho người khác</span>
+            </label>
+          </div>
+
+          <!-- 2. Thông tin người nhận -->
+          <h3 class="order-block__title order-block__title--spaced">2. Thông tin người nhận</h3>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <div class="input-wrapper">
+                <i class="bi bi-person input-icon"></i>
+                <input
+                  type="text"
+                  name="receiverName"
+                  class="form-input"
+                  [class.is-invalid]="receiverName.invalid && (receiverName.touched || orderForm.submitted)"
+                  placeholder="Họ tên"
+                  [(ngModel)]="formData.receiverName"
+                  #receiverName="ngModel"
+                  required>
+              </div>
+
+              <span class="error-msg" *ngIf="receiverName.invalid && (receiverName.touched || orderForm.submitted)">
+                Vui lòng nhập họ tên.
+              </span>
+            </div>
+
+            <div class="form-group">
+              <div class="input-wrapper">
+                <i class="bi bi-telephone input-icon"></i>
+                <input
+                  type="tel"
+                  name="receiverPhone"
+                  class="form-input"
+                  [class.is-invalid]="receiverPhone.invalid && (receiverPhone.touched || orderForm.submitted)"
+                  placeholder="Điện thoại"
+                  [(ngModel)]="formData.receiverPhone"
+                  (input)="onReceiverPhoneInput($event)"
+                  #receiverPhone="ngModel"
+                  required
+                  pattern="^0[0-9]{3} [0-9]{3} [0-9]{3}$|^0[0-9]{9}$"
+                  maxlength="12">
+              </div>
+
+              <span class="error-msg" *ngIf="receiverPhone.invalid && (receiverPhone.touched || orderForm.submitted)">
+                <ng-container *ngIf="receiverPhone.errors?.['required']">
+                  Vui lòng nhập số điện thoại.
+                </ng-container>
+
+                <ng-container *ngIf="receiverPhone.errors?.['pattern']">
+                  Số điện thoại không hợp lệ.
+                </ng-container>
+              </span>
+            </div>
+          </div>
+
+          <!-- Tỉnh / Quận / Phường -->
+          <div class="form-row-3">
+            <div class="form-group">
+              <div class="addr-custom-select-wrap">
+                <button
+                  type="button"
+                  class="addr-custom-select"
+                  [class.has-value]="formData.provinceCode"
+                  [class.is-invalid]="!formData.provinceCode && (orderForm.submitted || hasTriedSubmit)"
+                  (click)="toggleAddrDropdown('province', false)">
+                  <span>{{ selectedProvinceName }}</span>
+                  <i
+                    class="bi bi-chevron-down select-arrow"
+                    [class.rotated]="openAddrDropdown === 'province'">
+                  </i>
+                </button>
+
+                <div class="addr-custom-options" *ngIf="openAddrDropdown === 'province'">
+                  <button
+                    type="button"
+                    class="addr-custom-option"
+                    *ngFor="let province of provinces"
+                    [class.active]="province.code === formData.provinceCode"
+                    (click)="selectProvince(province)">
+                    {{ province.name }}
+                  </button>
+                </div>
+              </div>
+              <span class="error-msg" *ngIf="!formData.provinceCode && (orderForm.submitted || hasTriedSubmit)">
+                Vui lòng nhập Tỉnh/Thành phố.
+              </span>
+            </div>
+
+            <div class="form-group">
+              <div class="addr-custom-select-wrap">
+                <button
+                  type="button"
+                  class="addr-custom-select"
+                  [class.has-value]="formData.districtCode"
+                  [class.is-invalid]="!formData.districtCode && (orderForm.submitted || hasTriedSubmit)"
+                  (click)="toggleAddrDropdown('district', !formData.provinceCode)">
+                  <span>{{ selectedDistrictName }}</span>
+                  <i
+                    class="bi bi-chevron-down select-arrow"
+                    [class.rotated]="openAddrDropdown === 'district'">
+                  </i>
+                </button>
+
+                <div class="addr-custom-options" *ngIf="openAddrDropdown === 'district'">
+                  <button
+                    type="button"
+                    class="addr-custom-option"
+                    *ngFor="let district of availableDistricts"
+                    [class.active]="district.code === formData.districtCode"
+                    (click)="selectDistrict(district)">
+                    {{ district.name }}
+                  </button>
+                </div>
+              </div>
+              <span class="error-msg" *ngIf="!formData.districtCode && (orderForm.submitted || hasTriedSubmit)">
+                Vui lòng nhập Quận/Huyện.
+              </span>
+            </div>
+
+            <div class="form-group">
+              <div class="addr-custom-select-wrap">
+                <button
+                  type="button"
+                  class="addr-custom-select"
+                  [class.has-value]="formData.wardCode"
+                  [class.is-invalid]="!formData.wardCode && (orderForm.submitted || hasTriedSubmit)"
+                  (click)="toggleAddrDropdown('ward', !formData.districtCode)">
+                  <span>{{ selectedWardName }}</span>
+                  <i
+                    class="bi bi-chevron-down select-arrow"
+                    [class.rotated]="openAddrDropdown === 'ward'">
+                  </i>
+                </button>
+
+                <div class="addr-custom-options" *ngIf="openAddrDropdown === 'ward'">
+                  <button
+                    type="button"
+                    class="addr-custom-option"
+                    *ngFor="let ward of availableWards"
+                    [class.active]="ward.code === formData.wardCode"
+                    (click)="selectWard(ward)">
+                    {{ ward.name }}
+                  </button>
+                </div>
+              </div>
+              <span class="error-msg" *ngIf="!formData.wardCode && (orderForm.submitted || hasTriedSubmit)">
+                Vui lòng nhập Phường/Xã.
+              </span>
+            </div>
+          </div>
+
+          <!-- Địa chỉ cụ thể -->
+          <div class="form-group form-group--address">
+            <div class="input-wrapper">
+              <i class="bi bi-geo-alt input-icon"></i>
+              <input
+                type="text"
+                name="address"
+                class="form-input"
+                [class.is-invalid]="address.invalid && (address.touched || orderForm.submitted || hasTriedSubmit)"
+                placeholder="Địa chỉ cụ thể (số nhà, đường...)"
+                [(ngModel)]="formData.address"
+                #address="ngModel"
+                required>
+            </div>
+
+            <span class="error-msg" *ngIf="address.invalid && (address.touched || orderForm.submitted || hasTriedSubmit)">
+              Vui lòng nhập địa chỉ.
+            </span>
+          </div>
+
+          <!-- Hình thức giao hàng -->
+          <div class="shipping-method-block">
+            <p class="payment-label">Hình thức giao hàng</p>
+
+            <div class="shipping-methods">
+              <label
+                class="shipping-option"
+                *ngFor="let method of shippingMethods"
+                [class.is-selected]="formData.shippingMethod === method.value">
+
+                <input
+                  type="radio"
+                  name="shippingMethod"
+                  [value]="method.value"
+                  [(ngModel)]="formData.shippingMethod"
+                  (ngModelChange)="onShippingMethodChange()">
+
+                <i
+                  class="bi shipping-icon"
+                  [ngClass]="method.value === 'fast' ? 'bi-lightning-charge' : 'bi-truck'">
+                </i>
+
+                <span class="shipping-option__content">
+                  <span class="shipping-option__title">{{ method.label }}</span>
+                  <span class="shipping-option__desc">{{ method.desc }}</span>
+                </span>
+              </label>
+            </div>
+
+            <p class="shipping-estimate">
+              Thời gian dự kiến: {{ shippingTimeEstimate }}
+            </p>
+          </div>
+
+          <!-- 3. Thời gian giao hàng -->
+          <h3 class="order-block__title order-block__title--spaced">3. Thời gian giao hàng</h3>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <div class="date-input-wrap">
+                <input
+                  type="text"
+                  name="deliveryDate"
+                  class="form-input"
+                  [(ngModel)]="formData.deliveryDate"
+                  (ngModelChange)="onDeliveryDateChange()"
+                  placeholder="DD/MM/YYYY"
+                  pattern="^$|^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/[0-9]{4}$"
+                  required
+                  #deliveryDate="ngModel"
+                  [class.is-invalid]="(deliveryDate.invalid && (deliveryDate.touched || orderForm.submitted)) || deliveryScheduleError">
+
+                <button
+                  type="button"
+                  class="date-picker-btn"
+                  (click)="deliveryDatePicker.showPicker()">
+                  <i class="bi bi-calendar3"></i>
+                </button>
+
+                <input
+                  #deliveryDatePicker
+                  type="date"
+                  class="date-picker-hidden"
+                  [min]="minDeliveryIsoDate"
+                  [value]="toIsoDate(formData.deliveryDate)"
+                  (change)="onDeliveryDatePicked($event)">
+              </div>
+
+              <span class="error-msg" *ngIf="deliveryDate.invalid && (deliveryDate.touched || orderForm.submitted)">
+                <ng-container *ngIf="deliveryDate.errors?.['required']">
+                  Vui lòng nhập ngày giao hàng.
+                </ng-container>
+
+                <ng-container *ngIf="deliveryDate.errors?.['pattern']">
+                  Ngày giao không hợp lệ.
+                </ng-container>
+              </span>
+            </div>
+
+            <div class="form-group">
+              <div class="time-input-wrap">
+                <input
+                  type="text"
+                  name="deliveryTime"
+                  class="form-input"
+                  [(ngModel)]="formData.deliveryTime"
+                  (ngModelChange)="validateDeliverySchedule()"
+                  placeholder="HH:MM"
+                  pattern="^$|^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                  required
+                  #deliveryTime="ngModel"
+                  [class.is-invalid]="(deliveryTime.invalid && (deliveryTime.touched || orderForm.submitted)) || deliveryScheduleError">
+
+                <button
+                  type="button"
+                  class="time-picker-btn"
+                  (click)="deliveryTimePicker.showPicker()">
+                  <i class="bi bi-clock"></i>
+                </button>
+
+                <input
+                  #deliveryTimePicker
+                  type="time"
+                  class="time-picker-hidden"
+                  [value]="formData.deliveryTime"
+                  (change)="onDeliveryTimePicked($event)">
+              </div>
+
+              <span class="error-msg" *ngIf="deliveryTime.invalid && (deliveryTime.touched || orderForm.submitted)">
+                <ng-container *ngIf="deliveryTime.errors?.['required']">
+                  Vui lòng nhập giờ giao hàng.
+                </ng-container>
+
+                <ng-container *ngIf="deliveryTime.errors?.['pattern']">
+                  Giờ giao không hợp lệ.
+                </ng-container>
+              </span>
+            </div>
+          </div>
+
+          <span class="error-msg delivery-schedule-error" *ngIf="deliveryScheduleError">
+            {{ deliveryScheduleError }}
+          </span>
+
+          <h3 class="order-block__title order-block__title--spaced">4. Lời nhắn cho người nhận</h3>
+
+          <div class="form-group">
+            <textarea
+              name="noteReceiver"
+              class="form-textarea"
+              placeholder="Lời nhắn cho người nhận"
+              [(ngModel)]="formData.noteReceiver"
+              rows="3">
+            </textarea>
+          </div>
+
+          <h3 class="order-block__title order-block__title--spaced">5. Lời nhắn cho shop</h3>
+
+          <div class="form-group">
+            <textarea
+              name="noteShop"
+              class="form-textarea"
+              placeholder="Lời nhắn cho shop"
+              [(ngModel)]="formData.noteShop"
+              rows="3">
+            </textarea>
+          </div>
+
+          <!-- 6. Tùy chọn thêm -->
+          <div class="extra-options extra-options--spaced">
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="hideSender"
+                [(ngModel)]="formData.hideSender">
+              <span>Ẩn thông tin người gửi</span>
+            </label>
+
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="requestVAT"
+                [(ngModel)]="formData.requestVAT">
+              <span>Yêu cầu hóa đơn VAT</span>
+            </label>
+
+            <label class="checkbox-option">
+              <input
+                type="checkbox"
+                name="sendZaloPhoto"
+                [(ngModel)]="formData.sendZaloPhoto">
+              <span>Gửi ảnh hoàn thành qua zalo</span>
+            </label>
+          </div>
+
+          <!-- 7. Voucher -->
+          <div class="voucher-section voucher-section--spaced">
+            <div class="voucher-left">
+              <p class="voucher-label">Voucher</p>
+
+              <div class="voucher-input-row">
+                <input
+                  type="text"
+                  name="voucherCode"
+                  class="form-input voucher-input"
+                  placeholder="Nhập mã voucher"
+                  [(ngModel)]="formData.voucherCode"
+                  (ngModelChange)="onVoucherCodeChange()">
+
+                <button
+                  type="button"
+                  class="btn-apply-voucher"
+                  [class.is-active]="formData.voucherCode"
+                  (click)="applyVoucher()">
+                  Áp dụng
+                </button>
+              </div>
+
+              <span class="error-msg voucher-error" *ngIf="voucherError">
+                {{ voucherError }}
+              </span>
+            </div>
+
+            <div class="voucher-right">
+              <p class="voucher-label">Chọn Voucher có sẵn</p>
+
+              <div class="voucher-select-wrapper" (click)="toggleVoucherDropdown()">
+                <span class="voucher-select-text">
+                  {{ selectedVoucher ? selectedVoucher.code : 'Chọn voucher' }}
+                </span>
+
+                <i class="bi bi-chevron-down" [class.rotated]="showVoucherDropdown"></i>
+
+                <div
+                  class="voucher-dropdown"
+                  *ngIf="showVoucherDropdown"
+                  (click)="$event.stopPropagation()">
+
+                  <div class="voucher-login-box">
+                    <div class="voucher-item__info">
+                      <span class="voucher-item__title">Vui lòng đăng nhập</span>
+                      <span class="voucher-item__desc">
+                        Voucher có sẵn chỉ hiển thị cho khách hàng đã đăng nhập.
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      class="btn-use-voucher"
+                      (click)="goToLogin()">
+                      Đăng nhập
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 8. Phương thức thanh toán -->
+          <div class="payment-block">
+            <p class="payment-label">Phương thức thanh toán</p>
+
+            <div class="payment-methods">
+              <label
+                class="payment-option"
+                *ngFor="let method of paymentMethods"
+                [class.is-selected]="formData.paymentMethod === method.value"
+                (click)="selectPaymentMethod(method.value)">
+
+                <input
+                  type="radio"
+                  name="paymentMethod"
+                  [value]="method.value"
+                  [(ngModel)]="formData.paymentMethod"
+                  (ngModelChange)="onPaymentMethodChange($event)">
+
+                <img
+                  *ngIf="method.logo"
+                  [src]="method.logo"
+                  [alt]="method.label"
+                  class="payment-logo">
+
+                <i
+                  *ngIf="!method.logo"
+                  class="bi {{ method.icon }} payment-icon">
+                </i>
+
+                <span>{{ method.label }}</span>
+              </label>
+            </div>
+
+            <p class="payment-error" *ngIf="paymentError">
+              {{ paymentError }}
+            </p>
+          </div>
+
+        </div>
+        <!-- ===== KẾT THÚC KHUNG TRẮNG ===== -->
+
+      </form>
+    </div>
+
+    <!-- ==================== CỘT PHẢI: ĐƠN HÀNG ==================== -->
+    <div class="order-right">
+      <h2 class="order-section-main-title">Thông tin đơn hàng</h2>
+
+      <div class="order-summary">
+        <div class="order-items">
+          <div class="order-item" *ngFor="let item of orderItems">
+            <img
+              [src]="item.image"
+              [alt]="item.name"
+              class="order-item__img">
+
+            <div class="order-item__info">
+              <span class="order-item__name">{{ item.name }}</span>
+              <span class="order-item__qty">x{{ item.qty }}</span>
+            </div>
+
+            <span class="order-item__price">
+              {{ item.price | number:'1.0-0' }}đ
+            </span>
+          </div>
+        </div>
+
+        <div class="order-divider"></div>
+
+        <div class="order-pricing">
+          <div class="pricing-row">
+            <span>Tạm tính:</span>
+            <span class="pricing-value">{{ subtotal | number:'1.0-0' }}đ</span>
+          </div>
+
+          <div class="pricing-row">
+            <span>Hình thức giao hàng:</span>
+            <span class="pricing-value">{{ shippingMethodName }}</span>
+          </div>
+
+          <div class="pricing-row">
+            <span>Phí ship:</span>
+            <span class="pricing-value">{{ shippingFee | number:'1.0-0' }}đ</span>
+          </div>
+
+          <div class="pricing-row discount-row" *ngIf="discount > 0">
+            <span>Giảm giá:</span>
+            <span class="discount-value">
+              -{{ discount | number:'1.0-0' }}đ
+            </span>
+          </div>
+        </div>
+
+        <div class="order-divider"></div>
+
+        <div class="pricing-row pricing-total">
+          <span>Tổng cộng</span>
+
+          <div class="total-amount-block">
+            <span class="total-amount">{{ total | number:'1.0-0' }}đ</span>
+            <span class="total-vat">(Đã bao gồm VAT)</span>
+          </div>
+        </div>
+
+        <div class="order-divider" *ngIf="showDepositPolicy"></div>
+
+        <div
+          class="order-pricing"
+          *ngIf="showDepositPolicy && currentPaymentPolicy as policy">
+          <div class="pricing-row pricing-row--policy">
+            <span>Chính sách thanh toán:</span>
+            <span class="pricing-value">{{ policy.note }}</span>
+          </div>
+
+          <div class="pricing-row" *ngIf="depositAmount > 0">
+            <span>Tiền cọc:</span>
+            <span class="pricing-value">{{ depositAmount | number:'1.0-0' }}đ</span>
+          </div>
+
+          <div class="pricing-row" *ngIf="depositAmount > 0">
+            <span>Còn lại:</span>
+            <span class="pricing-value">{{ remainingAmount | number:'1.0-0' }}đ</span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          class="btn-order"
+          [class.is-ready]="orderForm.valid && !isSubmitting && formData.provinceCode && formData.districtCode && formData.wardCode && !isUnsupportedCardPayment && !isPaymentMethodDisabled(formData.paymentMethod)"
+          (click)="onSubmit(orderForm)">
+          {{ isSubmitting ? 'Đang thanh toán...' : 'Thanh toán' }}
+        </button>
+
+        <p class="payment-error" *ngIf="submitOrderError">
+          {{ submitOrderError }}
+        </p>
+      </div>
+    </div>
+
+  </div>
+</div>

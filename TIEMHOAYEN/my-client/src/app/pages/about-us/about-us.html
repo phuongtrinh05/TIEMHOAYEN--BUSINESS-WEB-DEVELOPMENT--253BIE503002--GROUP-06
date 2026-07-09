@@ -1,7 +1,7 @@
 <div class="about-page">
 
     <!-- HERO -->
-    <section class="hero">
+    <section class="hero reveal">
         <img
             src="assets/images/about-us-banner.png"
             alt="Tiệm Hoa Yên">
@@ -10,13 +10,13 @@
     <!-- STORY -->
     <section class="story-section">
 
-        <div class="story-image">
+        <div class="story-image reveal reveal-left">
             <img
                 src="assets/images/about-us-hoa.png"
                 alt="Hoa">
         </div>
 
-        <div class="story-content">
+        <div class="story-content reveal reveal-right">
 
             <h2>Câu chuyện của Tiệm Hoa Yên</h2>
 
@@ -49,11 +49,11 @@
 
     <section class="features">
 
-        <h2>Điểm nổi bật của chúng tôi</h2>
+        <h2 class="reveal">Điểm nổi bật của chúng tôi</h2>
 
         <div class="feature-grid">
 
-            <div class="feature-card">
+            <div class="feature-card reveal">
                 <div class="feature-icon">
                     <i class="bi bi-truck"></i>
                 </div>
@@ -67,7 +67,7 @@
                 </div>
             </div>
 
-            <div class="feature-card">
+            <div class="feature-card reveal">
                 <div class="feature-icon">
                     <i class="bi bi-flower1"></i>
                 </div>
@@ -81,7 +81,7 @@
                 </div>
             </div>
 
-            <div class="feature-card">
+            <div class="feature-card reveal">
                 <div class="feature-icon">
                     <i class="bi bi-chat-heart"></i>
                 </div>
@@ -95,7 +95,7 @@
                 </div>
             </div>
 
-            <div class="feature-card">
+            <div class="feature-card reveal">
                 <div class="feature-icon">
                     <i class="bi bi-arrow-repeat"></i>
                 </div>
@@ -111,15 +111,15 @@
         </div>
     </section>
 
-    <section class="team-section">
-
     <!-- CAM KẾT -->
 
-        <div class="commitment">
+    <section class="commitment">
 
-            <h2>Cam kết từ Tiệm Hoa Yên</h2>
+        <h2 class="reveal">Cam kết từ Tiệm Hoa Yên</h2>
 
-            <div class="commit-item">
+        <div class="commitment-grid">
+
+            <div class="commit-item reveal">
 
                 <div class="commit-icon">
                     <i class="bi bi-patch-check"></i>
@@ -135,7 +135,7 @@
 
             </div>
 
-            <div class="commit-item">
+            <div class="commit-item reveal">
 
                 <div class="commit-icon">
                     <i class="bi bi-truck"></i>
@@ -151,7 +151,7 @@
 
             </div>
 
-            <div class="commit-item">
+            <div class="commit-item reveal">
 
                 <div class="commit-icon">
                     <i class="bi bi-shield-lock"></i>
@@ -166,7 +166,7 @@
 
             </div>
 
-            <div class="commit-item">
+            <div class="commit-item reveal">
 
                 <div class="commit-icon">
                     <i class="bi bi-headset"></i>
@@ -183,46 +183,47 @@
 
         </div>
 
-        <!-- TEAM -->
+    </section>
 
-        <div class="team">
+    <!-- TEAM -->
 
-            <h2>Đội ngũ của chúng tôi</h2>
+    <section class="team">
 
-            <div class="team-grid">
+        <h2 class="reveal">Đội ngũ của chúng tôi</h2>
 
-                @for(member of teamMembers; track member.name){
+        <div class="team-grid">
 
-                    <div class="member-card">
+            @for(member of teamMembers; track member.name){
 
-                        <img
-                            [src]="member.image"
-                            [alt]="member.name">
+                <div class="member-card reveal">
 
-                        <h4>{{ member.name }}</h4>
+                    <img
+                        [src]="member.image"
+                        [alt]="member.name">
 
-                        <p>{{ member.role }}</p>
+                    <h4>{{ member.name }}</h4>
 
-                    </div>
+                    <p>{{ member.role }}</p>
 
-                }
+                </div>
 
-            </div>
+            }
 
         </div>
 
     </section>
+
     <!-- PARTNERS -->
 
     <section class="partners">
 
-        <h2>Đối tác của chúng tôi</h2>
+        <h2 class="reveal">Đối tác của chúng tôi</h2>
 
         <div class="partner-grid">
 
             @for(partner of partners; track partner){
 
-                <div class="partner-item">
+                <div class="partner-item reveal">
                     <img [src]="partner" alt="Partner">
                 </div>
 
@@ -234,14 +235,21 @@
 
     <!-- REVIEWS -->
     <section class="reviews">
-    <h2>Khách hàng nói gì về Tiệm Hoa Yên</h2>
+    <h2 class="reveal">Khách hàng nói gì về Tiệm Hoa Yên</h2>
         <div class="review-wrapper">
-            <button class="nav-btn left">
+            <button class="nav-btn left" aria-label="Đánh giá trước">
                 <i class="bi bi-chevron-left"></i>
             </button>
             <div class="review-list">
                 @for(review of reviews; track review.name){
-                    <div class="review-card">
+                    <div class="review-card reveal">
+                        <div class="review-user">
+                            <i class="bi bi-person-circle"></i>
+                            <div>
+                                <h4>{{ review.name }}</h4>
+                                <span>{{ review.date }}</span>
+                            </div>
+                        </div>
                         <div class="stars">
                             <i class="bi bi-star-fill"></i>
                             <i class="bi bi-star-fill"></i>
@@ -252,17 +260,10 @@
                         <p>
                             {{ review.content }}
                         </p>
-                        <div class="review-user">
-                            <i class="bi bi-person-circle"></i>
-                            <div>
-                                <h4>{{ review.name }}</h4>
-                                <span>{{ review.date }}</span>
-                            </div>
-                        </div>
                     </div>
                 }
             </div>
-            <button class="nav-btn right">
+            <button class="nav-btn right" aria-label="Đánh giá kế tiếp">
                 <i class="bi bi-chevron-right"></i>
             </button>
         </div>

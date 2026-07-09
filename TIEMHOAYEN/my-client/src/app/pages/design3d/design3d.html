@@ -2,19 +2,12 @@
 
     <!-- KHU VỰC THIẾT KẾ -->
     <div class="canvas-area">
-
-        <!-- Tool bên phải -->
-        <div class="floating-tools">
-            <button class="tool-btn"><i class="bi bi-zoom-in"></i></button>
-            <button class="tool-btn"><i class="bi bi-zoom-out"></i></button>
-            <button class="tool-btn">
-                <img src="assets/icons/design3d_3D.svg" alt="3D" width="18" height="18">
-            </button>
-        </div>
+        
+        <div #threeCanvas class="three-canvas"></div>
 
         <!-- Tool dưới -->
         <div class="bottom-toolbar">
-            <button class="toolbar-btn">
+            <button class="toolbar-btn" (click)="resetView()">
                 <i class="bi bi-arrow-clockwise"></i>
                 <span>Quay lại</span>
             </button>
@@ -78,7 +71,7 @@
     <div class="sidebar">
 
         <div class="sidebar-header">
-            <h4 class="sidebar-title">Danh sách hoa</h4>
+            <h4 class="sidebar-title">Thiết kế bó hoa 3D</h4>
             <button class="toggle-sidebar-btn" (click)="toggleSidebar()">
                 <i class="bi" [class.bi-chevron-right]="!isSidebarCollapsed" [class.bi-chevron-left]="isSidebarCollapsed"></i>
             </button>
@@ -99,22 +92,36 @@
                     <div>{{ flower.name }}</div>
 
                     <select
+                        *ngIf="getAvailableColors(flower).length > 1; else singleColorLabel"
                         class="flower-color-select"
                         [(ngModel)]="flower.selectedColor"
+                        (ngModelChange)="onColorChange(flower, $event)"
                     >
                         <option
-                            *ngFor="let color of flower.colors"
+                            *ngFor="let color of getAvailableColors(flower)"
                             [value]="color"
                         >
                             {{ color }}
                         </option>
                     </select>
+
+                    <ng-template #singleColorLabel>
+                        <div class="flower-color-label">
+                            {{ flower.selectedColor }}
+                        </div>
+                    </ng-template>
                 </div>
 
                 <div class="quantity-box">
                     <button (click)="decreaseQuantity(flower)">-</button>
 
-                    <span>{{ flower.quantity }}</span>
+                    <input
+                        type="number"
+                        class="quantity-input"
+                        min="1"
+                        [(ngModel)]="flower.quantity"
+                        (ngModelChange)="onQuantityChange(flower, $event)"
+                    >
 
                     <button (click)="increaseQuantity(flower)">+</button>
                 </div>
@@ -141,14 +148,14 @@
                 <button class="update-btn">
                     <i class="bi bi-arrow-repeat"></i> Cập nhật
                 </button>
-                <button class="save-btn">
-                    <i class="bi bi-floppy"></i> Lưu thiết kế
+                <button class="save-btn" (click)="captureImage()">
+                    <i class="bi bi-camera"></i> Chụp ảnh
                 </button>
             </div>
 
             <!-- Loại hoa -->
             <div class="flower-library">
-                <h5>Loại hoa</h5>
+                <small>CÁC LOẠI HOA</small>
                 <div class="flower-grid">
                     <div
                         class="flower-item"
@@ -157,6 +164,20 @@
                     >
                         <img [src]="flower.image" [alt]="flower.name">
                         <p>{{ flower.name }}</p>
+
+                        <div
+                            class="flower-swatches"
+                            *ngIf="getAvailableColors(flower).length > 1"
+                            (click)="$event.stopPropagation()"
+                        >
+                            <button
+                                *ngFor="let color of getAvailableColors(flower)"
+                                class="swatch-dot"
+                                [style.background]="getColorSwatch(color)"
+                                [title]="color"
+                                (click)="addFlowerWithColor(flower, color)"
+                            ></button>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -8,7 +8,38 @@ import { CommonModule } from '@angular/common';
   templateUrl: './about-us.html',
   styleUrl: './about-us.css'
 })
-export class AboutUs {
+export class AboutUs implements AfterViewInit, OnDestroy {
+
+  private observer?: IntersectionObserver;
+
+  constructor(private hostRef: ElementRef<HTMLElement>) {}
+
+  ngAfterViewInit(): void {
+    const elements = this.hostRef.nativeElement.querySelectorAll('.reveal');
+
+    if (!('IntersectionObserver' in window)) {
+      elements.forEach(el => el.classList.add('is-visible'));
+      return;
+    }
+
+    this.observer = new IntersectionObserver(
+      entries => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            this.observer?.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.15, rootMargin: '0px 0px -60px 0px' }
+    );
+
+    elements.forEach(el => this.observer?.observe(el));
+  }
+
+  ngOnDestroy(): void {
+    this.observer?.disconnect();
+  }
 
   teamMembers = [
     {

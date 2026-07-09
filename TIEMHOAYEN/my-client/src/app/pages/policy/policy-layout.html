@@ -1,0 +1,47 @@
+<div class="policy-layout-page" [class.header-compact]="isHeaderCompact">
+    <div class="page-wrapper">
+        <aside class="sidebar">
+            <div class="sidebar-title">
+                Điều khoản và chính sách
+            </div>
+
+            <nav class="sidebar-nav" role="navigation" aria-label="Chính sách">
+                <a
+                    class="nav-item"
+                    *ngFor="let item of policyItems"
+                    [routerLink]="['/policy', item.slug]"
+                    routerLinkActive="active"
+                    [routerLinkActiveOptions]="{ exact: true }"
+                >
+                    <span class="nav-icon" aria-hidden="true">
+                        <i [class]="item.icon"></i>
+                    </span>
+
+                    {{ item.title }}
+                </a>
+            </nav>
+        </aside>
+
+        <main class="content" #policyContent>
+            <ng-container [ngSwitch]="currentSlug">
+                <app-order-policy *ngSwitchCase="'order'"></app-order-policy>
+
+                <app-payment-policy *ngSwitchCase="'payment'"></app-payment-policy>
+
+                <app-delivery-policy *ngSwitchCase="'delivery'"></app-delivery-policy>
+
+                <app-membership-policy *ngSwitchCase="'membership'"></app-membership-policy>
+
+                <app-return-policy *ngSwitchCase="'return'"></app-return-policy>
+
+                <app-privacy-policy *ngSwitchCase="'privacy'"></app-privacy-policy>
+
+                <app-customer-support-policy *ngSwitchCase="'customer-support'"></app-customer-support-policy>
+
+                <app-registration-terms-conditions *ngSwitchCase="'registration-terms'"></app-registration-terms-conditions>
+
+                <app-order-policy *ngSwitchDefault></app-order-policy>
+            </ng-container>
+        </main>
+    </div>
+</div>

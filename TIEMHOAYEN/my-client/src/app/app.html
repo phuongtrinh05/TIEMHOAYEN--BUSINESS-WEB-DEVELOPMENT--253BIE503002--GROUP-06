@@ -1,7 +1,24 @@
-<app-page-header></app-page-header>
+@if (useLayoutOne()) {
+  <app-page-header-1></app-page-header-1>
+} @else if (useAuthLayout()) {
+  <app-page-header-2></app-page-header-2>
+} @else {
+  <app-page-header></app-page-header>
+}
 
-<div class="page-content">
-    <router-outlet></router-outlet>
+<div
+  class="page-content"
+  [class.layout-one-content]="useLayoutOne()"
+  [class.auth-content]="useAuthLayout()"
+>
+  <router-outlet></router-outlet>
+  <app-chatbot-widget></app-chatbot-widget>
 </div>
 
-<app-page-footer></app-page-footer>
+@if (useLayoutOne()) {
+  <app-page-footer-1></app-page-footer-1>
+} @else if (useAuthLayout()) {
+  <app-page-footer-2></app-page-footer-2>
+} @else {
+  <app-page-footer></app-page-footer>
+}

@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+simport { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { OrderDetail } from './order-detail';
 

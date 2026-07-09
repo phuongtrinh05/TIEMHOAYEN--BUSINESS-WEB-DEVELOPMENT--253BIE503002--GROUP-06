@@ -8,13 +8,15 @@ import {
 } from '@angular/core';
 
 import { isPlatformBrowser } from '@angular/common';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 import {
   CategoryProductService,
   CategoryProduct
 } from '../../services/category-product.service';
+import { CartService } from '../../services/cart.service';
+import { CustomerService } from '../../services/customer.service';
 
 type FilterGroup = 'chuDe' | 'kieuDang' | 'hoaTuoi' | 'doiTuong' | 'mauSac';
 type SortValue = 'default' | 'priceAsc' | 'priceDesc' | 'nameAsc' | 'nameDesc';
@@ -28,24 +30,32 @@ interface Product {
   image: string;
   icon: string;
   filters: Record<FilterGroup, string[]>;
+  maxQuantity?: number;
 }
 
 @Component({
   selector: 'app-category',
   standalone: true,
+  imports: [RouterLink],
   templateUrl: './category.html',
   styleUrl: './category.css',
   encapsulation: ViewEncapsulation.None,
 })
 export class CategoryComponent implements AfterViewInit, OnDestroy {
+  private readonly guestCartStorageKey = 'tiemHoaYenCart';
+  private readonly checkoutItemsStorageKey = 'tiemHoaYenCheckoutItems';
+
   pageTitle = 'Sản phẩm';
+  breadcrumbLabels: string[] = [];
 
   private readonly PAGE_SIZE = 16;
   private readonly PRODUCT_IMAGES = 'assets/images/category/';
 
   private currentPage = 1;
   private currentSort: SortValue = 'default';
+  private breadcrumbFallbackLabels: string[] = [];
 
+  private categoryBreadcrumb!: HTMLElement;
   private productGrid!: HTMLDivElement;
   private selectedFilterRow!: HTMLElement;
   private selectedFilterList!: HTMLDivElement;
@@ -53,8 +63,13 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   private resultCount!: HTMLParagraphElement;
   private emptyMessage!: HTMLParagraphElement;
   private sortSelect!: HTMLSelectElement;
+  private mobileFilterGroupSelect!: HTMLSelectElement;
+  private mobileFilterValueSelect!: HTMLSelectElement;
 
   private routeSubscription?: Subscription;
+  private productRequestSubscription?: Subscription;
+  private revealObserver?: IntersectionObserver;
+  private readonly pendingWishlistProductIds = new Set<string>();
 
   private readonly selectedFilters: Record<FilterGroup, Set<string>> = {
     chuDe: new Set<string>(),
@@ -86,9 +101,10 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   ];
 
   private products: Product[] = [];
+  private wishlistProductIds = new Set<string>();
   private readonly topicNameById: Record<string, string> = {
-    CD001: 'Hoa sinh nhật',
-    CD002: 'Hoa tình yêu',
+    CD001: 'Hoa tình yêu',
+    CD002: 'Hoa sinh nhật',
     CD003: 'Hoa khai trương',
     CD004: 'Hoa chúc mừng',
     CD005: 'Hoa Tết',
@@ -102,7 +118,9 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     @Inject(PLATFORM_ID) private platformId: object,
     private route: ActivatedRoute,
     private router: Router,
-    private categoryProductService: CategoryProductService
+    private categoryProductService: CategoryProductService,
+    private cartService: CartService,
+    private customerService: CustomerService
   ) {}
 
   ngAfterViewInit(): void {
@@ -118,13 +136,16 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       this.getElements();
 
       if (
+        !this.categoryBreadcrumb ||
         !this.productGrid ||
         !this.selectedFilterRow ||
         !this.selectedFilterList ||
         !this.pagination ||
         !this.resultCount ||
         !this.emptyMessage ||
-        !this.sortSelect
+        !this.sortSelect ||
+        !this.mobileFilterGroupSelect ||
+        !this.mobileFilterValueSelect
       ) {
         return;
       }
@@ -132,12 +153,48 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       this.initFilterInputs();
       this.initFilterCollapse();
       this.initSort();
+      this.initMobileFilterControls();
+      this.loadCustomerWishlist();
       this.loadDataFromRoute();
     });
   }
 
   ngOnDestroy(): void {
     this.routeSubscription?.unsubscribe();
+    this.productRequestSubscription?.unsubscribe();
+    this.revealObserver?.disconnect();
+  }
+
+  private loadCustomerWishlist(): void {
+    if (!this.isBrowser()) {
+      return;
+    }
+
+    const customerId = this.getCustomerId();
+
+    this.wishlistProductIds.clear();
+
+    if (!customerId) {
+      return;
+    }
+
+    this.customerService.getWishlist(customerId).subscribe({
+      next: (items) => {
+        this.wishlistProductIds = new Set(
+          (Array.isArray(items) ? items : [])
+            .map((item) => String(item.SAN_PHAM_ID || '').trim())
+            .filter((id) => !!id)
+        );
+
+        if (this.productGrid && this.products.length > 0) {
+          this.render();
+        }
+      },
+      error: (err) => {
+        console.error('Lỗi load danh sách yêu thích:', err);
+        this.wishlistProductIds.clear();
+      },
+    });
   }
 
   private loadDataFromRoute(): void {
@@ -147,10 +204,12 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
       this.clearSelectedFilters();
       this.uncheckAllCheckboxes();
+      this.productRequestSubscription?.unsubscribe();
       this.currentPage = 1;
 
       if (!id) {
         this.pageTitle = 'Sản phẩm';
+        this.setBreadcrumb();
         this.products = this.createProductData();
         this.render();
         return;
@@ -182,9 +241,36 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       }
 
       this.pageTitle = 'Sản phẩm';
+      this.setBreadcrumb();
       this.products = this.createProductData();
       this.render();
     });
+  }
+
+  private setBreadcrumb(mainLabel = ''): void {
+    this.breadcrumbFallbackLabels = mainLabel ? [mainLabel] : [];
+    this.updateBreadcrumbLabels();
+  }
+
+  private updateBreadcrumbLabels(): void {
+    this.breadcrumbLabels = this.breadcrumbFallbackLabels;
+
+    this.renderBreadcrumb();
+  }
+
+  private renderBreadcrumb(): void {
+    if (!this.categoryBreadcrumb) {
+      return;
+    }
+
+    const extraItems = this.breadcrumbLabels
+      .map((label, index) => `
+        ${index > 0 ? '<span class="breadcrumb-separator" aria-hidden="true">›</span>' : ''}
+        <span class="breadcrumb-current">${this.escapeHtml(label)}</span>
+      `)
+      .join('');
+
+    this.categoryBreadcrumb.innerHTML = extraItems;
   }
 
   private loadProductsByTopic(topicId: string): void {
@@ -194,12 +280,13 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.uncheckAllCheckboxes();
 
     this.pageTitle = topicNameFromId;
+    this.setBreadcrumb('Chủ đề');
     this.products = [];
     this.selectedFilters.chuDe.add(topicNameFromId);
     this.syncTopicCheckboxById(topicId, true);
     this.render();
 
-    this.categoryProductService.getProductsByTopic(topicId).subscribe({
+    this.productRequestSubscription = this.categoryProductService.getProductsByTopic(topicId).subscribe({
       next: (res) => {
         const topicName = res.topic?.TEN_CHU_DE || topicNameFromId;
 
@@ -207,6 +294,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.uncheckAllCheckboxes();
 
         this.pageTitle = 'Sản phẩm';
+        this.setBreadcrumb('Chủ đề');
 
         this.products = res.products.map((item) =>
           this.mapDbProductToProduct({
@@ -227,6 +315,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         console.error('Lỗi lấy sản phẩm theo chủ đề:', err);
 
         this.pageTitle = 'Không tìm thấy chủ đề';
+        this.setBreadcrumb('Chủ đề');
         this.products = [];
         this.clearSelectedFilters();
         this.uncheckAllCheckboxes();
@@ -240,9 +329,10 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.currentPage = 1;
     this.products = [];
     this.pageTitle = 'Sản phẩm hoa tươi';
+    this.setBreadcrumb('Hoa tươi');
     this.render();
 
-    this.categoryProductService.getProductsByFlower(flowerId).subscribe({
+    this.productRequestSubscription = this.categoryProductService.getProductsByFlower(flowerId).subscribe({
       next: (res) => {
         const flowerName = res.flower?.TEN_HOA_TUOI || 'Hoa tươi';
 
@@ -250,6 +340,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.uncheckAllCheckboxes();
 
         this.pageTitle = 'Sản phẩm';
+        this.setBreadcrumb('Hoa tươi');
 
         this.products = res.products.map((item) =>
           this.mapDbProductToProduct({
@@ -270,6 +361,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         console.error('Lỗi lấy sản phẩm theo hoa tươi:', err);
 
         this.pageTitle = 'Không tìm thấy hoa tươi';
+        this.setBreadcrumb('Hoa tươi');
         this.products = [];
         this.clearSelectedFilters();
         this.uncheckAllCheckboxes();
@@ -285,11 +377,12 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.currentPage = 1;
     this.products = [];
     this.pageTitle = decodedStyle;
+    this.setBreadcrumb('Kiểu dáng');
     this.selectedFilters.kieuDang.add(decodedStyle);
     this.syncCheckbox('kieuDang', decodedStyle, true);
     this.render();
 
-    this.categoryProductService.getProductsByStyle(decodedStyle).subscribe({
+    this.productRequestSubscription = this.categoryProductService.getProductsByStyle(decodedStyle).subscribe({
       next: (res) => {
         const styleName = res.style?.KIEU_DANG || decodedStyle;
 
@@ -297,6 +390,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.uncheckAllCheckboxes();
 
         this.pageTitle = 'Sản phẩm';
+        this.setBreadcrumb('Kiểu dáng');
 
         this.products = res.products.map((item) =>
           this.mapDbProductToProduct({
@@ -317,6 +411,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         console.error('Lỗi lấy sản phẩm theo kiểu dáng:', err);
 
         this.pageTitle = 'Không tìm thấy kiểu dáng';
+        this.setBreadcrumb('Kiểu dáng');
         this.products = [];
         this.clearSelectedFilters();
         this.uncheckAllCheckboxes();
@@ -331,9 +426,10 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.currentPage = 1;
     this.products = [];
     this.pageTitle = 'Sản phẩm';
+    this.setBreadcrumb('Đối tượng');
     this.render();
 
-    this.categoryProductService.getProductsByTarget(targetId).subscribe({
+    this.productRequestSubscription = this.categoryProductService.getProductsByTarget(targetId).subscribe({
       next: (res) => {
         const targetName = res.target?.TEN_DOI_TUONG || 'Đối tượng';
 
@@ -341,6 +437,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.uncheckAllCheckboxes();
 
         this.pageTitle = 'Sản phẩm';
+        this.setBreadcrumb('Đối tượng');
         
         this.products = res.products.map((item) =>
           this.mapDbProductToProduct({
@@ -361,6 +458,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         console.error('Lỗi lấy sản phẩm theo đối tượng:', err);
 
         this.pageTitle = 'Không tìm thấy đối tượng';
+        this.setBreadcrumb('Đối tượng');
         this.products = [];
         this.clearSelectedFilters();
         this.uncheckAllCheckboxes();
@@ -376,9 +474,10 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.currentPage = 1;
     this.products = [];
     this.pageTitle = 'Sản phẩm theo màu sắc';
+    this.setBreadcrumb('Màu sắc');
     this.render();
 
-    this.categoryProductService.getProductsByColor(colorId).subscribe({
+    this.productRequestSubscription = this.categoryProductService.getProductsByColor(colorId).subscribe({
       next: (res) => {
         const colorName = res.color?.TEN_MAU_SAC || 'Màu sắc';
 
@@ -386,6 +485,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.uncheckAllCheckboxes();
 
         this.pageTitle = 'Sản phẩm';
+        this.setBreadcrumb('Màu sắc');
 
         this.products = res.products.map((item) =>
           this.mapDbProductToProduct({
@@ -406,6 +506,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         console.error('Lỗi lấy sản phẩm theo màu sắc:', err);
 
         this.pageTitle = 'Không tìm thấy màu sắc';
+        this.setBreadcrumb('Màu sắc');
         this.products = [];
         this.clearSelectedFilters();
         this.uncheckAllCheckboxes();
@@ -420,9 +521,10 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.currentPage = 1;
     this.products = [];
     this.pageTitle = 'Bộ sưu tập';
+    this.setBreadcrumb('Bộ sưu tập');
     this.render();
 
-    this.categoryProductService.getProductsByCollection(collectionId).subscribe({
+    this.productRequestSubscription = this.categoryProductService.getProductsByCollection(collectionId).subscribe({
       next: (res) => {
         const collectionName = res.collection?.TEN_BO_SUU_TAP || 'Bộ sưu tập';
 
@@ -431,6 +533,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
         // Chỉ Bộ sưu tập mới đổi title thành tên bộ sưu tập.
         this.pageTitle = collectionName;
+        this.setBreadcrumb('Bộ sưu tập');
 
         this.products = res.products.map((item) =>
           this.mapDbProductToProduct({
@@ -446,6 +549,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         console.error('Lỗi lấy sản phẩm theo bộ sưu tập:', err);
 
         this.pageTitle = 'Không tìm thấy bộ sưu tập';
+        this.setBreadcrumb('Bộ sưu tập');
         this.products = [];
         this.clearSelectedFilters();
         this.uncheckAllCheckboxes();
@@ -468,14 +572,14 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       salePriceNumber > 0 &&
       salePriceNumber < originalPrice;
 
-    const finalPrice = hasSalePrice ? salePriceNumber : originalPrice;
+    const finalPrice = hasSalePrice && salePriceNumber !== null ? salePriceNumber : originalPrice;
 
     return {
       id: item.SAN_PHAM_ID,
       name: item.TEN_SAN_PHAM,
       price: finalPrice,
       originalPrice: originalPrice,
-      salePrice: hasSalePrice ? salePriceNumber : null,
+      salePrice: hasSalePrice && salePriceNumber !== null ? salePriceNumber : null,
       image: this.normalizeImageUrl(item.HINH_ANH),
       icon: '🌸',
       filters: {
@@ -484,7 +588,8 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         hoaTuoi: this.parseFilterList(item.TEN_HOA_TUOI_LIST),
         doiTuong: this.parseFilterList(item.TEN_DOI_TUONG_LIST),
         mauSac: this.parseFilterList(item.TEN_MAU_SAC_LIST)
-      }
+      },
+      maxQuantity: Number(item.SO_LUONG || 0) > 0 ? Number(item.SO_LUONG) : undefined
     };
   }
 
@@ -506,6 +611,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   }
 
   private getElements(): void {
+    this.categoryBreadcrumb = document.querySelector<HTMLElement>('#categoryBreadcrumb')!;
     this.productGrid = document.querySelector<HTMLDivElement>('#productGrid')!;
     this.selectedFilterRow = document.querySelector<HTMLElement>('#selectedFilterRow')!;
     this.selectedFilterList = document.querySelector<HTMLDivElement>('#selectedFilterList')!;
@@ -513,6 +619,8 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.resultCount = document.querySelector<HTMLParagraphElement>('#resultCount')!;
     this.emptyMessage = document.querySelector<HTMLParagraphElement>('#emptyMessage')!;
     this.sortSelect = document.querySelector<HTMLSelectElement>('#sortSelect')!;
+    this.mobileFilterGroupSelect = document.querySelector<HTMLSelectElement>('#mobileFilterGroup')!;
+    this.mobileFilterValueSelect = document.querySelector<HTMLSelectElement>('#mobileFilterValue')!;
   }
 
   private createProduct(
@@ -536,6 +644,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       image: this.PRODUCT_IMAGES + fileName,
       icon,
       filters: { chuDe, kieuDang, hoaTuoi, doiTuong, mauSac },
+      maxQuantity: undefined,
     };
   }
 
@@ -616,6 +725,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     const startIndex = (this.currentPage - 1) * this.PAGE_SIZE;
     const pageItems = filtered.slice(startIndex, startIndex + this.PAGE_SIZE);
 
+    this.updateBreadcrumbLabels();
     this.renderSelectedFilters();
     this.renderProducts(pageItems);
     this.renderPagination(totalPages);
@@ -626,40 +736,128 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.emptyMessage.hidden = items.length > 0;
 
     this.productGrid.innerHTML = items.map((item) => {
+      const safeId = this.escapeHtml(item.id);
       const safeName = this.escapeHtml(item.name);
       const safeImage = this.escapeHtml(item.image);
       const safeIcon = this.escapeHtml(item.icon);
-      const priceHtml = item.salePrice !== null
-        ? `
-          <p class="product-old-price">${this.formatPrice(item.originalPrice)}</p>
-          <p class="product-price">${this.formatPrice(item.salePrice)}</p>
-        `
-        : `
-          <p class="product-price">${this.formatPrice(item.originalPrice)}</p>
-        `;
+      const detailHref = `/product-detail/${encodeURIComponent(item.id)}`;
+      const priceHtml = `
+        <div class="product-price-row">
+          <p class="product-price">
+            ${this.formatPrice(item.salePrice !== null ? item.salePrice : item.originalPrice)}
+          </p>
+          <p class="product-old-price${item.salePrice !== null ? '' : ' is-empty'}">
+            ${item.salePrice !== null ? this.formatPrice(item.originalPrice) : ''}
+          </p>
+        </div>
+      `;
+
+      const discountPercent =
+        item.salePrice !== null && item.originalPrice > 0
+          ? Math.round(((item.originalPrice - item.salePrice) / item.originalPrice) * 100)
+          : 0;
+
+      const discountBadgeHtml =
+        discountPercent > 0
+          ? `<span class="badge-sale">-${discountPercent}%</span>`
+          : '';
+
+      const isFavorite = this.wishlistProductIds.has(item.id);
+      const favoriteClass = isFavorite ? ' is-active' : '';
+      const favoriteIcon = isFavorite
+        ? '<i class="bi bi-heart-fill"></i>'
+        : '<i class="bi bi-heart"></i>';
+      const favoriteLabel = isFavorite
+        ? `Bỏ ${safeName} khỏi yêu thích`
+        : `Thêm ${safeName} vào yêu thích`;
 
       return `
         <article class="product-card">
-          <div class="product-image-wrap">
-            ${
-              item.image
-                ? `<img src="${safeImage}" alt="${safeName}" loading="lazy">`
-                : ''
-            }
-            <div class="product-image-fallback" style="${item.image ? '' : 'display:flex'}">${safeIcon}</div>
-            <button class="wishlist-btn" type="button" aria-label="Thêm ${safeName} vào yêu thích">♡</button>
+          <div class="product-media">
+            <a
+              class="product-image-link"
+              href="${detailHref}"
+              data-action="detail"
+              data-product-id="${safeId}"
+              aria-label="Xem chi tiết ${safeName}">
+              <div class="product-image-wrap">
+                ${discountBadgeHtml}
+                ${
+                  item.image
+                    ? `<img src="${safeImage}" alt="${safeName}" loading="lazy">`
+                    : ''
+                }
+                <div class="product-image-fallback" style="${item.image ? '' : 'display:flex'}">${safeIcon}</div>
+              </div>
+            </a>
+            <button class="wishlist-btn${favoriteClass}" type="button" data-action="wishlist" data-product-id="${safeId}" aria-label="${favoriteLabel}">${favoriteIcon}</button>
           </div>
 
-          <h2 class="product-name">${safeName}</h2>
+          <a
+            class="product-name-link"
+            href="${detailHref}"
+            data-action="detail"
+            data-product-id="${safeId}">
+            <h2 class="product-name">${safeName}</h2>
+          </a>
           ${priceHtml}
 
           <div class="card-actions">
-            <button class="buy-btn" type="button">MUA NGAY</button>
-            <button class="cart-btn" type="button" aria-label="Thêm ${safeName} vào giỏ hàng">🛒</button>
+            <button class="buy-btn" type="button" data-action="buy" data-product-id="${safeId}">
+              MUA NGAY
+            </button>
+
+            <button
+              class="cart-btn"
+              type="button"
+              data-action="cart"
+              data-product-id="${safeId}"
+              aria-label="Thêm ${safeName} vào giỏ hàng"
+            >
+              <i class="bi bi-cart3"></i>
+            </button>
           </div>
         </article>
       `;
     }).join('');
+
+    this.productGrid.querySelectorAll<HTMLElement>('[data-action="detail"]').forEach((element) => {
+      element.addEventListener('click', (event) => {
+        event.preventDefault();
+        const productId = element.dataset['productId'];
+        const product = items.find((item) => item.id === productId);
+
+        if (productId) {
+          this.router.navigate(['/product-detail', productId], {
+            state: {
+              productPreview: product
+            }
+          });
+        }
+      });
+    });
+
+    this.productGrid.querySelectorAll<HTMLButtonElement>('[data-action="buy"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const productId = button.dataset['productId'];
+        const product = items.find((item) => item.id === productId);
+
+        if (product) {
+          this.buyNow(product);
+        }
+      });
+    });
+
+    this.productGrid.querySelectorAll<HTMLButtonElement>('[data-action="cart"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const productId = button.dataset['productId'];
+        const product = items.find((item) => item.id === productId);
+
+        if (product) {
+          this.addProductToCart(product);
+        }
+      });
+    });
 
     this.productGrid.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
       img.addEventListener('error', () => {
@@ -669,12 +867,49 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       });
     });
 
-    this.productGrid.querySelectorAll<HTMLButtonElement>('.wishlist-btn').forEach((button) => {
+    this.productGrid.querySelectorAll<HTMLButtonElement>('[data-action="wishlist"]').forEach((button) => {
       button.addEventListener('click', () => {
-        button.classList.toggle('is-active');
-        button.textContent = button.classList.contains('is-active') ? '♥' : '♡';
+        const productId = button.dataset['productId'];
+        const product = items.find((item) => item.id === productId);
+
+        if (product) {
+          this.toggleWishlist(product, button);
+        }
       });
     });
+
+    this.observeProductCards();
+  }
+
+  private observeProductCards(): void {
+    const cards = Array.from(this.productGrid.querySelectorAll<HTMLElement>('.product-card'));
+
+    this.revealObserver?.disconnect();
+
+    if (!('IntersectionObserver' in window)) {
+      cards.forEach((card) => card.classList.add('is-visible'));
+      return;
+    }
+
+    this.revealObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) {
+            return;
+          }
+
+          entry.target.classList.add('is-visible');
+          this.revealObserver?.unobserve(entry.target);
+        });
+      },
+      {
+        root: null,
+        rootMargin: '0px 0px -8% 0px',
+        threshold: 0.12,
+      }
+    );
+
+    cards.forEach((card) => this.revealObserver?.observe(card));
   }
 
   private renderSelectedFilters(): void {
@@ -965,6 +1200,294 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       this.currentPage = 1;
       this.render();
     });
+  }
+
+  private initMobileFilterControls(): void {
+    this.mobileFilterGroupSelect.addEventListener('change', () => {
+      this.populateMobileFilterValues(this.mobileFilterGroupSelect.value as FilterGroup | '');
+    });
+
+    this.mobileFilterValueSelect.addEventListener('change', () => {
+      const group = this.mobileFilterGroupSelect.value as FilterGroup | '';
+      const value = this.mobileFilterValueSelect.value;
+
+      if (!group || !value) {
+        return;
+      }
+
+      const checkbox = this.findFilterCheckbox(group, value);
+
+      if (!checkbox) {
+        return;
+      }
+
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change'));
+      this.mobileFilterValueSelect.value = '';
+    });
+  }
+
+  private populateMobileFilterValues(group: FilterGroup | ''): void {
+    this.mobileFilterValueSelect.innerHTML = '<option value="" selected>Chọn mục lọc</option>';
+    this.mobileFilterValueSelect.disabled = !group;
+
+    if (!group) {
+      return;
+    }
+
+    const options = Array.from(
+      document.querySelectorAll<HTMLInputElement>(`.filter-content input[data-group="${group}"]`)
+    )
+      .map((checkbox) => this.getCheckboxValue(checkbox))
+      .filter((value, index, list) => value && list.indexOf(value) === index)
+      .map((value) => `<option value="${this.escapeHtml(value)}">${this.escapeHtml(value)}</option>`);
+
+    this.mobileFilterValueSelect.innerHTML = [
+      '<option value="" selected>Chọn mục lọc</option>',
+      ...options,
+    ].join('');
+  }
+
+  private findFilterCheckbox(group: FilterGroup, value: string): HTMLInputElement | null {
+    const normalizedValue = this.normalizeText(value);
+
+    return Array.from(
+      document.querySelectorAll<HTMLInputElement>(`.filter-content input[data-group="${group}"]`)
+    ).find((checkbox) => this.normalizeText(this.getCheckboxValue(checkbox)) === normalizedValue) || null;
+  }
+
+  private buyNow(product: Product): void {
+    if (!this.isBrowser()) {
+      return;
+    }
+
+    const checkoutItem = this.createCartItem(product);
+    localStorage.setItem(this.checkoutItemsStorageKey, JSON.stringify([checkoutItem]));
+    this.dispatchCartChanged();
+    this.router.navigate([this.getOrderRoute()]);
+  }
+
+  private toggleWishlist(product: Product, button?: HTMLButtonElement): void {
+    if (!this.isBrowser()) {
+      return;
+    }
+
+    const customerId = this.getCustomerId();
+
+    if (!customerId) {
+      alert('Vui lòng đăng nhập để sử dụng danh sách yêu thích.');
+      this.router.navigate(['/login']);
+      return;
+    }
+
+    if (!String(product.id).startsWith('SP')) {
+      alert('Sản phẩm này chưa đồng bộ với database nên chưa thể thêm vào yêu thích.');
+      return;
+    }
+
+    if (this.pendingWishlistProductIds.has(product.id)) {
+      return;
+    }
+
+    const isFavorite = this.wishlistProductIds.has(product.id);
+    const nextIsFavorite = !isFavorite;
+
+    this.pendingWishlistProductIds.add(product.id);
+
+    if (nextIsFavorite) {
+      this.wishlistProductIds.add(product.id);
+    } else {
+      this.wishlistProductIds.delete(product.id);
+    }
+
+    this.updateWishlistButton(product, nextIsFavorite, button);
+
+    if (isFavorite) {
+      this.customerService.removeWishlistItem(customerId, product.id).subscribe({
+        error: (err) => {
+          console.error('Lỗi xóa sản phẩm yêu thích:', err);
+          this.wishlistProductIds.add(product.id);
+          this.updateWishlistButton(product, true, button);
+          alert('Chưa xóa được sản phẩm khỏi danh sách yêu thích. Vui lòng thử lại.');
+        },
+        complete: () => {
+          this.pendingWishlistProductIds.delete(product.id);
+        },
+      });
+
+      return;
+    }
+
+    this.customerService.addWishlistItem(customerId, product.id).subscribe({
+      error: (err) => {
+        console.error('Lỗi thêm sản phẩm yêu thích:', err);
+        this.wishlistProductIds.delete(product.id);
+        this.updateWishlistButton(product, false, button);
+        alert('Chưa thêm được sản phẩm vào danh sách yêu thích. Vui lòng thử lại.');
+      },
+      complete: () => {
+        this.pendingWishlistProductIds.delete(product.id);
+      },
+    });
+  }
+
+  private updateWishlistButton(
+    product: Product,
+    isFavorite: boolean,
+    button?: HTMLButtonElement
+  ): void {
+    const targetButton =
+      button ||
+      Array.from(this.productGrid.querySelectorAll<HTMLButtonElement>('[data-action="wishlist"]'))
+        .find((wishlistButton) => wishlistButton.dataset['productId'] === product.id);
+
+    if (!targetButton) {
+      return;
+    }
+
+    const safeName = this.escapeHtml(product.name);
+
+    targetButton.classList.toggle('is-active', isFavorite);
+    targetButton.innerHTML = isFavorite
+      ? '<i class="bi bi-heart-fill"></i>'
+      : '<i class="bi bi-heart"></i>';
+    targetButton.setAttribute(
+      'aria-label',
+      isFavorite
+        ? `Bỏ ${safeName} khỏi yêu thích`
+        : `Thêm ${safeName} vào yêu thích`
+    );
+  }
+
+  private addProductToCart(product: Product): void {
+    if (!this.isBrowser()) {
+      return;
+    }
+
+    const customerId = this.getCustomerId();
+
+    if (customerId && String(product.id).startsWith('SP')) {
+      this.cartService.addItem(customerId, product.id, 1).subscribe({
+        next: () => {
+          this.dispatchCartChanged();
+          alert(`Đã thêm "${product.name}" vào giỏ hàng`);
+        },
+        error: (err) => {
+          console.error('Lỗi thêm sản phẩm vào giỏ hàng database:', err);
+          alert('Chưa thêm được sản phẩm vào giỏ hàng. Vui lòng thử lại.');
+        }
+      });
+
+      return;
+    }
+
+    this.saveProductToGuestCart(product, true);
+  }
+
+  private isBrowser(): boolean {
+    return isPlatformBrowser(this.platformId) && typeof window !== 'undefined';
+  }
+
+  private getLoggedInCustomer(): any | null {
+    if (!this.isBrowser()) {
+      return null;
+    }
+
+    const rawCustomer = localStorage.getItem('khachHang');
+
+    if (!rawCustomer || rawCustomer === 'null' || rawCustomer === 'undefined') {
+      return null;
+    }
+
+    try {
+      const customer = JSON.parse(rawCustomer);
+
+      if (!customer?.KHACH_HANG_ID) {
+        return null;
+      }
+
+      return customer;
+    } catch {
+      return null;
+    }
+  }
+
+  private getCustomerId(): string {
+    const customer = this.getLoggedInCustomer();
+    return customer?.KHACH_HANG_ID ? String(customer.KHACH_HANG_ID) : '';
+  }
+
+  private getOrderRoute(): string {
+    return this.getCustomerId() ? '/order-registrant' : '/order-haunt';
+  }
+
+  private createCartItem(product: Product) {
+    return {
+      id: product.id,
+      name: product.name,
+      style: product.filters.kieuDang[0] || 'Sản phẩm',
+      occasion: product.filters.chuDe[0] || 'Đang bán',
+      price: product.price,
+      originalPrice: product.salePrice !== null ? product.originalPrice : null,
+      quantity: 1,
+      image: product.image,
+      selected: true,
+      maxQuantity: product.maxQuantity
+    };
+  }
+
+  private getCartFromStorage(): any[] {
+    const rawCart = localStorage.getItem(this.guestCartStorageKey);
+
+    if (!rawCart) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(rawCart);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private saveProductToGuestCart(product: Product, showAlert: boolean): void {
+    const cart = this.getCartFromStorage();
+    const cartItem = this.createCartItem(product);
+    const existingItem = cart.find((item: any) => String(item?.id || '') === product.id);
+
+    if (existingItem) {
+      const currentQuantity = Number(existingItem.quantity || 1);
+      const nextQuantity = currentQuantity + 1;
+      const maxQuantity = product.maxQuantity || Number.MAX_SAFE_INTEGER;
+
+      existingItem.quantity = Math.min(nextQuantity, maxQuantity);
+      existingItem.name = cartItem.name;
+      existingItem.style = cartItem.style;
+      existingItem.occasion = cartItem.occasion;
+      existingItem.price = cartItem.price;
+      existingItem.originalPrice = cartItem.originalPrice;
+      existingItem.image = cartItem.image;
+      existingItem.selected = true;
+      existingItem.maxQuantity = cartItem.maxQuantity;
+    } else {
+      cart.push(cartItem);
+    }
+
+    localStorage.setItem(this.guestCartStorageKey, JSON.stringify(cart));
+    this.dispatchCartChanged();
+
+    if (showAlert) {
+      alert(`Đã thêm "${product.name}" vào giỏ hàng`);
+    }
+  }
+
+  private dispatchCartChanged(): void {
+    if (!this.isBrowser()) {
+      return;
+    }
+
+    window.dispatchEvent(new Event('cart-changed'));
   }
 
   private escapeHtml(value: string): string {

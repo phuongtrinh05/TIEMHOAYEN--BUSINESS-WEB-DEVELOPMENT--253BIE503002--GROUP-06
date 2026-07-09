@@ -1,10 +1,21 @@
 <section class="blog-page">
+    <section class="blog-banner">
+        <video
+        class="blog-video"
+        src="assets/video/blog_video.mp4"
+        autoplay
+        muted
+        loop
+        playsinline
+        >
+        Trình duyệt của bạn không hỗ trợ video.
+        </video>
+    </section>
     <main class="blog-list-wrapper">
         <article class="blog-item" *ngFor="let post of posts">
             <a
                 class="blog-item-link"
-                [href]="post.id === 1 ? '/blog-detail' : 'javascript:void(0)'"
-                [class.disabled-link]="post.id !== 1"
+                [routerLink]="['/blog-detail', post.id]"
             >
                 <div class="blog-item-image">
                     <img [src]="post.image" [alt]="post.title">
@@ -18,36 +29,41 @@
             </a>
         </article>
 
-        <div class="blog-pagination">
-            <button type="button" class="page-btn">
+        <div class="blog-pagination" *ngIf="totalPages > 1">
+            <button
+                type="button"
+                class="page-btn"
+                [disabled]="currentPage === 1"
+                (click)="prevPage()"
+            >
                 ‹
             </button>
 
-            <button type="button" class="page-btn active">
-                1
-            </button>
+            <ng-container *ngFor="let p of pageNumbers">
+                <span *ngIf="p === '...'" class="page-dots">...</span>
+                <button
+                    *ngIf="p !== '...'"
+                    type="button"
+                    class="page-btn"
+                    [class.active]="p === currentPage"
+                    (click)="goToPage(+p)"
+                >
+                    {{ p }}
+                </button>
+            </ng-container>
 
-            <button type="button" class="page-btn">
-                2
-            </button>
-
-            <span class="page-dots">...</span>
-
-            <button type="button" class="page-btn">
-                7
-            </button>
-
-            <button type="button" class="page-btn">
-                8
-            </button>
-
-            <button type="button" class="page-btn">
+            <button
+                type="button"
+                class="page-btn"
+                [disabled]="currentPage === totalPages"
+                (click)="nextPage()"
+            >
                 ›
             </button>
         </div>
 
         <p class="pagination-note">
-            Hiển thị 1-4/30 bài viết
+            {{ showingText }}
         </p>
     </main>
 </section>

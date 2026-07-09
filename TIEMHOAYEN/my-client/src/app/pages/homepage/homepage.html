@@ -1,28 +1,26 @@
 <div class="home-page">
 
     <!-- HERO -->
-    <section class="hero">
-        <img
-            src="assets/images/homepage-banner-main.png"
-            alt="banner">
-        <div class="hero-content">
-            <p class="hero-subtitle">
-                Trao hương sắc
-            </p>
-            <h1>
-                GỬI YÊU THƯƠNG
-            </h1>
-            <p>
-                Mỗi bó hoa là một lời nhắn gửi yêu thương
-                đến những người mình yêu quý.
-            </p>
-            <button>
-                KHÁM PHÁ NGAY →
-            </button>
-        </div>
+    <section class="hero reveal">
+        <video
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="auto"
+            disablepictureinpicture
+            disableRemotePlayback
+            controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
+            x-webkit-airplay="deny"
+            poster="assets/images/homepage-banner-main.png">
+            <source
+                src="https://res.cloudinary.com/dxeffzk0e/video/upload/v1783519387/tiem_hoa_yen_omwbbc.mp4"
+                type="video/mp4">
+        </video>
     </section>
+
     <!-- BENEFIT -->
-    <section class="benefits">
+    <section class="benefits reveal">
         <div class="benefit-item">
             <i class="bi bi-truck"></i>
             <div class="benefit-text">
@@ -52,132 +50,430 @@
             </div>
         </div>
     </section>
+
     <!-- FLOWER 3D -->
-    <section class="flower-3d" routerlink="/design3d">
-        <img
-            src="assets/images/homepage-Banner3D.png"
-            alt="Thiết kế hoa 3D">
+    <section class="flower-3d reveal">
+        <video
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="auto"
+            disablepictureinpicture
+            disableRemotePlayback
+            controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
+            x-webkit-airplay="deny">
+            <source
+                src="https://res.cloudinary.com/dxeffzk0e/video/upload/v1783519733/design_3D_ahecpq.mp4"
+                type="video/mp4">
+        </video>
+
+        <div class="flower-3d-overlay">
+            <h2>Trải nghiệm thiết kế hoa 3D</h2>
+            <a
+                class="btn-3d-experience"
+                routerLink="/design3d"
+                (click)="scrollToTop()">
+                Trải nghiệm ngay
+            </a>
+        </div>
     </section>
+
+    <!-- BỘ SƯU TẬP TỪ DB
+    <section class="collection-tags-section">
+        <h2>BỘ SƯU TẬP</h2>
+        <div class="collection-tags">
+            @for(col of collections; track col.BO_SUU_TAP_ID) {
+                <a
+                    class="tag-item"
+                    [routerLink]="['/category']"
+                    [queryParams]="{ collection: col.BO_SUU_TAP_ID }">
+                    {{ col.TEN_BO_SUU_TAP }}
+                </a>
+            }
+        </div>
+    </section> -->
+
     <!-- NEW COLLECTION -->
-    <section class="collection">
+    <section class="collection reveal">
         <h2>BỘ SƯU TẬP MỚI</h2>
-        <div class="product-grid">
-            @for(item of newCollection; track item.name){
-                <div class="product-card"  [routerLink]="item.link">
-                    <img
-                        [src]="item.image"
-                        [alt]="item.name">
-                    <h3>{{item.name}}</h3>
-                    <div class="price">
-                        {{item.price}}
+
+        <div
+            class="product-grid product-slider"
+            [class.is-changing]="newCollectionChanging">
+            @for(item of newCollection; track item.id) {
+                <div
+                    class="product-card"
+                    role="link"
+                    tabindex="0"
+                    (click)="goToProductDetail(item, $event)"
+                    (keydown.enter)="goToProductDetail(item, $event)"
+                    [attr.aria-label]="'Xem chi tiết ' + item.name">
+                    <div class="product-card-media">
+                        <img
+                            [src]="item.image"
+                            [alt]="item.name"
+                            loading="lazy">
+                        @if(item.discountPercent) {
+                            <span class="badge-sale">-{{ item.discountPercent }}%</span>
+                        }
+                        <button
+                            class="btn-wishlist"
+                            type="button"
+                            [class.active]="isInWishlist(item.id)"
+                            (click)="toggleWishlist(item, $event)"
+                            [attr.aria-label]="'Lưu ' + item.name + ' vào yêu thích'">
+                            <i class="bi" [class.bi-heart-fill]="isInWishlist(item.id)" [class.bi-heart]="!isInWishlist(item.id)"></i>
+                        </button>
                     </div>
-                    <div class="product-action">
-                        <a
-                            class="btn-buy"
-                            routerLink="/checkout">
-                            MUA NGAY
-                        </a>
-                        <a
-                            class="btn-cart"
-                            routerLink="/cart">
-                            <i class="bi bi-cart3"></i>
-                        </a>
+
+                    <div class="product-card-body">
+                        <h3>{{ item.name }}</h3>
+
+                        <div class="price-row">
+                            <span class="price">{{ item.price }}</span>
+                            @if(item.oldPrice) {
+                                <span class="old-price">{{ item.oldPrice }}</span>
+                            }
+                        </div>
+
+                        <div class="product-action">
+                            <button class="btn-buy" type="button" (click)="buyNow(item, $event)">MUA NGAY</button>
+                            <button
+                                class="btn-cart"
+                                type="button"
+                                (click)="addProductToCart(item, $event)"
+                                [attr.aria-label]="'Thêm ' + item.name + ' vào giỏ hàng'">
+                                <i class="bi bi-cart3"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             }
         </div>
-        <button class="btn-view-more">
+
+        <button
+            class="btn-view-more"
+            [routerLink]="['/bo-suu-tap', newCollectionId]"
+            (click)="scrollToTop()"
+            type="button">
             Xem tất cả
             <i class="bi bi-arrow-right"></i>
         </button>
     </section>
 
     <!-- SALE BANNER -->
-    <section class="sale-banner">
+    <section class="sale-banner reveal">
         <img
             src="assets/images/homepage-banner-sale.png"
             alt="sale banner">
     </section>
+
     <!-- SALE PRODUCTS -->
-    <section class="collection">
+    <section class="collection reveal">
         <h2>SẢN PHẨM GIẢM GIÁ</h2>
-        <div class="product-grid">
-            @for(item of saleProducts; track item.name){
-                <div class="product-card"  [routerLink]="item.link">
-                    <img
-                        [src]="item.image"
-                        [alt]="item.name">
-                    <h3>{{item.name}}</h3>
-                    <div class="old-price">
-                        {{item.oldPrice}}
+
+        <div class="product-carousel">
+            <button
+                class="carousel-arrow carousel-arrow-left"
+                type="button"
+                *ngIf="saleProductTotalPages > 1"
+                (click)="prevSaleProducts($event)">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+
+            <div
+                class="product-grid product-slider"
+                [class.is-changing]="saleProductsChanging">
+                @for(item of saleProducts; track item.id) {
+                    <div
+                        class="product-card"
+                        role="link"
+                        tabindex="0"
+                        (click)="goToProductDetail(item, $event)"
+                        (keydown.enter)="goToProductDetail(item, $event)"
+                        [attr.aria-label]="'Xem chi tiết ' + item.name">
+                        <div class="product-card-media">
+                            <img
+                                [src]="item.image"
+                                [alt]="item.name"
+                                loading="lazy">
+                            @if(item.discountPercent) {
+                                <span class="badge-sale">-{{ item.discountPercent }}%</span>
+                            }
+                            <button
+                                class="btn-wishlist"
+                                type="button"
+                                [class.active]="isInWishlist(item.id)"
+                                (click)="toggleWishlist(item, $event)"
+                                [attr.aria-label]="'Lưu ' + item.name + ' vào yêu thích'">
+                                <i class="bi" [class.bi-heart-fill]="isInWishlist(item.id)" [class.bi-heart]="!isInWishlist(item.id)"></i>
+                            </button>
+                        </div>
+
+                        <div class="product-card-body">
+                            <h3>{{ item.name }}</h3>
+
+                            <div class="price-row">
+                                <span class="price">{{ item.price }}</span>
+                                @if(item.oldPrice) {
+                                    <span class="old-price">{{ item.oldPrice }}</span>
+                                }
+                            </div>
+
+                            <div class="product-action">
+                                <button
+                                    class="btn-buy"
+                                    type="button"
+                                    (click)="buyNow(item, $event)">
+                                    MUA NGAY
+                                </button>
+                                <button
+                                    class="btn-cart"
+                                    type="button"
+                                    (click)="addProductToCart(item, $event)"
+                                    [attr.aria-label]="'Thêm ' + item.name + ' vào giỏ hàng'">
+                                    <i class="bi bi-cart3"></i>
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="price">
-                        {{item.price}}
-                    </div>
-                    <div class="product-action">
-                        <a
-                            class="btn-buy"
-                            routerLink="/checkout">
-                            MUA NGAY
-                        </a>
-                        <a
-                            class="btn-cart"
-                            routerLink="/cart">
-                            <i class="bi bi-cart3"></i>
-                        </a>
-                    </div>
-                </div>
+                }
+            </div>
+
+            <button
+                class="carousel-arrow carousel-arrow-right"
+                type="button"
+                *ngIf="saleProductTotalPages > 1"
+                (click)="nextSaleProducts($event)">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+
+        <div class="carousel-dots" *ngIf="saleProductTotalPages > 1">
+            @for(dot of saleProductDots; track dot) {
+                <button
+                    type="button"
+                    class="carousel-dot"
+                    [class.active]="saleProductCurrentPage === dot"
+                    (click)="goToSaleProductPage(dot, $event)">
+                </button>
             }
         </div>
-        <button class="btn-view-more">
-            Xem tất cả
-            <i class="bi bi-arrow-right"></i>
-        </button>
     </section>
 
     <!-- BEST SELLER -->
-    <section class="collection">
+    <section class="collection reveal">
         <h2>SẢN PHẨM BÁN CHẠY</h2>
-        <div class="product-grid">
-            @for(item of bestSellerProducts; track item.name){
-                <div class="product-card"  [routerLink]="item.link">
-                    <img
-                        [src]="item.image"
-                        [alt]="item.name">
-                    <h3>{{item.name}}</h3>
-                    <div class="price">
-                        {{item.price}}
+
+        <div class="product-carousel">
+            <button
+                class="carousel-arrow carousel-arrow-left"
+                type="button"
+                *ngIf="bestSellerProductTotalPages > 1"
+                (click)="prevBestSellerProducts($event)">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+
+            <div
+                class="product-grid product-slider"
+                [class.is-changing]="bestSellerProductsChanging">
+                @for(item of bestSellerProducts; track item.id) {
+                    <div
+                        class="product-card"
+                        role="link"
+                        tabindex="0"
+                        (click)="goToProductDetail(item, $event)"
+                        (keydown.enter)="goToProductDetail(item, $event)"
+                        [attr.aria-label]="'Xem chi tiết ' + item.name">
+                        <div class="product-card-media">
+                            <img
+                                [src]="item.image"
+                                [alt]="item.name"
+                                loading="lazy">
+                            @if(item.discountPercent) {
+                                <span class="badge-sale">-{{ item.discountPercent }}%</span>
+                            }
+                            <button
+                                class="btn-wishlist"
+                                type="button"
+                                [class.active]="isInWishlist(item.id)"
+                                (click)="toggleWishlist(item, $event)"
+                                [attr.aria-label]="'Lưu ' + item.name + ' vào yêu thích'">
+                                <i class="bi" [class.bi-heart-fill]="isInWishlist(item.id)" [class.bi-heart]="!isInWishlist(item.id)"></i>
+                            </button>
+                        </div>
+
+                        <div class="product-card-body">
+                            <h3>{{ item.name }}</h3>
+
+                            <div class="price-row">
+                                <span class="price">{{ item.price }}</span>
+                                @if(item.oldPrice) {
+                                    <span class="old-price">{{ item.oldPrice }}</span>
+                                }
+                            </div>
+
+                            <div class="product-action">
+                                <button
+                                    class="btn-buy"
+                                    type="button"
+                                    (click)="buyNow(item, $event)">
+                                    MUA NGAY
+                                </button>
+                                <button
+                                    class="btn-cart"
+                                    type="button"
+                                    (click)="addProductToCart(item, $event)"
+                                    [attr.aria-label]="'Thêm ' + item.name + ' vào giỏ hàng'">
+                                    <i class="bi bi-cart3"></i>
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="product-action">
-                        <a
-                            class="btn-buy"
-                            routerLink="/checkout">
-                            MUA NGAY
-                        </a>
-                        <a
-                            class="btn-cart"
-                            routerLink="/cart">
-                            <i class="bi bi-cart3"></i>
-                        </a>
-                    </div>
-                </div>
+                }
+            </div>
+
+            <button
+                class="carousel-arrow carousel-arrow-right"
+                type="button"
+                *ngIf="bestSellerProductTotalPages > 1"
+                (click)="nextBestSellerProducts($event)">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+
+        <div class="carousel-dots" *ngIf="bestSellerProductTotalPages > 1">
+            @for(dot of bestSellerProductDots; track dot) {
+                <button
+                    type="button"
+                    class="carousel-dot"
+                    [class.active]="bestSellerProductCurrentPage === dot"
+                    (click)="goToBestSellerProductPage(dot, $event)">
+                </button>
             }
         </div>
-        <button class="btn-view-more">
-            Xem tất cả
-            <i class="bi bi-arrow-right"></i>
-        </button>
     </section>
 
+    <!-- MEMBERSHIP POLICY -->
+    <section class="membership-section reveal">
+        <div class="membership-heading">
+            <H2>CHÍNH SÁCH KHÁCH HÀNG THÂN THIẾT</H2>
+            <span>Mỗi 10.000đ thanh toán = 1 điểm thưởng. Dùng điểm để giảm đơn hàng hoặc đổi voucher phí vận chuyển.</span>
+        </div>
+
+        <div class="membership-grid">
+            <article class="member-card member-card--bronze">
+                <div class="member-card__shine"></div>
+                <div class="member-medal"><i class="bi bi-star-fill"></i></div>
+                <div class="member-card__content">
+                    <p class="member-card__eyebrow">Hạng thành viên</p>
+                    <h3>ĐỒNG</h3>
+                    <p class="member-card__condition">0 - dưới 1.000.000đ</p>
+
+                    <div class="member-progress">
+                        <div class="member-progress__top">
+                            <span>Tích lũy nâng hạng Bạc</span>
+                            <strong>0%</strong>
+                        </div>
+                        <div class="member-progress__bar"><span style="width: 0%"></span></div>
+                    </div>
+
+                    <div class="member-benefits">
+                        <p><i class="bi bi-check-circle"></i> Nhận tin khuyến mãi sớm</p>
+                        <p><i class="bi bi-check-circle"></i> Quà sinh nhật nhỏ từ shop</p>
+                        <p><i class="bi bi-check-circle"></i> Đổi điểm: 2 điểm = 1.000đ</p>
+                    </div>
+                </div>
+            </article>
+
+            <article class="member-card member-card--silver">
+                <div class="member-card__shine"></div>
+                <div class="member-medal"><i class="bi bi-star-fill"></i></div>
+                <div class="member-card__content">
+                    <p class="member-card__eyebrow">Hạng thành viên</p>
+                    <h3>BẠC</h3>
+                    <p class="member-card__condition">Từ 1.000.000đ - dưới 3.000.000đ</p>
+
+                    <div class="member-progress">
+                        <div class="member-progress__top">
+                            <span>Tích lũy nâng hạng Vàng</span>
+                            <strong>50%</strong>
+                        </div>
+                        <div class="member-progress__bar"><span style="width: 50%"></span></div>
+                    </div>
+
+                    <div class="member-benefits">
+                        <p><i class="bi bi-check-circle"></i> Miễn phí giao tiêu chuẩn 1 lần/tháng</p>
+                        <p><i class="bi bi-check-circle"></i> Nhận mã voucher định kỳ</p>
+                        <p><i class="bi bi-check-circle"></i> Có thể đổi voucher phí vận chuyển</p>
+                    </div>
+                </div>
+            </article>
+
+            <article class="member-card member-card--gold">
+                <div class="member-card__shine"></div>
+                <div class="member-medal"><i class="bi bi-star-fill"></i></div>
+                <div class="member-card__content">
+                    <p class="member-card__eyebrow">Hạng thành viên</p>
+                    <h3>VÀNG</h3>
+                    <p class="member-card__condition">Từ 3.000.000đ - dưới 6.000.000đ</p>
+
+                    <div class="member-progress">
+                        <div class="member-progress__top">
+                            <span>Tích lũy nâng hạng Kim cương</span>
+                            <strong>58%</strong>
+                        </div>
+                        <div class="member-progress__bar"><span style="width: 58%"></span></div>
+                    </div>
+
+                    <div class="member-benefits">
+                        <p><i class="bi bi-check-circle"></i> Miễn phí giao tiêu chuẩn không giới hạn</p>
+                        <p><i class="bi bi-check-circle"></i> Ưu tiên chọn mẫu hoa mới</p>
+                        <p><i class="bi bi-check-circle"></i> Quà sinh nhật hấp dẫn hơn</p>
+                    </div>
+                </div>
+            </article>
+
+            <article class="member-card member-card--diamond">
+                <div class="member-card__shine"></div>
+                <div class="member-medal"><i class="bi bi-star-fill"></i></div>
+                <div class="member-card__content">
+                    <p class="member-card__eyebrow">Hạng thành viên</p>
+                    <h3>KIM CƯƠNG</h3>
+                    <p class="member-card__condition">Từ 6.000.000đ trở lên</p>
+
+                    <div class="member-progress">
+                        <div class="member-progress__top">
+                            <span>Duy trì hạng Kim cương</span>
+                            <strong>100%</strong>
+                        </div>
+                        <div class="member-progress__bar"><span style="width: 100%"></span></div>
+                    </div>
+
+                    <div class="member-benefits">
+                        <p><i class="bi bi-check-circle"></i> Miễn phí tất cả đơn hàng nội thành</p>
+                        <p><i class="bi bi-check-circle"></i> Ưu tiên giao hỏa tốc</p>
+                        <p><i class="bi bi-check-circle"></i> Quà sinh nhật siêu VIP & voucher đặc biệt</p>
+                        <p><i class="bi bi-check-circle"></i> Tư vấn thiết kế riêng cho đơn lớn</p>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+        <div class="membership-note">
+            Điểm thưởng được ghi nhận sau khi đơn hàng hoàn tất thanh toán và có hạn sử dụng trong 12 tháng. Điểm không quy đổi thành tiền mặt, không chuyển nhượng và không áp dụng cho đơn hủy/hoàn trả.
+        </div>
+    </section>
     <!-- REVIEW -->
-    <section class="review-section">
+    <section class="review-section reveal">
         <h2>ĐÁNH GIÁ CỦA KHÁCH HÀNG</h2>
         <div class="review-wrapper">
             <button class="review-arrow">
                 <i class="bi bi-chevron-left"></i>
             </button>
             <div class="review-grid">
-                @for(item of customerReviews; track item.image){
+                @for(item of customerReviews; track item.image) {
                     <div class="review-card">
                         <img
                             [src]="item.image"
@@ -193,23 +489,43 @@
     </section>
 
     <!-- BLOG -->
-
-    <section class="blog-section">
+    <section class="blog-section reveal">
         <h2>BLOG</h2>
-        <div class="blog-grid">
-            @for(item of blogs; track item.title){
-                <div class="blog-card" [routerLink]="item.link">
+
+        <p class="blog-loading" *ngIf="loadingBlogs">
+            Đang tải bài viết mới nhất...
+        </p>
+
+        <div class="blog-grid" *ngIf="!loadingBlogs && blogs.length > 0">
+            @for(item of blogs; track item.id) {
+                <article
+                    class="blog-card"
+                    [routerLink]="['/blog-detail', item.id]"
+                    (click)="scrollToTop()"
+                    tabindex="0"
+                    role="link"
+                    [attr.aria-label]="'Xem bài viết ' + item.title">
                     <img
                         [src]="item.image"
                         [alt]="item.title">
 
-                    <h3>{{item.title}}</h3>
-                </div>
+                    <h3>{{ item.title }}</h3>
+                </article>
             }
         </div>
-        <button class="btn-view-more">
+
+        <p class="blog-empty" *ngIf="!loadingBlogs && blogs.length === 0">
+            Chưa có bài viết nào.
+        </p>
+
+        <button
+            class="btn-view-more"
+            type="button"
+            [routerLink]="['/blog']"
+            (click)="scrollToTop()">
             Xem tất cả
             <i class="bi bi-arrow-right"></i>
         </button>
     </section>
 
+</div>

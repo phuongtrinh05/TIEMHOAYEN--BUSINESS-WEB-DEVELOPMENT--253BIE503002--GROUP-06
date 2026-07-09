@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { connectDB } from './db.js';
+
 import customerRoutes from './routes/customer.js';
 import employeeRoutes from './routes/employee.js';
 import addressRoutes from './routes/address.js';
@@ -22,8 +23,10 @@ import importSlipDetailRoutes from './routes/importSlipDetail.js';
 import exportSlipRoutes from './routes/exportSlip.js';
 import exportSlipDetailRoutes from './routes/exportSlipDetail.js';
 import image3dRoutes from './routes/image3d.js';
+
 import cartRoutes from './routes/cart.js';
 import cartDetailRoutes from './routes/cartDetail.js';
+
 import shippingPolicyRoutes from './routes/shippingPolicy.js';
 import paymentPolicyRoutes from './routes/paymentPolicy.js';
 import orderRoutes from './routes/order.js';
@@ -37,16 +40,20 @@ import wishlistRoutes from './routes/wishlist.js';
 import faqRoutes from './routes/faq.js';
 import chatRoutes from './routes/chat.js';
 import imageRequestRoutes from './routes/imageRequest.js';
+import notificationRoutes from './routes/notification.js';
 import blogRoutes from './routes/blog.js';
 import collectionRoutes from './routes/collection.js';
 import collectionProductRoutes from './routes/collectionProduct.js';
 import styleRoutes from './routes/style.js';
 import categoryProductRoutes from './routes/categoryProduct.js';
+import chatRoute from './routes/chat.js';
+import contactRoutes from './routes/contact.js';
 
 const app = express();
-
+app.use('/api/chat', chatRoute);
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static('uploads'));
 
 app.use('/api/customers', customerRoutes);
 app.use('/api/employees', employeeRoutes);
@@ -69,8 +76,23 @@ app.use('/api/import-slip-details', importSlipDetailRoutes);
 app.use('/api/export-slips', exportSlipRoutes);
 app.use('/api/export-slip-details', exportSlipDetailRoutes);
 app.use('/api/images-3d', image3dRoutes);
+
+
+/**
+ * GIỎ HÀNG
+ *
+ * Route chính dùng cho frontend mới:
+ *   GET    /api/cart/customer/:customerId
+ *   POST   /api/cart/add
+ *   PUT    /api/cart/update
+ *   DELETE /api/cart/remove
+ *
+ * Giữ /api/carts để không làm hỏng các code cũ nếu còn dùng.
+ */
+app.use('/api/cart', cartRoutes);
 app.use('/api/carts', cartRoutes);
 app.use('/api/cart-details', cartDetailRoutes);
+
 app.use('/api/shipping-policies', shippingPolicyRoutes);
 app.use('/api/payment-policies', paymentPolicyRoutes);
 app.use('/api/orders', orderRoutes);
@@ -84,62 +106,80 @@ app.use('/api/wishlists', wishlistRoutes);
 app.use('/api/faqs', faqRoutes);
 app.use('/api/chats', chatRoutes);
 app.use('/api/image-requests', imageRequestRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/collections', collectionRoutes);
 app.use('/api/collection-products', collectionProductRoutes);
 app.use('/api/styles', styleRoutes);
 app.use('/api/category-products', categoryProductRoutes);
+app.use('/api/contacts', contactRoutes);
 
 app.get('/', (req: Request, res: Response) => {
-    res.send('Backend TIEM_HOA_YEN đang chạy!');
+  res.send('Backend TIEM_HOA_YEN đang chạy!');
 });
 
 const PORT = 3000;
 
 (async () => {
+  try {
     await connectDB();
+
     app.listen(PORT, () => {
-        console.log(`\nServer: http://localhost:${PORT}`);
-        console.log('\nCác endpoint:');
-    console.log(`  /api/customers`);
-    console.log(`  /api/employees`);
-    console.log(`  /api/addresses`);
-    console.log(`  /api/products`);
-    console.log(`  /api/categories`);
-    console.log(`  /api/product-images`);
-    console.log(`  /api/targets`);
-    console.log(`  /api/target-products`);
-    console.log(`  /api/colors`);
-    console.log(`  /api/color-products`);
-    console.log(`  /api/flowers`);
-    console.log(`  /api/flower-products`);
-    console.log(`  /api/materials`);
-    console.log(`  /api/color-materials`);
-    console.log(`  /api/recipes`);
-    console.log(`  /api/suppliers`);
-    console.log(`  /api/import-slips`);
-    console.log(`  /api/import-slip-details`);
-    console.log(`  /api/export-slips`);
-    console.log(`  /api/export-slip-details`);
-    console.log(`  /api/images-3d`);
-    console.log(`  /api/carts`);
-    console.log(`  /api/cart-details`);
-    console.log(`  /api/shipping-policies`);
-    console.log(`  /api/payment-policies`);
-    console.log(`  /api/orders`);
-    console.log(`  /api/order-details`);
-    console.log(`  /api/payments`);
-    console.log(`  /api/campaigns`);
-    console.log(`  /api/vouchers`);
-    console.log(`  /api/order-vouchers`);
-    console.log(`  /api/reviews`);
-    console.log(`  /api/wishlists`);
-    console.log(`  /api/faqs`);
-    console.log(`  /api/chats`);
-    console.log(`  /api/image-requests`);
-    console.log(`  /api/blogs`);
-    console.log(`  /api/collections`);
-    console.log(`  /api/collection-products`);
-    console.log('  /api/styles');
+      console.log(`\nServer: http://localhost:${PORT}`);
+
+      console.log('\nCác endpoint chính:');
+      console.log(`  /api/customers`);
+      console.log(`  /api/employees`);
+      console.log(`  /api/addresses`);
+      console.log(`  /api/products`);
+      console.log(`  /api/categories`);
+      console.log(`  /api/product-images`);
+      console.log(`  /api/targets`);
+      console.log(`  /api/target-products`);
+      console.log(`  /api/colors`);
+      console.log(`  /api/color-products`);
+      console.log(`  /api/flowers`);
+      console.log(`  /api/flower-products`);
+      console.log(`  /api/materials`);
+      console.log(`  /api/color-materials`);
+      console.log(`  /api/recipes`);
+      console.log(`  /api/suppliers`);
+      console.log(`  /api/import-slips`);
+      console.log(`  /api/import-slip-details`);
+      console.log(`  /api/export-slips`);
+      console.log(`  /api/export-slip-details`);
+      console.log(`  /api/images-3d`);
+
+      console.log(`  /api/cart`);
+      console.log(`  /api/cart/customer/:customerId`);
+      console.log(`  /api/cart/add`);
+      console.log(`  /api/cart/update`);
+      console.log(`  /api/cart/remove`);
+      console.log(`  /api/carts`);
+      console.log(`  /api/cart-details`);
+
+      console.log(`  /api/shipping-policies`);
+      console.log(`  /api/payment-policies`);
+      console.log(`  /api/orders`);
+      console.log(`  /api/order-details`);
+      console.log(`  /api/payments`);
+      console.log(`  /api/campaigns`);
+      console.log(`  /api/vouchers`);
+      console.log(`  /api/order-vouchers`);
+      console.log(`  /api/reviews`);
+      console.log(`  /api/wishlists`);
+      console.log(`  /api/faqs`);
+      console.log(`  /api/chats`);
+      console.log(`  /api/image-requests`);
+      console.log(`  /api/notifications`);
+      console.log(`  /api/blogs`);
+      console.log(`  /api/collections`);
+      console.log(`  /api/collection-products`);
+      console.log(`  /api/styles`);
+      console.log(`  /api/category-products`);
     });
+  } catch (error) {
+    console.error('Không thể khởi động server:', error);
+    process.exit(1);
+  }
 })();

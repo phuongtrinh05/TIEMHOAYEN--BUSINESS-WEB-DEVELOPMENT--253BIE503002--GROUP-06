@@ -1,8 +1,10 @@
-import { Component } from '@angular/core';
+﻿import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { PageHeader2 } from '../../components/page-header-2/page-header-2';
 import { PageFooter2 } from '../../components/page-footer-2/page-footer-2';
+import { ForgotPasswordService } from '../../services/forgot-password.service';
+import { Router } from '@angular/router';
 @Component({
   selector: 'app-forgot-password',
   standalone: true,
@@ -11,14 +13,25 @@ import { PageFooter2 } from '../../components/page-footer-2/page-footer-2';
   styleUrl: './forgot-password.css'
 })
 export class ForgotPasswordComponent {
+  constructor(
+  private forgotPasswordService:
+  ForgotPasswordService, private router: Router
+){
 
+  this.phone =
+    localStorage.getItem(
+      'forgotPhone'
+    ) || '';
+}
+  
+  phone = '';
   showNewPassword = false;
   showConfirmPassword = false;
 
   formData = {
-    newPassword: '',
-    confirmPassword: ''
-  };
+  newPassword: '',
+  confirmPassword: ''
+};
 
   toggleNewPassword(): void {
     this.showNewPassword = !this.showNewPassword;
@@ -27,18 +40,43 @@ export class ForgotPasswordComponent {
   toggleConfirmPassword(): void {
     this.showConfirmPassword = !this.showConfirmPassword;
   }
+onSubmit(): void {
 
-  onSubmit(): void {
-
-    if (
-      this.formData.newPassword !==
-      this.formData.confirmPassword
-    ) {
-      return;
-    }
-
-    console.log('Đổi mật khẩu:', this.formData);
-
-    alert('Đổi mật khẩu thành công! (Giả lập)');
+  if (
+    this.formData.newPassword !==
+    this.formData.confirmPassword
+  ) {
+    return;
   }
+
+  this.forgotPasswordService
+    .changePassword({
+
+      SDT: this.phone,
+
+      NEW_PASSWORD:
+        this.formData.newPassword
+
+    })
+    .subscribe({
+
+      next: (res) => {
+
+        localStorage.removeItem(
+          'forgotPhone'
+        );
+
+        this.router.navigate([
+          '/login'
+        ]);
+      },
+
+      error: (err) => {
+
+        console.warn(
+          err.error?.message
+        );
+      }
+    });
+}
 }

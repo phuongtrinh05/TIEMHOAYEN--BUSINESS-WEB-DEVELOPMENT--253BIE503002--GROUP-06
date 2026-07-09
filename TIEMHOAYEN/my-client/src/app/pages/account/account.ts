@@ -1,9 +1,12 @@
-import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Component, OnInit, OnDestroy, inject, PLATFORM_ID, ChangeDetectorRef } from '@angular/core';
+import { CommonModule, isPlatformBrowser } from '@angular/common';
+import { FormsModule, NgForm } from '@angular/forms';
+import { RouterLink, Router, ActivatedRoute } from '@angular/router';
 import { PageHeader } from '../../components/page-header/page-header';
 import { PageFooter } from '../../components/page-footer/page-footer';
+import { CustomerService, Customer, CustomerAddress, CustomerOrder, CustomerVoucher, CustomerWishlistItem } from '../../services/customer.service';
+import { Subscription } from 'rxjs';
+
 
 // ===== INTERFACES =====
 interface UserInfo {
@@ -18,24 +21,36 @@ interface UserInfo {
 interface Order {
   id: string;
   date: string;
+  createdAt: string;
+  subtotal: number;
   total: number;
-  status: 'Đang xử lý' | 'Đang giao' | 'Đã hủy' | 'Hoàn thành';
+  status: string;
 }
 
 interface WishlistItem {
-  id: number;
+  id: string;
   name: string;
   price: number;
+  oldPrice: number | null;
+  discountPercent: number | null;
   image: string;
+  isFavorite: boolean;
 }
 
 interface Address {
-  id: number;
+  id: string;
   label: string;
   isDefault: boolean;
   name: string;
   phone: string;
   detail: string;
+  detailLine: string;
+  provinceCode: string;
+  provinceName: string;
+  districtCode: string;
+  districtName: string;
+  wardCode: string;
+  wardName: string;
 }
 
 interface Voucher {
@@ -45,6 +60,36 @@ interface Voucher {
   expiry: string;
 }
 
+type MemberRank = 'Đồng' | 'Bạc' | 'Vàng' | 'Kim cương';
+
+interface MemberRankConfig {
+  name: MemberRank;
+  minAmount: number;
+  targetAmount: number;
+  nextRank: MemberRank;
+}
+
+interface Province {
+  code: string;
+  name: string;
+  districts: District[];
+}
+
+interface District {
+  code: string;
+  name: string;
+  wards: Ward[];
+}
+
+interface Ward {
+  code: string;
+  name: string;
+}
+
+interface WardOption extends Ward {
+  districtName: string;
+}
+
 @Component({
   selector: 'app-account',
   standalone: true,
@@ -52,76 +97,280 @@ interface Voucher {
   templateUrl: './account.html',
   styleUrl: './account.css',
 })
-export class AccountComponent {
+export class AccountComponent implements OnInit, OnDestroy {
+  private readonly platformId = inject(PLATFORM_ID);
+  private sectionSubscription: Subscription | null = null;
+  private accountRefreshIntervalId: number | null = null;
+  private readonly refreshAccountData = (): void => {
+    this.loadAccountData();
+  };
+  private readonly refreshAccountDataWhenVisible = (): void => {
+    if (document.visibilityState === 'visible') {
+      this.loadAccountData();
+    }
+  };
 
+  constructor(
+    private customerService: CustomerService,
+    private router: Router,
+    private route: ActivatedRoute,
+    private cdr: ChangeDetectorRef
+  ) {}
+  autoResizeTextarea(event: Event): void {
+    const textarea = event.target as HTMLTextAreaElement;
+
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }
+
+  private normalizeOrderStatus(status: string): string {
+    const value = String(status || '').trim().toLowerCase();
+
+    if (value.includes('chờ thanh toán')) {
+      return 'payment';
+    }
+
+    if (value.includes('thanh toán thất bại')) {
+      return 'payment_failed';
+    }
+
+    if (value.includes('chờ xử lý')) {
+      return 'created';
+    }
+
+    if (value.includes('đang chuẩn bị') || value.includes('chuẩn bị')) {
+      return 'preparing';
+    }
+
+    if (value.includes('đang giao')) {
+      return 'delivering';
+    }
+
+    if (value.includes('giao hàng thành công') || value.includes('hoàn thành')) {
+      return 'delivered';
+    }
+
+    if (value.includes('hủy')) {
+      return 'cancelled';
+    }
+
+    return value;
+  }
+
+  private isExpiredPaymentOrder(order: Order): boolean {
+    const status = this.normalizeOrderStatus(order.status);
+
+    if (status !== 'payment' && status !== 'payment_failed') {
+      return false;
+    }
+
+    const createdTime = new Date(order.createdAt).getTime();
+
+    if (Number.isNaN(createdTime)) {
+      return false;
+    }
+
+    return Date.now() - createdTime >= 24 * 60 * 60 * 1000;
+  }
+
+  private calculateRewardValue(points: number): number {
+    return Math.floor(Number(points || 0) / 2) * 1000;
+  }
+
+  getMemberRankByPoint(point: number): MemberRank {
+    if (point >= 600) {
+      return 'Kim cương';
+    }
+
+    if (point >= 300) {
+      return 'Vàng';
+    }
+
+    if (point >= 100) {
+      return 'Bạc';
+    }
+
+    return 'Đồng';
+  }
+
+  private getMemberRankByTier(tier: string): MemberRank {
+    const value = String(tier || '').trim().toLowerCase();
+
+    if (value.includes('kim')) {
+      return 'Kim cương';
+    }
+
+    if (value.includes('vàng') || value.includes('vang')) {
+      return 'Vàng';
+    }
+
+    if (value.includes('bạc') || value.includes('bac')) {
+      return 'Bạc';
+    }
+
+    return 'Đồng';
+  }
+
+  canViewOrderDetail(order: Order): boolean {
+    const status = this.normalizeOrderStatus(order.status);
+
+    return status !== 'payment' && status !== 'payment_failed';
+  }
+
+  goToOrderDetail(order: Order): void {
+    if (!this.canViewOrderDetail(order)) {
+      alert('Đơn hàng đang chờ thanh toán hoặc thanh toán thất bại nên chưa thể xem chi tiết.');
+      return;
+    }
+
+    this.router.navigate(['/order-detail', order.id]);
+  }
   // ===== ACTIVE SECTION =====
   activeSection = 'thongtin';
 
   // ===== TODO: replace with API call GET /api/user/profile =====
   userInfo: UserInfo = {
-    fullName: 'Nguyễn Hoàng Ngọc',
-    gender: 'Nam',
-    email: 'ngocng@gmail.com',
-    birthDate: '14/03/2005',
-    phone: '0987 489 733',
-    avatar: 'assets/images/account-avt.png',
-  };
+      fullName: '',
+      gender: '',
+      email: '',
+      birthDate: '',
+      phone: '',
+      avatar: 'assets/images/account-avt.png',
+    };
 
   // ===== TODO: replace with API call GET /api/orders =====
-  orders: Order[] = [
-    { id: '#YENI000', date: '11/05/2026', total: 2730000, status: 'Đang xử lý' },
-    { id: '#YENI001', date: '08/03/2026', total: 1130000, status: 'Đang giao' },
-    { id: '#YENI002', date: '22/02/2026', total: 2430000, status: 'Đã hủy' },
-    { id: '#YENI003', date: '14/01/2026', total: 730000,  status: 'Hoàn thành' },
-  ];
+  orders: Order[] = [];
+
   showAllOrders = false;
 
   get displayedOrders(): Order[] {
     return this.showAllOrders ? this.orders : this.orders.slice(0, 4);
   }
 
+  get hasMoreOrders(): boolean {
+    return this.orders.length > 4;
+  }
+
   // ===== TODO: replace with API call GET /api/user/membership =====
   membershipTier = 'Kim cương';
   rewardPoints = 1250;
-  rewardValue = 125000;
+  rewardValue = this.calculateRewardValue(this.rewardPoints);
+  readonly moneyPerPoint = 10000;
+  readonly rankConfigs: MemberRankConfig[] = [
+    { name: 'Đồng', minAmount: 0, targetAmount: 1000000, nextRank: 'Bạc' },
+    { name: 'Bạc', minAmount: 1000000, targetAmount: 3000000, nextRank: 'Vàng' },
+    { name: 'Vàng', minAmount: 3000000, targetAmount: 6000000, nextRank: 'Kim cương' },
+    { name: 'Kim cương', minAmount: 6000000, targetAmount: 6000000, nextRank: 'Kim cương' },
+  ];
+
+  get memberRank(): MemberRank {
+    return this.getMemberRankByTier(this.membershipTier);
+  }
+
+  get currentRankConfig(): MemberRankConfig {
+    return this.rankConfigs.find(config => config.name === this.memberRank) ?? this.rankConfigs[0];
+  }
+
+  get memberTotalSpent(): number {
+    return this.orders
+      .filter(order => this.normalizeOrderStatus(order.status) === 'delivered')
+      .reduce((sum, order) => sum + Number(order.subtotal || 0), 0);
+  }
+
+  get memberRankTargetAmount(): number {
+    return this.currentRankConfig.targetAmount;
+  }
+
+  get memberProgressPercent(): number {
+    if (this.memberRank === 'Kim cương') {
+      return 100;
+    }
+
+    const percent = (this.memberTotalSpent / this.memberRankTargetAmount) * 100;
+
+    return Math.min(Math.round(percent), 100);
+  }
+
+  get memberNextRankName(): MemberRank {
+    return this.currentRankConfig.nextRank;
+  }
+
+  get memberNextRankAmount(): number {
+    if (this.memberRank === 'Kim cương') {
+      return 0;
+    }
+
+    return Math.max(this.memberRankTargetAmount - this.memberTotalSpent, 0);
+  }
+
+  get memberProgressTitle(): string {
+    return `Tiến độ nâng hạng ${this.memberNextRankName}`;
+  }
+
+  get memberProgressAmountText(): string {
+    if (this.memberRank === 'Kim cương') {
+      return `${this.formatPrice(this.memberTotalSpent)} / ${this.formatPrice(this.currentRankConfig.targetAmount)}`;
+    }
+
+    return `${this.formatPrice(this.memberTotalSpent)} / ${this.formatPrice(this.memberRankTargetAmount)}`;
+  }
+
+  get memberRankFrame(): string {
+    switch (this.memberRank) {
+      case 'Đồng':
+        return 'assets/images/bronze_frame.png';
+      case 'Bạc':
+        return 'assets/images/silver_frame.png';
+      case 'Vàng':
+        return 'assets/images/gold_frame.png';
+      case 'Kim cương':
+        return 'assets/images/diamond_frame.png';
+      default:
+        return 'assets/images/bronze_frame.png';
+    }
+  }
 
   // ===== TODO: replace with API call GET /api/user/wishlist =====
-  wishlistItems: WishlistItem[] = [
-    { id: 1, name: 'Chung thủy', price: 1220000, image: 'assets/images/account-chungthuy.png' },
-    { id: 2, name: 'Thành công', price: 830000,  image: 'assets/images/account-thanhcong.png' },
-    { id: 3, name: 'Thuận lợi',  price: 2670000, image: 'assets/images/account-thuanloi.png' },
-    { id: 4, name: 'Đong đầy',   price: 1370000, image: 'assets/images/account-dongday.png' },
-  ];
+  wishlistItems: WishlistItem[] = [];
+  showAllWishlist = false;
 
   // ===== TODO: replace with API call GET /api/user/addresses =====
-  addresses: Address[] = [
-    {
-      id: 1, label: 'Nhà riêng', isDefault: true,
-      name: 'Nguyễn Hoàng Ngọc', phone: '0987 489 733',
-      detail: '123 Đường Nguyễn Huệ, Phường Bến Nghé, Quận 1, Tp.Hồ Chí Minh',
-    },
-    {
-      id: 2, label: 'Cơ quan', isDefault: false,
-      name: 'Nguyễn Hoàng Tú', phone: '0987 489 469',
-      detail: '72 Đường Lê Thánh Tôn, Phường Bến Nghé, Quận 1, Tp.Hồ Chí Minh',
-    },
-    {
-      id: 3, label: 'Nhà bố mẹ', isDefault: false,
-      name: 'Hoàng Đặc Mai', phone: '0987 687 001',
-      detail: '10 Đường 3/2, Phường 11, Quận 10, TP. Hồ Chí Minh',
-    },
-  ];
+  addresses: Address[] = [];
+
   currentAddressIndex = 0;
 
+  get maxAddressStartIndex(): number {
+    return Math.max(this.addresses.length - 3, 0);
+  }
+
+  get displayedAddresses(): Address[] {
+    return this.addresses.slice(this.currentAddressIndex, this.currentAddressIndex + 3);
+  }
+
+  get canPrevAddress(): boolean {
+    return this.currentAddressIndex > 0;
+  }
+
+  get canNextAddress(): boolean {
+    return this.currentAddressIndex < this.maxAddressStartIndex;
+  }
+  get displayedWishlistItems(): WishlistItem[] {
+    return this.showAllWishlist
+      ? this.wishlistItems
+      : this.wishlistItems.slice(0, 4);
+  }
+
   // ===== TODO: replace with API call GET /api/user/vouchers =====
-  vouchers: Voucher[] = [
-    { code: 'YEN10', description: 'Giảm 10% đơn hàng', condition: 'Đơn tối thiểu 500.000đ', expiry: '30/10/2026' },
-    { code: 'YEN20', description: 'Giảm 20% đơn hàng', condition: 'Đơn tối thiểu 500.000đ', expiry: '30/10/2026' },
-  ];
+  vouchers: Voucher[] = [];
+
   showAllVouchers = false;
 
   get displayedVouchers(): Voucher[] {
     return this.showAllVouchers ? this.vouchers : this.vouchers.slice(0, 2);
+  }
+
+  get hasMoreVouchers(): boolean {
+    return this.vouchers.length > 2;
   }
 
   // ===== MODAL SỬA HỒ SƠ =====
@@ -135,97 +384,927 @@ export class AccountComponent {
     gender: '',
   };
 
-  /** Mở modal, copy dữ liệu hiện tại vào form, cuộn lên đầu trang */
-  openEditModal(): void {
-    this.editData = { ...this.userInfo };
-    this.showEditModal = true;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  // ===== MODAL THÊM/SỬA ĐỊA CHỈ =====
+  showAddAddressModal = false;
+  editingAddressId: string | null = null;
+
+  provinces: Province[] = [];
+  availableDistricts: District[] = [];
+  availableWards: WardOption[] = [];
+
+  newAddress = {
+    fullName: '',
+    phone: '',
+    provinceCode: '',
+    districtCode: '',
+    wardCode: '',
+    detail: '',
+    isDefault: false,
+  };
+
+  // ===== DROPDOWN PROVINCE / DISTRICT / WARD =====
+  selectedProvinceName = '';
+  selectedDistrictName = '';
+  selectedWardName = '';
+  openAddressDropdown = '';
+
+  ngOnInit(): void {
+      if (isPlatformBrowser(this.platformId)) {
+        this.loadVietnamAddressData();
+        this.loadAccountData();
+        this.listenAccountSectionFromRoute();
+        window.addEventListener('focus', this.refreshAccountData);
+        window.addEventListener('cart-changed', this.refreshAccountData);
+        document.addEventListener('visibilitychange', this.refreshAccountDataWhenVisible);
+        this.accountRefreshIntervalId = window.setInterval(this.refreshAccountData, 30000);
+      }
+    }
+
+  ngOnDestroy(): void {
+    if (this.sectionSubscription) {
+      this.sectionSubscription.unsubscribe();
+      this.sectionSubscription = null;
+    }
+
+    if (isPlatformBrowser(this.platformId)) {
+      window.removeEventListener('focus', this.refreshAccountData);
+      window.removeEventListener('cart-changed', this.refreshAccountData);
+      document.removeEventListener('visibilitychange', this.refreshAccountDataWhenVisible);
+
+      if (this.accountRefreshIntervalId !== null) {
+        window.clearInterval(this.accountRefreshIntervalId);
+        this.accountRefreshIntervalId = null;
+      }
+    }
   }
 
-  /** Đóng modal khi bấm "Để sau" */
+  private loadAccountData(): void {
+    this.loadCustomerInfo();
+    this.loadCustomerAddresses();
+    this.loadCustomerOrders();
+    this.loadCustomerVouchers();
+    this.loadCustomerWishlist();
+  }
+
+  private listenAccountSectionFromRoute(): void {
+    this.sectionSubscription = this.route.queryParamMap.subscribe(params => {
+      const section = String(params.get('section') || '').trim();
+
+      if (this.isValidAccountSection(section)) {
+        this.setActiveSection(section);
+        return;
+      }
+
+      const fragment = String(this.route.snapshot.fragment || '').trim();
+
+      if (this.isValidAccountSection(fragment)) {
+        this.setActiveSection(fragment);
+      }
+    });
+  }
+
+  private isValidAccountSection(section: string): boolean {
+    return [
+      'thongtin',
+      'donhang',
+      'wishlist',
+      'diachi',
+      'voucher',
+      'diem',
+      'hang',
+    ].includes(section);
+  }
+
+    loadCustomerInfo(): void {
+      const saved = localStorage.getItem('khachHang');
+      if (!saved) {
+        // Chưa đăng nhập -> quay về trang login
+        this.router.navigate(['/login']);
+        return;
+      }
+
+      const khachHang = JSON.parse(saved);
+
+      this.customerService.getById(khachHang.KHACH_HANG_ID).subscribe({
+        next: (data: Customer) => {
+          this.userInfo = {
+            fullName: data.TEN || '',
+            gender: data.GIOI_TINH || '',
+            email: data.EMAIL || '',
+            birthDate: data.DOB ? this.toDisplayDate(data.DOB.split('T')[0]) : '',
+            phone: data.SDT || '',
+            avatar: data.AVATAR ||  'assets/images/account/default-avatar.png',
+          };
+
+          this.membershipTier = data.LOAI_THANH_VIEN || '';
+          this.rewardPoints = data.DIEM_TICH_LUY || 0;
+          this.rewardValue = this.calculateRewardValue(this.rewardPoints);
+
+          this.cdr.detectChanges();
+        },
+        error: (err) => {
+          console.error('Lỗi load thông tin khách hàng:', err);
+        }
+      });
+    }
+  loadCustomerAddresses(): void {
+    const saved = localStorage.getItem('khachHang');
+
+    if (!saved) {
+      this.router.navigate(['/login']);
+      return;
+    }
+
+    const khachHang = JSON.parse(saved);
+
+    this.customerService.getAddresses(khachHang.KHACH_HANG_ID).subscribe({
+      next: (data: CustomerAddress[]) => {
+        this.addresses = data.map((item, index) => ({
+          id: item.DIA_CHI_ID,
+          label: `Địa chỉ ${index + 1}`,
+          isDefault: item.LA_MAC_DINH,
+          name: item.TEN_NGUOI_NHAN || '',
+          phone: item.SDT_NGUOI_NHAN || '',
+          detail: `${item.DIA_CHI_CHI_TIET}, ${item.PHUONG_XA}, ${item.QUAN_HUYEN}, ${item.TINH_THANH}`,
+          detailLine: item.DIA_CHI_CHI_TIET || '',
+          provinceCode: '',
+          provinceName: item.TINH_THANH || '',
+          districtCode: '',
+          districtName: item.QUAN_HUYEN || '',
+          wardCode: '',
+          wardName: item.PHUONG_XA || '',
+        }));
+
+        this.currentAddressIndex = 0;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Lỗi load địa chỉ:', err);
+      }
+    });
+  }
+  loadCustomerOrders(): void {
+    const saved = localStorage.getItem('khachHang');
+
+    if (!saved) {
+      this.router.navigate(['/login']);
+      return;
+    }
+
+    const khachHang = JSON.parse(saved);
+
+    this.customerService.getOrders(khachHang.KHACH_HANG_ID).subscribe({
+      next: (data: CustomerOrder[]) => {
+        this.orders = data
+          .map(item => ({
+            id: item.DON_HANG_ID,
+            date: item.NGAY_TAO ? this.toDisplayDate(item.NGAY_TAO.split('T')[0]) : '',
+            createdAt: item.NGAY_TAO || '',
+            subtotal: Number(item.TAM_TINH || 0),
+            total: item.TONG_TIEN || 0,
+            status: item.TRANG_THAI as Order['status'],
+          }))
+          .filter(order => !this.isExpiredPaymentOrder(order));
+
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Lỗi load đơn hàng:', err);
+      }
+    });
+  }
+  loadCustomerVouchers(): void {
+    const saved = localStorage.getItem('khachHang');
+
+    if (!saved) {
+      this.router.navigate(['/login']);
+      return;
+    }
+
+    const khachHang = JSON.parse(saved);
+
+    this.customerService.getVouchers(khachHang.KHACH_HANG_ID).subscribe({
+      next: (data: CustomerVoucher[]) => {
+        this.vouchers = data.map(item => {
+          const value = Number(item.GIA_TRI_GIAM || 0);
+
+          return {
+            code: item.MA_VOUCHER,
+            description:
+              item.LOAI_GIAM_GIA === 'Phần trăm'
+                ? `Giảm ${value}% đơn hàng`
+                : `Giảm ${value.toLocaleString('vi-VN')}đ đơn hàng`,
+            condition: 'Áp dụng cho tài khoản của bạn',
+            expiry: item.NGAY_KET_THUC
+              ? this.toDisplayDate(item.NGAY_KET_THUC.split('T')[0])
+              : '',
+          };
+        });
+
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Lỗi load voucher:', err);
+      }
+    });
+  }
+  loadCustomerWishlist(): void {
+    const saved = localStorage.getItem('khachHang');
+
+    if (!saved) {
+      this.router.navigate(['/login']);
+      return;
+    }
+
+    const khachHang = JSON.parse(saved);
+
+    this.customerService.getWishlist(khachHang.KHACH_HANG_ID).subscribe({
+      next: (data: CustomerWishlistItem[]) => {
+        this.wishlistItems = data.map(item => {
+          const originalPrice = Number(item.GIA || 0);
+          const salePrice = Number(item.GIA_KHUYEN_MAI || 0);
+          const hasSalePrice = salePrice > 0 && salePrice < originalPrice;
+          const finalPrice = hasSalePrice ? salePrice : originalPrice;
+          const discountPercent =
+            hasSalePrice && originalPrice > 0
+              ? Math.round(((originalPrice - salePrice) / originalPrice) * 100)
+              : null;
+
+          return {
+            id: item.SAN_PHAM_ID,
+            name: item.TEN_SAN_PHAM || '',
+            price: finalPrice,
+            oldPrice: hasSalePrice ? originalPrice : null,
+            discountPercent,
+            image: item.HINH_ANH || 'assets/images/product-default.png',
+            isFavorite: true,
+          };
+        });
+
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Lỗi load wishlist:', err);
+      }
+    });
+  }
+  onAvatarSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+
+    if (!input.files || input.files.length === 0) return;
+
+    const file = input.files[0];
+
+    const saved = localStorage.getItem('khachHang');
+    if (!saved) {
+      this.router.navigate(['/login']);
+      return;
+    }
+
+    const khachHang = JSON.parse(saved);
+
+    this.customerService.updateAvatar(khachHang.KHACH_HANG_ID, file).subscribe({
+      next: (res) => {
+        const updated = res.customer;
+
+        this.userInfo.avatar = updated.AVATAR || 'assets/images/account-avt.png';
+        localStorage.setItem('khachHang', JSON.stringify(updated));
+
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Lỗi upload avatar:', err);
+        alert(err.error?.message || 'Upload avatar thất bại.');
+      }
+    });
+  }
+  removeAvatar(): void {
+    const saved = localStorage.getItem('khachHang');
+
+    if (!saved) {
+      this.router.navigate(['/login']);
+      return;
+    }
+
+    const khachHang = JSON.parse(saved);
+
+    this.customerService.removeAvatar(khachHang.KHACH_HANG_ID).subscribe({
+      next: (res) => {
+        const updated = res.customer;
+
+        this.userInfo.avatar = 'assets/images/account/default-avatar.png';
+        localStorage.setItem('khachHang', JSON.stringify(updated));
+
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Lỗi gỡ avatar:', err);
+        alert(err.error?.message || 'Không thể gỡ ảnh đại diện.');
+      }
+    });
+  }
+  get hasProfileChanged(): boolean {
+    return (
+      this.editData.fullName !== this.userInfo.fullName ||
+      this.normalizePhone(this.editData.phone) !== this.normalizePhone(this.userInfo.phone) ||
+      this.editData.email !== this.userInfo.email ||
+      this.editData.birthDate !== this.userInfo.birthDate ||
+      this.editData.gender !== this.userInfo.gender
+    );
+  }
+
+  openEditModal(): void {
+    this.editData = {
+      fullName: this.userInfo.fullName,
+      phone: this.formatPhoneInput(this.userInfo.phone),
+      email: this.userInfo.email,
+      birthDate: this.toDisplayDate(this.userInfo.birthDate),
+      gender: this.userInfo.gender,
+    };
+
+    this.showEditModal = true;
+  }
+
   closeModal(): void {
     this.showEditModal = false;
   }
 
-  /** Đóng modal khi click ra ngoài overlay */
   closeEditModal(event: MouseEvent): void {
-    if ((event.target as HTMLElement).classList.contains('modal-overlay')) {
+    const target = event.target as HTMLElement;
+
+    if (target.classList.contains('modal-overlay')) {
       this.showEditModal = false;
     }
   }
 
-  /** Lưu thông tin đã sửa */
-  saveProfile(): void {
-    this.userInfo = { ...this.userInfo, ...this.editData };
-    this.showEditModal = false;
-    // / Nếu có lỗi validation thì không lưu
-    if (!this.editData.fullName || this.editData.fullName.length < 2) return;
-    if (!this.editData.phone) return;
+  saveProfile(form: NgForm): void {
+    if (form.invalid) {
+      form.control.markAllAsTouched();
+      return;
+    }
 
-    this.userInfo = { ...this.userInfo, ...this.editData };
-    this.showEditModal = false;
-    // TODO: gọi API khi có backend
+    if (!this.hasProfileChanged) {
+      this.showEditModal = false;
+      return;
+    }
+
+    const saved = localStorage.getItem('khachHang');
+
+    if (!saved) {
+      this.router.navigate(['/login']);
+      return;
+    }
+
+    const khachHang = JSON.parse(saved);
+
+    const payload = {
+      TEN: this.editData.fullName,
+      EMAIL: this.editData.email,
+      SDT: this.normalizePhone(this.editData.phone),
+      DOB: this.toIsoDate(this.editData.birthDate) || null,
+      GIOI_TINH: this.editData.gender,
+    };
+
+    this.customerService.updateById(khachHang.KHACH_HANG_ID, payload).subscribe({
+      next: (res) => {
+        const updated = res.customer;
+
+        this.userInfo = {
+          fullName: updated.TEN || '',
+          gender: updated.GIOI_TINH || '',
+          email: updated.EMAIL || '',
+          birthDate: updated.DOB ? this.toDisplayDate(updated.DOB.split('T')[0]) : '',
+          phone: updated.SDT || '',
+          avatar: updated.AVATAR || 'assets/images/account/default-avatar.png',
+        };
+
+        localStorage.setItem('khachHang', JSON.stringify(updated));
+
+        this.showEditModal = false;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Lỗi cập nhật thông tin:', err);
+        alert(err.error?.message || 'Cập nhật thông tin thất bại.');
+      }
+    });
+  }
+  // ===== ADD ADDRESS MODAL METHODS =====
+  loadVietnamAddressData(): void {
+    fetch('/assets/address/vietnam-address-old.json')
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`Không tìm thấy file JSON: ${response.status}`);
+        }
+
+        return response.json();
+      })
+      .then((data: Province[]) => {
+        this.provinces = data;
+        console.log('Dữ liệu tỉnh:', this.provinces);
+      })
+      .catch(error => {
+        console.error('Không tải được dữ liệu địa chỉ:', error);
+      });
+  }
+
+  get addressModalTitle(): string {
+    return this.editingAddressId !== null ? 'Sửa địa chỉ' : 'Địa chỉ nhận hàng';
+  }
+
+  openAddAddressModal(): void {
+    this.editingAddressId = null;
+    this.resetNewAddressForm();
+    this.showAddAddressModal = true;
+  }
+
+  openEditAddressModal(address: Address): void {
+    this.editingAddressId = address.id;
+
+    this.newAddress = {
+      fullName: address.name,
+      phone: this.formatPhoneInput(address.phone),
+      provinceCode: address.provinceCode || address.provinceName,
+      districtCode: address.districtCode || address.districtName,
+      wardCode: address.wardCode || address.wardName,
+      detail: address.detailLine,
+      isDefault: address.isDefault,
+    };
+
+    this.selectedProvinceName = address.provinceName;
+    this.selectedDistrictName = address.districtName;
+    this.selectedWardName = address.wardName;
+    this.openAddressDropdown = '';
+
+    const selectedProvince = this.provinces.find(
+      province =>
+        province.code === address.provinceCode ||
+        province.name === address.provinceName
+    );
+    this.availableDistricts = selectedProvince ? selectedProvince.districts : [];
+
+    const selectedDistrict = this.availableDistricts.find(
+      district =>
+        district.code === address.districtCode ||
+        district.name === address.districtName
+    );
+    this.availableWards = selectedDistrict
+      ? selectedDistrict.wards.map(ward => ({ ...ward, districtName: selectedDistrict.name }))
+      : [];
+
+    this.showAddAddressModal = true;
+  }
+
+  closeAddAddressModal(): void {
+    this.showAddAddressModal = false;
+    this.editingAddressId = null;
+    this.openAddressDropdown = '';
+  }
+
+  closeAddAddressModalByOverlay(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+
+    if (target.classList.contains('modal-overlay')) {
+      this.showAddAddressModal = false;
+      this.editingAddressId = null;
+      this.openAddressDropdown = '';
+    }
+  }
+
+  resetNewAddressForm(): void {
+    this.newAddress = {
+      fullName: '',
+      phone: '',
+      provinceCode: '',
+      districtCode: '',
+      wardCode: '',
+      detail: '',
+      isDefault: false,
+    };
+
+    this.selectedProvinceName = '';
+    this.selectedDistrictName = '';
+    this.selectedWardName = '';
+    this.openAddressDropdown = '';
+
+    this.availableDistricts = [];
+    this.availableWards = [];
+  }
+
+  onNewAddressPhoneInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.newAddress.phone = this.formatPhoneInput(input.value);
+  }
+
+  selectProvince(province: Province): void {
+    this.selectedProvinceName = province.name;
+    this.newAddress.provinceCode = province.code;
+    this.openAddressDropdown = '';
+
+    // Reset district + ward khi đổi tỉnh
+    this.selectedDistrictName = '';
+    this.selectedWardName = '';
+    this.newAddress.districtCode = '';
+    this.newAddress.wardCode = '';
+    this.availableDistricts = province.districts;
+    this.availableWards = [];
+  }
+
+  toggleAddressDropdown(type: string, disabled: boolean): void {
+    if (disabled) {
+      return;
+    }
+    this.openAddressDropdown = this.openAddressDropdown === type ? '' : type;
+  }
+
+  selectDistrict(district: District): void {
+    this.selectedDistrictName = district.name;
+    this.newAddress.districtCode = district.code;
+    this.openAddressDropdown = '';
+    // Reset ward khi đổi district
+    this.selectedWardName = '';
+    this.newAddress.wardCode = '';
+    this.availableWards = district.wards.map(ward => ({
+      ...ward,
+      districtName: district.name,
+    }));
+  }
+
+  selectWard(ward: WardOption): void {
+    this.selectedWardName = ward.name;
+    this.newAddress.wardCode = ward.code;
+    this.openAddressDropdown = '';
+  }
+
+  saveNewAddress(form: NgForm): void {
+    if (form.invalid) {
+      form.control.markAllAsTouched();
+      return;
+    }
+
+    const selectedProvince = this.provinces.find(
+      province => province.code === this.newAddress.provinceCode
+    );
+
+    const selectedDistrict = this.availableDistricts.find(
+      district => district.code === this.newAddress.districtCode
+    );
+
+    const selectedWard = this.availableWards.find(
+      ward => ward.code === this.newAddress.wardCode
+    );
+
+    const provinceName = selectedProvince?.name || this.selectedProvinceName;
+    const districtName = selectedDistrict?.name || this.selectedDistrictName;
+    const wardName = selectedWard?.name || this.selectedWardName;
+
+    if (!provinceName || !districtName || !wardName) {
+      return;
+    }
+
+    const fullAddress = `${this.newAddress.detail}, ${wardName}, ${districtName}, ${provinceName}`;
+    if (this.newAddress.isDefault) {
+      this.addresses = this.addresses.map(address => ({
+        ...address,
+        isDefault: false,
+      }));
+    }
+
+    if (this.editingAddressId !== null) {
+      this.customerService.updateAddress(
+        this.editingAddressId,
+        {
+          TEN_NGUOI_NHAN: this.newAddress.fullName,
+          SDT_NGUOI_NHAN: this.normalizePhone(this.newAddress.phone),
+          TINH_THANH: provinceName,
+          QUAN_HUYEN: districtName,
+          PHUONG_XA: wardName,
+          DIA_CHI_CHI_TIET: this.newAddress.detail,
+          LA_MAC_DINH: this.newAddress.isDefault
+        }
+      ).subscribe({
+        next: () => {
+          this.loadCustomerAddresses();
+          this.editingAddressId = null;
+          this.showAddAddressModal = false;
+        },
+        error: (err) => {
+          console.error('Lỗi sửa địa chỉ:', err);
+          alert(err.error?.message || 'Không thể cập nhật địa chỉ');
+        }
+      });
+
+      return;
+    } else {
+      // ===== CHẾ ĐỘ THÊM ĐỊA CHỈ MỚI XUỐNG SQL =====
+      const saved = localStorage.getItem('khachHang');
+
+      if (!saved) {
+        this.router.navigate(['/login']);
+        return;
+      }
+
+      const khachHang = JSON.parse(saved);
+
+      this.customerService.addAddress(
+        khachHang.KHACH_HANG_ID,
+        {
+          TEN_NGUOI_NHAN: this.newAddress.fullName,
+          SDT_NGUOI_NHAN: this.normalizePhone(this.newAddress.phone),
+          TINH_THANH: provinceName,
+          QUAN_HUYEN: districtName,
+          PHUONG_XA: wardName,
+          DIA_CHI_CHI_TIET: this.newAddress.detail,
+          LA_MAC_DINH: this.newAddress.isDefault
+        }
+      ).subscribe({
+        next: () => {
+          this.loadCustomerAddresses();
+          this.editingAddressId = null;
+          this.showAddAddressModal = false;
+        },
+        error: (err) => {
+          console.error('Lỗi thêm địa chỉ:', err);
+          alert(err.error?.message || 'Không thể thêm địa chỉ');
+        }
+      });
+
+      return;
+    }
+
+    this.editingAddressId = null;
+    this.showAddAddressModal = false;
+  }
+
+  // ===== DATE HELPERS =====
+  toDisplayDate(date: string): string {
+    if (!date) return '';
+
+    if (date.includes('/')) {
+      return date;
+    }
+
+    const [year, month, day] = date.split('-');
+
+    if (!year || !month || !day) {
+      return date;
+    }
+
+    return `${day}/${month}/${year}`;
+  }
+
+  toIsoDate(date: string): string {
+    if (!date) return '';
+
+    if (date.includes('-')) {
+      return date;
+    }
+
+    const [day, month, year] = date.split('/');
+
+    if (!day || !month || !year) {
+      return '';
+    }
+
+    return `${year}-${month}-${day}`;
+  }
+
+  onBirthDatePicked(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.editData.birthDate = this.toDisplayDate(input.value);
+  }
+
+  formatBirthDate(date: string): string {
+    return this.toDisplayDate(date);
   }
 
   // ===== METHODS =====
+  private getStickyHeaderOffset(): number {
+    const selectors = ['.header', '.menu', '.mobile-header'];
+    const fixedBottom = selectors.reduce((bottom, selector) => {
+      const element = document.querySelector(selector) as HTMLElement | null;
+
+      if (!element) {
+        return bottom;
+      }
+
+      const styles = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      const isPinned =
+        (styles.position === 'fixed' || styles.position === 'sticky') &&
+        rect.height > 0 &&
+        rect.bottom > 0 &&
+        rect.top <= rect.height + 1;
+
+      return isPinned ? Math.max(bottom, rect.bottom) : bottom;
+    }, 0);
+
+    return fixedBottom + 44;
+  }
+
   setActiveSection(section: string): void {
     this.activeSection = section;
+
+    const sectionMap: Record<string, string> = {
+      thongtin: 'thongtin',
+      donhang: 'donhang',
+      wishlist: 'wishlist',
+      diachi: 'diachi',
+      voucher: 'voucher',
+      diem: 'member-reward',
+      hang: 'member-reward',
+    };
+
+    setTimeout(() => {
+      const targetId = sectionMap[section];
+      const target = document.getElementById(targetId);
+
+      if (target) {
+        const headerOffset = this.getStickyHeaderOffset();
+        const targetPosition = target.getBoundingClientRect().top + window.scrollY;
+        const scrollPosition = targetPosition - headerOffset;
+
+        window.scrollTo({
+          top: scrollPosition,
+          behavior: 'smooth',
+        });
+      }
+    }, 0);
   }
 
   getStatusClass(status: string): string {
-    const map: Record<string, string> = {
-      'Đang xử lý': 'status-processing',
-      'Đang giao':  'status-shipping',
-      'Đã hủy':     'status-cancelled',
-      'Hoàn thành': 'status-done',
-    };
-    return map[status] || '';
+    const value = String(status || '').trim().toLowerCase();
+    const normalized = value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd');
+
+    if (normalized.includes('huy')) {
+      return 'status-cancelled';
+    }
+
+    if (normalized.includes('hoan thanh') || normalized.includes('thanh cong')) {
+      return 'status-done';
+    }
+
+    if (normalized.includes('dang chuan bi') || normalized.includes('chuan bi')) {
+      return 'status-preparing';
+    }
+
+    if (normalized.includes('dang giao')) {
+      return 'status-shipping';
+    }
+
+    if (normalized.includes('xu ly') || normalized.includes('cho')) {
+      return 'status-processing';
+    }
+
+    return 'status-default';
   }
 
   formatPrice(price: number): string {
     return price.toLocaleString('vi-VN') + 'đ';
   }
 
-  removeFromWishlist(id: number): void {
-    // TODO: replace with API call DELETE /api/user/wishlist/:id
-    this.wishlistItems = this.wishlistItems.filter(item => item.id !== id);
+  formatPhoneInput(value: string): string {
+    const digits = value.replace(/\D/g, '').slice(0, 10);
+
+    if (digits.length <= 4) {
+      return digits;
+    }
+
+    if (digits.length <= 7) {
+      return `${digits.slice(0, 4)} ${digits.slice(4)}`;
+    }
+
+    return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
+  }
+
+  onPhoneInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.editData.phone = this.formatPhoneInput(input.value);
+  }
+
+  normalizePhone(phone: string): string {
+    return phone.replace(/\D/g, '');
+  }
+
+  toggleFavorite(item: WishlistItem): void {
+
+    const saved = localStorage.getItem('khachHang');
+
+    if (!saved) {
+      this.router.navigate(['/login']);
+      return;
+    }
+
+    const khachHang = JSON.parse(saved);
+
+    this.customerService
+      .removeWishlistItem(
+        khachHang.KHACH_HANG_ID,
+        item.id
+      )
+      .subscribe({
+        next: () => {
+
+          this.wishlistItems =
+            this.wishlistItems.filter(
+              p => p.id !== item.id
+            );
+
+          this.cdr.detectChanges();
+        },
+
+        error: (err) => {
+          console.error(err);
+          alert(
+            err.error?.message ||
+            'Không thể xóa sản phẩm yêu thích'
+          );
+        }
+      });
   }
 
   addToCart(item: WishlistItem): void {
-    // TODO: replace with API call POST /api/cart
     alert(`Đã thêm "${item.name}" vào giỏ hàng!`);
   }
 
   prevAddress(): void {
-    if (this.currentAddressIndex > 0) this.currentAddressIndex--;
+    if (!this.canPrevAddress) return;
+
+    this.currentAddressIndex--;
   }
 
   nextAddress(): void {
-    if (this.currentAddressIndex < this.addresses.length - 1) this.currentAddressIndex++;
+    if (!this.canNextAddress) return;
+
+    this.currentAddressIndex++;
   }
 
-  setDefaultAddress(id: number): void {
-    // TODO: replace with API call PUT /api/user/addresses/:id/default
-    this.addresses = this.addresses.map(a => ({ ...a, isDefault: a.id === id }));
+  setDefaultAddress(id: string): void {
+    this.customerService.setDefaultAddress(id).subscribe({
+      next: () => {
+        this.loadCustomerAddresses();
+      },
+      error: (err) => {
+        console.error('Lỗi đặt mặc định:', err);
+        alert(err.error?.message || 'Không thể đặt địa chỉ mặc định');
+      }
+    });
   }
 
-  deleteAddress(id: number): void {
-    // TODO: replace with API call DELETE /api/user/addresses/:id
-    this.addresses = this.addresses.filter(a => a.id !== id);
+  deleteAddress(id: string): void {
+    const confirmDelete = confirm('Bạn có chắc muốn xóa địa chỉ này không?');
+
+    if (!confirmDelete) {
+      return;
+    }
+
+    this.customerService.deleteAddress(id).subscribe({
+      next: () => {
+        this.loadCustomerAddresses();
+      },
+      error: (err) => {
+        console.error('Lỗi xóa địa chỉ:', err);
+        alert(err.error?.message || 'Không thể xóa địa chỉ');
+      }
+    });
   }
 
-  useVoucher(code: string): void {
-    // TODO: replace with API call POST /api/cart/voucher
-    alert(`Đã áp dụng voucher: ${code}`);
+  useVoucher(_code: string): void {
+    this.router.navigate(['/cart']).then(() => {
+      if (isPlatformBrowser(this.platformId)) {
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      }
+    });
   }
 
   logout(): void {
-    // TODO: replace with API call POST /api/auth/logout + clear token
-    alert('Đã đăng xuất!');
+    if (isPlatformBrowser(this.platformId)) {
+      localStorage.removeItem('khachHang');
+      localStorage.removeItem('token');
+
+      localStorage.removeItem('tiemHoaYenRegistrantOrder');
+      localStorage.removeItem('tiemHoaYenGuestOrder');
+      localStorage.removeItem('tiemHoaYenCreatedOrder');
+      localStorage.removeItem('tiemHoaYenCheckoutItems');
+
+      window.dispatchEvent(new Event('auth-changed'));
+      window.dispatchEvent(new Event('cart-changed'));
+    }
+
+    this.router.navigate(['/login']);
   }
 
   redeemPoints(): void {
-    // TODO: replace with API call POST /api/user/rewards/redeem
-    alert('Mở trang đổi thưởng');
+    this.router.navigate(['/cart']).then(() => {
+      if (isPlatformBrowser(this.platformId)) {
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      }
+    });
+  }
+  toggleWishlistView(): void {
+    this.showAllWishlist = !this.showAllWishlist;
   }
 }

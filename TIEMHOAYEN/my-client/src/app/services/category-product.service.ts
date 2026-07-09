@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { shareReplay } from 'rxjs/operators';
 
 export interface CategoryTopic {
   CHU_DE_ID: string;
@@ -104,35 +105,74 @@ export interface BestSellerProductsResponse {
 })
 export class CategoryProductService {
   private apiUrl = 'http://localhost:3000/api/category-products';
+  private responseCache = new Map<string, Observable<unknown>>();
 
   constructor(private http: HttpClient) {}
 
   getProductsByTopic(id: string): Observable<ProductsByTopicResponse> {
-    return this.http.get<ProductsByTopicResponse>(`${this.apiUrl}/topic/${id}`);
+    return this.cachedGet<ProductsByTopicResponse>(
+      `topic:${id}`,
+      `${this.apiUrl}/topic/${id}`
+    );
   }
 
   getProductsByFlower(id: string): Observable<ProductsByFlowerResponse> {
-    return this.http.get<ProductsByFlowerResponse>(`${this.apiUrl}/flower/${id}`);
+    return this.cachedGet<ProductsByFlowerResponse>(
+      `flower:${id}`,
+      `${this.apiUrl}/flower/${id}`
+    );
   }
 
   getProductsByStyle(style: string): Observable<ProductsByStyleResponse> {
-    return this.http.get<ProductsByStyleResponse>(
+    return this.cachedGet<ProductsByStyleResponse>(
+      `style:${style}`,
       `${this.apiUrl}/style/${encodeURIComponent(style)}`
     );
   }
   getProductsByTarget(id: string): Observable<ProductsByTargetResponse> {
-    return this.http.get<ProductsByTargetResponse>(`${this.apiUrl}/target/${id}`);
+    return this.cachedGet<ProductsByTargetResponse>(
+      `target:${id}`,
+      `${this.apiUrl}/target/${id}`
+    );
   }
   getProductsByColor(id: string): Observable<ProductsByColorResponse> {
-    return this.http.get<ProductsByColorResponse>(`${this.apiUrl}/color/${id}`);
+    return this.cachedGet<ProductsByColorResponse>(
+      `color:${id}`,
+      `${this.apiUrl}/color/${id}`
+    );
   }
   getProductsByCollection(id: string): Observable<ProductsByCollectionResponse> {
-    return this.http.get<ProductsByCollectionResponse>(`${this.apiUrl}/collection/${id}`);
+    return this.cachedGet<ProductsByCollectionResponse>(
+      `collection:${id}`,
+      `${this.apiUrl}/collection/${id}`
+    );
   }
   getSaleProducts(): Observable<SaleProductsResponse> {
-    return this.http.get<SaleProductsResponse>(`${this.apiUrl}/sale`);
+    return this.cachedGet<SaleProductsResponse>('sale', `${this.apiUrl}/sale`);
   }
   getBestSellerProducts(): Observable<BestSellerProductsResponse> {
-    return this.http.get<BestSellerProductsResponse>(`${this.apiUrl}/best-seller`);
+    return this.cachedGet<BestSellerProductsResponse>(
+      'best-seller',
+      `${this.apiUrl}/best-seller`
+    );
+  }
+
+  clearCache(): void {
+    this.responseCache.clear();
+  }
+
+  private cachedGet<T>(key: string, url: string): Observable<T> {
+    const cached = this.responseCache.get(key) as Observable<T> | undefined;
+
+    if (cached) {
+      return cached;
+    }
+
+    const request$ = this.http.get<T>(url).pipe(
+      shareReplay({ bufferSize: 1, refCount: false })
+    );
+
+    this.responseCache.set(key, request$);
+    return request$;
   }
 }

@@ -1,6 +1,5 @@
-<app-page-header></app-page-header>
 <div class="account-page">
-  <div class="container py-4">
+  <div class="container-fluid py-4">
     <div class="row g-4">
 
       <!-- ===== SIDEBAR ===== -->
@@ -10,30 +9,31 @@
             <li [class.active]="activeSection === 'thongtin'" (click)="setActiveSection('thongtin')">
               <i class="bi bi-person"></i> Thông tin cá nhân
             </li>
+
             <li [class.active]="activeSection === 'donhang'" (click)="setActiveSection('donhang')">
               <i class="bi bi-bag"></i> Đơn hàng của tôi
             </li>
+
             <li [class.active]="activeSection === 'wishlist'" (click)="setActiveSection('wishlist')">
               <i class="bi bi-heart"></i> Wishlist
             </li>
+
             <li [class.active]="activeSection === 'diachi'" (click)="setActiveSection('diachi')">
               <i class="bi bi-geo-alt"></i> Địa chỉ của tôi
             </li>
+
             <li [class.active]="activeSection === 'voucher'" (click)="setActiveSection('voucher')">
               <i class="bi bi-ticket-perforated"></i> Voucher của tôi
             </li>
+
             <li [class.active]="activeSection === 'diem'" (click)="setActiveSection('diem')">
               <i class="bi bi-gift"></i> Điểm thưởng
             </li>
+
             <li [class.active]="activeSection === 'hang'" (click)="setActiveSection('hang')">
               <i class="bi bi-bar-chart"></i> Hạng thành viên
             </li>
-            <li [class.active]="activeSection === 'matkhau'" (click)="setActiveSection('matkhau')">
-              <i class="bi bi-lock"></i> Đổi mật khẩu
-            </li>
-            <li [class.active]="activeSection === 'thongbao'" (click)="setActiveSection('thongbao')">
-              <i class="bi bi-bell"></i> Thông báo
-            </li>
+
             <li class="logout-item" (click)="logout()">
               <i class="bi bi-box-arrow-right"></i> Đăng xuất
             </li>
@@ -45,16 +45,40 @@
       <div class="col-lg-9 col-md-8">
 
         <!-- 1. THÔNG TIN CÁ NHÂN -->
-        <div class="section-card mb-4">
+        <div class="section-card mb-4" id="thongtin">
           <div class="section-title">Thông tin cá nhân</div>
+
           <div class="profile-info">
             <div class="avatar-wrap">
               <img [src]="userInfo.avatar" alt="Avatar" class="avatar-img" />
-              <button class="avatar-edit-btn" type="button">
+
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                #avatarInput
+                (change)="onAvatarSelected($event)"
+              >
+
+              <button
+                class="avatar-edit-btn"
+                type="button"
+                (click)="avatarInput.click()"
+              >
                 <i class="bi bi-camera"></i>
               </button>
+              <button
+                class="avatar-remove-btn"
+                type="button"
+                *ngIf="userInfo.avatar !== 'assets/images/account/default-avatar.png'"
+                (click)="removeAvatar()"
+              >
+                <i class="bi bi-trash"></i>
+              </button>
             </div>
+
             <div class="info-grid">
+              <div class="info-column">
               <div class="info-item">
                 <i class="bi bi-person"></i>
                 <div>
@@ -62,13 +86,7 @@
                   <span class="info-value">{{ userInfo.fullName }}</span>
                 </div>
               </div>
-              <div class="info-item">
-                <i class="bi bi-gender-ambiguous"></i>
-                <div>
-                  <span class="info-label">Giới tính</span>
-                  <span class="info-value">{{ userInfo.gender }}</span>
-                </div>
-              </div>
+
               <div class="info-item">
                 <i class="bi bi-envelope"></i>
                 <div>
@@ -76,21 +94,33 @@
                   <span class="info-value">{{ userInfo.email }}</span>
                 </div>
               </div>
-              <div class="info-item">
-                <i class="bi bi-calendar3"></i>
-                <div>
-                  <span class="info-label">Ngày sinh</span>
-                  <span class="info-value">{{ userInfo.birthDate }}</span>
-                </div>
-              </div>
+
               <div class="info-item">
                 <i class="bi bi-telephone"></i>
                 <div>
                   <span class="info-label">Số điện thoại</span>
-                  <span class="info-value">{{ userInfo.phone }}</span>
+                  <span class="info-value">{{ formatPhoneInput(userInfo.phone) }}</span>                </div>
+              </div>
+              </div>
+
+              <div class="info-column">
+              <div class="info-item">
+                <i class="bi bi-gender-ambiguous"></i>
+                <div>
+                  <span class="info-label">Giới tính</span>
+                  <span class="info-value">{{ userInfo.gender }}</span>
                 </div>
               </div>
+
+              <div class="info-item">
+                <i class="bi bi-calendar3"></i>
+                <div>
+                  <span class="info-label">Ngày sinh</span>
+                  <span class="info-value">{{ formatBirthDate(userInfo.birthDate) }}</span>                </div>
+              </div>
+              </div>
             </div>
+
             <button class="btn-edit-profile" type="button" (click)="openEditModal()">
               <i class="bi bi-pencil"></i> Chỉnh sửa thông tin
             </button>
@@ -98,8 +128,9 @@
         </div>
 
         <!-- 2. ĐƠN HÀNG CỦA TÔI -->
-        <div class="section-card mb-4">
+        <div class="section-card mb-4" id="donhang">
           <div class="section-title">Đơn hàng của tôi</div>
+
           <div class="table-responsive">
             <table class="order-table w-100">
               <thead>
@@ -111,10 +142,11 @@
                   <th>Thao tác</th>
                 </tr>
               </thead>
+
               <tbody>
                 <tr *ngFor="let order of displayedOrders">
                   <td class="order-id">{{ order.id }}</td>
-                  <td>{{ order.date }}</td>
+                  <td class="order-date">{{ order.date }}</td>
                   <td class="order-total">{{ formatPrice(order.total) }}</td>
                   <td>
                     <span class="status-badge" [ngClass]="getStatusClass(order.status)">
@@ -122,13 +154,26 @@
                     </span>
                   </td>
                   <td>
-                    <button class="btn-view-detail" type="button">Xem chi tiết</button>
+                    <button
+                      class="btn-view-detail"
+                      type="button"
+                      *ngIf="canViewOrderDetail(order)"
+                      (click)="goToOrderDetail(order)">
+                      Xem chi tiết
+                    </button>
+
+                    <span
+                      class="text-muted"
+                      *ngIf="!canViewOrderDetail(order)">
+                      Chưa thể xem
+                    </span>
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <div class="text-center mt-3">
+
+          <div class="text-center mt-3" *ngIf="hasMoreOrders">
             <button class="btn-see-more" type="button" (click)="showAllOrders = !showAllOrders">
               {{ showAllOrders ? 'Thu gọn' : 'Xem tất cả đơn hàng' }}
               <i class="bi" [ngClass]="showAllOrders ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
@@ -137,21 +182,60 @@
         </div>
 
         <!-- 3. HẠNG THÀNH VIÊN + ĐIỂM THƯỞNG -->
-        <div class="row g-4 mb-4">
+        <div class="row g-4 mb-4" id="member-reward">
           <div class="col-md-6">
-            <div class="section-card h-100">
+            <div class="section-card section-card--compact h-100 membership-panel">
               <div class="section-title">Hạng thành viên</div>
-              <div class="membership-body">
-                <div class="membership-icon">
-                  <i class="bi bi-gem"></i>
+
+              <article class="account-membership-card">
+                <img
+                  class="account-membership-frame"
+                  [src]="memberRankFrame"
+                  [alt]="memberRank"
+                />
+
+                <div class="account-membership-content">
+                  <div class="account-membership-row">
+                    <div class="account-membership-icon">
+                      <i class="bi bi-award"></i>
+                    </div>
+
+                    <div>
+                      <h3>{{ memberRank }}</h3>
+                    </div>
+
+                    <strong class="account-upgrade-text">
+                      <ng-container *ngIf="memberRank !== 'Kim cương'; else highestMemberRank">
+                        Còn {{ formatPrice(memberNextRankAmount) }} để nâng hạng
+                      </ng-container>
+
+                      <ng-template #highestMemberRank>
+                        Hạng cao nhất
+                      </ng-template>
+                    </strong>
+                  </div>
+
+                  <div class="account-progress-area">
+                    <div class="account-progress-title">
+                      <span>{{ memberProgressTitle }}</span>
+                      <strong>{{ memberProgressPercent }}%</strong>
+                    </div>
+
+                    <div class="account-progress-bar">
+                      <div [style.width.%]="memberProgressPercent"></div>
+                    </div>
+
+                    <p>{{ memberProgressAmountText }}</p>
+                  </div>
                 </div>
-                <span class="membership-label">Thành viên {{ membershipTier }}</span>
-              </div>
+              </article>
             </div>
           </div>
+
           <div class="col-md-6">
-            <div class="section-card h-100">
+            <div class="section-card section-card--compact h-100 reward-panel">
               <div class="section-title">Điểm thưởng</div>
+
               <div class="reward-body">
                 <div class="reward-top">
                   <i class="bi bi-gift reward-icon"></i>
@@ -160,6 +244,7 @@
                     <div class="reward-value">Tương đương {{ formatPrice(rewardValue) }}</div>
                   </div>
                 </div>
+
                 <button class="btn-redeem" type="button" (click)="redeemPoints()">Đổi thưởng</button>
               </div>
             </div>
@@ -167,30 +252,63 @@
         </div>
 
         <!-- 4. WISHLIST -->
-        <div class="section-card mb-4">
+        <div class="section-card mb-4" id="wishlist">
           <div class="section-title">Wishlist</div>
+
           <div class="wishlist-grid">
-            <div class="wishlist-item" *ngFor="let item of wishlistItems">
-              <div class="wishlist-img-wrap">
-                <img [src]="item.image" [alt]="item.name" class="wishlist-img" />
-                <button class="btn-remove-wish" type="button" (click)="removeFromWishlist(item.id)">
-                  <i class="bi bi-heart-fill"></i>
+            <article class="product-card wishlist-item" *ngFor="let item of displayedWishlistItems">
+              <div class="product-card-media">
+                <img [src]="item.image" [alt]="item.name" loading="lazy" />
+
+                <span class="badge-sale" *ngIf="item.discountPercent">
+                  -{{ item.discountPercent }}%
+                </span>
+
+                <button
+                  class="btn-wishlist active"
+                  type="button"
+                  (click)="toggleFavorite(item)"
+                  [attr.aria-label]="'Xóa ' + item.name + ' khỏi Wishlist'"
+                >
+                  <i [ngClass]="item.isFavorite ? 'bi bi-heart-fill' : 'bi bi-heart'"></i>
                 </button>
               </div>
-              <div class="wishlist-info">
-                <div class="wishlist-name">{{ item.name }}</div>
-                <div class="wishlist-price">{{ formatPrice(item.price) }}</div>
-                <div class="wishlist-actions">
-                  <button class="btn-buy-now" type="button">MUA NGAY</button>
-                  <button class="btn-add-cart" type="button" (click)="addToCart(item)">
+
+              <div class="product-card-body">
+                <h3>{{ item.name }}</h3>
+
+                <div class="price-row">
+                  <span class="price">{{ formatPrice(item.price) }}</span>
+                  <span class="old-price" *ngIf="item.oldPrice">
+                    {{ formatPrice(item.oldPrice) }}
+                  </span>
+                </div>
+
+                <div class="product-action">
+                  <button class="btn-buy" type="button">MUA NGAY</button>
+
+                  <button
+                    class="btn-cart"
+                    type="button"
+                    (click)="addToCart(item)"
+                    [attr.aria-label]="'Thêm ' + item.name + ' vào giỏ hàng'"
+                  >
                     <i class="bi bi-cart3"></i>
                   </button>
                 </div>
               </div>
-            </div>
+            </article>
           </div>
-          <div class="text-center mt-3">
-            <button class="btn-xemthem" type="button">Xem thêm</button>
+
+          <div class="text-center mt-3" id="diachi">
+            <button
+              class="btn-xemthem"
+              type="button"
+              *ngIf="wishlistItems.length > 4"
+              (click)="toggleWishlistView()"
+            >
+              {{ showAllWishlist ? 'Thu gọn' : 'Xem thêm' }}
+            </button>
           </div>
         </div>
 
@@ -198,65 +316,88 @@
         <div class="section-card mb-4">
           <div class="section-title d-flex align-items-center gap-2">
             Địa chỉ của tôi
-            <button class="btn-add-address" type="button">
+            <button class="btn-add-address" type="button" (click)="openAddAddressModal()">
               <i class="bi bi-plus-lg"></i>
             </button>
           </div>
+
           <div class="address-slider">
             <button
               class="slider-arrow"
               type="button"
               (click)="prevAddress()"
-              [disabled]="currentAddressIndex === 0"
+              [disabled]="!canPrevAddress"
             >
               <i class="bi bi-chevron-left"></i>
             </button>
-            <div class="address-card">
-              <div class="address-card-header">
-                <label class="address-radio">
-                  <input type="radio" name="address" [checked]="addresses[currentAddressIndex].isDefault"
-                    (change)="setDefaultAddress(addresses[currentAddressIndex].id)" />
-                  {{ addresses[currentAddressIndex].label }}
-                </label>
-                <span class="default-badge" *ngIf="addresses[currentAddressIndex].isDefault">Mặc định</span>
-              </div>
-              <div class="address-detail">
-                <div>{{ addresses[currentAddressIndex].name }}</div>
-                <div>{{ addresses[currentAddressIndex].phone }}</div>
-                <div>{{ addresses[currentAddressIndex].detail }}</div>
-              </div>
-              <div class="address-actions">
-                <button class="btn-icon" type="button"><i class="bi bi-pencil"></i></button>
-                <button class="btn-icon text-danger" type="button"
-                  (click)="deleteAddress(addresses[currentAddressIndex].id)">
-                  <i class="bi bi-trash3"></i>
-                </button>
+
+            <div class="address-grid">
+              <div class="address-card" *ngFor="let address of displayedAddresses">
+                <div class="address-card-header">
+                  <label class="address-radio">
+                    <input
+                      type="radio"
+                      name="defaultAddress"
+                      [checked]="address.isDefault"
+                      (change)="setDefaultAddress(address.id)"
+                    >
+                    <span>{{ address.label }}</span>
+                  </label>
+
+                  <span class="default-badge" *ngIf="address.isDefault">
+                    Mặc định
+                  </span>
+                </div>
+
+                <div class="address-detail">
+                  <div>{{ address.name }}</div>
+                  <div>{{ formatPhoneInput(address.phone) }}</div>
+                  <div>{{ address.detail }}</div>
+                </div>
+                <div class="address-actions">
+                  <button class="btn-icon" type="button" (click)="openEditAddressModal(address)">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+
+                  <button class="btn-icon" type="button" (click)="deleteAddress(address.id)">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
               </div>
             </div>
-            <button class="slider-arrow" type="button" (click)="nextAddress()"
-              [disabled]="currentAddressIndex === addresses.length - 1">
+
+            <button
+              class="slider-arrow"
+              type="button"
+              (click)="nextAddress()"
+              [disabled]="!canNextAddress"
+            >
               <i class="bi bi-chevron-right"></i>
             </button>
           </div>
         </div>
 
         <!-- 6. VOUCHER CỦA TÔI -->
-        <div class="section-card mb-4">
+        <div class="section-card mb-4" id="voucher">
           <div class="section-title">Voucher của tôi</div>
+
           <div class="voucher-list">
             <div class="voucher-item" *ngFor="let v of displayedVouchers">
               <div class="voucher-code">{{ v.code }}</div>
+
               <div class="voucher-info">
                 <div class="voucher-desc">{{ v.description }}</div>
                 <div class="voucher-condition">{{ v.condition }}</div>
               </div>
+
               <div class="voucher-right">
                 <div class="voucher-expiry">HSD: {{ v.expiry }}</div>
                 <button class="btn-use-voucher" type="button" (click)="useVoucher(v.code)">Sử dụng</button>
               </div>
             </div>
           </div>
-          <div class="text-center mt-3">
+
+          <div class="text-center mt-3" *ngIf="hasMoreVouchers">
             <button class="btn-see-more" type="button" (click)="showAllVouchers = !showAllVouchers">
               {{ showAllVouchers ? 'Thu gọn' : 'Xem tất cả' }}
               <i class="bi" [ngClass]="showAllVouchers ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
@@ -271,84 +412,416 @@
   <!-- ===== MODAL SỬA HỒ SƠ ===== -->
   <div class="modal-overlay" *ngIf="showEditModal" (click)="closeEditModal($event)">
     <div class="modal-box">
+      <button type="button" class="popup-close" (click)="closeModal()">
+        <i class="bi bi-x-lg"></i>
+      </button>
+
       <h2 class="modal-title">Sửa hồ sơ</h2>
 
-      <form class="modal-form" (ngSubmit)="saveProfile()" #editForm="ngForm" novalidate>
-
+      <form class="modal-form" (ngSubmit)="saveProfile(editForm)" #editForm="ngForm" novalidate>
         <div class="modal-field">
           <label class="modal-label" for="edit-fullName">Họ và tên:</label>
-          <input
-            type="text"
-            id="edit-fullName"
-            name="fullName"
-            class="modal-input"
-            [(ngModel)]="editData.fullName"
-            required
-            minlength="2"
-            #editFullName="ngModel"
-            [class.is-invalid]="editFullName.invalid && editFullName.touched"
-          />
+
+          <div class="modal-input-group">
+            <input
+              type="text"
+              id="edit-fullName"
+              name="fullName"
+              class="modal-input"
+              [(ngModel)]="editData.fullName"
+              required
+              minlength="2"
+              #editFullName="ngModel"
+              [class.is-invalid]="editFullName.invalid && editFullName.touched"
+            >
+
+            <span class="error-msg" *ngIf="editFullName.invalid && editFullName.touched">
+                Vui lòng nhập họ và tên (tối thiểu 2 ký tự).
+            </span>
+          </div>
         </div>
 
         <div class="modal-field">
           <label class="modal-label" for="edit-phone">Số điện thoại:</label>
-          <input
-            type="tel"
-            id="edit-phone"
-            name="phone"
-            class="modal-input"
-            [(ngModel)]="editData.phone"
-            required
-            pattern="^(0[3|5|7|8|9])+([0-9]{8})$"
-            #editPhone="ngModel"
-            [class.is-invalid]="editPhone.invalid && editPhone.touched"
-          />
+
+          <div class="modal-input-group">
+            <input
+              type="tel"
+              id="edit-phone"
+              name="phone"
+              class="modal-input"
+              [(ngModel)]="editData.phone"
+              (input)="onPhoneInput($event)"
+              required
+              pattern="^0[0-9]{3}\s[0-9]{3}\s[0-9]{3}$"
+              #editPhone="ngModel"
+              [class.is-invalid]="editPhone.invalid && (editPhone.touched || editForm.submitted)"
+            >
+
+            <span class="error-msg" *ngIf="editPhone.errors?.['required'] && editPhone.touched">
+              Vui lòng nhập số điện thoại.
+            </span>
+
+            <span class="error-msg" *ngIf="editPhone.errors?.['pattern'] && editPhone.touched">
+              Số điện thoại không hợp lệ.
+            </span>
+          </div>
         </div>
 
         <div class="modal-field">
           <label class="modal-label" for="edit-email">Email:</label>
-          <input
-            type="email"
-            id="edit-email"
-            name="email"
-            class="modal-input"
-            [(ngModel)]="editData.email"
-            email
-            #editEmail="ngModel"
-            [class.is-invalid]="editEmail.invalid && editEmail.touched"
-          />
+
+          <div class="modal-input-group">
+            <input
+              type="email"
+              id="edit-email"
+              name="email"
+              class="modal-input"
+              [(ngModel)]="editData.email"
+              email
+              #editEmail="ngModel"
+              [class.is-invalid]="editEmail.invalid && editEmail.touched"
+            >
+
+            <span class="error-msg" *ngIf="editEmail.invalid && (editEmail.touched || editForm.submitted)">
+              Email không hợp lệ.
+            </span>
+          </div>
         </div>
 
         <div class="modal-field">
           <label class="modal-label" for="edit-birthDate">Ngày sinh:</label>
-          <input
-            type="text"
-            id="edit-birthDate"
-            name="birthDate"
-            class="modal-input"
-            [(ngModel)]="editData.birthDate"
-            placeholder="DD/MM/YYYY"
-          />
+
+          <div class="modal-input-group">
+            <div class="date-input-wrap">
+              <input
+                type="text"
+                id="edit-birthDate"
+                name="birthDate"
+                class="modal-input"
+                [(ngModel)]="editData.birthDate"
+                placeholder="DD/MM/YYYY"
+                pattern="^$|^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/[0-9]{4}$"
+                #editBirthDate="ngModel"
+                [class.is-invalid]="editBirthDate.invalid && (editBirthDate.touched || editForm.submitted)"
+              >
+
+              <button
+                type="button"
+                class="date-picker-btn"
+                (click)="birthDatePicker.showPicker()"
+              >
+                <i class="bi bi-calendar3"></i>
+              </button>
+
+              <input
+                #birthDatePicker
+                type="date"
+                class="date-picker-hidden"
+                [value]="toIsoDate(editData.birthDate)"
+                (change)="onBirthDatePicked($event)"
+              >
+            </div>
+
+            <span class="error-msg" *ngIf="editBirthDate.invalid && (editBirthDate.touched || editForm.submitted)">
+              Ngày sinh không hợp lệ.
+            </span>
+          </div>
         </div>
 
-        <div class="modal-field">
+        <div class="modal-field modal-field--gender">
           <label class="modal-label">Giới tính:</label>
+
           <div class="modal-gender">
             <label class="gender-option">
-              <input type="radio" name="gender" value="Nữ" [(ngModel)]="editData.gender" /> Nữ
+              <input type="radio" name="gender" value="Nữ" [(ngModel)]="editData.gender">
+              <span>Nữ</span>
             </label>
+
             <label class="gender-option">
-              <input type="radio" name="gender" value="Nam" [(ngModel)]="editData.gender" /> Nam
+              <input type="radio" name="gender" value="Nam" [(ngModel)]="editData.gender">
+              <span>Nam</span>
             </label>
           </div>
         </div>
 
-        <button type="submit" class="modal-btn-save" [disabled]="editForm.invalid">Lưu</button>
-        <button type="button" class="modal-btn-skip" (click)="closeModal()">Để sau</button>
+        <button
+          type="submit"
+          class="modal-btn-save"
+        >
+          Lưu
+        </button>
+      </form>
+    </div>
+  </div>
+  <!-- ===== MODAL THÊM ĐỊA CHỈ ===== -->
+  <div class="modal-overlay" *ngIf="showAddAddressModal" (click)="closeAddAddressModalByOverlay($event)">
+    <div class="address-modal-box">
+      <button type="button" class="popup-close" (click)="closeAddAddressModal()">
+        <i class="bi bi-x-lg"></i>
+      </button>
+
+      <h2 class="address-modal-title">{{ addressModalTitle }}</h2>
+
+      <form
+        class="address-modal-form"
+        (ngSubmit)="saveNewAddress(addAddressForm)"
+        #addAddressForm="ngForm"
+        novalidate
+      >
+        <div class="address-modal-field">
+          <label class="address-modal-label" for="address-fullName">Họ và tên:</label>
+
+          <div class="address-modal-input-group">
+            <input
+              type="text"
+              id="address-fullName"
+              name="fullName"
+              class="address-modal-input"
+              [(ngModel)]="newAddress.fullName"
+              required
+              minlength="2"
+              #addressFullName="ngModel"
+              [class.is-invalid]="addressFullName.invalid && (addressFullName.touched || addAddressForm.submitted)"
+            >
+
+            <span
+              class="error-msg"
+              *ngIf="addressFullName.errors?.['required'] && (addressFullName.touched || addAddressForm.submitted)"
+            >
+              Vui lòng nhập họ và tên.
+            </span>
+
+            <span
+              class="error-msg"
+              *ngIf="addressFullName.errors?.['minlength'] && (addressFullName.touched || addAddressForm.submitted)"
+            >
+              Vui lòng nhập họ và tên (tối thiểu 2 ký tự).
+            </span>
+          </div>
+        </div>
+
+        <div class="address-modal-field">
+          <label class="address-modal-label" for="address-phone">Số điện thoại:</label>
+
+          <div class="address-modal-input-group">
+            <input
+              type="tel"
+              id="address-phone"
+              name="phone"
+              class="address-modal-input"
+              [(ngModel)]="newAddress.phone"
+              (input)="onNewAddressPhoneInput($event)"
+              required
+              pattern="^0[0-9]{3}\s[0-9]{3}\s[0-9]{3}$"
+              #addressPhone="ngModel"
+              [class.is-invalid]="addressPhone.invalid && (addressPhone.touched || addAddressForm.submitted)"
+            >
+
+            <span
+              class="error-msg"
+              *ngIf="addressPhone.errors?.['required'] && (addressPhone.touched || addAddressForm.submitted)"
+            >
+              Vui lòng nhập số điện thoại.
+            </span>
+
+            <span
+              class="error-msg"
+              *ngIf="addressPhone.errors?.['pattern'] && (addressPhone.touched || addAddressForm.submitted)"
+            >
+              Số điện thoại không hợp lệ.
+            </span>
+          </div>
+        </div>
+
+        <div class="address-modal-field">
+          <label class="address-modal-label" for="address-province">Tỉnh:</label>
+
+          <div class="address-modal-input-group">
+            <div class="address-select-wrap">
+              <div class="address-custom-select-wrap">
+                <button
+                  type="button"
+                  id="address-province"
+                  class="address-custom-select"
+                  [class.has-value]="newAddress.provinceCode"
+                  [class.is-invalid]="!newAddress.provinceCode && addAddressForm.submitted"
+                  (click)="toggleAddressDropdown('province', false)"
+                >
+                  <span>{{ selectedProvinceName || 'Tỉnh/Thành Phố' }}</span>
+
+                  <i
+                    class="bi bi-chevron-down address-select-icon"
+                    *ngIf="!newAddress.provinceCode"
+                  ></i>
+                </button>
+
+                <div
+                  class="address-custom-options"
+                  *ngIf="openAddressDropdown === 'province'"
+                >
+                  <button
+                    type="button"
+                    class="address-custom-option"
+                    *ngFor="let province of provinces"
+                    [class.active]="province.code === newAddress.provinceCode"
+                    (click)="selectProvince(province)"
+                  >
+                    {{ province.name }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <span
+              class="error-msg"
+              *ngIf="!newAddress.provinceCode && addAddressForm.submitted"
+            >
+              Vui lòng chọn tỉnh/thành phố.
+            </span>
+          </div>
+        </div>
+
+        <div class="address-modal-field">
+          <label class="address-modal-label" for="address-district">Quận/huyện:</label>
+
+          <div class="address-modal-input-group">
+            <div class="address-select-wrap">
+              <div class="address-custom-select-wrap">
+                <button
+                  type="button"
+                  id="address-district"
+                  class="address-custom-select"
+                  [disabled]="!newAddress.provinceCode"
+                  [class.has-value]="newAddress.districtCode"
+                  [class.is-invalid]="!newAddress.districtCode && addAddressForm.submitted"
+                  (click)="toggleAddressDropdown('district', !newAddress.provinceCode)"
+                >
+                  <span>{{ selectedDistrictName || 'Quận/Huyện' }}</span>
+
+                  <i
+                    class="bi bi-chevron-down address-select-icon"
+                    *ngIf="!newAddress.districtCode"
+                  ></i>
+                </button>
+
+                <div
+                  class="address-custom-options"
+                  *ngIf="openAddressDropdown === 'district'"
+                >
+                  <button
+                    type="button"
+                    class="address-custom-option"
+                    *ngFor="let district of availableDistricts"
+                    [class.active]="district.code === newAddress.districtCode"
+                    (click)="selectDistrict(district)"
+                  >
+                    {{ district.name }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <span
+              class="error-msg"
+              *ngIf="!newAddress.districtCode && addAddressForm.submitted"
+            >
+              Vui lòng chọn quận/huyện.
+            </span>
+          </div>
+        </div>
+
+        <div class="address-modal-field">
+          <label class="address-modal-label" for="address-ward">Phường/xã:</label>
+
+          <div class="address-modal-input-group">
+            <div class="address-select-wrap">
+              <div class="address-custom-select-wrap">
+                <button
+                  type="button"
+                  id="address-ward"
+                  class="address-custom-select"
+                  [disabled]="!newAddress.districtCode"
+                  [class.has-value]="newAddress.wardCode"
+                  [class.is-invalid]="!newAddress.wardCode && addAddressForm.submitted"
+                  (click)="toggleAddressDropdown('ward', !newAddress.districtCode)"
+                >
+                  <span>{{ selectedWardName || 'Phường/Xã' }}</span>
+
+                  <i
+                    class="bi bi-chevron-down address-select-icon"
+                    *ngIf="!newAddress.wardCode"
+                  ></i>
+                </button>
+
+                <div
+                  class="address-custom-options"
+                  *ngIf="openAddressDropdown === 'ward'"
+                >
+                  <button
+                    type="button"
+                    class="address-custom-option"
+                    *ngFor="let ward of availableWards"
+                    [class.active]="ward.code === newAddress.wardCode"
+                    (click)="selectWard(ward)"
+                  >
+                    {{ ward.name }} - {{ ward.districtName }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <span
+              class="error-msg"
+              *ngIf="!newAddress.wardCode && addAddressForm.submitted"
+            >
+              Vui lòng chọn phường/xã.
+            </span>
+          </div>
+        </div>
+
+        <div class="address-modal-field">
+          <label class="address-modal-label" for="address-detail">Địa chỉ cụ thể:</label>
+
+          <div class="address-modal-input-group">
+            <textarea
+              id="address-detail"
+              name="detail"
+              class="address-modal-input address-detail-textarea"
+              [(ngModel)]="newAddress.detail"
+              (input)="autoResizeTextarea($event)"
+              required
+              #addressDetail="ngModel"
+              [class.is-invalid]="addressDetail.invalid && (addressDetail.touched || addAddressForm.submitted)"
+            ></textarea>
+
+            <span
+              class="error-msg"
+              *ngIf="addressDetail.invalid && (addressDetail.touched || addAddressForm.submitted)"
+            >
+              Vui lòng nhập địa chỉ cụ thể.
+            </span>
+          </div>
+        </div>
+        <div class="address-modal-field address-default-field">
+          <div></div>
+
+          <label class="address-default-check">
+            <input
+              type="checkbox"
+              name="isDefault"
+              [(ngModel)]="newAddress.isDefault"
+            >
+            <span>Địa chỉ mặc định</span>
+          </label>
+        </div>
+
+        <button type="submit" class="address-modal-save">
+          Lưu
+        </button>
 
       </form>
     </div>
   </div>
-
 </div>
-<app-page-footer></app-page-footer>
+
