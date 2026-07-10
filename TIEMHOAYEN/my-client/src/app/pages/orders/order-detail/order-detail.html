@@ -14,7 +14,7 @@
   </div>
 
   <ng-container *ngIf="!errorMessage">
-    <h1>Đơn hàng #{{ order.id }}</h1>
+    <strong>Đơn hàng #{{ order.id }}</strong>
 
     <p class="order-date">
       Đặt ngày: {{ order.date }}
@@ -40,7 +40,6 @@
           <h3>Thông tin giao hàng</h3>
           <button *ngIf="canEditShipping()" type="button" class="btn-edit-shipping" (click)="openEditShipping()"
             title="Cập nhật thông tin giao hàng">
-            <i class="bi bi-arrow-repeat"></i>
             <span>Cập nhật</span>
           </button>
         </div>
