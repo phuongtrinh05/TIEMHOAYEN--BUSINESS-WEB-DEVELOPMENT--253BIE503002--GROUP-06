@@ -28,7 +28,14 @@
         <div class="col-qty">Số lượng</div>
         <div class="col-total">Thành tiền</div>
         <div class="col-delete">
-          <i class="bi bi-trash"></i>
+          <button
+            type="button"
+            class="btn-delete btn-delete-all"
+            aria-label="Xóa tất cả sản phẩm"
+            [disabled]="cartItems.length === 0"
+            (click)="removeAllItems()">
+            <i class="bi bi-trash"></i>
+          </button>
         </div>
       </div>
 
@@ -109,6 +116,21 @@
         <span>{{ formatPrice(getSubtotal()) }}</span>
       </div>
 
+      <div class="summary-row">
+        <span>Phí ship:</span>
+        <span>{{ formatPrice(getShippingFee()) }}</span>
+      </div>
+
+      <div class="summary-row voucher-row" *ngIf="getProductVoucherDiscount() > 0">
+        <span class="voucher-tag">Voucher giảm</span>
+        <span class="discount-value">-{{ formatPrice(getProductVoucherDiscount()) }}</span>
+      </div>
+
+      <div class="summary-row voucher-row" *ngIf="getShippingVoucherDiscount() > 0">
+        <span class="voucher-tag">Voucher ship</span>
+        <span class="discount-value">-{{ formatPrice(getShippingVoucherDiscount()) }}</span>
+      </div>
+
       <div class="summary-total">
         <span>Tổng cộng</span>
         <span class="total-value">{{ formatPrice(getTotal()) }}</span>
@@ -117,7 +139,6 @@
       <button
         type="button"
         class="btn-order"
-        [disabled]="getSelectedCount() === 0"
         (click)="goToCheckout()">
         Đặt hàng
       </button>
@@ -128,7 +149,7 @@
           <span>Cam kết hoa tươi 100%</span>
         </div>
         <div class="guarantee-item">
-          <i class="bi bi-clock"></i>
+          <i class="bi bi-box-seam"></i>
           <span>Giao hàng đúng giờ</span>
         </div>
         <div class="guarantee-item">

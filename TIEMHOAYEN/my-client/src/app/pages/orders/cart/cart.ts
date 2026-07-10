@@ -1,4 +1,4 @@
-import { CommonModule, isPlatformBrowser } from '@angular/common';
+﻿import { CommonModule, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectorRef,
   Component,
@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
+import { forkJoin } from 'rxjs';
 
 import { PageHeader } from '../../../components/page-header/page-header';
 import { PageFooter } from '../../../components/page-footer/page-footer';
@@ -19,6 +20,11 @@ import {
   CartApiItem,
   CartResponse,
 } from '../../../services/cart.service';
+
+import {
+  CustomerService,
+  CustomerVoucher,
+} from '../../../services/customer.service';
 
 
 
@@ -55,12 +61,24 @@ interface SuggestedProductResponse {
   SO_LUONG?: number | string | null;
   KIEU_DANG?: string | null;
   TRANG_THAI?: string | null;
+  CHU_DE_ID?: string | null;
+  TEN_CHU_DE?: string | null;
 
   // Giữ tương thích nếu backend cũ còn trả về format NGUYEN_VAT_LIEU.
   NGUYEN_VAT_LIEU_ID?: string;
   TEN_NGUYEN_VAT_LIEU?: string;
   GIA_BAN?: number | string | null;
   SO_LUONG_TON?: number | string | null;
+}
+
+interface CartVoucher {
+  id: string;
+  code: string;
+  type: string;
+  value: number;
+  startDate?: string | null;
+  endDate?: string | null;
+  used?: boolean | number;
 }
 
 @Component({
@@ -90,21 +108,29 @@ export class CartComponent implements OnInit {
   private readonly checkoutItemsStorageKey = 'tiemHoaYenCheckoutItems';
 
   private readonly defaultImage = 'assets/images/hoa.jpg';
+  private readonly estimatedShippingFee = 30000;
 
   cartItems: CartItem[] = [];
   suggestedProducts: SuggestedProduct[] = [];
+  availableVouchers: CartVoucher[] = [];
+  selectedProductVoucher: CartVoucher | null = null;
+  selectedShippingVoucher: CartVoucher | null = null;
   isLoadingCart = false;
+  private cachedCustomerId = '';
 
   constructor(
     @Inject(PLATFORM_ID) private platformId: object,
     private materialService: MaterialService,
     private cartService: CartService,
+    private customerService: CustomerService,
     private router: Router,
     private cdr: ChangeDetectorRef,
   ) {}
 
   ngOnInit(): void {
+    this.cachedCustomerId = this.resolveCustomerId();
     this.loadCartByLoginState();
+    this.loadCustomerVouchers();
     this.loadSuggestedMaterials();
   }
 
@@ -140,13 +166,17 @@ export class CartComponent implements OnInit {
     }
   }
 
-  private getCustomerId(): string {
+  private resolveCustomerId(): string {
     const customer = this.getLoggedInCustomer();
     return customer?.KHACH_HANG_ID ? String(customer.KHACH_HANG_ID) : '';
   }
 
+  private getCustomerId(): string {
+    return this.cachedCustomerId;
+  }
+
   get isLoggedIn(): boolean {
-    return !!this.getCustomerId();
+    return !!this.cachedCustomerId;
   }
 
   /**
@@ -246,7 +276,7 @@ export class CartComponent implements OnInit {
       id: String(item.SAN_PHAM_ID || ''),
       name: String(item.TEN_SAN_PHAM || ''),
       style: String(item.KIEU_DANG || 'Sản phẩm'),
-      occasion: String(item.TRANG_THAI || 'Đang bán'),
+      occasion: String(item.TEN_CHU_DE || 'Sản phẩm'),
       price: Number(item.GIA_KHUYEN_MAI || item.GIA || 0),
       originalPrice: item.GIA_KHUYEN_MAI ? Number(item.GIA || 0) : null,
       quantity: Math.max(1, Number(item.SO_LUONG || 1)),
@@ -260,13 +290,16 @@ export class CartComponent implements OnInit {
   }
 
   private mapStorageItemToCartItem(item: unknown): CartItem {
-    const data = item as Partial<CartItem>;
+    const data = item as Partial<CartItem> & {
+      topicName?: string | null;
+      TEN_CHU_DE?: string | null;
+    };
 
     return {
       id: String(data.id || ''),
       name: String(data.name || ''),
       style: String(data.style || ''),
-      occasion: String(data.occasion || ''),
+      occasion: this.getCartTopicName(data.TEN_CHU_DE || data.topicName || data.occasion),
       price: Number(data.price || 0),
       originalPrice:
         data.originalPrice === null || data.originalPrice === undefined
@@ -280,6 +313,120 @@ export class CartComponent implements OnInit {
           ? undefined
           : Number(data.maxQuantity),
     };
+  }
+
+  private getCartTopicName(value: unknown): string {
+    const text = String(value || '').trim();
+
+    if (!text || this.normalizeText(text) === this.normalizeText('Đang bán')) {
+      return 'Sản phẩm';
+    }
+
+    return text;
+  }
+
+  private loadCustomerVouchers(): void {
+    const customerId = this.getCustomerId();
+
+    if (!customerId) {
+      this.availableVouchers = [];
+      this.selectedProductVoucher = null;
+      this.selectedShippingVoucher = null;
+      return;
+    }
+
+    this.customerService.getVouchers(customerId).subscribe({
+      next: (vouchers: CustomerVoucher[]) => {
+        const items = Array.isArray(vouchers) ? vouchers : [];
+
+        this.availableVouchers = items
+          .filter((item: CustomerVoucher) => !this.isVoucherUsed(item))
+          .filter((item: CustomerVoucher) => this.isVoucherValidDate(item))
+          .map((item: CustomerVoucher) => this.mapCustomerVoucher(item));
+
+        this.pickBestVouchersForSummary();
+        this.cdr.detectChanges();
+      },
+      error: (err: unknown) => {
+        console.error('Lỗi load voucher của khách hàng:', err);
+        this.availableVouchers = [];
+        this.selectedProductVoucher = null;
+        this.selectedShippingVoucher = null;
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  private isVoucherUsed(voucher: CustomerVoucher): boolean {
+    return voucher.DA_DUNG === true || voucher.DA_DUNG === 1;
+  }
+
+  private isVoucherValidDate(voucher: CustomerVoucher): boolean {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (voucher.NGAY_BAT_DAU) {
+      const startDate = new Date(voucher.NGAY_BAT_DAU);
+      startDate.setHours(0, 0, 0, 0);
+
+      if (today < startDate) {
+        return false;
+      }
+    }
+
+    if (voucher.NGAY_KET_THUC) {
+      const endDate = new Date(voucher.NGAY_KET_THUC);
+      endDate.setHours(23, 59, 59, 999);
+
+      if (today > endDate) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private mapCustomerVoucher(item: CustomerVoucher): CartVoucher {
+    return {
+      id: String(item.VOUCHER_ID || ''),
+      code: String(item.MA_VOUCHER || '').trim(),
+      type: String(item.LOAI_GIAM_GIA || '').trim(),
+      value: Number(item.GIA_TRI_GIAM || 0),
+      startDate: item.NGAY_BAT_DAU || null,
+      endDate: item.NGAY_KET_THUC || null,
+      used: item.DA_DUNG,
+    };
+  }
+
+  private pickBestVouchersForSummary(): void {
+    const productVouchers = this.availableVouchers
+      .filter((voucher: CartVoucher) => this.isPercentVoucher(voucher))
+      .sort((a: CartVoucher, b: CartVoucher) => b.value - a.value);
+
+    const shippingVouchers = this.availableVouchers
+      .filter((voucher: CartVoucher) => this.isCashVoucher(voucher))
+      .sort((a: CartVoucher, b: CartVoucher) => b.value - a.value);
+
+    this.selectedProductVoucher = productVouchers[0] || null;
+    this.selectedShippingVoucher = shippingVouchers[0] || null;
+  }
+
+  private isPercentVoucher(voucher: CartVoucher): boolean {
+    return this.normalizeText(voucher.type) === this.normalizeText('Phần trăm');
+  }
+
+  private isCashVoucher(voucher: CartVoucher): boolean {
+    return this.normalizeText(voucher.type) === this.normalizeText('Tiền mặt');
+  }
+
+  private normalizeText(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/\s+/g, ' ');
   }
 
   getSelectedCount(): number {
@@ -317,7 +464,7 @@ export class CartComponent implements OnInit {
 
   increaseQty(item: CartItem): void {
     if (item.maxQuantity && item.quantity >= item.maxQuantity) {
-      alert(`Số lượng "${item.name}" đã đạt tối đa`);
+      console.warn(`Số lượng "${item.name}" đã đạt tối đa`);
       return;
     }
 
@@ -389,6 +536,56 @@ export class CartComponent implements OnInit {
     this.saveGuestCartToStorage();
   }
 
+  removeAllItems(): void {
+    if (this.cartItems.length === 0) {
+      return;
+    }
+
+    this.clearCheckoutItemsStorage();
+
+    if (this.isLoggedIn) {
+      const customerId = this.getCustomerId();
+      const productItems = this.cartItems.filter((item: CartItem) =>
+        this.isProductItem(item)
+      );
+
+      if (productItems.length === 0) {
+        this.cartItems = [];
+        this.saveGuestCartToStorage();
+        return;
+      }
+
+      forkJoin(
+        productItems.map((item: CartItem) =>
+          this.cartService.removeItem(customerId, item.id)
+        )
+      ).subscribe({
+        next: () => {
+          this.cartItems = [];
+          this.dispatchCartChanged();
+          this.loadCartFromDatabase();
+        },
+        error: (err: unknown) => {
+          console.error('Lỗi xóa toàn bộ giỏ hàng:', err);
+          this.loadCartFromDatabase();
+        },
+      });
+
+      return;
+    }
+
+    this.cartItems = [];
+    this.saveGuestCartToStorage();
+  }
+
+  private clearCheckoutItemsStorage(): void {
+    if (!this.isBrowser) {
+      return;
+    }
+
+    localStorage.removeItem(this.checkoutItemsStorageKey);
+  }
+
   private isProductItem(item: CartItem): boolean {
     return String(item.id).startsWith('SP');
   }
@@ -399,8 +596,37 @@ export class CartComponent implements OnInit {
       .reduce((sum: number, item: CartItem) => sum + item.price * item.quantity, 0);
   }
 
+  getShippingFee(): number {
+    return this.getSelectedCount() > 0 ? this.estimatedShippingFee : 0;
+  }
+
+  getProductVoucherDiscount(): number {
+    if (!this.selectedProductVoucher || this.getSubtotal() <= 0) {
+      return 0;
+    }
+
+    return Math.min(
+      this.getSubtotal(),
+      Math.round((this.getSubtotal() * this.selectedProductVoucher.value) / 100)
+    );
+  }
+
+  getShippingVoucherDiscount(): number {
+    if (!this.selectedShippingVoucher || this.getShippingFee() <= 0) {
+      return 0;
+    }
+
+    return Math.min(this.getShippingFee(), Math.max(0, this.selectedShippingVoucher.value));
+  }
+
   getTotal(): number {
-    return this.getSubtotal();
+    return Math.max(
+      0,
+      this.getSubtotal() +
+        this.getShippingFee() -
+        this.getProductVoucherDiscount() -
+        this.getShippingVoucherDiscount()
+    );
   }
 
   getSuggestedProducts(): SuggestedProduct[] {
@@ -409,7 +635,7 @@ export class CartComponent implements OnInit {
 
   addToCart(product: SuggestedProduct): void {
     if (!product.id || !product.id.startsWith('SP')) {
-      alert('Sản phẩm mua kèm phải là sản phẩm trong bảng SAN_PHAM.');
+      console.warn('Sản phẩm mua kèm phải là sản phẩm trong bảng SAN_PHAM.');
       return;
     }
 
@@ -418,7 +644,7 @@ export class CartComponent implements OnInit {
     );
 
     if (existingItem?.maxQuantity && existingItem.quantity >= existingItem.maxQuantity) {
-      alert(`Số lượng "${product.name}" đã đạt tối đa`);
+      console.warn(`Số lượng "${product.name}" đã đạt tối đa`);
       return;
     }
 
@@ -426,7 +652,7 @@ export class CartComponent implements OnInit {
       const customerId = this.getCustomerId();
 
       if (!customerId) {
-        alert('Không tìm thấy thông tin khách hàng. Vui lòng đăng nhập lại.');
+        console.warn('Không tìm thấy thông tin khách hàng. Vui lòng đăng nhập lại.');
         return;
       }
 
@@ -434,11 +660,11 @@ export class CartComponent implements OnInit {
         next: () => {
           this.dispatchCartChanged();
           this.loadCartFromDatabase();
-          alert(`Đã thêm "${product.name}" vào giỏ hàng!`);
+          console.warn(`Đã thêm "${product.name}" vào giỏ hàng!`);
         },
         error: (err: unknown) => {
           console.error('Lỗi thêm sản phẩm mua kèm vào giỏ hàng database:', err);
-          alert('Không thể thêm sản phẩm vào giỏ hàng.');
+          console.warn('Không thể thêm sản phẩm vào giỏ hàng.');
         },
       });
 
@@ -464,14 +690,14 @@ export class CartComponent implements OnInit {
 
     this.saveGuestCartToStorage();
     this.cdr.detectChanges();
-    alert(`Đã thêm "${product.name}" vào giỏ hàng!`);
+    console.warn(`Đã thêm "${product.name}" vào giỏ hàng!`);
   }
 
   goToCheckout(): void {
     const selectedItems = this.cartItems.filter((item: CartItem) => item.selected);
 
     if (selectedItems.length === 0) {
-      alert('Vui lòng chọn ít nhất một sản phẩm để đặt hàng.');
+      console.warn('Vui lòng chọn ít nhất một sản phẩm để đặt hàng.');
       return;
     }
 
@@ -544,7 +770,7 @@ export class CartComponent implements OnInit {
       originalPrice: salePrice > 0 && salePrice < originalPrice ? originalPrice : null,
       image: String(item.HINH_ANH || this.defaultImage),
       style: String(item.KIEU_DANG || 'Sản phẩm mua kèm'),
-      status: String(item.TRANG_THAI || 'Đang bán'),
+      status: this.getCartTopicName(item.TEN_CHU_DE || item.TRANG_THAI),
       maxQuantity: Number(item.SO_LUONG ?? item.SO_LUONG_TON ?? 0),
     };
   }
