@@ -292,6 +292,7 @@ display:block;
 .dropdown:has(> a:nth-child(11)){
 width:min(460px, calc(100vw - 32px));
 columns:2;
+column-fill:balance;
 column-gap:0;
 column-rule:1px solid rgba(217,179,130,0.35);
 }
@@ -1600,7 +1601,11 @@ z-index:100000;
 .dropdown a{
   border-bottom:0;
   border-radius:12px !important;
-  padding:10px 14px;
+  height:40px;
+  padding:0 14px;
+  display:flex;
+  align-items:center;
+  white-space:nowrap;
 }
 
 .menu.menu-fixed .menu-icons{
