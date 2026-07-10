@@ -292,7 +292,6 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.pageTitle = 'Sản phẩm';
     this.setBreadcrumb(selectedTopicIds.length > 0 ? 'Chủ đề' : '');
     this.products = [];
-    this.render();
 
     this.productRequestSubscription = this.categoryProductService.getAllProducts().subscribe({
       next: (res) => {
@@ -331,8 +330,6 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.products = [];
     this.selectedFilters.chuDe.add(topicNameFromId);
     this.syncTopicCheckboxById(topicId, true);
-    this.render();
-
     this.productRequestSubscription = this.categoryProductService.getProductsByTopic(topicId).subscribe({
       next: (res) => {
         const topicName = res.topic?.TEN_CHU_DE || topicNameFromId;
@@ -352,11 +349,9 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
         this.selectedFilters.chuDe.add(topicName);
 
-        setTimeout(() => {
-          this.syncTopicCheckboxById(topicId, true);
-          this.currentPage = 1;
-          this.render();
-        });
+        this.syncTopicCheckboxById(topicId, true);
+        this.currentPage = 1;
+        this.render();
       },
       error: (err) => {
         console.error('Lỗi lấy sản phẩm theo chủ đề:', err);
@@ -377,8 +372,6 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.products = [];
     this.pageTitle = 'Sản phẩm hoa tươi';
     this.setBreadcrumb('Hoa tươi');
-    this.render();
-
     this.productRequestSubscription = this.categoryProductService.getProductsByFlower(flowerId).subscribe({
       next: (res) => {
         const flowerName = res.flower?.TEN_HOA_TUOI || 'Hoa tươi';
@@ -398,11 +391,9 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
         this.selectedFilters.hoaTuoi.add(flowerName);
 
-        setTimeout(() => {
-          this.syncCheckbox('hoaTuoi', flowerName, true);
-          this.currentPage = 1;
-          this.render();
-        });
+        this.syncCheckbox('hoaTuoi', flowerName, true);
+        this.currentPage = 1;
+        this.render();
       },
       error: (err) => {
         console.error('Lỗi lấy sản phẩm theo hoa tươi:', err);
@@ -427,8 +418,6 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.setBreadcrumb('Kiểu dáng');
     this.selectedFilters.kieuDang.add(decodedStyle);
     this.syncCheckbox('kieuDang', decodedStyle, true);
-    this.render();
-
     this.productRequestSubscription = this.categoryProductService.getProductsByStyle(decodedStyle).subscribe({
       next: (res) => {
         const styleName = res.style?.KIEU_DANG || decodedStyle;
@@ -448,11 +437,9 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
         this.selectedFilters.kieuDang.add(styleName);
 
-        setTimeout(() => {
-          this.syncCheckbox('kieuDang', styleName, true);
-          this.currentPage = 1;
-          this.render();
-        });
+        this.syncCheckbox('kieuDang', styleName, true);
+        this.currentPage = 1;
+        this.render();
       },
       error: (err) => {
         console.error('Lỗi lấy sản phẩm theo kiểu dáng:', err);
@@ -474,8 +461,6 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.products = [];
     this.pageTitle = 'Sản phẩm';
     this.setBreadcrumb('Đối tượng');
-    this.render();
-
     this.productRequestSubscription = this.categoryProductService.getProductsByTarget(targetId).subscribe({
       next: (res) => {
         const targetName = res.target?.TEN_DOI_TUONG || 'Đối tượng';
@@ -495,11 +480,9 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
         this.selectedFilters.doiTuong.add(targetName);
 
-        setTimeout(() => {
-          this.syncCheckbox('doiTuong', targetName, true);
-          this.currentPage = 1;
-          this.render();
-        });
+        this.syncCheckbox('doiTuong', targetName, true);
+        this.currentPage = 1;
+        this.render();
       },
       error: (err) => {
         console.error('Lỗi lấy sản phẩm theo đối tượng:', err);
@@ -522,8 +505,6 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.products = [];
     this.pageTitle = 'Sản phẩm theo màu sắc';
     this.setBreadcrumb('Màu sắc');
-    this.render();
-
     this.productRequestSubscription = this.categoryProductService.getProductsByColor(colorId).subscribe({
       next: (res) => {
         const colorName = res.color?.TEN_MAU_SAC || 'Màu sắc';
@@ -543,11 +524,9 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
         this.selectedFilters.mauSac.add(colorName);
 
-        setTimeout(() => {
-          this.syncCheckbox('mauSac', colorName, true);
-          this.currentPage = 1;
-          this.render();
-        });
+        this.syncCheckbox('mauSac', colorName, true);
+        this.currentPage = 1;
+        this.render();
       },
       error: (err) => {
         console.error('Lỗi lấy sản phẩm theo màu sắc:', err);
@@ -569,8 +548,6 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.products = [];
     this.pageTitle = 'Bộ sưu tập';
     this.setBreadcrumb('Bộ sưu tập');
-    this.render();
-
     this.productRequestSubscription = this.categoryProductService.getProductsByCollection(collectionId).subscribe({
       next: (res) => {
         const collectionName = res.collection?.TEN_BO_SUU_TAP || 'Bộ sưu tập';

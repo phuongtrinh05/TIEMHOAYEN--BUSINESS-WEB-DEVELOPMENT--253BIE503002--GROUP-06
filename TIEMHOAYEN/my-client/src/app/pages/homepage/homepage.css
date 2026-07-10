@@ -1093,6 +1093,12 @@
         padding-right: 34px;
     }
 
+    /* Khớp lớp phủ với phần padding mới của video trên tablet. */
+    .flower-3d-overlay {
+        left: 34px;
+        right: 34px;
+    }
+
     .benefits {
         grid-template-columns: repeat(2, 1fr);
     }
