@@ -596,7 +596,7 @@ export class OrderDetail implements OnInit, OnDestroy {
         this.router.navigate(['/checkout']);
       },
       error: (err: any) => {
-        alert(err?.error?.message || 'Không thể tạo lại mã thanh toán.');
+        console.error(err?.error?.message || 'Không thể tạo lại mã thanh toán.');
       },
     });
   }
@@ -666,7 +666,6 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   openCancelReasonModal(): void {
     if (!this.canCancel()) {
-      alert('Chỉ có đơn hàng ở trạng thái Chờ xử lý mới được hủy.');
       return;
     }
 
@@ -675,7 +674,6 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   openReturnRefundReasonModal(): void {
     if (!this.canRequestReturnRefund()) {
-      alert('Chỉ có thể yêu cầu hoàn tiền/trả hàng khi đơn hàng ở trạng thái Giao hàng thành công.');
       return;
     }
 
@@ -753,7 +751,6 @@ export class OrderDetail implements OnInit, OnDestroy {
       this.steps = this.buildSteps(this.order.status);
       this.isReasonModalOpen = false;
       this.selectedReason = '';
-      alert('Đã gửi yêu cầu hủy đơn hàng thành công.');
       this.startAutoRefreshStatus();
     } catch (error: any) {
       this.reasonSubmitError = error?.message || 'Không thể hủy đơn hàng.';
@@ -799,7 +796,6 @@ export class OrderDetail implements OnInit, OnDestroy {
       this.steps = this.buildSteps(this.order.status);
       this.isReasonModalOpen = false;
       this.selectedReason = '';
-      alert('Đã gửi yêu cầu hoàn tiền/trả hàng.');
       this.startAutoRefreshStatus();
     } catch (error: any) {
       this.reasonSubmitError = error?.message || 'Không thể gửi yêu cầu hoàn tiền/trả hàng.';
@@ -1103,7 +1099,6 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   openEditShipping(): void {
-    // Pause auto refresh khi đang edit
     if (this.autoRefreshTimer !== null) {
       window.clearInterval(this.autoRefreshTimer);
       this.autoRefreshTimer = null;
@@ -1119,11 +1114,8 @@ export class OrderDetail implements OnInit, OnDestroy {
     };
     this.saveShippingError = '';
 
-    // Load provinces
     this.provinces = (addressData as any[]) || [];
 
-    // Parse địa chỉ cũ để pre-fill dropdown
-    // Địa chỉ dạng: "11 Phạm Chương, Xã Phước Hiệp, Huyện Củ Chi, Thành phố Hồ Chí Minh"
     const parts = this.order.address.split(',').map((s: string) => s.trim());
     const totalParts = parts.length;
 
@@ -1139,7 +1131,6 @@ export class OrderDetail implements OnInit, OnDestroy {
       this.specificAddress = this.order.address;
     }
 
-    // Load districts và wards theo province đã chọn
     const foundProvince = this.provinces.find((p: any) => p.name === this.selectedProvince);
     this.districts = foundProvince ? foundProvince.districts || [] : [];
 
@@ -1185,14 +1176,13 @@ export class OrderDetail implements OnInit, OnDestroy {
         this.order.hasEditedShipping = true;
         this.isSavingShipping = false;
         this.isEditingShipping = false;
-        this.startAutoRefreshStatus(); // resume timer
+        this.startAutoRefreshStatus(); 
         this.cdr.detectChanges();
       },
       error: (err: any) => {
         this.saveShippingError = err?.error?.message || 'Không thể lưu. Vui lòng thử lại.';
         this.isSavingShipping = false;
         if (err?.status === 403) {
-          // Đơn hàng đã bị khoá chỉnh sửa (vd. đã sửa ở tab/thiết bị khác) -> đồng bộ lại UI
           this.order.hasEditedShipping = true;
           this.isEditingShipping = false;
           this.startAutoRefreshStatus();
