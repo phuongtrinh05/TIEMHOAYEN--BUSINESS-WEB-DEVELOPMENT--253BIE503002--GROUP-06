@@ -76,6 +76,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
   private routeSubscription?: Subscription;
   private productRequestSubscription?: Subscription;
+  private lastProductRouteKey = '';
   private revealObserver?: IntersectionObserver;
   private readonly pendingWishlistProductIds = new Set<string>();
   private readonly priceMinLimit = 0;
@@ -217,11 +218,17 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
   private loadDataFromRoute(): void {
     this.routeSubscription = combineLatest([this.route.paramMap, this.route.queryParamMap]).subscribe(([params, queryParams]) => {
-      this.isLoadingProducts = true;
-      if (this.emptyMessage) this.emptyMessage.hidden = true;
-
       const id = params.get('id');
       const path = this.route.snapshot.routeConfig?.path || '';
+      const routeKey = `${path}|${id || ''}|${queryParams.toString()}`;
+
+      if (routeKey === this.lastProductRouteKey) {
+        return;
+      }
+
+      this.lastProductRouteKey = routeKey;
+      this.isLoadingProducts = true;
+      if (this.emptyMessage) this.emptyMessage.hidden = true;
 
       this.clearSelectedFilters();
       this.uncheckAllCheckboxes();
