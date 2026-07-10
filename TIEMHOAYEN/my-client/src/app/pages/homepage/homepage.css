@@ -1079,6 +1079,16 @@
         margin-top: 26px;
     }
 
+    .collection,
+    .benefits,
+    .flower-3d,
+    .sale-banner,
+    .review-section,
+    .blog-section {
+        padding-left: 34px;
+        padding-right: 34px;
+    }
+
     .benefits {
         grid-template-columns: repeat(2, 1fr);
     }
