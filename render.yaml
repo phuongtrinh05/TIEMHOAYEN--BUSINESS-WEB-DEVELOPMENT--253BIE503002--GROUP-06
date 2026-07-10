@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: tiem-hoa-yen-api
+    runtime: node
+    plan: free
+    rootDir: TIEMHOAYEN/my-server
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: SQL_USER
+        sync: false
+      - key: SQL_PASSWORD
+        sync: false
+      - key: SQL_SERVER
+        sync: false
+      - key: SQL_PORT
+        value: 1433
+      - key: SQL_DATABASE
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false

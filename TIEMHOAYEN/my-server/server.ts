@@ -51,7 +51,14 @@ import contactRoutes from './routes/contact.js';
 
 const app = express();
 app.use('/api/chat', chatRoute);
-app.use(cors());
+const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+app.use(cors({
+  origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+  credentials: true
+}));
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
@@ -118,7 +125,11 @@ app.get('/', (req: Request, res: Response) => {
   res.send('Backend TIEM_HOA_YEN đang chạy!');
 });
 
-const PORT = 3000;
+app.get('/health', (_req: Request, res: Response) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+const PORT = Number(process.env.PORT ?? 3000);
 
 (async () => {
   try {

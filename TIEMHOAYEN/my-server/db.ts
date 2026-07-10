@@ -2,11 +2,11 @@ import sql from 'mssql';
 
 // Cấu hình Database
 const sqlConfig: sql.config = {
-    user: 'tiemhoayen-sql-2603',
-    password: 'Password_123#',
-    server: 'tiemhoayenadmin.database.windows.net',
-    port: 1433,
-    database: 'TIEM_HOA_YEN',
+    user: process.env.SQL_USER,
+    password: process.env.SQL_PASSWORD,
+    server: process.env.SQL_SERVER ?? '',
+    port: Number(process.env.SQL_PORT ?? 1433),
+    database: process.env.SQL_DATABASE,
     options: {
         encrypt: true,
         trustServerCertificate: true
@@ -24,7 +24,7 @@ export const connectDB = async (): Promise<sql.ConnectionPool> => {
         return pool;
     } catch (err) {
         console.error('Lỗi kết nối SQL Server: ', err);
-        process.exit(1);
+        throw err;
     }
 };
 

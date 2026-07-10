@@ -811,7 +811,8 @@ export const updateCustomerAvatar = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Chưa chọn ảnh.' });
     }
 
-    const avatarUrl = `http://localhost:3000/uploads/account/${req.file.filename}`;
+    const publicBaseUrl = (process.env.PUBLIC_BASE_URL ?? `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const avatarUrl = `${publicBaseUrl}/uploads/account/${req.file.filename}`;
 
     const pool = await connectDB();
 
