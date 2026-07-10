@@ -49,6 +49,7 @@ export class OrderReview implements OnInit, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly route = inject(ActivatedRoute);
   private readonly apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/reviews';
+  private readonly orderCacheTtlMs = 5 * 60 * 1000;
 
   public readonly defaultImage = 'assets/images/hoa.jpg';
 
@@ -95,6 +96,7 @@ export class OrderReview implements OnInit, OnDestroy {
 
     if (this.isLoggedIn && this.currentCustomerId) {
       this.pickerStep = 'order';
+      this.showPicker = true;
       this.loadCustomerReviewHistory();
       this.loadReviewableOrdersForCustomer(this.routeOrderId);
       return;
@@ -287,9 +289,48 @@ export class OrderReview implements OnInit, OnDestroy {
     this.guestPhone = this.formatPhoneInput(input.value);
   }
 
+  private get reviewableOrdersCacheKey(): string {
+    return `tiemHoaYen:reviewable-orders:${this.currentCustomerId}`;
+  }
+
+  private restoreReviewableOrders(): boolean {
+    try {
+      const raw = localStorage.getItem(this.reviewableOrdersCacheKey);
+      if (!raw) return false;
+
+      const cache = JSON.parse(raw) as { expiresAt?: number; orders?: ReviewOrder[] };
+      if (!cache.expiresAt || cache.expiresAt <= Date.now() || !Array.isArray(cache.orders)) {
+        localStorage.removeItem(this.reviewableOrdersCacheKey);
+        return false;
+      }
+
+      this.orders = cache.orders;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private cacheReviewableOrders(): void {
+    try {
+      localStorage.setItem(
+        this.reviewableOrdersCacheKey,
+        JSON.stringify({ expiresAt: Date.now() + this.orderCacheTtlMs, orders: this.orders })
+      );
+    } catch {
+      // Cache is optional and must not block the review flow.
+    }
+  }
+
   private loadReviewableOrdersForCustomer(preferredOrderId = ''): void {
-    this.loadingOrders = true;
+    const hasCachedOrders = this.restoreReviewableOrders();
+    this.loadingOrders = !hasCachedOrders;
     this.pickerError = '';
+
+    if (hasCachedOrders) {
+      this.refreshView();
+      if (preferredOrderId) this.focusOrderFromRoute(preferredOrderId);
+    }
 
     this.fetchWithTimeout(
       `${this.apiUrl}/customer/${encodeURIComponent(this.currentCustomerId)}/reviewable-orders`
@@ -305,8 +346,9 @@ export class OrderReview implements OnInit, OnDestroy {
       })
       .then(data => {
         this.orders = Array.isArray(data.orders) ? data.orders : [];
+        this.cacheReviewableOrders();
 
-        if (preferredOrderId) {
+        if (preferredOrderId && !this.selectedOrder) {
           this.focusOrderFromRoute(preferredOrderId);
           return;
         }
@@ -682,6 +724,7 @@ export class OrderReview implements OnInit, OnDestroy {
 
         if (this.selectedProduct) {
           this.selectedProduct.reviewed = true;
+          if (this.isLoggedIn) this.cacheReviewableOrders();
         }
 
         this.prependSubmittedReview(submittedReview);
