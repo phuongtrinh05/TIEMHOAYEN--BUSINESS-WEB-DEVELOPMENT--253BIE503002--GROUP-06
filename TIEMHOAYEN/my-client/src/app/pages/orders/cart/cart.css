@@ -125,6 +125,11 @@
   line-height: 1.5;
 }
 
+.item-topic span {
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
 .col-price {
   display: flex;
   flex-direction: column;

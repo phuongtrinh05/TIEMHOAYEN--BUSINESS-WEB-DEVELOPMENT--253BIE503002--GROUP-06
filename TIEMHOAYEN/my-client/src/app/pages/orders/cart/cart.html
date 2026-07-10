@@ -63,7 +63,9 @@
             <div class="item-info">
               <p class="item-name">{{ item.name }}</p>
               <p class="item-meta">Kiểu dáng: {{ item.style }}</p>
-              <p class="item-meta">{{ item.occasion }}</p>
+              <p class="item-meta item-topic">
+                Chủ đề: <span>{{ getCartTopicLabel(item) }}</span>
+              </p>
             </div>
           </div>
 

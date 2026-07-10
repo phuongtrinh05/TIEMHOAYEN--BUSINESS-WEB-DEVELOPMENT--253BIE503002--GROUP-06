@@ -10,6 +10,8 @@ export interface CartApiItem {
   GIA: number;
   GIA_KHUYEN_MAI?: number | null;
   HINH_ANH?: string | null;
+  CHU_DE_ID?: string | null;
+  TEN_CHU_DE?: string | null;
   SO_LUONG: number;
   SO_LUONG_TON?: number | null;
 }

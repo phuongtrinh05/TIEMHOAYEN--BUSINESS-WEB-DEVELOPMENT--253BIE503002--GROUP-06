@@ -14,6 +14,7 @@ import { PageHeader } from '../../../components/page-header/page-header';
 import { PageFooter } from '../../../components/page-footer/page-footer';
 
 import { MaterialService } from '../../../services/material.service';
+import { ProductDetailService } from '../../../services/product-detail.service';
 
 import {
   CartService,
@@ -33,6 +34,7 @@ interface CartItem {
   name: string;
   style: string;
   occasion: string;
+  topicName: string;
   price: number;
   originalPrice?: number | null;
   quantity: number;
@@ -121,6 +123,7 @@ export class CartComponent implements OnInit {
   constructor(
     @Inject(PLATFORM_ID) private platformId: object,
     private materialService: MaterialService,
+    private productDetailService: ProductDetailService,
     private cartService: CartService,
     private customerService: CustomerService,
     private router: Router,
@@ -220,6 +223,7 @@ export class CartComponent implements OnInit {
         this.mapStorageItemToCartItem(item)
       );
 
+      this.hydrateMissingTopicNames();
       this.isLoadingCart = false;
       this.cdr.detectChanges();
     } catch (error: unknown) {
@@ -258,6 +262,7 @@ export class CartComponent implements OnInit {
           this.mapApiItemToCartItem(item)
         );
 
+        this.hydrateMissingTopicNames();
         this.isLoadingCart = false;
         this.cdr.detectChanges();
         this.dispatchCartChanged();
@@ -272,11 +277,14 @@ export class CartComponent implements OnInit {
   }
 
   private mapApiItemToCartItem(item: CartApiItem): CartItem {
+    const topicName = this.getCartTopicName(item.TEN_CHU_DE);
+
     return {
       id: String(item.SAN_PHAM_ID || ''),
       name: String(item.TEN_SAN_PHAM || ''),
       style: String(item.KIEU_DANG || 'Sản phẩm'),
-      occasion: String(item.TEN_CHU_DE || 'Sản phẩm'),
+      occasion: topicName || 'Sản phẩm',
+      topicName,
       price: Number(item.GIA_KHUYEN_MAI || item.GIA || 0),
       originalPrice: item.GIA_KHUYEN_MAI ? Number(item.GIA || 0) : null,
       quantity: Math.max(1, Number(item.SO_LUONG || 1)),
@@ -294,12 +302,14 @@ export class CartComponent implements OnInit {
       topicName?: string | null;
       TEN_CHU_DE?: string | null;
     };
+    const topicName = this.getCartTopicName(data.TEN_CHU_DE || data.topicName || data.occasion);
 
     return {
       id: String(data.id || ''),
       name: String(data.name || ''),
       style: String(data.style || ''),
-      occasion: this.getCartTopicName(data.TEN_CHU_DE || data.topicName || data.occasion),
+      occasion: topicName || 'Sản phẩm',
+      topicName,
       price: Number(data.price || 0),
       originalPrice:
         data.originalPrice === null || data.originalPrice === undefined
@@ -317,12 +327,51 @@ export class CartComponent implements OnInit {
 
   private getCartTopicName(value: unknown): string {
     const text = String(value || '').trim();
+    const normalizedText = this.normalizeText(text);
 
-    if (!text || this.normalizeText(text) === this.normalizeText('Đang bán')) {
-      return 'Sản phẩm';
+    if (
+      !text ||
+      normalizedText === this.normalizeText('Đang bán') ||
+      normalizedText === this.normalizeText('Sản phẩm')
+    ) {
+      return '';
     }
 
     return text;
+  }
+
+  getCartTopicLabel(item: CartItem): string {
+    return item.topicName || 'Đang cập nhật';
+  }
+
+  private hydrateMissingTopicNames(): void {
+    const itemsMissingTopic = this.cartItems.filter((item: CartItem) =>
+      this.isProductItem(item) && !item.topicName
+    );
+
+    itemsMissingTopic.forEach((item: CartItem) => {
+      this.productDetailService.getProductById(item.id).subscribe({
+        next: (response) => {
+          const topicName = this.getCartTopicName(response?.product?.TEN_CHU_DE);
+
+          if (!topicName) {
+            return;
+          }
+
+          item.topicName = topicName;
+          item.occasion = topicName;
+
+          if (!this.isLoggedIn) {
+            this.saveGuestCartToStorage();
+          }
+
+          this.cdr.detectChanges();
+        },
+        error: (err: unknown) => {
+          console.error('Lỗi lấy chủ đề sản phẩm trong giỏ hàng:', err);
+        },
+      });
+    });
   }
 
   private loadCustomerVouchers(): void {
@@ -673,12 +722,21 @@ export class CartComponent implements OnInit {
 
     if (existingItem) {
       existingItem.quantity++;
+      const topicName = this.getCartTopicName(product.status);
+
+      if (topicName && !existingItem.topicName) {
+        existingItem.topicName = topicName;
+        existingItem.occasion = topicName;
+      }
     } else {
+      const topicName = this.getCartTopicName(product.status);
+
       this.cartItems.push({
         id: product.id,
         name: product.name,
         style: product.style || 'Sản phẩm mua kèm',
-        occasion: product.status || 'Đang bán',
+        occasion: topicName || 'Sản phẩm',
+        topicName,
         price: product.price,
         originalPrice: product.originalPrice ?? null,
         quantity: 1,

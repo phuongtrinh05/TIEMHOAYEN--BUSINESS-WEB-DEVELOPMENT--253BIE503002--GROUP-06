@@ -62,11 +62,15 @@ export const getCartByCustomer = async (req: Request, res: Response) => {
         sp.GIA_KHUYEN_MAI,
         sp.SO_LUONG AS SO_LUONG_TON,
         sp.KIEU_DANG,
+        sp.CHU_DE_ID,
+        cd.TEN_CHU_DE,
         ct.SO_LUONG,
         img.URL AS HINH_ANH
       FROM GIO_HANG_CHI_TIET ct
       INNER JOIN SAN_PHAM sp
         ON ct.SAN_PHAM_ID = sp.SAN_PHAM_ID
+      LEFT JOIN CHU_DE cd
+        ON sp.CHU_DE_ID = cd.CHU_DE_ID
       OUTER APPLY (
         SELECT TOP 1 URL
         FROM HINH_ANH_SAN_PHAM
