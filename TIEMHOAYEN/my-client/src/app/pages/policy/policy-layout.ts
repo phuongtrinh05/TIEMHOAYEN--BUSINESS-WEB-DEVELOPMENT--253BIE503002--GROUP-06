@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, HostListener, ViewChild, ViewEncapsulation } from '@angular/core';
+import { Component, HostListener, ViewEncapsulation } from '@angular/core';
 import { ActivatedRoute, RouterLink, RouterLinkActive } from '@angular/router';
 
 import { OrderPolicyComponent } from './order-policy';
@@ -39,8 +39,6 @@ interface PolicyNavItem {
     encapsulation: ViewEncapsulation.None
 })
 export class PolicyLayoutComponent {
-    @ViewChild('policyContent') policyContent?: ElementRef<HTMLElement>;
-
     currentSlug = 'order';
     isHeaderCompact = false;
 
@@ -91,7 +89,6 @@ export class PolicyLayoutComponent {
         this.route.paramMap.subscribe((params) => {
             this.currentSlug = params.get('slug') || 'order';
             this.updateHeaderCompactState();
-            setTimeout(() => this.scrollContentTitleIntoView());
         });
     }
 
@@ -108,17 +105,4 @@ export class PolicyLayoutComponent {
         this.isHeaderCompact = window.scrollY > 100;
     }
 
-    private scrollContentTitleIntoView(): void {
-        if (typeof window === 'undefined' || !this.policyContent) {
-            return;
-        }
-
-        const headerOffset = this.isHeaderCompact ? 76 : 156;
-        const contentTop = this.policyContent.nativeElement.getBoundingClientRect().top + window.scrollY;
-        window.scrollTo({
-            top: Math.max(contentTop - headerOffset, 0),
-            left: 0,
-            behavior: 'auto'
-        });
-    }
 }

@@ -38,13 +38,29 @@
                 <h2>Chia sẻ bài viết:</h2>
 
 
-            <button class="facebook-btn" type="button">
+            <a
+                class="facebook-btn"
+                [href]="facebookShareUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Chia sẻ bài viết lên Facebook">
                 <img src="assets/images/fbook.png" alt="Facebook">
-            </button>
+            </a>
 
-                <button class="copy-btn" type="button">
-                    Copy link
-                </button>
+                <div class="copy-link-wrap">
+                    <button
+                        class="copy-btn"
+                        type="button"
+                        [class.is-copied]="copyStatus === 'success'"
+                        [class.is-error]="copyStatus === 'error'"
+                        (click)="copyCurrentLink()">
+                        {{ copyLabel }}
+                    </button>
+
+                    <span class="copy-status" *ngIf="copyStatusMessage">
+                        {{ copyStatusMessage }}
+                    </span>
+                </div>
             </section>
         </aside>
     </main>

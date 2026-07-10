@@ -131,6 +131,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   breadcrumbGroupLabel = 'Chủ đề';
   isFavorite = false;
   isWishlistPending = false;
+  isShowingAllReviews = false;
   private routeSubscription?: Subscription;
   private productRequestSubscription?: Subscription;
   private relatedProductsSubscription?: Subscription;
@@ -213,6 +214,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
 
     this.isLoading = true;
     this.reviews = [];
+    this.isShowingAllReviews = false;
     this.relatedProducts = [];
     this.activeImageViewer = null;
 
@@ -618,6 +620,28 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     this.selectedImage = image;
   }
 
+  showPreviousImage(): void {
+    this.showImageByStep(-1);
+  }
+
+  showNextImage(): void {
+    this.showImageByStep(1);
+  }
+
+  private showImageByStep(step: -1 | 1): void {
+    const images = this.product.images;
+
+    if (images.length <= 1) {
+      return;
+    }
+
+    const currentImage = this.selectedImage || this.product.image || images[0];
+    const currentIndex = Math.max(0, images.indexOf(currentImage));
+    const nextIndex = (currentIndex + step + images.length) % images.length;
+
+    this.selectedImage = images[nextIndex];
+  }
+
   goToRelatedProduct(item: RelatedProduct): void {
     this.router.navigate(['/product-detail', item.id], {
       state: {
@@ -684,7 +708,11 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     this.router.navigate(['/order-haunt']);
   }
 
-  addRelatedToCart(item: RelatedProduct): void {
+  addRelatedToCart(item: RelatedProduct, event?: Event): void {
+    event?.stopPropagation();
+    event?.preventDefault();
+    this.playFlyToCartEffect(event);
+
     const customerId = this.getCustomerId();
 
     if (customerId && item.id.startsWith('SP')) {
@@ -897,8 +925,120 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     });
   }
 
-  addToCart(): void {
+  addToCart(event?: Event): void {
+    event?.stopPropagation();
+    event?.preventDefault();
+    this.playFlyToCartEffect(event);
     this.saveProductToCart();
+  }
+
+  private playFlyToCartEffect(event?: Event): void {
+    if (typeof window === 'undefined' || typeof document === 'undefined' || !event) {
+      return;
+    }
+
+    const targetEl = event.target as HTMLElement | null;
+    const button = targetEl?.closest<HTMLButtonElement>('.add-cart-btn, .related-cart-btn');
+    const relatedCard = targetEl?.closest('.related-card');
+    const productContainer = targetEl?.closest('.product-container');
+    const sourceImg = (
+      relatedCard?.querySelector('.related-media img') ||
+      productContainer?.querySelector('.main-image')
+    ) as HTMLImageElement | null;
+
+    button?.classList.add('is-cart-added');
+    window.setTimeout(() => button?.classList.remove('is-cart-added'), 520);
+
+    if (!sourceImg) {
+      return;
+    }
+
+    const cartIcon = this.getVisibleCartIcon();
+
+    const startRect = sourceImg.getBoundingClientRect();
+    const endRect = cartIcon?.getBoundingClientRect();
+    const endX = endRect ? endRect.left + endRect.width / 2 : window.innerWidth - 32;
+    const endY = endRect ? endRect.top + endRect.height / 2 : 28;
+    const flyer = sourceImg.cloneNode(true) as HTMLImageElement;
+
+    flyer.style.position = 'fixed';
+    flyer.style.left = `${startRect.left}px`;
+    flyer.style.top = `${startRect.top}px`;
+    flyer.style.width = `${startRect.width}px`;
+    flyer.style.height = `${startRect.height}px`;
+    flyer.style.margin = '0';
+    flyer.style.borderRadius = '12px';
+    flyer.style.objectFit = 'cover';
+    flyer.style.zIndex = '2147483647';
+    flyer.style.pointerEvents = 'none';
+    flyer.style.boxShadow = '0 10px 24px rgba(115, 25, 25, .35)';
+    flyer.style.willChange = 'transform, opacity';
+    flyer.style.transform = 'translateZ(0)';
+
+    document.body.appendChild(flyer);
+
+    const startCenterX = startRect.left + startRect.width / 2;
+    const startCenterY = startRect.top + startRect.height / 2;
+    const deltaX = endX - startCenterX;
+    const deltaY = endY - startCenterY;
+
+    const animation = flyer.animate(
+      [
+        { transform: 'translate(0, 0) scale(1)', opacity: 1, offset: 0 },
+        {
+          transform: `translate(${deltaX * 0.5}px, ${deltaY * 0.5 - 70}px) scale(.65)`,
+          opacity: 1,
+          offset: 0.55
+        },
+        { transform: `translate(${deltaX}px, ${deltaY}px) scale(.08)`, opacity: .3, offset: 1 }
+      ],
+      { duration: 700, easing: 'cubic-bezier(.4,.1,.25,1)' }
+    );
+
+    animation.onfinish = () => {
+      flyer.remove();
+
+      if (cartIcon) {
+        cartIcon.animate(
+          [
+            { transform: 'scale(1)' },
+            { transform: 'scale(1.35)' },
+            { transform: 'scale(.92)' },
+            { transform: 'scale(1)' }
+          ],
+          { duration: 420, easing: 'ease-out' }
+        );
+      }
+    };
+  }
+
+  private getVisibleCartIcon(): HTMLElement | null {
+    const selectors = [
+      '[data-cart-icon]',
+      '.cart-icon-button',
+      '.navbar-cart-icon',
+      '#navbar-cart-icon',
+      '.cart-icon',
+      'a[routerLink*="cart"] i',
+      'a[routerLink*="gio-hang"] i'
+    ].join(', ');
+
+    const candidates = Array.from(document.querySelectorAll<HTMLElement>(selectors));
+
+    return candidates.find((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+
+      return rect.width > 0 &&
+        rect.height > 0 &&
+        rect.bottom >= 0 &&
+        rect.top <= window.innerHeight &&
+        rect.right >= 0 &&
+        rect.left <= window.innerWidth &&
+        style.visibility !== 'hidden' &&
+        style.display !== 'none' &&
+        Number(style.opacity || 1) > 0;
+    }) || null;
   }
 
   buyNow(): void {
@@ -1011,6 +1151,18 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     }
 
     return this.roundRating(rating).toFixed(1);
+  }
+
+  get visibleReviews(): ProductReviewView[] {
+    return this.isShowingAllReviews ? this.reviews : this.reviews.slice(0, 1);
+  }
+
+  get shouldShowMoreReviewsButton(): boolean {
+    return this.reviews.length > 1 && !this.isShowingAllReviews;
+  }
+
+  showMoreReviews(): void {
+    this.isShowingAllReviews = true;
   }
 
   visibleReviewImages(review: ProductReviewView): string[] {

@@ -14,10 +14,30 @@
 
             <!-- LEFT: PRODUCT IMAGE -->
             <div class="product-images">
-                <img
-                    class="main-image"
-                    [src]="selectedImage || product.image"
-                    [alt]="product.name">
+                <div class="main-image-wrap">
+                    <img
+                        class="main-image"
+                        [src]="selectedImage || product.image"
+                        [alt]="product.name">
+
+                    <button
+                        class="gallery-nav gallery-nav--prev"
+                        type="button"
+                        *ngIf="product.images.length > 1"
+                        (click)="showPreviousImage()"
+                        aria-label="Xem ảnh trước">
+                        <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                    </button>
+
+                    <button
+                        class="gallery-nav gallery-nav--next"
+                        type="button"
+                        *ngIf="product.images.length > 1"
+                        (click)="showNextImage()"
+                        aria-label="Xem ảnh tiếp theo">
+                        <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                    </button>
+                </div>
 
                 <div class="thumbnail-list" *ngIf="product.images.length > 0">
                     @for(image of product.images; track image) {
@@ -110,7 +130,7 @@
                     <button
                         class="add-cart-btn"
                         type="button"
-                        (click)="addToCart()">
+                        (click)="addToCart($event)">
                         Thêm vào giỏ hàng
                     </button>
 
@@ -194,7 +214,7 @@
             <span>Chưa có đánh giá nào cho sản phẩm này</span>
         </div>
 
-        <div class="review-card" *ngFor="let review of reviews">
+        <div class="review-card" *ngFor="let review of visibleReviews">
             <div class="review-user">
                 <img
                     [src]="review.avatar"
@@ -248,8 +268,8 @@
             </div>
         </div>
 
-        <div class="more-button-wrap" *ngIf="reviews.length > 0">
-            <button type="button">Xem thêm</button>
+        <div class="more-button-wrap" *ngIf="shouldShowMoreReviewsButton">
+            <button type="button" (click)="showMoreReviews()">Xem thêm</button>
         </div>
     </section>
 
@@ -308,7 +328,7 @@
                     <button
                         class="related-cart-btn"
                         type="button"
-                        (click)="$event.stopPropagation(); addRelatedToCart(item)"
+                        (click)="addRelatedToCart(item, $event)"
                         [attr.aria-label]="'Thêm ' + item.name + ' vào giỏ hàng'">
                         <i class="bi bi-cart3"></i>
                     </button>

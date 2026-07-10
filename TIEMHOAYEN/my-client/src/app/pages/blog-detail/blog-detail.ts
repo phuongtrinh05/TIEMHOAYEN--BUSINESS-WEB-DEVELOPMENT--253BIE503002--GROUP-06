@@ -29,6 +29,10 @@ export class BlogDetailComponent implements OnInit {
 
   latestPosts: BlogPost[] = [];
   loading = true;
+  copyLabel = 'Copy link';
+  copyStatus: 'idle' | 'success' | 'error' = 'idle';
+  copyStatusMessage = '';
+  private copyResetTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private route: ActivatedRoute,
@@ -73,6 +77,7 @@ export class BlogDetailComponent implements OnInit {
 
         this.loading = false;
         this.cdr.detectChanges();
+        setTimeout(() => this.muteBlogDetailVideos());
       },
       error: (err: unknown) => {
         console.error('Lỗi load chi tiết blog:', err);
@@ -112,6 +117,106 @@ export class BlogDetailComponent implements OnInit {
     return new Date(date).toLocaleDateString('vi-VN');
   }
 
+  async copyCurrentLink(): Promise<void> {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const url = window.location.href;
+    this.copyStatus = 'idle';
+    this.copyStatusMessage = '';
+    this.cdr.detectChanges();
+
+    if (window.navigator.clipboard?.writeText) {
+      try {
+        await window.navigator.clipboard.writeText(url);
+        this.showCopySuccess();
+        return;
+      } catch {
+        if (this.copyWithFallback(url)) {
+          return;
+        }
+
+        this.showCopyError();
+        return;
+      }
+    }
+
+    if (!this.copyWithFallback(url)) {
+      this.showCopyError();
+    }
+  }
+
+  get facebookShareUrl(): string {
+    if (typeof window === 'undefined') {
+      return 'https://www.facebook.com/share.php';
+    }
+
+    const shareUrl = encodeURIComponent(window.location.href);
+    return `https://www.facebook.com/share.php?u=${shareUrl}`;
+  }
+
+  private copyWithFallback(url: string): boolean {
+    if (typeof document === 'undefined') {
+      return false;
+    }
+
+    const input = document.createElement('textarea');
+    input.value = url;
+    input.setAttribute('readonly', '');
+    input.style.position = 'fixed';
+    input.style.left = '-9999px';
+    input.style.top = '0';
+
+    document.body.appendChild(input);
+    input.select();
+
+    try {
+      const didCopy = document.execCommand('copy');
+
+      if (didCopy) {
+        this.showCopySuccess();
+      }
+
+      return didCopy;
+    } catch {
+      return false;
+    } finally {
+      input.remove();
+    }
+  }
+
+  private showCopySuccess(): void {
+    this.copyLabel = 'Đã copy';
+    this.copyStatus = 'success';
+    this.copyStatusMessage = 'Đã sao chép liên kết';
+    this.cdr.detectChanges();
+
+    this.scheduleCopyReset();
+  }
+
+  private showCopyError(): void {
+    this.copyLabel = 'Thử lại';
+    this.copyStatus = 'error';
+    this.copyStatusMessage = 'Không copy được';
+    this.cdr.detectChanges();
+
+    this.scheduleCopyReset();
+  }
+
+  private scheduleCopyReset(): void {
+    if (this.copyResetTimer) {
+      clearTimeout(this.copyResetTimer);
+    }
+
+    this.copyResetTimer = setTimeout(() => {
+      this.copyLabel = 'Copy link';
+      this.copyStatus = 'idle';
+      this.copyStatusMessage = '';
+      this.cdr.detectChanges();
+    }, 2000);
+  }
+
   private scrollToTopInstant(): void {
     if (typeof window === 'undefined' || typeof document === 'undefined') {
       return;
@@ -132,5 +237,18 @@ export class BlogDetailComponent implements OnInit {
 
     html.style.scrollBehavior = oldHtmlScrollBehavior;
     body.style.scrollBehavior = oldBodyScrollBehavior;
+  }
+
+  private muteBlogDetailVideos(): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    document.querySelectorAll<HTMLVideoElement>('.blog-detail-page video').forEach((video) => {
+      video.muted = true;
+      video.defaultMuted = true;
+      video.volume = 0;
+      video.setAttribute('muted', '');
+    });
   }
 }

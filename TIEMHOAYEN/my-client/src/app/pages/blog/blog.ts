@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnDestroy, OnInit, AfterViewInit, ChangeDetectorRef } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { BlogService, Blog } from '../../services/blog.service';
 
@@ -18,7 +18,7 @@ interface BlogPost {
   templateUrl: './blog.html',
   styleUrl: './blog.css'
 })
-export class BlogComponent implements OnInit, OnDestroy {
+export class BlogComponent implements OnInit, AfterViewInit, OnDestroy {
   allPosts: BlogPost[] = [];
   posts: BlogPost[] = [];
 
@@ -59,6 +59,10 @@ export class BlogComponent implements OnInit, OnDestroy {
         console.error('Lỗi load blog:', err);
       }
     });
+  }
+
+  ngAfterViewInit(): void {
+    this.muteBlogVideos();
   }
 
   ngOnDestroy(): void {
@@ -113,6 +117,19 @@ export class BlogComponent implements OnInit, OnDestroy {
     );
 
     items.forEach((item) => this.revealObserver?.observe(item));
+  }
+
+  private muteBlogVideos(): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    document.querySelectorAll<HTMLVideoElement>('.blog-page video').forEach((video) => {
+      video.muted = true;
+      video.defaultMuted = true;
+      video.volume = 0;
+      video.setAttribute('muted', '');
+    });
   }
 
   prevPage(): void {
