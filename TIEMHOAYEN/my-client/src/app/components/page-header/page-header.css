@@ -269,31 +269,19 @@ position:absolute;
 top:100%;
 left:50%;
 transform:translateX(-50%);
+width:max-content;
 min-width:210px;
-max-height:280px;
-overflow-y:auto;
+max-width:420px;
+max-height:320px;
+overflow:hidden;
+columns:200px 2;
+column-gap:0;
+column-rule:1px solid rgba(217,179,130,0.35);
 background:#FBF7F2;
 border:1px solid rgba(217,179,130,0.5);
 border-radius:16px;
 box-shadow:0 18px 35px rgba(0,0,0,.2), 0 6px 12px rgba(0,0,0,.1), inset 0 1px 0 rgba(255,255,255,.6);
 z-index:9999;
-}
-
-.dropdown::-webkit-scrollbar{
-width:6px;
-}
-
-.dropdown::-webkit-scrollbar-track{
-background:transparent;
-}
-
-.dropdown::-webkit-scrollbar-thumb{
-background:rgba(217,179,130,0.6);
-border-radius:999px;
-}
-
-.dropdown::-webkit-scrollbar-thumb:hover{
-background:rgba(217,179,130,0.9);
 }
 
 .menu-item:hover .dropdown{
@@ -309,21 +297,8 @@ font-weight:500;
 border-bottom:1px solid rgba(217,179,130,0.35);
 position:relative;
 transition:all .25s ease;
-}
-.dropdown a:last-child{
-border-bottom:none;
-}
-
-.dropdown a:first-child{
-border-radius:16px 16px 0 0;
-}
-
-.dropdown a:last-child{
-border-radius:0 0 16px 16px;
-}
-
-.dropdown a:first-child:last-child{
-border-radius:16px;
+break-inside:avoid;
+-webkit-column-break-inside:avoid;
 }
 
 .dropdown a:hover{
@@ -411,6 +386,8 @@ left:15px;
     z-index:10000;
 }
 
+/* Vùng đệm vô hình lấp khoảng hở phía trên, để rê chuột từ nút tài khoản xuống
+   dropdown không bị "hụt" hover giữa chừng */
 .account-dropdown::after{
     content:"";
     position:absolute;
@@ -546,6 +523,8 @@ box-shadow:0 18px 35px rgba(0,0,0,.2), 0 6px 12px rgba(0,0,0,.1), inset 0 1px 0 
 z-index:10501;
 }
 
+/* Vùng đệm vô hình lấp khoảng hở phía trên, để rê chuột từ icon xuống dropdown
+   không bị "hụt" hover giữa chừng (icon và dropdown vẫn cùng nằm trong 1 wrapper) */
 .notification-dropdown::before,
 .cart-dropdown::before{
 content:"";
@@ -1596,7 +1575,7 @@ z-index:100000;
 .dropdown a{
   border-bottom:0;
   border-radius:12px !important;
-  padding:8px 8px;
+  padding:10px 14px;
 }
 
 .menu.menu-fixed .menu-icons{
