@@ -285,7 +285,7 @@
                 </div>
 
                 <div class="product-action">
-                  <button class="btn-buy" type="button">MUA NGAY</button>
+                  <button class="btn-buy" type="button" (click)="buyWishlistItem(item)">MUA NGAY</button>
 
                   <button
                     class="btn-cart"
@@ -579,6 +579,7 @@
               name="fullName"
               class="address-modal-input"
               [(ngModel)]="newAddress.fullName"
+              (ngModelChange)="clearAddressDuplicateError()"
               required
               minlength="2"
               #addressFullName="ngModel"
@@ -789,20 +790,29 @@
               name="detail"
               class="address-modal-input address-detail-textarea"
               [(ngModel)]="newAddress.detail"
+              (ngModelChange)="clearAddressDuplicateError()"
               (input)="autoResizeTextarea($event)"
               required
               #addressDetail="ngModel"
-              [class.is-invalid]="addressDetail.invalid && (addressDetail.touched || addAddressForm.submitted)"
+              [class.is-invalid]="(addressDetail.invalid && (addressDetail.touched || addAddressForm.submitted)) || addressDuplicateError"
             ></textarea>
 
             <span
               class="error-msg"
-              *ngIf="addressDetail.invalid && (addressDetail.touched || addAddressForm.submitted)"
+              *ngIf="addressDetail.invalid && (addressDetail.touched || addAddressForm.submitted) && !addressDuplicateError"
             >
               Vui lòng nhập địa chỉ cụ thể.
             </span>
+
+            <span
+              class="error-msg"
+              *ngIf="addressDuplicateError"
+            >
+              {{ addressDuplicateError }}
+            </span>
           </div>
         </div>
+
         <div class="address-modal-field address-default-field">
           <div></div>
 

@@ -219,7 +219,6 @@ export class AccountComponent implements OnInit, OnDestroy {
 
   goToOrderDetail(order: Order): void {
     if (!this.canViewOrderDetail(order)) {
-      alert('Đơn hàng đang chờ thanh toán hoặc thanh toán thất bại nên chưa thể xem chi tiết.');
       return;
     }
 
@@ -407,6 +406,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   selectedDistrictName = '';
   selectedWardName = '';
   openAddressDropdown = '';
+  addressDuplicateError = '';
 
   ngOnInit(): void {
       if (isPlatformBrowser(this.platformId)) {
@@ -674,7 +674,6 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi upload avatar:', err);
-        alert(err.error?.message || 'Upload avatar thất bại.');
       }
     });
   }
@@ -699,7 +698,6 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi gỡ avatar:', err);
-        alert(err.error?.message || 'Không thể gỡ ảnh đại diện.');
       }
     });
   }
@@ -785,7 +783,6 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi cập nhật thông tin:', err);
-        alert(err.error?.message || 'Cập nhật thông tin thất bại.');
       }
     });
   }
@@ -820,6 +817,7 @@ export class AccountComponent implements OnInit, OnDestroy {
 
   openEditAddressModal(address: Address): void {
     this.editingAddressId = address.id;
+    this.addressDuplicateError = '';
 
     this.newAddress = {
       fullName: address.name,
@@ -859,6 +857,7 @@ export class AccountComponent implements OnInit, OnDestroy {
     this.showAddAddressModal = false;
     this.editingAddressId = null;
     this.openAddressDropdown = '';
+    this.addressDuplicateError = '';
   }
 
   closeAddAddressModalByOverlay(event: MouseEvent): void {
@@ -868,6 +867,7 @@ export class AccountComponent implements OnInit, OnDestroy {
       this.showAddAddressModal = false;
       this.editingAddressId = null;
       this.openAddressDropdown = '';
+      this.addressDuplicateError = '';
     }
   }
 
@@ -886,6 +886,7 @@ export class AccountComponent implements OnInit, OnDestroy {
     this.selectedDistrictName = '';
     this.selectedWardName = '';
     this.openAddressDropdown = '';
+    this.addressDuplicateError = '';
 
     this.availableDistricts = [];
     this.availableWards = [];
@@ -894,12 +895,14 @@ export class AccountComponent implements OnInit, OnDestroy {
   onNewAddressPhoneInput(event: Event): void {
     const input = event.target as HTMLInputElement;
     this.newAddress.phone = this.formatPhoneInput(input.value);
+    this.clearAddressDuplicateError();
   }
 
   selectProvince(province: Province): void {
     this.selectedProvinceName = province.name;
     this.newAddress.provinceCode = province.code;
     this.openAddressDropdown = '';
+    this.clearAddressDuplicateError();
 
     // Reset district + ward khi đổi tỉnh
     this.selectedDistrictName = '';
@@ -921,6 +924,7 @@ export class AccountComponent implements OnInit, OnDestroy {
     this.selectedDistrictName = district.name;
     this.newAddress.districtCode = district.code;
     this.openAddressDropdown = '';
+    this.clearAddressDuplicateError();
     // Reset ward khi đổi district
     this.selectedWardName = '';
     this.newAddress.wardCode = '';
@@ -934,9 +938,44 @@ export class AccountComponent implements OnInit, OnDestroy {
     this.selectedWardName = ward.name;
     this.newAddress.wardCode = ward.code;
     this.openAddressDropdown = '';
+    this.clearAddressDuplicateError();
+  }
+
+  clearAddressDuplicateError(): void {
+    this.addressDuplicateError = '';
+  }
+
+  private normalizeAddressValue(value: string): string {
+    return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  private isDuplicateAddress(provinceName: string, districtName: string, wardName: string): boolean {
+    const submittedName = this.normalizeAddressValue(this.newAddress.fullName);
+    const submittedPhone = this.normalizePhone(this.newAddress.phone);
+    const submittedProvince = this.normalizeAddressValue(provinceName);
+    const submittedDistrict = this.normalizeAddressValue(districtName);
+    const submittedWard = this.normalizeAddressValue(wardName);
+    const submittedDetail = this.normalizeAddressValue(this.newAddress.detail);
+
+    return this.addresses.some(address => {
+      if (this.editingAddressId !== null && address.id === this.editingAddressId) {
+        return false;
+      }
+
+      return (
+        this.normalizeAddressValue(address.name) === submittedName &&
+        this.normalizePhone(address.phone) === submittedPhone &&
+        this.normalizeAddressValue(address.provinceName) === submittedProvince &&
+        this.normalizeAddressValue(address.districtName) === submittedDistrict &&
+        this.normalizeAddressValue(address.wardName) === submittedWard &&
+        this.normalizeAddressValue(address.detailLine) === submittedDetail
+      );
+    });
   }
 
   saveNewAddress(form: NgForm): void {
+    this.addressDuplicateError = '';
+
     if (form.invalid) {
       form.control.markAllAsTouched();
       return;
@@ -962,7 +1001,11 @@ export class AccountComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const fullAddress = `${this.newAddress.detail}, ${wardName}, ${districtName}, ${provinceName}`;
+    if (this.isDuplicateAddress(provinceName, districtName, wardName)) {
+      this.addressDuplicateError = 'Địa chỉ này đã tồn tại.';
+      return;
+    }
+
     if (this.newAddress.isDefault) {
       this.addresses = this.addresses.map(address => ({
         ...address,
@@ -990,7 +1033,9 @@ export class AccountComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           console.error('Lỗi sửa địa chỉ:', err);
-          alert(err.error?.message || 'Không thể cập nhật địa chỉ');
+          if (err?.status === 409) {
+            this.addressDuplicateError = err?.error?.message || 'Địa chỉ này đã tồn tại.';
+          }
         }
       });
 
@@ -1025,7 +1070,9 @@ export class AccountComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           console.error('Lỗi thêm địa chỉ:', err);
-          alert(err.error?.message || 'Không thể thêm địa chỉ');
+          if (err?.status === 409) {
+            this.addressDuplicateError = err?.error?.message || 'Địa chỉ này đã tồn tại.';
+          }
         }
       });
 
@@ -1218,16 +1265,39 @@ export class AccountComponent implements OnInit, OnDestroy {
 
         error: (err) => {
           console.error(err);
-          alert(
-            err.error?.message ||
-            'Không thể xóa sản phẩm yêu thích'
-          );
         }
       });
   }
 
+  buyWishlistItem(item: WishlistItem): void {
+    if (isPlatformBrowser(this.platformId)) {
+      localStorage.setItem(
+        'tiemHoaYenCheckoutItems',
+        JSON.stringify([
+          {
+            id: item.id,
+            name: item.name,
+            style: 'Wishlist',
+            occasion: 'Sản phẩm yêu thích',
+            price: item.price,
+            originalPrice: item.oldPrice,
+            quantity: 1,
+            image: item.image,
+            selected: true,
+          },
+        ])
+      );
+    }
+
+    this.router.navigate(['/order-registrant']).then(() => {
+      if (isPlatformBrowser(this.platformId)) {
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      }
+    });
+  }
+
   addToCart(item: WishlistItem): void {
-    alert(`Đã thêm "${item.name}" vào giỏ hàng!`);
+    console.info('Add wishlist item to cart:', item);
   }
 
   prevAddress(): void {
@@ -1249,25 +1319,17 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi đặt mặc định:', err);
-        alert(err.error?.message || 'Không thể đặt địa chỉ mặc định');
       }
     });
   }
 
   deleteAddress(id: string): void {
-    const confirmDelete = confirm('Bạn có chắc muốn xóa địa chỉ này không?');
-
-    if (!confirmDelete) {
-      return;
-    }
-
     this.customerService.deleteAddress(id).subscribe({
       next: () => {
         this.loadCustomerAddresses();
       },
       error: (err) => {
         console.error('Lỗi xóa địa chỉ:', err);
-        alert(err.error?.message || 'Không thể xóa địa chỉ');
       }
     });
   }

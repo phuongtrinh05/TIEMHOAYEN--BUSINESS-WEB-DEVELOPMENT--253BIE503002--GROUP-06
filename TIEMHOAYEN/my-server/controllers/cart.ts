@@ -132,10 +132,12 @@ export const addCartItem = async (req: Request, res: Response) => {
     `);
 
     if (existing.recordset.length > 0) {
+      const currentQuantity = Math.max(1, Number(existing.recordset[0]?.SO_LUONG || 1));
+      const nextQuantity = currentQuantity + quantity;
       const updateRequest = new sql.Request();
       updateRequest.input('GIO_HANG_ID', sql.NVarChar, cartId);
       updateRequest.input('SAN_PHAM_ID', sql.NVarChar, productId);
-      updateRequest.input('SO_LUONG', sql.Int, quantity);
+      updateRequest.input('SO_LUONG', sql.Int, nextQuantity);
 
       await updateRequest.query(`
         UPDATE GIO_HANG_CHI_TIET

@@ -2,6 +2,10 @@ import { Request, Response } from 'express';
 import { connectDB, sql } from '../db.js';
 const otpStore = new Map<string, string>();
 
+const normalizeAddressText = (value: unknown): string => {
+  return String(value ?? '').trim().replace(/\s+/g, ' ');
+};
+
 export const getAllCustomers = async (req: Request, res: Response) => {
   try {
     const pool = await connectDB();
@@ -350,6 +354,41 @@ export const addCustomerAddress = async (req: Request, res: Response) => {
     } = req.body;
 
     const pool = await connectDB();
+    const normalizedAddress = {
+      TEN_NGUOI_NHAN: normalizeAddressText(TEN_NGUOI_NHAN),
+      SDT_NGUOI_NHAN: normalizeAddressText(SDT_NGUOI_NHAN),
+      TINH_THANH: normalizeAddressText(TINH_THANH),
+      QUAN_HUYEN: normalizeAddressText(QUAN_HUYEN),
+      PHUONG_XA: normalizeAddressText(PHUONG_XA),
+      DIA_CHI_CHI_TIET: normalizeAddressText(DIA_CHI_CHI_TIET)
+    };
+
+    const duplicateAddressResult = await pool.request()
+      .input('KHACH_HANG_ID', sql.NVarChar, id)
+      .input('TEN_NGUOI_NHAN', sql.NVarChar, normalizedAddress.TEN_NGUOI_NHAN)
+      .input('SDT_NGUOI_NHAN', sql.NVarChar, normalizedAddress.SDT_NGUOI_NHAN)
+      .input('TINH_THANH', sql.NVarChar, normalizedAddress.TINH_THANH)
+      .input('QUAN_HUYEN', sql.NVarChar, normalizedAddress.QUAN_HUYEN)
+      .input('PHUONG_XA', sql.NVarChar, normalizedAddress.PHUONG_XA)
+      .input('DIA_CHI_CHI_TIET', sql.NVarChar, normalizedAddress.DIA_CHI_CHI_TIET)
+      .query(`
+        SELECT TOP 1 DIA_CHI_ID
+        FROM DIA_CHI_GIAO_HANG
+        WHERE KHACH_HANG_ID = @KHACH_HANG_ID
+          AND DA_XOA = 0
+          AND LTRIM(RTRIM(ISNULL(TEN_NGUOI_NHAN, N''))) = @TEN_NGUOI_NHAN
+          AND LTRIM(RTRIM(ISNULL(SDT_NGUOI_NHAN, N''))) = @SDT_NGUOI_NHAN
+          AND LTRIM(RTRIM(ISNULL(TINH_THANH, N''))) = @TINH_THANH
+          AND LTRIM(RTRIM(ISNULL(QUAN_HUYEN, N''))) = @QUAN_HUYEN
+          AND LTRIM(RTRIM(ISNULL(PHUONG_XA, N''))) = @PHUONG_XA
+          AND LTRIM(RTRIM(ISNULL(DIA_CHI_CHI_TIET, N''))) = @DIA_CHI_CHI_TIET
+      `);
+
+    if (duplicateAddressResult.recordset.length > 0) {
+      return res.status(409).json({
+        message: 'Địa chỉ này đã tồn tại.'
+      });
+    }
 
     const idResult = await pool.request().query(`
       SELECT TOP 1 DIA_CHI_ID
@@ -388,12 +427,12 @@ export const addCustomerAddress = async (req: Request, res: Response) => {
     await pool.request()
       .input('DIA_CHI_ID', sql.NVarChar, newId)
       .input('KHACH_HANG_ID', sql.NVarChar, id)
-      .input('TEN_NGUOI_NHAN', sql.NVarChar, TEN_NGUOI_NHAN)
-      .input('SDT_NGUOI_NHAN', sql.NVarChar, SDT_NGUOI_NHAN)
-      .input('TINH_THANH', sql.NVarChar, TINH_THANH)
-      .input('QUAN_HUYEN', sql.NVarChar, QUAN_HUYEN)
-      .input('PHUONG_XA', sql.NVarChar, PHUONG_XA)
-      .input('DIA_CHI_CHI_TIET', sql.NVarChar, DIA_CHI_CHI_TIET)
+      .input('TEN_NGUOI_NHAN', sql.NVarChar, normalizedAddress.TEN_NGUOI_NHAN)
+      .input('SDT_NGUOI_NHAN', sql.NVarChar, normalizedAddress.SDT_NGUOI_NHAN)
+      .input('TINH_THANH', sql.NVarChar, normalizedAddress.TINH_THANH)
+      .input('QUAN_HUYEN', sql.NVarChar, normalizedAddress.QUAN_HUYEN)
+      .input('PHUONG_XA', sql.NVarChar, normalizedAddress.PHUONG_XA)
+      .input('DIA_CHI_CHI_TIET', sql.NVarChar, normalizedAddress.DIA_CHI_CHI_TIET)
       .input('LA_MAC_DINH', sql.Bit, isDefaultAddress)
       .query(`
         INSERT INTO DIA_CHI_GIAO_HANG
@@ -518,19 +557,61 @@ export const updateCustomerAddress = async (req: Request, res: Response) => {
     } = req.body;
 
     const pool = await connectDB();
+    const addressResult = await pool.request()
+      .input('DIA_CHI_ID', sql.NVarChar, addressId)
+      .query(`
+        SELECT KHACH_HANG_ID
+        FROM DIA_CHI_GIAO_HANG
+        WHERE DIA_CHI_ID = @DIA_CHI_ID
+          AND DA_XOA = 0
+      `);
+
+    if (addressResult.recordset.length === 0) {
+      return res.status(404).json({
+        message: 'Không tìm thấy địa chỉ.'
+      });
+    }
+
+    const customerId = addressResult.recordset[0].KHACH_HANG_ID;
+    const normalizedAddress = {
+      TEN_NGUOI_NHAN: normalizeAddressText(TEN_NGUOI_NHAN),
+      SDT_NGUOI_NHAN: normalizeAddressText(SDT_NGUOI_NHAN),
+      TINH_THANH: normalizeAddressText(TINH_THANH),
+      QUAN_HUYEN: normalizeAddressText(QUAN_HUYEN),
+      PHUONG_XA: normalizeAddressText(PHUONG_XA),
+      DIA_CHI_CHI_TIET: normalizeAddressText(DIA_CHI_CHI_TIET)
+    };
+
+    const duplicateAddressResult = await pool.request()
+      .input('KHACH_HANG_ID', sql.NVarChar, customerId)
+      .input('DIA_CHI_ID', sql.NVarChar, addressId)
+      .input('TEN_NGUOI_NHAN', sql.NVarChar, normalizedAddress.TEN_NGUOI_NHAN)
+      .input('SDT_NGUOI_NHAN', sql.NVarChar, normalizedAddress.SDT_NGUOI_NHAN)
+      .input('TINH_THANH', sql.NVarChar, normalizedAddress.TINH_THANH)
+      .input('QUAN_HUYEN', sql.NVarChar, normalizedAddress.QUAN_HUYEN)
+      .input('PHUONG_XA', sql.NVarChar, normalizedAddress.PHUONG_XA)
+      .input('DIA_CHI_CHI_TIET', sql.NVarChar, normalizedAddress.DIA_CHI_CHI_TIET)
+      .query(`
+        SELECT TOP 1 DIA_CHI_ID
+        FROM DIA_CHI_GIAO_HANG
+        WHERE KHACH_HANG_ID = @KHACH_HANG_ID
+          AND DIA_CHI_ID <> @DIA_CHI_ID
+          AND DA_XOA = 0
+          AND LTRIM(RTRIM(ISNULL(TEN_NGUOI_NHAN, N''))) = @TEN_NGUOI_NHAN
+          AND LTRIM(RTRIM(ISNULL(SDT_NGUOI_NHAN, N''))) = @SDT_NGUOI_NHAN
+          AND LTRIM(RTRIM(ISNULL(TINH_THANH, N''))) = @TINH_THANH
+          AND LTRIM(RTRIM(ISNULL(QUAN_HUYEN, N''))) = @QUAN_HUYEN
+          AND LTRIM(RTRIM(ISNULL(PHUONG_XA, N''))) = @PHUONG_XA
+          AND LTRIM(RTRIM(ISNULL(DIA_CHI_CHI_TIET, N''))) = @DIA_CHI_CHI_TIET
+      `);
+
+    if (duplicateAddressResult.recordset.length > 0) {
+      return res.status(409).json({
+        message: 'Địa chỉ này đã tồn tại.'
+      });
+    }
 
     if (LA_MAC_DINH) {
-      const addressResult = await pool.request()
-        .input('DIA_CHI_ID', sql.NVarChar, addressId)
-        .query(`
-          SELECT KHACH_HANG_ID
-          FROM DIA_CHI_GIAO_HANG
-          WHERE DIA_CHI_ID = @DIA_CHI_ID
-          AND DA_XOA = 0
-        `);
-
-      const customerId = addressResult.recordset[0].KHACH_HANG_ID;
-
       await pool.request()
         .input('KHACH_HANG_ID', sql.NVarChar, customerId)
         .query(`
@@ -543,12 +624,12 @@ export const updateCustomerAddress = async (req: Request, res: Response) => {
 
     await pool.request()
       .input('DIA_CHI_ID', sql.NVarChar, addressId)
-      .input('TEN_NGUOI_NHAN', sql.NVarChar, TEN_NGUOI_NHAN)
-      .input('SDT_NGUOI_NHAN', sql.NVarChar, SDT_NGUOI_NHAN)
-      .input('TINH_THANH', sql.NVarChar, TINH_THANH)
-      .input('QUAN_HUYEN', sql.NVarChar, QUAN_HUYEN)
-      .input('PHUONG_XA', sql.NVarChar, PHUONG_XA)
-      .input('DIA_CHI_CHI_TIET', sql.NVarChar, DIA_CHI_CHI_TIET)
+      .input('TEN_NGUOI_NHAN', sql.NVarChar, normalizedAddress.TEN_NGUOI_NHAN)
+      .input('SDT_NGUOI_NHAN', sql.NVarChar, normalizedAddress.SDT_NGUOI_NHAN)
+      .input('TINH_THANH', sql.NVarChar, normalizedAddress.TINH_THANH)
+      .input('QUAN_HUYEN', sql.NVarChar, normalizedAddress.QUAN_HUYEN)
+      .input('PHUONG_XA', sql.NVarChar, normalizedAddress.PHUONG_XA)
+      .input('DIA_CHI_CHI_TIET', sql.NVarChar, normalizedAddress.DIA_CHI_CHI_TIET)
       .input('LA_MAC_DINH', sql.Bit, LA_MAC_DINH)
       .query(`
         UPDATE DIA_CHI_GIAO_HANG
