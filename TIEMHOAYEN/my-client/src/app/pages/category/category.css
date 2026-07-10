@@ -159,10 +159,6 @@ select {
   transform: translateY(-1px);
 }
 
-.filter-title[aria-expanded="false"] .chevron {
-  transform: rotate(180deg) translateY(2px);
-}
-
 .filter-content {
   display: grid;
   gap: 3px;
@@ -690,9 +686,7 @@ select {
 }
 
 .selected-filter-row[hidden] {
-  display: flex !important;
-  visibility: hidden;
-  pointer-events: none;
+  display: none !important;
 }
 
 .category-page,
@@ -1692,7 +1686,7 @@ select {
 
 /* ===== CATEGORY FILTER EFFECTS ===== */
 .category-page .filter-title .chevron {
-  transition: transform 0.28s ease;
+  transition: color 0.2s ease;
 }
 
 .category-page .filter-content {

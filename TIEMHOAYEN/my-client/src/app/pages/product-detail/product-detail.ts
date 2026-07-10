@@ -78,6 +78,7 @@ interface ProductPreviewState {
   image: string;
   maxQuantity?: number;
   breadcrumbGroup?: string;
+  breadcrumbReturnUrl?: string;
   filters?: {
     chuDe?: string[];
     kieuDang?: string[];
@@ -129,6 +130,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   relatedProducts: RelatedProduct[] = [];
   activeImageViewer: ReviewImageViewer | null = null;
   breadcrumbGroupLabel = 'Chủ đề';
+  breadcrumbReturnUrl = '/category';
   isFavorite = false;
   isWishlistPending = false;
   isShowingAllReviews = false;
@@ -186,6 +188,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
 
       this.resetRevealItems();
       this.breadcrumbGroupLabel = 'Chủ đề';
+      this.breadcrumbReturnUrl = '/category';
       this.applyProductPreview(productId);
       this.loadWishlistState(productId);
       this.loadProductDetail(productId);
@@ -290,6 +293,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     };
 
     this.breadcrumbGroupLabel = this.normalizeBreadcrumbGroup(preview.breadcrumbGroup);
+    this.breadcrumbReturnUrl = preview.breadcrumbReturnUrl || this.breadcrumbReturnUrl;
     this.selectedImage = this.product.image;
     this.quantity = 1;
     this.cdr.detectChanges();
@@ -820,7 +824,13 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   goToCurrentTopic(): void {
+    if (this.breadcrumbReturnUrl) {
+      this.router.navigateByUrl(this.breadcrumbReturnUrl);
+      return;
+    }
+
     if (!this.product.topicId) {
+      this.router.navigate(['/category']);
       return;
     }
 

@@ -896,7 +896,8 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
             state: {
               productPreview: {
                 ...product,
-                breadcrumbGroup: this.getProductBreadcrumbGroup()
+                breadcrumbGroup: this.getProductBreadcrumbGroup(),
+                breadcrumbReturnUrl: this.getProductBreadcrumbReturnUrl()
               }
             }
           });
@@ -1006,9 +1007,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         `);
     }
 
-    const hasFilter = this.getSelectedCount() > 0;
-
-    this.selectedFilterRow.hidden = !hasFilter;
+    this.selectedFilterRow.hidden = false;
     this.selectedFilterList.innerHTML = chips.join('');
 
     this.selectedFilterList.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
@@ -1356,9 +1355,13 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     document.querySelectorAll<HTMLButtonElement>('.filter-title').forEach((button) => {
       button.addEventListener('click', () => {
         const content = button.nextElementSibling as HTMLElement | null;
+        const icon = button.querySelector<HTMLElement>('.chevron');
         const isExpanded = button.getAttribute('aria-expanded') === 'true';
+        const nextExpanded = !isExpanded;
 
-        button.setAttribute('aria-expanded', String(!isExpanded));
+        button.setAttribute('aria-expanded', String(nextExpanded));
+        icon?.classList.toggle('bi-chevron-up', nextExpanded);
+        icon?.classList.toggle('bi-chevron-down', !nextExpanded);
         content?.classList.toggle('is-hidden', isExpanded);
       });
     });
@@ -1508,6 +1511,10 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     const allowedLabels = new Set(['Chủ đề', 'Đối tượng', 'Kiểu dáng', 'Hoa tươi', 'Bộ sưu tập']);
 
     return allowedLabels.has(label) ? label : 'Chủ đề';
+  }
+
+  private getProductBreadcrumbReturnUrl(): string {
+    return this.router.url || '/category';
   }
 
   private initMobileFilterControls(): void {

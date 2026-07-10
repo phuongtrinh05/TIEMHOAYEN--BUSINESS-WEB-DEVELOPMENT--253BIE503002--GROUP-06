@@ -1,7 +1,12 @@
 <div class="product-detail-page">
 
     <nav class="product-breadcrumb" *ngIf="product.name" aria-label="Breadcrumb">
-        <span>{{ breadcrumbGroupLabel }}</span>
+        <button
+            class="product-breadcrumb__link"
+            type="button"
+            (click)="goToCurrentTopic()">
+            {{ breadcrumbGroupLabel }}
+        </button>
 
         <i class="product-breadcrumb__separator bi bi-chevron-right" aria-hidden="true"></i>
 
