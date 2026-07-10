@@ -10,22 +10,46 @@
 
   <section class="mobile-filter-row" aria-label="Bộ lọc rút gọn">
     <div class="mobile-filter-field">
-      <label for="mobileFilterGroup">Lọc sản phẩm:</label>
-      <select id="mobileFilterGroup">
-        <option value="" selected disabled>Lọc sản phẩm</option>
-        <option value="chuDe">Chủ đề</option>
-        <option value="doiTuong">Đối tượng</option>
-        <option value="kieuDang">Kiểu dáng</option>
-        <option value="hoaTuoi">Hoa tươi</option>
-        <option value="mauSac">Màu sắc</option>
+      <label for="mobileFilterSelect">Lọc sản phẩm:</label>
+      <select id="mobileFilterSelect">
+        <option value="" selected>Chọn mục lọc</option>
       </select>
     </div>
 
-    <div class="mobile-filter-field">
-      <label for="mobileFilterValue">Mục lọc:</label>
-      <select id="mobileFilterValue" disabled>
-        <option value="" selected>Chọn mục lọc</option>
-      </select>
+    <div class="mobile-price-filter" aria-label="Khoảng giá">
+      <label class="mobile-price-title">Khoảng giá</label>
+
+      <div class="filter-content price-filter-content">
+        <div class="price-range-labels">
+          <span>0đ</span>
+          <span>3tr</span>
+        </div>
+
+        <div class="price-range-control">
+          <div class="price-range-track"></div>
+          <div class="price-range-fill price-range-fill-sync"></div>
+          <input
+            class="price-min-range"
+            type="range"
+            min="0"
+            max="3000000"
+            step="50000"
+            value="0"
+            aria-label="Giá thấp nhất trên điện thoại">
+          <input
+            class="price-max-range"
+            type="range"
+            min="0"
+            max="3000000"
+            step="50000"
+            value="3000000"
+            aria-label="Giá cao nhất trên điện thoại">
+        </div>
+
+        <div class="price-range-value price-range-value-sync">
+          0đ - 3.000.000đ
+        </div>
+      </div>
     </div>
   </section>
 
@@ -83,6 +107,47 @@
             <input type="checkbox" data-group="chuDe" data-id="CD009" value="Hoa tốt nghiệp">
             Hoa tốt nghiệp
           </label>
+        </div>
+      </div>
+
+      <div class="filter-group price-filter-group">
+        <button class="filter-title" type="button" aria-expanded="true">
+          <span>Khoảng giá</span>
+          <span class="chevron">⌃</span>
+        </button>
+
+        <div class="filter-content price-filter-content">
+          <div class="price-range-labels">
+            <span>0đ</span>
+            <span>3tr</span>
+          </div>
+
+          <div class="price-range-control" id="priceRangeControl">
+            <div class="price-range-track"></div>
+            <div class="price-range-fill price-range-fill-sync" id="priceRangeFill"></div>
+            <input
+              id="priceMinRange"
+              class="price-min-range"
+              type="range"
+              min="0"
+              max="3000000"
+              step="50000"
+              value="0"
+              aria-label="Giá thấp nhất">
+            <input
+              id="priceMaxRange"
+              class="price-max-range"
+              type="range"
+              min="0"
+              max="3000000"
+              step="50000"
+              value="3000000"
+              aria-label="Giá cao nhất">
+          </div>
+
+          <div class="price-range-value price-range-value-sync" id="priceRangeValue">
+            0đ - 3.000.000đ
+          </div>
         </div>
       </div>
 
@@ -167,7 +232,31 @@
       <div class="sort-row">
         <label for="sortSelect">Sắp xếp:</label>
 
-        <select id="sortSelect">
+        <div class="sort-dropdown" id="sortDropdown">
+          <button
+            type="button"
+            class="sort-dropdown-toggle"
+            id="sortDropdownToggle"
+            aria-haspopup="listbox"
+            aria-expanded="false">
+            <span id="sortDropdownLabel">Mặc định</span>
+            <i class="bi bi-chevron-down"></i>
+          </button>
+
+          <div
+            class="sort-dropdown-menu"
+            id="sortDropdownMenu"
+            role="listbox"
+            aria-labelledby="sortDropdownToggle">
+            <button class="sort-option is-selected" type="button" role="option" aria-selected="true" data-sort-value="default">Mặc định</button>
+            <button class="sort-option" type="button" role="option" aria-selected="false" data-sort-value="priceAsc">Giá thấp đến cao</button>
+            <button class="sort-option" type="button" role="option" aria-selected="false" data-sort-value="priceDesc">Giá cao đến thấp</button>
+            <button class="sort-option" type="button" role="option" aria-selected="false" data-sort-value="nameAsc">Tên A - Z</button>
+            <button class="sort-option" type="button" role="option" aria-selected="false" data-sort-value="nameDesc">Tên Z - A</button>
+          </div>
+        </div>
+
+        <select id="sortSelect" class="native-sort-select" aria-hidden="true" tabindex="-1">
           <option value="default">Mặc định</option>
           <option value="priceAsc">Giá thấp đến cao</option>
           <option value="priceDesc">Giá cao đến thấp</option>

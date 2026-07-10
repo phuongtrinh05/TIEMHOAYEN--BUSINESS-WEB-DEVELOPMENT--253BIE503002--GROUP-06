@@ -13,7 +13,7 @@ html {
     display: block;
     min-height: 100vh;
     font-family: 'Nunito Sans', sans-serif;
-    background-color: #fff8f5;
+    background-color: #FFF8F5;
 }
 
 /* Page Layout */
@@ -50,10 +50,10 @@ html {
 
 .sidebar-title {
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #b09090;
+    color: #731919;
     padding: 0 18px 14px;
     text-align: center;
 }
@@ -76,24 +76,25 @@ html {
     border-radius: 0;
     font-size: 15px;
     font-family: 'Nunito Sans', sans-serif;
-    color: #5a4040;
+    color: #000000;
     text-align: left;
     line-height: 1.45;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    transition: background 0.15s, color 0.15s, border-color 0.15s, font-weight 0.15s;
     width: 100%;
     text-decoration: none;
     font-weight: 400;
 }
 
 .nav-item:hover {
-    background: #fdf0ee;
-    color: #D9B382;
+    background: #F8E9E5;
+    color: #731919;
+    font-weight: 700;
 }
 
 .nav-item.active {
-    background: #fcecef;
-    border-left-color: #c0415a;
-    color: #c0415a;
+    background: #F8E9E5;
+    border-left-color: #731919;
+    color: #731919;
     font-weight: 700;
 }
 
@@ -105,18 +106,18 @@ html {
     height: 28px;
     min-width: 28px;
     border-radius: 7px;
-    background: #f7efed;
-    border: 1px solid #f0ddd9;
-    color: #a07070;
+    background: #FFF8F5;
+    border: 1px solid #D9B382;
+    color: #731919;
     flex-shrink: 0;
     margin-top: 1px;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .nav-item.active .nav-icon {
-    background: #fce6ea;
+    background: #731919;
     border-color: #D9B382;
-    color: #c0415a;
+    color: #D9B382;
 }
 
 .nav-item,
@@ -130,9 +131,9 @@ html {
 /* Main Content */
 .content {
     flex: 1;
-    max-width: 900px;
-    background: #fff8f5;
-    padding: 42px 50px;
+    max-width: none;
+    background: #FFF8F5;
+    padding: 0 50px 42px;
     min-height: 620px;
     overflow-y: visible;
 }
@@ -208,10 +209,9 @@ html {
 .policy-page h1 {
     scroll-margin-top: 140px;
     font-family: 'Playfair Display', serif !important;
-    font-size: 30px;
+    font-size: 32px;
     font-weight: 600;
-    color: #777777;
-    text-align: center;
+    color: #000000;
     margin-bottom: 20px;
     padding-bottom: 18px;
     border-bottom: 1px solid #f5e5e0;
@@ -219,16 +219,17 @@ html {
 
 .policy-page h2 {
     font-size: 20px;
-    font-weight: 600;
-    color: #E52B2B;
+    font-weight: 700;
+    color: #731919;
     margin: 22px 0 10px;
 }
 
 .policy-page p {
     font-size: 15px;
     line-height: 1.8;
-    color: #5a4040;
+    color: #000000;
     margin-bottom: 12px;
+    text-align: justify;
 }
 
 .policy-page ul {
@@ -239,8 +240,9 @@ html {
 .policy-page ul li {
     font-size: 15px;
     line-height: 1.75;
-    color: #5a4040;
+    color: #000000;
     margin-bottom: 6px;
+    text-align: justify;
 }
 
 /* Tier Cards */
@@ -320,11 +322,11 @@ html {
 
 /* Table */
 .policy-table {
-    width: 90%;
+    width: calc(100% - 72px);
     margin: 18px auto 22px;
     border-collapse: collapse;
     font-size: 15px;
-    color: #5a4040;
+    color: #000000;
     background: #fff;
     border: 2px solid #D9B382;
 }
@@ -338,18 +340,18 @@ html {
 }
 
 .policy-table th {
-    background: #fcecef;
-    color: #3a2c2c;
+    background: #F8E9E5;
+    color: #731919;
     font-weight: 700;
 }
 
 .policy-table tr:nth-child(even) {
-    background: #fff4f1;
+    background: #FFF8F5;
 }
 
 /* Focus & Accessibility */
 .nav-item:focus-visible {
-    outline: 2px solid #c0415a;
+    outline: 2px solid #731919;
     outline-offset: 2px;
 }
 
@@ -494,4 +496,12 @@ html {
 
 .diamond-card {
     background-image: url('/assets/images/diamond_frame.png');
+}
+
+.policy-layout-page .content {
+    padding-top: 0 !important;
+}
+
+.policy-layout-page .policy-page h1 {
+    margin-top: 0;
 }
