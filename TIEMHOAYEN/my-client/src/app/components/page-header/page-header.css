@@ -269,14 +269,10 @@ position:absolute;
 top:100%;
 left:50%;
 transform:translateX(-50%);
-width:max-content;
+width:210px;
 min-width:210px;
-max-width:420px;
-max-height:320px;
-overflow:hidden;
-columns:200px 2;
-column-gap:0;
-column-rule:1px solid rgba(217,179,130,0.35);
+max-width:calc(100vw - 32px);
+overflow:visible;
 background:#FBF7F2;
 border:1px solid rgba(217,179,130,0.5);
 border-radius:16px;
@@ -285,7 +281,32 @@ z-index:9999;
 }
 
 .menu-item:hover .dropdown{
-display:block;
+display:grid;
+grid-template-columns:minmax(0, 1fr);
+align-items:start;
+}
+
+/* Danh sách dài tự dàn thành mega menu, không giới hạn chiều cao/scroll. */
+.dropdown:has(> a:nth-child(7)){
+width:min(460px, calc(100vw - 32px));
+grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+
+.dropdown:has(> a:nth-child(13)){
+width:min(700px, calc(100vw - 32px));
+grid-template-columns:repeat(3, minmax(0, 1fr));
+}
+
+/* Giữ mega menu của các mục ở hai đầu thanh điều hướng trong viewport. */
+.menu-item:nth-child(-n + 3) > .dropdown:has(> a:nth-child(7)){
+left:0;
+transform:none;
+}
+
+.menu-item:nth-last-child(-n + 4) > .dropdown:has(> a:nth-child(7)){
+right:0;
+left:auto;
+transform:none;
 }
 
 .dropdown a{
