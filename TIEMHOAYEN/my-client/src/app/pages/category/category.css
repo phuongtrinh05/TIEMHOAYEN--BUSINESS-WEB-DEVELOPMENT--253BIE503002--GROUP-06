@@ -28,12 +28,6 @@ body {
   font-size: 16px;
 }
 
-button,
-input,
-select {
-  font-family: inherit;
-}
-
 .category-page {
   width: min(1240px, calc(100% - 32px));
   margin: 0 auto;

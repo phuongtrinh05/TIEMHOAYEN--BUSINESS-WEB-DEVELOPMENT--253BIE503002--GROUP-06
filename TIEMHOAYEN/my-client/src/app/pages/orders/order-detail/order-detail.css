@@ -693,7 +693,6 @@ h3{
   outline: none;
   width: 100%;
   box-sizing: border-box;
-  font-family: inherit;
   transition: border-color .2s;
 }
 
