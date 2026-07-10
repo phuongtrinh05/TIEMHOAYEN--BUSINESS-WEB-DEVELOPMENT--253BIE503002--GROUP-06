@@ -480,9 +480,7 @@ export class PageHeader1 implements OnInit, OnDestroy {
       next: (res: any) => {
         const items = Array.isArray(res?.items) ? res.items : [];
 
-        this.cartCount = items.reduce((sum: number, item: any) => {
-          return sum + Math.max(1, Number(item.SO_LUONG || item.quantity || 1));
-        }, 0);
+        this.cartCount = items.length;
 
         this.cartItems = items.map((item: any) => this.normalizeCartItem(item));
 
@@ -550,9 +548,7 @@ export class PageHeader1 implements OnInit, OnDestroy {
         return 0;
       }
 
-      return cart.reduce((sum: number, item: any) => {
-        return sum + Math.max(1, Number(item.quantity || item.SO_LUONG || 1));
-      }, 0);
+      return cart.length;
     } catch {
       return 0;
     }
@@ -583,6 +579,10 @@ export class PageHeader1 implements OnInit, OnDestroy {
 
   get notificationBadgeText(): string {
     return this.unreadNotificationCount > 99 ? '99+' : String(this.unreadNotificationCount);
+  }
+
+  get cartSubtotal(): number {
+    return this.cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   }
 
   formatCartPrice(value: number): string {
