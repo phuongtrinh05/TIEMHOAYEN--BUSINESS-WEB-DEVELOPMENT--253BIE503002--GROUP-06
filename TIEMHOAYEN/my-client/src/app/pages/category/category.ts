@@ -799,7 +799,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   private renderProducts(items: Product[]): void {
     this.emptyMessage.hidden = items.length > 0;
 
-    this.productGrid.innerHTML = items.map((item) => {
+    this.productGrid.innerHTML = items.map((item, index) => {
       const safeId = this.escapeHtml(item.id);
       const safeName = this.escapeHtml(item.name);
       const safeImage = this.escapeHtml(item.image);
@@ -848,7 +848,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
                 ${discountBadgeHtml}
                 ${
                   item.image
-                    ? `<img src="${safeImage}" alt="${safeName}" loading="lazy">`
+                    ? `<img src="${safeImage}" alt="${safeName}" loading="${index < 4 ? 'eager' : 'lazy'}" fetchpriority="${index < 4 ? 'high' : 'auto'}" decoding="async">`
                     : ''
                 }
                 <div class="product-image-fallback" style="${item.image ? '' : 'display:flex'}">${safeIcon}</div>

@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { shareReplay } from 'rxjs/operators';
+import { Observable, of } from 'rxjs';
+import { shareReplay, tap } from 'rxjs/operators';
 
 export interface CategoryTopic {
   CHU_DE_ID: string;
@@ -111,6 +111,8 @@ export interface AllCategoryProductsResponse {
 export class CategoryProductService {
   private apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/category-products';
   private responseCache = new Map<string, Observable<unknown>>();
+  private readonly storagePrefix = 'tiemHoaYen:category-products:';
+  private readonly cacheTtlMs = 10 * 60 * 1000;
 
   constructor(private http: HttpClient) {}
 
@@ -168,6 +170,12 @@ export class CategoryProductService {
 
   clearCache(): void {
     this.responseCache.clear();
+
+    if (typeof localStorage !== 'undefined') {
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith(this.storagePrefix))
+        .forEach((key) => localStorage.removeItem(key));
+    }
   }
 
   private cachedGet<T>(key: string, url: string): Observable<T> {
@@ -177,11 +185,58 @@ export class CategoryProductService {
       return cached;
     }
 
+    const stored = this.readStoredResponse<T>(key);
+
+    if (stored !== null) {
+      const stored$ = of(stored).pipe(
+        shareReplay({ bufferSize: 1, refCount: false })
+      );
+      this.responseCache.set(key, stored$);
+      return stored$;
+    }
+
     const request$ = this.http.get<T>(url).pipe(
+      tap((response) => this.storeResponse(key, response)),
       shareReplay({ bufferSize: 1, refCount: false })
     );
 
     this.responseCache.set(key, request$);
     return request$;
+  }
+
+  private readStoredResponse<T>(key: string): T | null {
+    if (typeof localStorage === 'undefined') {
+      return null;
+    }
+
+    try {
+      const raw = localStorage.getItem(this.storagePrefix + key);
+      if (!raw) return null;
+
+      const entry = JSON.parse(raw) as { expiresAt?: number; value?: T };
+      if (!entry.expiresAt || entry.expiresAt <= Date.now() || entry.value === undefined) {
+        localStorage.removeItem(this.storagePrefix + key);
+        return null;
+      }
+
+      return entry.value;
+    } catch {
+      return null;
+    }
+  }
+
+  private storeResponse<T>(key: string, value: T): void {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
+    try {
+      localStorage.setItem(
+        this.storagePrefix + key,
+        JSON.stringify({ expiresAt: Date.now() + this.cacheTtlMs, value })
+      );
+    } catch {
+      // Cache is an optimization; quota/privacy errors must not break loading.
+    }
   }
 }
