@@ -497,12 +497,70 @@ export class PageHeader1 implements OnInit, OnDestroy {
   }
 
   private normalizeCartItem(item: any): HeaderCartItem {
+    const product = item?.SAN_PHAM || item?.sanPham || item?.product || {};
+
     return {
-      id: String(item.SAN_PHAM_ID || item.id || item.SO_ID || ''),
-      name: item.TEN_SP || item.name || item.SAN_PHAM?.TEN_SP || 'Sản phẩm',
-      image: item.HINH_ANH || item.image || item.SAN_PHAM?.HINH_ANH || 'assets/images/placeholder-product.png',
-      price: Number(item.GIA || item.price || item.DON_GIA || item.SAN_PHAM?.GIA || 0),
-      quantity: Math.max(1, Number(item.SO_LUONG || item.quantity || 1))
+      id: String(
+        item?.SAN_PHAM_ID ??
+        item?.sanPhamId ??
+        item?.productId ??
+        item?.PRODUCT_ID ??
+        product?.SAN_PHAM_ID ??
+        product?.id ??
+        item?.id ??
+        item?.SO_ID ??
+        ''
+      ),
+
+      // Ưu tiên đúng tên sản phẩm từ API/backend.
+      name: String(
+        item?.TEN_SAN_PHAM ??
+        item?.TEN_SP ??
+        item?.tenSanPham ??
+        item?.productName ??
+        item?.name ??
+        product?.TEN_SAN_PHAM ??
+        product?.TEN_SP ??
+        product?.tenSanPham ??
+        product?.productName ??
+        product?.name ??
+        'Sản phẩm'
+      ).trim(),
+
+      image: this.normalizeImageUrl(
+        item?.HINH_ANH ??
+        item?.hinhAnh ??
+        item?.image ??
+        product?.HINH_ANH ??
+        product?.hinhAnh ??
+        product?.image ??
+        ''
+      ),
+
+      price: Number(
+        item?.GIA_KHUYEN_MAI ??
+        item?.DON_GIA ??
+        item?.GIA_BAN ??
+        item?.GIA ??
+        item?.price ??
+        product?.GIA_KHUYEN_MAI ??
+        product?.DON_GIA ??
+        product?.GIA_BAN ??
+        product?.GIA ??
+        product?.price ??
+        0
+      ),
+
+      quantity: Math.max(
+        1,
+        Number(
+          item?.SO_LUONG ??
+          item?.soLuong ??
+          item?.quantity ??
+          item?.QUANTITY ??
+          1
+        )
+      )
     };
   }
 
