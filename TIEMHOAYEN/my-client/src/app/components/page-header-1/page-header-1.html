@@ -95,17 +95,25 @@
       </div>
 
       <div class="mobile-item">
-        <h3 (click)="toggleTopic()">
-          Chủ đề
+        <h3>
+          <span (click)="goToAllTopics()">Chủ đề</span>
           <i
             class="bi"
             [class.bi-chevron-down]="showTopic"
-            [class.bi-chevron-right]="!showTopic">
+            [class.bi-chevron-right]="!showTopic"
+            (click)="toggleTopic()">
           </i>
         </h3>
 
         @if(showTopic){
           <div class="mobile-submenu">
+            <a
+              href="javascript:void(0)"
+              (click)="goToAllTopics()"
+            >
+              Tất cả chủ đề
+            </a>
+
             @for (topic of topics; track topic.CHU_DE_ID) {
               <a
                 href="javascript:void(0)"

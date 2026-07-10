@@ -1654,6 +1654,16 @@ export class PageHeader implements OnInit, OnDestroy {
     this.closeAllSubMenus();
     this.showAbout = !current;
   }
+
+  goToAllTopics(): void {
+    this.closeAllSubMenus();
+    this.showMobileMenu = false;
+    this.showAccountMenu = false;
+    this.showLanguageMenu = false;
+
+    this.router.navigate(['/category']);
+  }
+
   goToTopic(topicId: string): void {
     if (!topicId) return;
 

@@ -1,6 +1,83 @@
 import { Request, Response } from 'express';
 import { sql } from '../db.js';
 
+export const getAllCategoryProducts = async (req: Request, res: Response) => {
+  try {
+    const productResult = await sql.query`
+      SELECT 
+        sp.SAN_PHAM_ID,
+        sp.CHU_DE_ID,
+        cd.TEN_CHU_DE,
+        sp.TEN_SAN_PHAM,
+        sp.MO_TA,
+        sp.GIA,
+        sp.GIA_KHUYEN_MAI,
+        sp.TRANG_THAI,
+        sp.KIEU_DANG,
+        sp.SO_LUONG,
+        sp.DA_BAN,
+        ha.URL AS HINH_ANH,
+        hoa.TEN_HOA_TUOI_LIST,
+        dt.TEN_DOI_TUONG_LIST,
+        ms.TEN_MAU_SAC_LIST
+      FROM SAN_PHAM sp
+      LEFT JOIN CHU_DE cd
+        ON sp.CHU_DE_ID = cd.CHU_DE_ID
+
+      OUTER APPLY (
+        SELECT TOP 1 URL
+        FROM HINH_ANH_SAN_PHAM
+        WHERE SAN_PHAM_ID = sp.SAN_PHAM_ID
+        ORDER BY LA_ANH_CHINH DESC
+      ) ha
+
+      OUTER APPLY (
+        SELECT STRING_AGG(f.TEN_HOA_TUOI, N'|') AS TEN_HOA_TUOI_LIST
+        FROM (
+          SELECT DISTINCT ht.TEN_HOA_TUOI
+          FROM HOA_TUOI_SAN_PHAM htsp
+          INNER JOIN HOA_TUOI ht
+            ON htsp.HOA_TUOI_ID = ht.HOA_TUOI_ID
+          WHERE htsp.SAN_PHAM_ID = sp.SAN_PHAM_ID
+        ) f
+      ) hoa
+
+      OUTER APPLY (
+        SELECT STRING_AGG(d.TEN_DOI_TUONG, N'|') AS TEN_DOI_TUONG_LIST
+        FROM (
+          SELECT DISTINCT dt2.TEN_DOI_TUONG
+          FROM DOI_TUONG_SAN_PHAM dtsp
+          INNER JOIN DOI_TUONG dt2
+            ON dtsp.DOI_TUONG_ID = dt2.DOI_TUONG_ID
+          WHERE dtsp.SAN_PHAM_ID = sp.SAN_PHAM_ID
+        ) d
+      ) dt
+
+      OUTER APPLY (
+        SELECT STRING_AGG(m.TEN_MAU_SAC, N'|') AS TEN_MAU_SAC_LIST
+        FROM (
+          SELECT DISTINCT ms2.TEN_MAU_SAC
+          FROM MAU_SAC_SAN_PHAM mssp
+          INNER JOIN MAU_SAC ms2
+            ON mssp.MAU_SAC_ID = ms2.MAU_SAC_ID
+          WHERE mssp.SAN_PHAM_ID = sp.SAN_PHAM_ID
+        ) m
+      ) ms
+
+      ORDER BY sp.SAN_PHAM_ID DESC
+    `;
+
+    res.status(200).json({
+      total: productResult.recordset.length,
+      products: productResult.recordset
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      message: 'Lỗi Controller: ' + error.message
+    });
+  }
+};
+
 export const getProductsByTopic = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

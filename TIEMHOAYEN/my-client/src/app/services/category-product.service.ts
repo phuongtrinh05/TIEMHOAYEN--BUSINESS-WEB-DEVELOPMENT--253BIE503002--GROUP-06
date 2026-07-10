@@ -99,6 +99,11 @@ export interface BestSellerProductsResponse {
   products: CategoryProduct[];
 }
 
+export interface AllCategoryProductsResponse {
+  total: number;
+  products: CategoryProduct[];
+}
+
 
 @Injectable({
   providedIn: 'root'
@@ -108,6 +113,10 @@ export class CategoryProductService {
   private responseCache = new Map<string, Observable<unknown>>();
 
   constructor(private http: HttpClient) {}
+
+  getAllProducts(): Observable<AllCategoryProductsResponse> {
+    return this.cachedGet<AllCategoryProductsResponse>('all-products', this.apiUrl);
+  }
 
   getProductsByTopic(id: string): Observable<ProductsByTopicResponse> {
     return this.cachedGet<ProductsByTopicResponse>(

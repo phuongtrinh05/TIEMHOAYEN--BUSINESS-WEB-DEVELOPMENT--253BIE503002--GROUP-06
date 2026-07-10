@@ -9,7 +9,7 @@ import {
 
 import { isPlatformBrowser } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { combineLatest, Subscription } from 'rxjs';
 
 import {
   CategoryProductService,
@@ -215,7 +215,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   }
 
   private loadDataFromRoute(): void {
-    this.routeSubscription = this.route.paramMap.subscribe((params) => {
+    this.routeSubscription = combineLatest([this.route.paramMap, this.route.queryParamMap]).subscribe(([params, queryParams]) => {
       const id = params.get('id');
       const path = this.route.snapshot.routeConfig?.path || '';
 
@@ -225,10 +225,9 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       this.currentPage = 1;
 
       if (!id) {
-        this.pageTitle = 'Sản phẩm';
-        this.setBreadcrumb();
-        this.products = this.createProductData();
-        this.render();
+        const selectedTopicIds = this.getTopicIdsFromQuery(queryParams.get('topics'));
+
+        this.loadAllProducts(selectedTopicIds);
         return;
       }
 
@@ -259,8 +258,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
       this.pageTitle = 'Sản phẩm';
       this.setBreadcrumb();
-      this.products = this.createProductData();
-      this.render();
+      this.loadAllProducts();
     });
   }
 
@@ -288,6 +286,38 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       .join('');
 
     this.categoryBreadcrumb.innerHTML = extraItems;
+  }
+
+  private loadAllProducts(selectedTopicIds: string[] = []): void {
+    this.pageTitle = 'Sản phẩm';
+    this.setBreadcrumb(selectedTopicIds.length > 0 ? 'Chủ đề' : '');
+    this.products = [];
+    this.render();
+
+    this.productRequestSubscription = this.categoryProductService.getAllProducts().subscribe({
+      next: (res) => {
+        this.products = res.products.map((item) => this.mapDbProductToProduct(item));
+
+        selectedTopicIds.forEach((topicId) => {
+          const topicName = this.topicNameById[topicId];
+
+          if (topicName) {
+            this.selectedFilters.chuDe.add(topicName);
+          }
+        });
+
+        this.currentPage = 1;
+        this.render();
+      },
+      error: (err) => {
+        console.error('Lỗi lấy tất cả sản phẩm:', err);
+
+        this.pageTitle = 'Sản phẩm';
+        this.setBreadcrumb(selectedTopicIds.length > 0 ? 'Chủ đề' : '');
+        this.products = [];
+        this.render();
+      }
+    });
   }
 
   private loadProductsByTopic(topicId: string): void {
@@ -760,6 +790,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
     this.updateBreadcrumbLabels();
     this.renderSelectedFilters();
+    this.syncTopicFilterCheckboxes();
     this.renderProducts(pageItems);
     this.renderPagination(totalPages);
     this.renderResultCount(filtered.length, startIndex, pageItems.length);
@@ -992,16 +1023,24 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         const group = button.dataset['group'] as FilterGroup;
         const value = button.dataset['value'] ?? '';
 
-        // Không cho xóa chip Chủ đề, vì trang category luôn cần đúng 1 chủ đề.
-        if (group === 'chuDe') {
-          this.syncCheckbox(group, value, true);
-          return;
-        }
-
         this.selectedFilters[group].delete(value);
         this.syncCheckbox(group, value, false);
 
         this.currentPage = 1;
+
+        if (group === 'chuDe') {
+          const path = this.route.snapshot.routeConfig?.path || '';
+
+          if (path.startsWith('chu-de')) {
+            this.navigateToCategoryWithSelectedTopics();
+            return;
+          }
+
+          if (path === 'category') {
+            this.navigateToCategoryWithSelectedTopics();
+          }
+        }
+
         this.render();
       });
     });
@@ -1060,9 +1099,78 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     document
       .querySelectorAll<HTMLInputElement>('input[data-group="chuDe"]')
       .forEach((checkbox) => {
-        checkbox.checked = checkbox.dataset['id'] === topicId ? checked : false;
+        checkbox.checked =
+          !this.isAllTopicsCheckbox(checkbox) && checkbox.dataset['id'] === topicId
+            ? checked
+            : false;
       });
   }
+
+  private syncTopicFilterCheckboxes(): void {
+    const selectedTopics = this.selectedFilters.chuDe;
+
+    document
+      .querySelectorAll<HTMLInputElement>('input[data-group="chuDe"]')
+      .forEach((checkbox) => {
+        if (this.isAllTopicsCheckbox(checkbox)) {
+          checkbox.checked = selectedTopics.size === 0;
+          return;
+        }
+
+        checkbox.checked = selectedTopics.has(this.getCheckboxValue(checkbox));
+      });
+  }
+
+  private uncheckSpecificTopicCheckboxes(): void {
+    document
+      .querySelectorAll<HTMLInputElement>('input[data-group="chuDe"]')
+      .forEach((checkbox) => {
+        if (!this.isAllTopicsCheckbox(checkbox)) {
+          checkbox.checked = false;
+        }
+      });
+  }
+
+  private isAllTopicsCheckbox(checkbox: HTMLInputElement): boolean {
+    return checkbox.dataset['allTopics'] === 'true';
+  }
+
+  private getTopicIdsFromQuery(rawTopics: string | null): string[] {
+    if (!rawTopics) {
+      return [];
+    }
+
+    return Array.from(
+      new Set(
+        rawTopics
+          .split(',')
+          .map((topicId) => topicId.trim())
+          .filter((topicId) => !!this.topicNameById[topicId])
+      )
+    );
+  }
+
+  private getSelectedTopicIdsFromCheckboxes(): string[] {
+    const selectedTopicIds = Array.from(
+      document.querySelectorAll<HTMLInputElement>('input[data-group="chuDe"]:checked')
+    )
+      .filter((checkbox) => !this.isAllTopicsCheckbox(checkbox))
+      .map((checkbox) => checkbox.dataset['id'] || '')
+      .filter((topicId) => !!topicId);
+
+    return Array.from(new Set(selectedTopicIds));
+  }
+
+  private navigateToCategoryWithSelectedTopics(): void {
+    const selectedTopicIds = this.getSelectedTopicIdsFromCheckboxes();
+
+    this.router.navigate(['/category'], {
+      queryParams: selectedTopicIds.length > 0
+        ? { topics: selectedTopicIds.join(',') }
+        : {},
+    });
+  }
+
   private syncCheckbox(group: FilterGroup, value: string, checked: boolean): void {
     const normalizedValue = this.normalizeText(value);
 
@@ -1099,33 +1207,41 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         const value = this.getCheckboxValue(checkbox);
         const path = this.route.snapshot.routeConfig?.path || '';
 
-        // Chủ đề: luôn chuyển route vì chủ đề là danh mục chính.
+        // Chủ đề: cho phép chọn nhiều chủ đề cùng lúc; "Tất cả" nghĩa là không giới hạn chủ đề.
         if (group === 'chuDe') {
-          if (!checkbox.checked) {
+          if (this.isAllTopicsCheckbox(checkbox)) {
+            this.selectedFilters.chuDe.clear();
+            this.uncheckSpecificTopicCheckboxes();
             checkbox.checked = true;
+            this.currentPage = 1;
+
+            if (path.startsWith('chu-de') || path === 'category') {
+              this.navigateToCategoryWithSelectedTopics();
+              this.render();
+              return;
+            }
+
+            this.render();
             return;
           }
 
-          document
-            .querySelectorAll<HTMLInputElement>('input[data-group="chuDe"]')
-            .forEach((topicCheckbox) => {
-              if (topicCheckbox !== checkbox) {
-                topicCheckbox.checked = false;
-              }
-            });
-
-          this.selectedFilters.chuDe.clear();
-          this.selectedFilters.chuDe.add(value);
-
-          const topicId = checkbox.dataset['id'];
-
-          if (topicId) {
-            this.syncTopicCheckboxById(topicId, true);
-            this.router.navigate(['/chu-de', topicId]);
-            return;
+          if (checkbox.checked) {
+            this.selectedFilters.chuDe.add(value);
+          } else {
+            this.selectedFilters.chuDe.delete(value);
           }
 
           this.currentPage = 1;
+
+          if (path.startsWith('chu-de')) {
+            this.navigateToCategoryWithSelectedTopics();
+            return;
+          }
+
+          if (path === 'category') {
+            this.navigateToCategoryWithSelectedTopics();
+          }
+
           this.render();
           return;
         }
