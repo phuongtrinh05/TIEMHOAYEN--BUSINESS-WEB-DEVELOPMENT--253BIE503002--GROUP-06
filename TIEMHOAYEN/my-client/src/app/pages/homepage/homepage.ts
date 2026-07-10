@@ -151,14 +151,14 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
     const width = window.innerWidth;
 
     if (width <= 640) {
-      return 4; // 2 cột x 2 hàng
+      return 4; 
     }
 
     if (width <= 1024) {
-      return 6; // 3 cột x 2 hàng
+      return 6; 
     }
 
-    return 5; // 5 cột x 1 hàng
+    return 5; 
   }
 
   @HostListener('window:resize')
@@ -196,21 +196,14 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
         video.setAttribute('muted', '');
       };
 
-      // Mute trước khi video kịp play để tránh phát ra tiếng dù chỉ trong
-      // một khoảnh khắc rất ngắn (đặc biệt hay xảy ra với video 3D flower
-      // do file có track âm thanh và trình duyệt có thể bỏ qua thuộc tính
-      // muted tĩnh khi component được Angular hydrate/re-render).
       forceMute();
 
-      // Một số trình duyệt có thể tự ý bỏ muted khi video được
-      // play lại sau tương tác của người dùng -> luôn ép về muted
       video.addEventListener('volumechange', forceMute);
       video.addEventListener('loadedmetadata', forceMute);
       video.addEventListener('play', forceMute);
       video.addEventListener('playing', forceMute);
 
       video.play().catch(() => {
-        // Nếu trình duyệt chặn autoplay có tiếng, thử lại sau khi đã chắc chắn muted
         forceMute();
         video.play().catch(() => {});
       });
@@ -284,7 +277,7 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
 
             return dateB - dateA;
           })
-          .slice(0, 3)
+          .slice(0, 4)
           .map((item) => ({
             id: String(item.BAI_VIET_ID || ''),
             title: String(item.TIEU_DE || 'Bài viết Tiệm Hoa Yên'),
