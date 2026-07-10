@@ -505,7 +505,7 @@ export const getProductsByCollection = async (req: Request, res: Response) => {
         hoa.TEN_HOA_TUOI_LIST,
         dt.TEN_DOI_TUONG_LIST,
         ms.TEN_MAU_SAC_LIST
-      FROM BO_SU_TAP_SAN_PHAM bstsp
+      FROM BO_SUU_TAP_SAN_PHAM bstsp
       INNER JOIN BO_SUU_TAP bst
         ON bstsp.BO_SUU_TAP_ID = bst.BO_SUU_TAP_ID
       INNER JOIN SAN_PHAM sp
