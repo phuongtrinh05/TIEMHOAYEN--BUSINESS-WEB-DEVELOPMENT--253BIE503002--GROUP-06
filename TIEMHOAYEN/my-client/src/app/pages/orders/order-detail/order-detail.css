@@ -13,7 +13,8 @@
     font-size:14px;
 }
 
-strong{
+h2{
+    font-family: 'Nunito-Sans', sans-serif;
     font-size:24px;
     font-weight:700;
     margin-bottom:6px;
@@ -24,7 +25,6 @@ h3{
     font-size: 15px;
     font-weight: 700;
     color: #731919;
-    font-family: inherit;
 }
 
 .order-date{

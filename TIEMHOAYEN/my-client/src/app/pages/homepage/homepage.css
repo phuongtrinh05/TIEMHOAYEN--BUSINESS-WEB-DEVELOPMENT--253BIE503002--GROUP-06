@@ -239,7 +239,7 @@
 }
 
 .flower-3d:hover video {
-    transform: scale(1.015);
+    transform: none;
     box-shadow: 0 20px 44px rgba(115, 25, 25, .2);
 }
 
@@ -603,7 +603,7 @@
 }
 
 .sale-banner:hover img {
-    transform: scale(1.015);
+    transform: none;
     box-shadow: 0 20px 44px rgba(115, 25, 25, .2);
 }
 

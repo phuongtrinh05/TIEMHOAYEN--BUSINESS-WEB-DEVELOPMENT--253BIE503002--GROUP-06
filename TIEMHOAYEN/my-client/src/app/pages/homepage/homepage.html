@@ -5,6 +5,8 @@
         <video
             autoplay
             muted
+            [muted]="true"
+            [volume]="0"
             loop
             playsinline
             preload="auto"
@@ -54,8 +56,11 @@
     <!-- FLOWER 3D -->
     <section class="flower-3d reveal">
         <video
+            #flowerVideo
             autoplay
             muted
+            [muted]="true"
+            [volume]="0"
             loop
             playsinline
             preload="auto"
@@ -79,22 +84,6 @@
         </div>
     </section>
 
-    <!-- BỘ SƯU TẬP TỪ DB
-    <section class="collection-tags-section">
-        <h2>BỘ SƯU TẬP</h2>
-        <div class="collection-tags">
-            @for(col of collections; track col.BO_SUU_TAP_ID) {
-                <a
-                    class="tag-item"
-                    [routerLink]="['/category']"
-                    [queryParams]="{ collection: col.BO_SUU_TAP_ID }">
-                    {{ col.TEN_BO_SUU_TAP }}
-                </a>
-            }
-        </div>
-    </section> -->
-
-    <!-- NEW COLLECTION -->
     <section class="collection reveal">
         <h2>BỘ SƯU TẬP MỚI</h2>
 

@@ -189,21 +189,31 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {
 
     document.querySelectorAll('video').forEach(video => {
-      video.muted = true;
-      video.defaultMuted = true;
-      video.volume = 0;
-      video.setAttribute('muted', '');
+      const forceMute = () => {
+        video.muted = true;
+        video.defaultMuted = true;
+        video.volume = 0;
+        video.setAttribute('muted', '');
+      };
+
+      // Mute trước khi video kịp play để tránh phát ra tiếng dù chỉ trong
+      // một khoảnh khắc rất ngắn (đặc biệt hay xảy ra với video 3D flower
+      // do file có track âm thanh và trình duyệt có thể bỏ qua thuộc tính
+      // muted tĩnh khi component được Angular hydrate/re-render).
+      forceMute();
 
       // Một số trình duyệt có thể tự ý bỏ muted khi video được
       // play lại sau tương tác của người dùng -> luôn ép về muted
-      video.addEventListener('volumechange', () => {
-        if (!video.muted || video.volume !== 0) {
-          video.muted = true;
-          video.volume = 0;
-        }
-      });
+      video.addEventListener('volumechange', forceMute);
+      video.addEventListener('loadedmetadata', forceMute);
+      video.addEventListener('play', forceMute);
+      video.addEventListener('playing', forceMute);
 
-      video.play().catch(() => {});
+      video.play().catch(() => {
+        // Nếu trình duyệt chặn autoplay có tiếng, thử lại sau khi đã chắc chắn muted
+        forceMute();
+        video.play().catch(() => {});
+      });
     });
 
     const reveals = document.querySelectorAll('.reveal');
