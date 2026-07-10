@@ -114,6 +114,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   ];
 
   private products: Product[] = [];
+  private isLoadingProducts = false;
   private wishlistProductIds = new Set<string>();
   private readonly topicNameById: Record<string, string> = {
     CD001: 'Hoa tình yêu',
@@ -216,6 +217,9 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
   private loadDataFromRoute(): void {
     this.routeSubscription = combineLatest([this.route.paramMap, this.route.queryParamMap]).subscribe(([params, queryParams]) => {
+      this.isLoadingProducts = true;
+      if (this.emptyMessage) this.emptyMessage.hidden = true;
+
       const id = params.get('id');
       const path = this.route.snapshot.routeConfig?.path || '';
 
@@ -295,6 +299,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
     this.productRequestSubscription = this.categoryProductService.getAllProducts().subscribe({
       next: (res) => {
+        this.isLoadingProducts = false;
         this.products = res.products.map((item) => this.mapDbProductToProduct(item));
 
         selectedTopicIds.forEach((topicId) => {
@@ -309,6 +314,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.render();
       },
       error: (err) => {
+        this.isLoadingProducts = false;
         console.error('Lỗi lấy tất cả sản phẩm:', err);
 
         this.pageTitle = 'Sản phẩm';
@@ -332,6 +338,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.syncTopicCheckboxById(topicId, true);
     this.productRequestSubscription = this.categoryProductService.getProductsByTopic(topicId).subscribe({
       next: (res) => {
+        this.isLoadingProducts = false;
         const topicName = res.topic?.TEN_CHU_DE || topicNameFromId;
 
         this.clearSelectedFilters();
@@ -354,6 +361,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.render();
       },
       error: (err) => {
+        this.isLoadingProducts = false;
         console.error('Lỗi lấy sản phẩm theo chủ đề:', err);
 
         this.pageTitle = 'Không tìm thấy chủ đề';
@@ -374,6 +382,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.setBreadcrumb('Hoa tươi');
     this.productRequestSubscription = this.categoryProductService.getProductsByFlower(flowerId).subscribe({
       next: (res) => {
+        this.isLoadingProducts = false;
         const flowerName = res.flower?.TEN_HOA_TUOI || 'Hoa tươi';
 
         this.clearSelectedFilters();
@@ -396,6 +405,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.render();
       },
       error: (err) => {
+        this.isLoadingProducts = false;
         console.error('Lỗi lấy sản phẩm theo hoa tươi:', err);
 
         this.pageTitle = 'Không tìm thấy hoa tươi';
@@ -420,6 +430,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.syncCheckbox('kieuDang', decodedStyle, true);
     this.productRequestSubscription = this.categoryProductService.getProductsByStyle(decodedStyle).subscribe({
       next: (res) => {
+        this.isLoadingProducts = false;
         const styleName = res.style?.KIEU_DANG || decodedStyle;
 
         this.clearSelectedFilters();
@@ -442,6 +453,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.render();
       },
       error: (err) => {
+        this.isLoadingProducts = false;
         console.error('Lỗi lấy sản phẩm theo kiểu dáng:', err);
 
         this.pageTitle = 'Không tìm thấy kiểu dáng';
@@ -463,6 +475,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.setBreadcrumb('Đối tượng');
     this.productRequestSubscription = this.categoryProductService.getProductsByTarget(targetId).subscribe({
       next: (res) => {
+        this.isLoadingProducts = false;
         const targetName = res.target?.TEN_DOI_TUONG || 'Đối tượng';
 
         this.clearSelectedFilters();
@@ -485,6 +498,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.render();
       },
       error: (err) => {
+        this.isLoadingProducts = false;
         console.error('Lỗi lấy sản phẩm theo đối tượng:', err);
 
         this.pageTitle = 'Không tìm thấy đối tượng';
@@ -507,6 +521,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.setBreadcrumb('Màu sắc');
     this.productRequestSubscription = this.categoryProductService.getProductsByColor(colorId).subscribe({
       next: (res) => {
+        this.isLoadingProducts = false;
         const colorName = res.color?.TEN_MAU_SAC || 'Màu sắc';
 
         this.clearSelectedFilters();
@@ -529,6 +544,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.render();
       },
       error: (err) => {
+        this.isLoadingProducts = false;
         console.error('Lỗi lấy sản phẩm theo màu sắc:', err);
 
         this.pageTitle = 'Không tìm thấy màu sắc';
@@ -550,6 +566,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.setBreadcrumb('Bộ sưu tập');
     this.productRequestSubscription = this.categoryProductService.getProductsByCollection(collectionId).subscribe({
       next: (res) => {
+        this.isLoadingProducts = false;
         const collectionName = res.collection?.TEN_BO_SUU_TAP || 'Bộ sưu tập';
 
         this.clearSelectedFilters();
@@ -570,6 +587,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.render();
       },
       error: (err) => {
+        this.isLoadingProducts = false;
         console.error('Lỗi lấy sản phẩm theo bộ sưu tập:', err);
 
         this.pageTitle = 'Không tìm thấy bộ sưu tập';
@@ -774,7 +792,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   }
 
   private renderProducts(items: Product[]): void {
-    this.emptyMessage.hidden = items.length > 0;
+    this.emptyMessage.hidden = this.isLoadingProducts || items.length > 0;
 
     this.productGrid.innerHTML = items.map((item, index) => {
       const safeId = this.escapeHtml(item.id);
