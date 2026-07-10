@@ -5,6 +5,7 @@ import { RouterLink, Router, ActivatedRoute } from '@angular/router';
 import { PageHeader } from '../../components/page-header/page-header';
 import { PageFooter } from '../../components/page-footer/page-footer';
 import { CustomerService, Customer, CustomerAddress, CustomerOrder, CustomerVoucher, CustomerWishlistItem } from '../../services/customer.service';
+import { CartService } from '../../services/cart.service';
 import { Subscription } from 'rxjs';
 
 
@@ -99,6 +100,7 @@ interface WardOption extends Ward {
 })
 export class AccountComponent implements OnInit, OnDestroy {
   private readonly platformId = inject(PLATFORM_ID);
+  private readonly cartStorageKey = 'tiemHoaYenCart';
   private sectionSubscription: Subscription | null = null;
   private accountRefreshIntervalId: number | null = null;
   private readonly refreshAccountData = (): void => {
@@ -112,6 +114,7 @@ export class AccountComponent implements OnInit, OnDestroy {
 
   constructor(
     private customerService: CustomerService,
+    private cartService: CartService,
     private router: Router,
     private route: ActivatedRoute,
     private cdr: ChangeDetectorRef
@@ -1296,8 +1299,197 @@ export class AccountComponent implements OnInit, OnDestroy {
     });
   }
 
-  addToCart(item: WishlistItem): void {
-    console.info('Add wishlist item to cart:', item);
+  addToCart(item: WishlistItem, event?: Event): void {
+    event?.stopPropagation();
+    event?.preventDefault();
+
+    if (!this.isBrowser()) {
+      return;
+    }
+
+    this.playFlyToCartEffect(event);
+
+    const customerId = this.getCustomerId();
+
+    if (customerId && String(item.id).startsWith('SP')) {
+      this.cartService.addItem(customerId, item.id, 1).subscribe({
+        next: () => {
+          this.dispatchCartChanged();
+        },
+        error: (err) => {
+          console.error('Lỗi thêm sản phẩm wishlist vào giỏ hàng:', err);
+        }
+      });
+
+      return;
+    }
+
+    this.saveWishlistItemToGuestCart(item);
+  }
+
+  private isBrowser(): boolean {
+    return isPlatformBrowser(this.platformId) && typeof window !== 'undefined';
+  }
+
+  private getLoggedInCustomer(): any | null {
+    if (!this.isBrowser()) {
+      return null;
+    }
+
+    const rawCustomer = localStorage.getItem('khachHang');
+
+    if (!rawCustomer || rawCustomer === 'null' || rawCustomer === 'undefined') {
+      return null;
+    }
+
+    try {
+      const customer = JSON.parse(rawCustomer);
+      return customer?.KHACH_HANG_ID ? customer : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private getCustomerId(): string {
+    const customer = this.getLoggedInCustomer();
+    return customer?.KHACH_HANG_ID ? String(customer.KHACH_HANG_ID) : '';
+  }
+
+  private createWishlistCartItem(item: WishlistItem) {
+    return {
+      id: item.id,
+      name: item.name,
+      style: 'Wishlist',
+      occasion: 'Sản phẩm yêu thích',
+      price: item.price,
+      originalPrice: item.oldPrice,
+      quantity: 1,
+      image: item.image,
+      selected: true
+    };
+  }
+
+  private getCartFromStorage(): any[] {
+    const rawCart = localStorage.getItem(this.cartStorageKey);
+
+    if (!rawCart) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(rawCart);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private saveWishlistItemToGuestCart(item: WishlistItem): void {
+    const cart = this.getCartFromStorage();
+    const cartItem = this.createWishlistCartItem(item);
+    const existingItem = cart.find((cartEntry: any) => String(cartEntry?.id || '') === item.id);
+
+    if (existingItem) {
+      existingItem.quantity = Number(existingItem.quantity || 1) + 1;
+      existingItem.name = cartItem.name;
+      existingItem.style = cartItem.style;
+      existingItem.occasion = cartItem.occasion;
+      existingItem.price = cartItem.price;
+      existingItem.originalPrice = cartItem.originalPrice;
+      existingItem.image = cartItem.image;
+      existingItem.selected = true;
+    } else {
+      cart.push(cartItem);
+    }
+
+    localStorage.setItem(this.cartStorageKey, JSON.stringify(cart));
+    this.dispatchCartChanged();
+  }
+
+  private dispatchCartChanged(): void {
+    if (!this.isBrowser()) {
+      return;
+    }
+
+    window.dispatchEvent(new Event('cart-changed'));
+  }
+
+  private playFlyToCartEffect(event?: Event): void {
+    if (!this.isBrowser() || !event) {
+      return;
+    }
+
+    const targetEl = event.target as HTMLElement | null;
+    const button = targetEl?.closest<HTMLButtonElement>('.btn-cart');
+    const card = targetEl?.closest('.product-card');
+    const sourceImg = card?.querySelector('.product-card-media img') as HTMLImageElement | null;
+
+    button?.classList.add('is-cart-added');
+    window.setTimeout(() => button?.classList.remove('is-cart-added'), 520);
+
+    if (!sourceImg) {
+      return;
+    }
+
+    const cartIcon = document.querySelector<HTMLElement>(
+      '.navbar-cart-icon, #navbar-cart-icon, .cart-icon, [data-cart-icon], a[routerLink*="cart"] i, a[routerLink*="gio-hang"] i'
+    );
+
+    const startRect = sourceImg.getBoundingClientRect();
+    const endRect = cartIcon?.getBoundingClientRect();
+
+    const endX = endRect ? endRect.left + endRect.width / 2 : window.innerWidth - 32;
+    const endY = endRect ? endRect.top + endRect.height / 2 : 28;
+
+    const flyer = sourceImg.cloneNode(true) as HTMLImageElement;
+    flyer.style.position = 'fixed';
+    flyer.style.left = `${startRect.left}px`;
+    flyer.style.top = `${startRect.top}px`;
+    flyer.style.width = `${startRect.width}px`;
+    flyer.style.height = `${startRect.height}px`;
+    flyer.style.margin = '0';
+    flyer.style.borderRadius = '12px';
+    flyer.style.objectFit = 'cover';
+    flyer.style.zIndex = '9999';
+    flyer.style.pointerEvents = 'none';
+    flyer.style.boxShadow = '0 10px 24px rgba(115, 25, 25, .35)';
+    flyer.style.willChange = 'transform, opacity';
+
+    document.body.appendChild(flyer);
+
+    const startCenterX = startRect.left + startRect.width / 2;
+    const startCenterY = startRect.top + startRect.height / 2;
+    const deltaX = endX - startCenterX;
+    const deltaY = endY - startCenterY;
+
+    const animation = flyer.animate(
+      [
+        { transform: 'translate(0, 0) scale(1)', opacity: 1, offset: 0 },
+        {
+          transform: `translate(${deltaX * 0.5}px, ${deltaY * 0.5 - 70}px) scale(.65)`,
+          opacity: 1,
+          offset: 0.55
+        },
+        { transform: `translate(${deltaX}px, ${deltaY}px) scale(.08)`, opacity: .3, offset: 1 }
+      ],
+      { duration: 700, easing: 'cubic-bezier(.4,.1,.25,1)' }
+    );
+
+    animation.onfinish = () => {
+      flyer.remove();
+
+      if (cartIcon) {
+        cartIcon.animate(
+          [
+            { transform: 'scale(1)' },
+            { transform: 'scale(1.35)' },
+            { transform: 'scale(.92)' },
+            { transform: 'scale(1)' }
+          ],
+          { duration: 420, easing: 'ease-out' }
+        );
+      }
+    };
   }
 
   prevAddress(): void {

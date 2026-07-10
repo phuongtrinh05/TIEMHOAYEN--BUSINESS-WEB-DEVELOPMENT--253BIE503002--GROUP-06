@@ -885,6 +885,27 @@
   box-shadow: 0 8px 16px rgba(115, 25, 25, 0.22);
 }
 
+.wishlist-item .btn-cart.is-cart-added {
+  background: #731919;
+  border-color: #731919;
+  color: #d9b382;
+  animation: wishlistCartAddedPulse 0.52s ease;
+}
+
+@keyframes wishlistCartAddedPulse {
+  0% {
+    transform: scale(1);
+  }
+
+  45% {
+    transform: scale(1.16);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
 .btn-xemthem {
   padding: 7px 28px;
 

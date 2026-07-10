@@ -290,7 +290,7 @@
                   <button
                     class="btn-cart"
                     type="button"
-                    (click)="addToCart(item)"
+                    (click)="addToCart(item, $event)"
                     [attr.aria-label]="'Thêm ' + item.name + ' vào giỏ hàng'"
                   >
                     <i class="bi bi-cart3"></i>
