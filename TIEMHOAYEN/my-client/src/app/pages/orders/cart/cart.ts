@@ -117,7 +117,6 @@ export class CartComponent implements OnInit {
   availableVouchers: CartVoucher[] = [];
   selectedProductVoucher: CartVoucher | null = null;
   selectedShippingVoucher: CartVoucher | null = null;
-  isLoadingCart = false;
   private cachedCustomerId = '';
 
   constructor(
@@ -204,7 +203,6 @@ export class CartComponent implements OnInit {
 
     if (!rawCart) {
       this.cartItems = [];
-      this.isLoadingCart = false;
       this.cdr.detectChanges();
       return;
     }
@@ -214,7 +212,6 @@ export class CartComponent implements OnInit {
 
       if (!Array.isArray(parsedCart)) {
         this.cartItems = [];
-        this.isLoadingCart = false;
         this.cdr.detectChanges();
         return;
       }
@@ -224,12 +221,10 @@ export class CartComponent implements OnInit {
       );
 
       this.hydrateMissingTopicNames();
-      this.isLoadingCart = false;
       this.cdr.detectChanges();
     } catch (error: unknown) {
       console.error('Lỗi đọc giỏ hàng localStorage:', error);
       this.cartItems = [];
-      this.isLoadingCart = false;
       this.cdr.detectChanges();
     }
   }
@@ -251,9 +246,6 @@ export class CartComponent implements OnInit {
       return;
     }
 
-    this.isLoadingCart = true;
-    this.cdr.detectChanges();
-
     this.cartService.getCart(customerId).subscribe({
       next: (res: CartResponse) => {
         const items: CartApiItem[] = Array.isArray(res.items) ? res.items : [];
@@ -263,14 +255,12 @@ export class CartComponent implements OnInit {
         );
 
         this.hydrateMissingTopicNames();
-        this.isLoadingCart = false;
         this.cdr.detectChanges();
         this.dispatchCartChanged();
       },
       error: (err: unknown) => {
         console.error('Lỗi lấy giỏ hàng từ database:', err);
         this.cartItems = [];
-        this.isLoadingCart = false;
         this.cdr.detectChanges();
       },
     });
@@ -488,10 +478,6 @@ export class CartComponent implements OnInit {
   }
 
   toggleSelectAll(event: Event): void {
-    if (this.isLoadingCart) {
-      return;
-    }
-
     const checked = (event.target as HTMLInputElement).checked;
 
     this.cartItems.forEach((item: CartItem) => {
@@ -518,6 +504,7 @@ export class CartComponent implements OnInit {
     }
 
     item.quantity++;
+    this.cdr.detectChanges();
 
     if (this.isLoggedIn && this.isProductItem(item)) {
       this.updateDatabaseQuantity(item);
@@ -533,6 +520,7 @@ export class CartComponent implements OnInit {
     }
 
     item.quantity--;
+    this.cdr.detectChanges();
 
     if (this.isLoggedIn && this.isProductItem(item)) {
       this.updateDatabaseQuantity(item);
@@ -542,6 +530,11 @@ export class CartComponent implements OnInit {
     this.saveGuestCartToStorage();
   }
 
+  /**
+   * Cập nhật số lượng lên database ở nền (background).
+   * Giao diện đã cập nhật tức thì ở increaseQty/decreaseQty nên không cần
+   * gọi lại loadCartFromDatabase() để tránh giật/tải lại giỏ hàng.
+   */
   private updateDatabaseQuantity(item: CartItem): void {
     const customerId = this.getCustomerId();
 
@@ -549,38 +542,49 @@ export class CartComponent implements OnInit {
       return;
     }
 
+    const previousQuantity = item.quantity;
+
     this.cartService.updateItem(customerId, item.id, item.quantity).subscribe({
       next: () => {
         this.dispatchCartChanged();
-        this.loadCartFromDatabase();
       },
       error: (err: unknown) => {
         console.error('Lỗi cập nhật số lượng database:', err);
-        this.loadCartFromDatabase();
+        // Hoàn tác số lượng nếu server từ chối cập nhật.
+        item.quantity = previousQuantity;
+        this.cdr.detectChanges();
       },
     });
   }
 
   removeItem(item: CartItem): void {
+    // Cập nhật giao diện tức thì trước, không chờ phản hồi từ server.
+    const removedItems = this.cartItems.filter(
+      (cartItem: CartItem) => cartItem.id === item.id
+    );
+
+    this.cartItems = this.cartItems.filter(
+      (cartItem: CartItem) => cartItem.id !== item.id
+    );
+    this.cdr.detectChanges();
+
     if (this.isLoggedIn && this.isProductItem(item)) {
       const customerId = this.getCustomerId();
 
       this.cartService.removeItem(customerId, item.id).subscribe({
         next: () => {
           this.dispatchCartChanged();
-          this.loadCartFromDatabase();
         },
         error: (err: unknown) => {
           console.error('Lỗi xóa sản phẩm database:', err);
+          // Hoàn tác nếu server từ chối xóa.
+          this.cartItems = [...this.cartItems, ...removedItems];
+          this.cdr.detectChanges();
         },
       });
 
       return;
     }
-
-    this.cartItems = this.cartItems.filter(
-      (cartItem: CartItem) => cartItem.id !== item.id
-    );
 
     this.saveGuestCartToStorage();
   }
@@ -594,13 +598,17 @@ export class CartComponent implements OnInit {
 
     if (this.isLoggedIn) {
       const customerId = this.getCustomerId();
-      const productItems = this.cartItems.filter((item: CartItem) =>
+      const previousItems = this.cartItems;
+      const productItems = previousItems.filter((item: CartItem) =>
         this.isProductItem(item)
       );
 
+      // Xóa giao diện tức thì, không chờ server.
+      this.cartItems = [];
+      this.cdr.detectChanges();
+
       if (productItems.length === 0) {
-        this.cartItems = [];
-        this.saveGuestCartToStorage();
+        this.dispatchCartChanged();
         return;
       }
 
@@ -610,13 +618,13 @@ export class CartComponent implements OnInit {
         )
       ).subscribe({
         next: () => {
-          this.cartItems = [];
           this.dispatchCartChanged();
-          this.loadCartFromDatabase();
         },
         error: (err: unknown) => {
           console.error('Lỗi xóa toàn bộ giỏ hàng:', err);
-          this.loadCartFromDatabase();
+          // Hoàn tác nếu server từ chối xóa.
+          this.cartItems = previousItems;
+          this.cdr.detectChanges();
         },
       });
 
@@ -697,29 +705,7 @@ export class CartComponent implements OnInit {
       return;
     }
 
-    if (this.isLoggedIn) {
-      const customerId = this.getCustomerId();
-
-      if (!customerId) {
-        console.warn('Không tìm thấy thông tin khách hàng. Vui lòng đăng nhập lại.');
-        return;
-      }
-
-      this.cartService.addItem(customerId, product.id, 1).subscribe({
-        next: () => {
-          this.dispatchCartChanged();
-          this.loadCartFromDatabase();
-          console.warn(`Đã thêm "${product.name}" vào giỏ hàng!`);
-        },
-        error: (err: unknown) => {
-          console.error('Lỗi thêm sản phẩm mua kèm vào giỏ hàng database:', err);
-          console.warn('Không thể thêm sản phẩm vào giỏ hàng.');
-        },
-      });
-
-      return;
-    }
-
+    // Cập nhật giao diện tức thì trước, không chờ phản hồi từ server.
     if (existingItem) {
       existingItem.quantity++;
       const topicName = this.getCartTopicName(product.status);
@@ -746,9 +732,30 @@ export class CartComponent implements OnInit {
       });
     }
 
-    this.saveGuestCartToStorage();
     this.cdr.detectChanges();
     console.warn(`Đã thêm "${product.name}" vào giỏ hàng!`);
+
+    if (this.isLoggedIn) {
+      const customerId = this.getCustomerId();
+
+      if (!customerId) {
+        console.warn('Không tìm thấy thông tin khách hàng. Vui lòng đăng nhập lại.');
+        return;
+      }
+
+      this.cartService.addItem(customerId, product.id, 1).subscribe({
+        next: () => {
+          this.dispatchCartChanged();
+        },
+        error: (err: unknown) => {
+          console.error('Lỗi thêm sản phẩm mua kèm vào giỏ hàng database:', err);
+        },
+      });
+
+      return;
+    }
+
+    this.saveGuestCartToStorage();
   }
 
   goToCheckout(): void {

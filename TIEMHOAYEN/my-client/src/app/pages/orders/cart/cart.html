@@ -39,14 +39,6 @@
         </div>
       </div>
 
-      <!-- Đang tải giỏ hàng -->
-      <div class="cart-empty" *ngIf="isLoadingCart">
-        <i class="bi bi-arrow-repeat"></i>
-        <p>Đang tải giỏ hàng...</p>
-      </div>
-
-      <ng-container *ngIf="!isLoadingCart">
-
         <!-- Danh sách sản phẩm -->
         <div class="cart-item" *ngFor="let item of cartItems">
           <div class="col-check">
@@ -104,8 +96,6 @@
           <p>Giỏ hàng của bạn đang trống</p>
           <a routerLink="/bo-suu-tap/BST003" class="btn-shop">Mua sắm ngay</a>
         </div>
-
-      </ng-container>
 
     </div>
 
