@@ -289,25 +289,25 @@ display:block;
   ngưỡng 400px mới chia cột; CSS columns giữ đúng thứ tự trên-xuống rồi
   mới chảy sang cột kế tiếp.
 */
-.dropdown:has(> a:nth-child(10)){
+.dropdown:has(> a:nth-child(11)){
 width:min(460px, calc(100vw - 32px));
 columns:2;
 column-gap:0;
 column-rule:1px solid rgba(217,179,130,0.35);
 }
 
-.dropdown:has(> a:nth-child(20)){
+.dropdown:has(> a:nth-child(21)){
 width:min(700px, calc(100vw - 32px));
 columns:3;
 }
 
 /* Giữ mega menu của các mục ở hai đầu thanh điều hướng trong viewport. */
-.menu-item:nth-child(-n + 3) > .dropdown:has(> a:nth-child(10)){
+.menu-item:nth-child(-n + 3) > .dropdown:has(> a:nth-child(11)){
 left:0;
 transform:none;
 }
 
-.menu-item:nth-last-child(-n + 4) > .dropdown:has(> a:nth-child(10)){
+.menu-item:nth-last-child(-n + 4) > .dropdown:has(> a:nth-child(11)){
 right:0;
 left:auto;
 transform:none;
