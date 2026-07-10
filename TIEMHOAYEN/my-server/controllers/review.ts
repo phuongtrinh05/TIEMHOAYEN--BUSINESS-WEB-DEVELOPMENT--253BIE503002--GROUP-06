@@ -238,6 +238,8 @@ export const getCustomerReviewHistory = async (req: Request, res: Response) => {
           dg.NHAN_VIEN_PHAN_HOI_ID,
           images.HINH_ANH_LIST
         FROM DANH_GIA dg
+        INNER JOIN DON_HANG dh
+          ON dg.DON_HANG_ID = dh.DON_HANG_ID
         INNER JOIN SAN_PHAM sp
           ON dg.SAN_PHAM_ID = sp.SAN_PHAM_ID
         LEFT JOIN KHACH_HANG kh
@@ -254,6 +256,7 @@ export const getCustomerReviewHistory = async (req: Request, res: Response) => {
           WHERE dgha.DANH_GIA_ID = dg.DANH_GIA_ID
         ) images
         WHERE dg.KHACH_HANG_ID = @KHACH_HANG_ID
+           OR dh.KHACH_HANG_ID = @KHACH_HANG_ID
         ORDER BY dg.NGAY_DANH_GIA DESC
       `);
 

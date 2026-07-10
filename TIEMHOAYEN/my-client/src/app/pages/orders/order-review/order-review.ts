@@ -413,7 +413,15 @@ export class OrderReview implements OnInit, OnDestroy {
     this.pickerError = '';
     this.submitMessage = '';
     this.resetForm(false);
-    this.loadProductReviews(product.productId);
+
+    if (this.isLoggedIn && this.currentCustomerId) {
+      this.loadCustomerReviewHistory();
+    } else {
+      const phone = this.normalizePhone(
+        this.guestPhone || this.selectedOrder?.receiverPhone || ''
+      );
+      this.loadGuestReviewHistory(phone);
+    }
   }
 
   openPicker(): void {
