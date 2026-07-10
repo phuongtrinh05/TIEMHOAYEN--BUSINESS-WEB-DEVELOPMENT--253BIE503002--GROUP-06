@@ -121,7 +121,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     try {
       const lookupPhone = this.getLookupPhoneFromRoute();
       const phoneQuery = lookupPhone ? `?phone=${encodeURIComponent(lookupPhone)}` : '';
-      const apiUrl = `http://localhost:3000/api/orders/${encodeURIComponent(orderId)}/detail${phoneQuery}`;
+      const apiUrl = `https://tiem-hoa-yen-api.onrender.com/api/orders/${encodeURIComponent(orderId)}/detail${phoneQuery}`;
       const response = await fetch(apiUrl);
 
       if (!response.ok) {
@@ -732,7 +732,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     this.cdr.detectChanges();
 
     try {
-      const response = await fetch(`http://localhost:3000/api/orders/${encodeURIComponent(this.order.id)}/cancel`, {
+      const response = await fetch(`https://tiem-hoa-yen-api.onrender.com/api/orders/${encodeURIComponent(this.order.id)}/cancel`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -778,7 +778,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     this.cdr.detectChanges();
 
     try {
-      const response = await fetch(`http://localhost:3000/api/orders/${encodeURIComponent(this.order.id)}/return-refund`, {
+      const response = await fetch(`https://tiem-hoa-yen-api.onrender.com/api/orders/${encodeURIComponent(this.order.id)}/return-refund`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -836,7 +836,7 @@ export class OrderDetail implements OnInit, OnDestroy {
           this.products
             .filter(product => String(product.id).startsWith('SP'))
             .map(product =>
-              fetch('http://localhost:3000/api/cart/add', {
+              fetch('https://tiem-hoa-yen-api.onrender.com/api/cart/add', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',

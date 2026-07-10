@@ -1343,11 +1343,11 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     }
 
     if (value.startsWith('/uploads/')) {
-      return `http://localhost:3000${value}`;
+      return `https://tiem-hoa-yen-api.onrender.com${value}`;
     }
 
     if (value.startsWith('uploads/')) {
-      return `http://localhost:3000/${value}`;
+      return `https://tiem-hoa-yen-api.onrender.com/${value}`;
     }
 
     if (value.startsWith('/assets/')) {
@@ -1359,7 +1359,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     }
 
     if (value.startsWith('/')) {
-      return `http://localhost:3000${value}`;
+      return `https://tiem-hoa-yen-api.onrender.com${value}`;
     }
 
     return `assets/images/products/${value}`;

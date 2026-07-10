@@ -19,7 +19,7 @@ export interface SuggestedMaterialResponse {
 
 @Injectable({ providedIn: 'root' })
 export class MaterialService {
-  private apiUrl = 'http://localhost:3000/api/materials';
+  private apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/materials';
 
   constructor(private http: HttpClient) {}
 

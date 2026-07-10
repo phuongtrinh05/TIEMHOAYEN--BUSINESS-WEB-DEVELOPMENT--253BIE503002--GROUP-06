@@ -71,7 +71,7 @@ export interface CustomerWishlistItem {
   providedIn: 'root',
 })
 export class CustomerService {
-  private readonly apiUrl = 'http://localhost:3000/api/customers';
+  private readonly apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/customers';
 
   constructor(private http: HttpClient) {}
 

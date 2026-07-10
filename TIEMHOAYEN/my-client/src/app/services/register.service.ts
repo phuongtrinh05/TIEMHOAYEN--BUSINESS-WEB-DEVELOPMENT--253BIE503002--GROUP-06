@@ -7,7 +7,7 @@ import { Observable } from 'rxjs';
 })
 export class RegisterService {
 
-  private apiUrl = 'http://localhost:3000/api/customers';
+  private apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/customers';
 
   constructor(private http: HttpClient) {}
 

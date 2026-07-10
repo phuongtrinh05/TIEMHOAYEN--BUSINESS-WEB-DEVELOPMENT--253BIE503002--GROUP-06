@@ -12,7 +12,7 @@ export interface Topic {
   providedIn: 'root'
 })
 export class TopicService {
-  private apiUrl = 'http://localhost:3000/api/categories';
+  private apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/categories';
 
   constructor(private http: HttpClient) {}
 

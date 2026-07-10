@@ -593,7 +593,7 @@ export class OrderRegistrantComponent implements OnInit {
       return;
     }
 
-    fetch(`http://localhost:3000/api/cart/customer/${customerId}`)
+    fetch(`https://tiem-hoa-yen-api.onrender.com/api/cart/customer/${customerId}`)
       .then(response => {
         if (!response.ok) {
           throw new Error(`Không lấy được giỏ hàng: ${response.status}`);

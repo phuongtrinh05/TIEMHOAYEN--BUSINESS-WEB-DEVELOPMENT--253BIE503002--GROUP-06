@@ -10,7 +10,7 @@ export interface Collection {
 
 @Injectable({ providedIn: 'root' })
 export class CollectionService {
-  private apiUrl = 'http://localhost:3000/api/collections';
+  private apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/collections';
 
   constructor(private http: HttpClient) {}
 

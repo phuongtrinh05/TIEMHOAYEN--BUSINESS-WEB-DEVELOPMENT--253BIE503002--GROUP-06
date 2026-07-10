@@ -11,7 +11,7 @@ import { RouterLink } from '@angular/router';
   styleUrl: './contact.css',
 })
 export class Contact {
-  private readonly contactApiUrl = 'http://localhost:3000/api/contacts';
+  private readonly contactApiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/contacts';
   private readonly requestTimeoutMs = 10000;
   private readonly cdr = inject(ChangeDetectorRef);
 

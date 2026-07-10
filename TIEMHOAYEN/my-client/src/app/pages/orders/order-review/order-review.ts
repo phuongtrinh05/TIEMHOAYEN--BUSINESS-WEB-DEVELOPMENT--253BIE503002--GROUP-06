@@ -48,7 +48,7 @@ export class OrderReview implements OnInit, OnDestroy {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly route = inject(ActivatedRoute);
-  private readonly apiUrl = 'http://localhost:3000/api/reviews';
+  private readonly apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/reviews';
 
   public readonly defaultImage = 'assets/images/hoa.jpg';
 

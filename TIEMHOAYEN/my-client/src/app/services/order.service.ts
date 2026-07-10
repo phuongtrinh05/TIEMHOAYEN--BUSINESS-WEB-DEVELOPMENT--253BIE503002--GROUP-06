@@ -114,7 +114,7 @@ export interface UpdateShippingPayload {
   providedIn: 'root',
 })
 export class OrderService {
-  private readonly apiUrl = 'http://localhost:3000/api/orders';
+  private readonly apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/orders';
 
   constructor(private http: HttpClient) {}
 

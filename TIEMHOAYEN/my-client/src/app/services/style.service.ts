@@ -10,7 +10,7 @@ export interface Style {
   providedIn: 'root'
 })
 export class StyleService {
-  private apiUrl = 'http://localhost:3000/api/styles';
+  private apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/styles';
 
   constructor(private http: HttpClient) {}
 

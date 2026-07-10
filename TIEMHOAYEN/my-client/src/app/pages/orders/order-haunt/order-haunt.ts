@@ -336,7 +336,7 @@ export class OrderHauntComponent implements OnInit {
       return;
     }
 
-    fetch('http://localhost:3000/api/orders/public-vouchers')
+    fetch('https://tiem-hoa-yen-api.onrender.com/api/orders/public-vouchers')
       .then((response) => {
         if (!response.ok) {
           throw new Error(`Không thể lấy voucher công khai: ${response.status}`);

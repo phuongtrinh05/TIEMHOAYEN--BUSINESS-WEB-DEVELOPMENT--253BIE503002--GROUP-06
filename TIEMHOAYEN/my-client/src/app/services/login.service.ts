@@ -8,7 +8,7 @@ import { Observable } from 'rxjs';
 export class LoginService {
 
   private apiUrl =
-    'http://localhost:3000/api/customers/login';
+    'https://tiem-hoa-yen-api.onrender.com/api/customers/login';
 
   constructor(
     private http: HttpClient
@@ -22,14 +22,14 @@ export class LoginService {
   }
   sendOtp(data:any){
   return this.http.post(
-    'http://localhost:3000/api/customers/send-otp',
+    'https://tiem-hoa-yen-api.onrender.com/api/customers/send-otp',
     data
   );
 }
 
 verifyOtp(data:any){
   return this.http.post(
-    'http://localhost:3000/api/customers/verify-otp',
+    'https://tiem-hoa-yen-api.onrender.com/api/customers/verify-otp',
     data
   );
 }

@@ -11,7 +11,7 @@ export interface Flower {
   providedIn: 'root'
 })
 export class FlowerService {
-  private apiUrl = 'http://localhost:3000/api/flowers';
+  private apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/flowers';
 
   constructor(private http: HttpClient) {}
 

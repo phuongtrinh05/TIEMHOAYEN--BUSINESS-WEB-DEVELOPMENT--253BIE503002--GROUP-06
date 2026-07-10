@@ -25,7 +25,7 @@ export interface CartResponse {
   providedIn: 'root',
 })
 export class CartService {
-  private readonly apiUrl = 'http://localhost:3000/api/cart';
+  private readonly apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/cart';
 
   constructor(private http: HttpClient) {}
 

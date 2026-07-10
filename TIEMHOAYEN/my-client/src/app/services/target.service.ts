@@ -11,7 +11,7 @@ export interface Target {
   providedIn: 'root'
 })
 export class TargetService {
-  private apiUrl = 'http://localhost:3000/api/targets';
+  private apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/targets';
 
   constructor(private http: HttpClient) {}
 

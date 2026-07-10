@@ -57,7 +57,7 @@ export interface ProductDetailResponse {
   providedIn: 'root'
 })
 export class ProductDetailService {
-  private apiUrl = 'http://localhost:3000/api/products';
+  private apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/products';
   private productCache = new Map<string, Observable<ProductDetailResponse>>();
   private allProducts$?: Observable<ProductDetailData[]>;
 

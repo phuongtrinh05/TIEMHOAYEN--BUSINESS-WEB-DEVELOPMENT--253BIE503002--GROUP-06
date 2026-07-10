@@ -91,8 +91,8 @@ export class PageHeader1 implements OnInit, OnDestroy {
   orderCode: string = '';
   phone: string = '';
 
-  private readonly productApiUrl = 'http://localhost:3000/api/products';
-  private readonly notificationApiUrl = 'http://localhost:3000/api/notifications';
+  private readonly productApiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/products';
+  private readonly notificationApiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/notifications';
 
   searchKeyword = '';
   searchResults: HeaderSearchProduct[] = [];

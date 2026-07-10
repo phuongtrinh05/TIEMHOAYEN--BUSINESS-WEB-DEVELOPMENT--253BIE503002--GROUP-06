@@ -8,7 +8,7 @@ import { Observable } from 'rxjs';
 export class ForgotPasswordService {
 
   private apiUrl =
-    'http://localhost:3000/api/customers/forgot-password';
+    'https://tiem-hoa-yen-api.onrender.com/api/customers/forgot-password';
 
   constructor(private http: HttpClient) {}
 

@@ -63,9 +63,9 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   private isSending = false;
 
   private webhookUrl = 'http://localhost:5678/webhook/2bb78087-b702-4dc2-91d4-12b65ef2dc79';
-  private handoffUrl = 'http://localhost:3000/api/chat/handoff';
-  private customerMessagesUrl = 'http://localhost:3000/api/chat/customer';
-  private guestMessagesUrl = 'http://localhost:3000/api/chat/guest';
+  private handoffUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chat/handoff';
+  private customerMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chat/customer';
+  private guestMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chat/guest';
   private readonly productContextKey = 'tiemHoaYenCurrentProductContext';
   private readonly guestConversationKey = 'tiemHoaYenGuestConversationId';
   private readonly maxImageSizeBytes = 5 * 1024 * 1024;

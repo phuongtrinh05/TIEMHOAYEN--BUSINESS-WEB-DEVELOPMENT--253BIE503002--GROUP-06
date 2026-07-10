@@ -109,7 +109,7 @@ export interface AllCategoryProductsResponse {
   providedIn: 'root'
 })
 export class CategoryProductService {
-  private apiUrl = 'http://localhost:3000/api/category-products';
+  private apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/category-products';
   private responseCache = new Map<string, Observable<unknown>>();
 
   constructor(private http: HttpClient) {}

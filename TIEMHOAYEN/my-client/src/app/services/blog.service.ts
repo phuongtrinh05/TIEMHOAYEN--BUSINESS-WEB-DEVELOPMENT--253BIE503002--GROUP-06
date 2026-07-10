@@ -18,7 +18,7 @@ export interface Blog {
   providedIn: 'root'
 })
 export class BlogService {
-  private apiUrl = 'http://localhost:3000/api/blogs';
+  private apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/blogs';
 
   constructor(private http: HttpClient) {}
 
