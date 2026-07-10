@@ -205,7 +205,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         );
 
         if (this.productGrid && this.products.length > 0) {
-          this.render();
+          this.syncWishlistButtons();
         }
       },
       error: (err) => {
@@ -973,6 +973,30 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     );
 
     cards.forEach((card) => this.revealObserver?.observe(card));
+  }
+
+  private syncWishlistButtons(): void {
+    if (!this.productGrid) return;
+
+    this.productGrid
+      .querySelectorAll<HTMLButtonElement>('[data-action="wishlist"]')
+      .forEach((button) => {
+        const productId = String(button.dataset['productId'] || '');
+        const isFavorite = this.wishlistProductIds.has(productId);
+        const product = this.products.find((item) => item.id === productId);
+
+        button.classList.toggle('is-active', isFavorite);
+        button.innerHTML = isFavorite
+          ? '<i class="bi bi-heart-fill"></i>'
+          : '<i class="bi bi-heart"></i>';
+
+        if (product) {
+          button.setAttribute(
+            'aria-label',
+            `${isFavorite ? 'Bá»' : 'ThÃªm'} ${product.name} ${isFavorite ? 'khá»i' : 'vÃ o'} yÃªu thÃ­ch`
+          );
+        }
+      });
   }
 
   private renderSelectedFilters(): void {
