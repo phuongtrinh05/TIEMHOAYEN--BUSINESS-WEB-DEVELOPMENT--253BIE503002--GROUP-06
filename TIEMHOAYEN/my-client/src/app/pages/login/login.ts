@@ -83,7 +83,11 @@ constructor(
         this.showForgotPasswordPopup = false;
         this.showOtpPopup = true;
         this.resetOtp();
-        this.cdr.detectChanges(); 
+        this.cdr.detectChanges();
+        setTimeout(() => {
+          const firstInput = document.getElementById('otp-0') as HTMLInputElement | null;
+          firstInput?.focus();
+        });
       },
 
       error: (err) => {
@@ -102,6 +106,17 @@ constructor(
   resetOtp(): void {
     this.otpValues = ['', '', '', '', '', ''];
     this.otpError = '';
+  }
+
+  private resetInvalidOtp(): void {
+    this.otpValues = ['', '', '', '', '', ''];
+    this.otpError = 'Mã code chưa đúng. Vui lòng nhập lại mã code.';
+    this.cdr.detectChanges();
+
+    setTimeout(() => {
+      const firstInput = document.getElementById('otp-0') as HTMLInputElement | null;
+      firstInput?.focus();
+    });
   }
 
   isOtpEmpty(): boolean {
@@ -174,8 +189,7 @@ verifyOtp(): void {
   this.otpError = '';
 
   if (!this.isOtpValid()) {
-    this.otpError = 'Mã code chưa đúng. Vui lòng nhập lại mã code.';
-    this.cdr.detectChanges();
+    this.resetInvalidOtp();
     return;
   }
 
@@ -198,8 +212,7 @@ verifyOtp(): void {
         res?.isValid === false ||
         res?.verified === false
       ) {
-        this.otpError = 'Mã code chưa đúng. Vui lòng nhập lại mã code.';
-        this.cdr.detectChanges();
+        this.resetInvalidOtp();
         return;
       }
 
@@ -218,8 +231,7 @@ verifyOtp(): void {
       console.warn(
         err.error?.message
       );
-      this.otpError = 'Mã code chưa đúng. Vui lòng nhập lại mã code.';
-      this.cdr.detectChanges();
+      this.resetInvalidOtp();
     }
   });
 }

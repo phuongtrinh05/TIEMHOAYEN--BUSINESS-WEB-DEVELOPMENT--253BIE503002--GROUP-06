@@ -727,7 +727,24 @@ private startBestSellerProductAutoSlide(): void {
   goToProductDetail(product: HomeProduct, event?: Event): void {
     event?.stopPropagation();
     event?.preventDefault();
-    this.router.navigate(['/product-detail', product.id]).then(() => this.scrollToTop());
+    this.router.navigate(['/product-detail', product.id], {
+      state: {
+        productPreview: {
+          id: product.id,
+          name: product.name,
+          price: product.priceValue,
+          originalPrice: product.originalPriceValue,
+          salePrice: product.salePriceValue,
+          image: product.image,
+          maxQuantity: product.maxQuantity,
+          breadcrumbGroup: product.occasion || 'Chá»§ Ä‘á»',
+          breadcrumbReturnUrl: '/homepage',
+          filters: {
+            chuDe: product.occasion ? [product.occasion] : []
+          }
+        }
+      }
+    }).then(() => this.scrollToTop());
   }
 
   buyNow(product: HomeProduct, event?: Event): void {
