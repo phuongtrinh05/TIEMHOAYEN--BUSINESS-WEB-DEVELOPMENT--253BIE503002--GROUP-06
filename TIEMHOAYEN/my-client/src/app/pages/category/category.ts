@@ -79,10 +79,10 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   private revealObserver?: IntersectionObserver;
   private readonly pendingWishlistProductIds = new Set<string>();
   private readonly priceMinLimit = 0;
-  private readonly priceMaxLimit = 3000000;
+  private readonly priceMaxLimit = 7000000;
   private readonly priceStep = 50000;
   private selectedPriceMin = 0;
-  private selectedPriceMax = 3000000;
+  private selectedPriceMax = 7000000;
 
   private readonly selectedFilters: Record<FilterGroup, Set<string>> = {
     chuDe: new Set<string>(),
@@ -285,7 +285,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       `)
       .join('');
 
-    this.categoryBreadcrumb.innerHTML = extraItems;
+    this.categoryBreadcrumb.innerHTML = extraItems || '<span class="breadcrumb-current">Sản phẩm</span>';
   }
 
   private loadAllProducts(selectedTopicIds: string[] = []): void {

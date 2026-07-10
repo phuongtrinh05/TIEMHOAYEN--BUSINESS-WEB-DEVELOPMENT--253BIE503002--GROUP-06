@@ -690,7 +690,9 @@ select {
 }
 
 .selected-filter-row[hidden] {
-  display: none !important;
+  display: flex !important;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .category-page,
@@ -1720,24 +1722,12 @@ select {
   border-radius: 8px;
   transition:
     color 0.2s ease,
-    background-color 0.2s ease,
-    font-weight 0.2s ease,
-    transform 0.2s ease;
-}
-
-.category-page .filter-content label:hover,
-.category-page .filter-content label:focus-within {
-  color: #731919;
-  background: rgba(217, 179, 130, 0.14);
-  font-weight: 800;
-  transform: translateX(3px);
+    background-color 0.2s ease;
 }
 
 .category-page .filter-content label:has(input:checked) {
   color: #731919;
   background: rgba(217, 179, 130, 0.14);
-  font-weight: 800;
-  transform: translateX(3px);
 }
 
 .category-page .filter-content label:has(input:checked):hover,
@@ -1749,8 +1739,8 @@ select {
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-.category-page .filter-content input[type="checkbox"]:hover,
-.category-page .filter-content input[type="checkbox"]:focus-visible {
+.category-page .filter-content input[type="checkbox"]:checked:hover,
+.category-page .filter-content input[type="checkbox"]:checked:focus-visible {
   transform: scale(1.12);
   box-shadow: 0 0 0 3px rgba(115, 25, 25, 0.12);
   outline: none;
