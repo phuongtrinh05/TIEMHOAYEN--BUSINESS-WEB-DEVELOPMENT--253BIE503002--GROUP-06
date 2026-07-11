@@ -200,8 +200,13 @@
 }
 
 .avatar-img {
+  display: block;
   width: 74px;
   height: 74px;
+  max-width: 74px;
+  max-height: 74px;
+  min-width: 74px;
+  min-height: 74px;
   aspect-ratio: 1 / 1;
   flex-shrink: 0;
   border: 3px solid var(--accent-color);
