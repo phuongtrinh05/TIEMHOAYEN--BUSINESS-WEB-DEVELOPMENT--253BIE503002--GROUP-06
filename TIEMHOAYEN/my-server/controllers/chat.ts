@@ -240,10 +240,14 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
 
       const isStaffMessage = row.LOAI_TIN_NHAN === 'staff_reply';
       const hasQuestion = !isStaffMessage && (!!displayQuestion || !!row.HINH_ANH);
-      const hasAnswer = !!String(row.NOI_DUNG_TRA_LOI || '').trim() || (isStaffMessage && !!row.HINH_ANH);
+      const answerCanUseStoredImage =
+        isStaffMessage || row.LOAI_TIN_NHAN === 'image_generation' || row.LOAI_TIN_NHAN === 'bot_reply';
+      const answerImageUrl = getChatMessageImageUrl(row.NOI_DUNG_TRA_LOI)
+        || (answerCanUseStoredImage ? row.HINH_ANH || null : null);
+      const hasAnswer = !!String(row.NOI_DUNG_TRA_LOI || '').trim() || !!answerImageUrl;
       const pending = isPendingChatStatus(row.TRANG_THAI);
 
-      if (row.SAN_PHAM_ID && !conversation.pinnedProduct) {
+      if (row.SAN_PHAM_ID) {
         conversation.pinnedProduct = {
           id: row.SAN_PHAM_ID,
           name: row.TEN_SAN_PHAM || row.SAN_PHAM_ID,
@@ -279,13 +283,17 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
         conversation.messages.push({
           id: `${row.TIN_NHAN_ID}-reply`,
           type: 'text',
-          text: row.NOI_DUNG_TRA_LOI || '',
+          text: row.NOI_DUNG_TRA_LOI && row.NOI_DUNG_TRA_LOI !== answerImageUrl
+            ? row.NOI_DUNG_TRA_LOI
+            : row.LOAI_TIN_NHAN === 'image_generation'
+              ? 'Đây là bó hoa mình tạo cho bạn'
+              : '',
           isCustomer: false,
           time,
           status: row.TRANG_THAI,
-          image: isStaffMessage ? row.HINH_ANH || null : null,
-          imageName: isStaffMessage ? row.TEN_FILE_ANH || null : null,
-          imageType: isStaffMessage ? row.LOAI_FILE_ANH || null : null
+          image: answerImageUrl,
+          imageName: answerCanUseStoredImage ? row.TEN_FILE_ANH || null : null,
+          imageType: answerCanUseStoredImage ? row.LOAI_FILE_ANH || null : null
         });
         conversation.lastMessage = row.NOI_DUNG_TRA_LOI || 'Ảnh';
       }
@@ -293,7 +301,7 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
       if (pending) {
         conversation.isPending = true;
         conversation.unread += 1;
-        conversation.pendingChatId = conversation.pendingChatId || row.TIN_NHAN_ID;
+        conversation.pendingChatId = row.TIN_NHAN_ID;
       }
     });
 
@@ -873,9 +881,13 @@ const getChatMessageImageUrl = (value: unknown): string | null => {
 
   if (/^data:image\/[^;]+;base64,/i.test(candidate)) return candidate;
   if (/^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?$/i.test(candidate)) return candidate;
+  if (/^https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*$/i.test(candidate)) {
+    return candidate;
+  }
 
   const imageUrlMatch = text.match(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?/i);
-  return imageUrlMatch?.[0] || null;
+  const storageUrlMatch = text.match(/https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*/i);
+  return imageUrlMatch?.[0] || storageUrlMatch?.[0] || null;
 };
 
 const parseN8nChatResponse = (response: unknown): { reply: string | null; imageUrl: string | null } => {

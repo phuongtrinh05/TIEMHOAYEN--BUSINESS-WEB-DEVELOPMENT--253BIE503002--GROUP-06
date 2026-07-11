@@ -119,9 +119,9 @@ export class CustomerChatComponent implements OnInit, AfterViewChecked {
         localStorage.setItem('selectedProduct', JSON.stringify({
             sku: productId,
             code: productId,
-            name: product.name,
-            image: product.image || '',
-            price: `${Number(product.price || 0).toLocaleString('vi-VN')}đ`,
+            name: product?.name || productId,
+            image: product?.image || '',
+            price: `${Number(product?.price || 0).toLocaleString('vi-VN')}đ`,
             rating: 0,
             quantity: 0,
             featured: false,

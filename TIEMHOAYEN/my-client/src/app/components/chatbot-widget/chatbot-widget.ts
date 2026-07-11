@@ -66,6 +66,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   private handoffUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats/handoff';
   private customerMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats/customer';
   private guestMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats/guest';
+  private readonly chatHistoryKeyPrefix = 'tiemHoaYenChatHistory';
   private readonly productContextKey = 'tiemHoaYenCurrentProductContext';
   private readonly guestConversationKey = 'tiemHoaYenGuestConversationId';
   private readonly maxImageSizeBytes = 5 * 1024 * 1024;
@@ -99,6 +100,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    this.loadLocalHistory();
     this.syncCustomerReplies();
     this.syncTimer = window.setInterval(() => {
       this.syncCustomerReplies();
@@ -157,6 +159,62 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     const value = String(chatId || '').trim();
     if (value) {
       localStorage.setItem(this.guestConversationKey, value);
+    }
+  }
+
+  private getChatHistoryKey(): string {
+    const customerId = this.getCustomerId();
+    if (customerId) {
+      return `${this.chatHistoryKeyPrefix}:customer:${customerId}`;
+    }
+
+    const guestConversationId = this.getGuestConversationId();
+    if (guestConversationId) {
+      return `${this.chatHistoryKeyPrefix}:guest:${guestConversationId}`;
+    }
+
+    return `${this.chatHistoryKeyPrefix}:anonymous`;
+  }
+
+  private loadLocalHistory(): void {
+    const historyKey = this.getChatHistoryKey();
+    const rawHistory = localStorage.getItem(historyKey);
+    if (!rawHistory) {
+      return;
+    }
+
+    try {
+      const history = JSON.parse(rawHistory);
+      if (!Array.isArray(history) || history.length === 0) {
+        return;
+      }
+
+      this.messages = history
+        .filter((item: Partial<Message>) => item?.role && item?.time)
+        .map((item: Partial<Message>) => ({
+          id: item.id,
+          role: item.role === 'user' ? 'user' : 'bot',
+          content: String(item.content || ''),
+          imageUrl: item.imageUrl,
+          type: 'text',
+          time: String(item.time || this.getTime())
+        }));
+
+      this.messages.forEach((item) => {
+        if (item.id) {
+          this.syncedServerMessageIds.add(String(item.id));
+        }
+      });
+    } catch {
+      localStorage.removeItem(historyKey);
+    }
+  }
+
+  private persistMessages(): void {
+    try {
+      localStorage.setItem(this.getChatHistoryKey(), JSON.stringify(this.messages.slice(-100)));
+    } catch {
+      // If browser storage is unavailable, server-side sync still works.
     }
   }
 
@@ -267,10 +325,9 @@ export class ChatbotWidget implements OnInit, OnDestroy {
       .pipe(take(1))
       .subscribe({
         next: (res) => {
+          const syncTypes = new Set(['human_request', 'staff_reply', 'image_generation', 'bot_reply']);
           const newServerMessages = (res?.messages || []).filter(
-            (msg) =>
-              (msg.type === 'human_request' || msg.type === 'staff_reply' || msg.type === 'image_generation') &&
-              !this.syncedServerMessageIds.has(msg.id)
+            (msg) => syncTypes.has(String(msg.type || '')) && !this.syncedServerMessageIds.has(msg.id)
           );
 
           if (!newServerMessages.length) {
@@ -279,6 +336,9 @@ export class ChatbotWidget implements OnInit, OnDestroy {
 
           newServerMessages.forEach((msg) => {
             this.syncedServerMessageIds.add(msg.id);
+            if (this.hasEquivalentMessage(msg)) {
+              return;
+            }
             this.messages.push({
               id: msg.id,
               role: msg.role,
@@ -289,6 +349,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
             });
           });
 
+          this.persistMessages();
           this.cdr.detectChanges();
           this.scrollToBottom();
         },
@@ -320,6 +381,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
             time: this.getTime()
           });
 
+          this.persistMessages();
           this.cdr.detectChanges();
           this.scrollToBottom();
         });
@@ -337,11 +399,23 @@ export class ChatbotWidget implements OnInit, OnDestroy {
             time: this.getTime()
           });
 
+          this.persistMessages();
           this.cdr.detectChanges();
           this.scrollToBottom();
         });
       }
     });
+  }
+
+  private hasEquivalentMessage(msg: ServerChatMessage): boolean {
+    const content = String(msg.content || '').trim();
+    const imageUrl = String(msg.imageUrl || '').trim();
+
+    return this.messages.some((item) =>
+      item.role === msg.role &&
+      String(item.content || '').trim() === content &&
+      String(item.imageUrl || '').trim() === imageUrl
+    );
   }
 
   private openGuestContactForm(text: string, imagePayload: ChatImagePayload | null = null): void {
@@ -404,6 +478,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     });
 
     this.pendingGuestImage = null;
+    this.persistMessages();
     this.cdr.detectChanges();
     this.scrollToBottom();
   }
@@ -422,9 +497,13 @@ export class ChatbotWidget implements OnInit, OnDestroy {
 
       if (/^data:image\/[^;]+;base64,/i.test(candidate)) return candidate;
       if (/^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?$/i.test(candidate)) return candidate;
+      if (/^https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*$/i.test(candidate)) {
+        return candidate;
+      }
 
       const imageUrlMatch = text.match(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?/i);
-      return imageUrlMatch?.[0] || '';
+      const storageUrlMatch = text.match(/https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*/i);
+      return imageUrlMatch?.[0] || storageUrlMatch?.[0] || '';
     };
 
     const visit = (value: any): void => {
@@ -505,6 +584,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     });
 
     this.clearSelectedFile();
+    this.persistMessages();
 
     this.isLoading = true;
     this.cdr.detectChanges();
@@ -547,6 +627,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
             
           });
 
+          this.persistMessages();
           this.cdr.detectChanges();
           this.scrollToBottom();
         });
@@ -561,6 +642,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
             type: 'text',
             time: this.getTime()
           });
+          this.persistMessages();
           this.cdr.detectChanges();
           this.scrollToBottom();
         });
