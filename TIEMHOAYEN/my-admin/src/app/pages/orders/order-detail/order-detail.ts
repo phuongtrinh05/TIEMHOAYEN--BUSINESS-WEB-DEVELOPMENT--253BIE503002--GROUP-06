@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { AdminApiService, AdminOrderDetail } from '../../../services/admin-api.service';
-import { combineLatest, Subscription } from 'rxjs';
+import { combineLatest, interval, Subscription } from 'rxjs';
 
 // ===== TYPES =====
 export type OrderStatus =
@@ -267,6 +267,10 @@ export class OrderDetail implements OnInit, OnDestroy {
   toastType: ToastType = 'success';
   private lastLoadedOrderId = '';
   private routeSub?: Subscription;
+  private liveRefreshSub?: Subscription;
+  private liveRefreshOrderId = '';
+  private readonly liveRefreshMs = 10000;
+  private isLiveRefreshInFlight = false;
   private toastTimeoutId?: ReturnType<typeof setTimeout>;
 
   paymentStatusOptions: PaymentStatus[] = [
@@ -299,12 +303,16 @@ export class OrderDetail implements OnInit, OnDestroy {
 
       if (orderId) {
         this.fetchOrderDetailOnce(orderId);
+        this.startLiveDatabaseRefresh(orderId);
+      } else {
+        this.stopLiveDatabaseRefresh();
       }
     });
   }
 
   ngOnDestroy(): void {
     this.routeSub?.unsubscribe();
+    this.stopLiveDatabaseRefresh();
     if (this.toastTimeoutId) {
       clearTimeout(this.toastTimeoutId);
     }
@@ -319,23 +327,69 @@ export class OrderDetail implements OnInit, OnDestroy {
     this.loadOrderDetail(orderId);
   }
 
-  private loadOrderDetail(orderId: string): void {
-    this.isLoadingOrder = true;
-    this.orderLoadError = '';
+  private loadOrderDetail(orderId: string, isLiveRefresh = false): void {
+    if (isLiveRefresh && this.isLiveRefreshInFlight) {
+      return;
+    }
+
+    if (isLiveRefresh) {
+      this.isLiveRefreshInFlight = true;
+    } else {
+      this.isLoadingOrder = true;
+      this.orderLoadError = '';
+    }
 
     this.adminApi.getOrderDetail(orderId).subscribe({
       next: (response) => {
         this.applyApiOrderDetail(response.order);
         this.isLoadingOrder = false;
+        this.isLiveRefreshInFlight = false;
         this.cdr.detectChanges();
       },
       error: (error) => {
         console.error('Cannot load order detail', error);
-        this.orderLoadError = 'Cannot load order detail from database.';
+        if (!isLiveRefresh) {
+          this.orderLoadError = 'Cannot load order detail from database.';
+        }
         this.isLoadingOrder = false;
+        this.isLiveRefreshInFlight = false;
         this.cdr.detectChanges();
       },
     });
+  }
+
+  private startLiveDatabaseRefresh(orderId: string): void {
+    if (this.liveRefreshOrderId === orderId && this.liveRefreshSub) {
+      return;
+    }
+
+    this.stopLiveDatabaseRefresh();
+    this.liveRefreshOrderId = orderId;
+    this.liveRefreshSub = interval(this.liveRefreshMs).subscribe(() => {
+      if (this.shouldPauseLiveRefresh()) {
+        return;
+      }
+
+      this.loadOrderDetail(orderId, true);
+    });
+  }
+
+  private stopLiveDatabaseRefresh(): void {
+    this.liveRefreshSub?.unsubscribe();
+    this.liveRefreshSub = undefined;
+    this.liveRefreshOrderId = '';
+    this.isLiveRefreshInFlight = false;
+  }
+
+  private shouldPauseLiveRefresh(): boolean {
+    return (
+      this.isEditing ||
+      this.editingNote ||
+      this.isReplying ||
+      this.showShipperDropdown ||
+      this.showStatusDropdown ||
+      this.showRejectPopup
+    );
   }
 
   private applyApiOrderDetail(source: AdminOrderDetail): void {

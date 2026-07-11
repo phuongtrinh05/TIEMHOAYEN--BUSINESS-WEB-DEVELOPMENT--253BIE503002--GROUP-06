@@ -689,8 +689,8 @@ export class AdminApiService {
     return date.toISOString().slice(0, 10);
   }
 
-  getOrders(): Observable<AdminOrdersResponse> {
-    if (this.ordersCache && Date.now() - this.ordersCacheAt < this.ordersCacheTtlMs) {
+  getOrders(options: { forceRefresh?: boolean } = {}): Observable<AdminOrdersResponse> {
+    if (!options.forceRefresh && this.ordersCache && Date.now() - this.ordersCacheAt < this.ordersCacheTtlMs) {
       return of(this.ordersCache);
     }
 
@@ -700,6 +700,10 @@ export class AdminApiService {
         this.ordersCacheAt = Date.now();
       })
     );
+  }
+
+  refreshOrdersFromDatabase(): Observable<AdminOrdersResponse> {
+    return this.getOrders({ forceRefresh: true });
   }
 
   getOrderDetail(orderId: string): Observable<AdminOrderDetailResponse> {
@@ -877,6 +881,10 @@ export class AdminApiService {
 
   getTransactions(): Observable<AdminTransactionsResponse> {
     return this.http.get<AdminTransactionsResponse>(`${this.apiUrl}/transactions`);
+  }
+
+  refreshTransactionsFromDatabase(): Observable<AdminTransactionsResponse> {
+    return this.getTransactions();
   }
 
   createTransaction(payload: {

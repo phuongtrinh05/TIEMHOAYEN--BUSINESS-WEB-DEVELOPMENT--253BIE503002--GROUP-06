@@ -1,8 +1,9 @@
 ﻿import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
+import { OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { forkJoin } from 'rxjs';
+import { forkJoin, interval, Subscription } from 'rxjs';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -72,7 +73,7 @@ type SortOption =
   templateUrl: './order-list.html',
   styleUrl: './order-list.css',
 })
-export class OrderList implements OnInit {
+export class OrderList implements OnInit, OnDestroy {
   constructor(
     private readonly router: Router,
     private readonly adminApi: AdminApiService,
@@ -168,11 +169,19 @@ export class OrderList implements OnInit {
   isExportMenuOpen = false;
   isLoading = false;
   loadError = '';
+  private readonly liveRefreshMs = 10000;
+  private liveRefreshSub?: Subscription;
+  private isLiveRefreshInFlight = false;
 
   ngOnInit(): void {
     if (isPlatformBrowser(this.platformId)) {
       this.loadOrders();
+      this.startLiveDatabaseRefresh();
     }
+  }
+
+  ngOnDestroy(): void {
+    this.liveRefreshSub?.unsubscribe();
   }
 
   private normalizePaymentStatusText(value: string): PaymentStatus {
@@ -231,11 +240,28 @@ export class OrderList implements OnInit {
     return order.customerId || 'Kh\u00e1ch l\u1ebb';
   }
 
-  private loadOrders(): void {
-    this.isLoading = true;
-    this.loadError = '';
+  private loadOrders(forceRefresh = false, preservePage = false): void {
+    if (preservePage && this.isLiveRefreshInFlight) {
+      return;
+    }
 
-    this.adminApi.getOrders().subscribe({
+    const previousPage = this.currentPage;
+    const selectedIds = preservePage
+      ? new Set(this.selectedOrders.map(order => order.id))
+      : new Set<string>();
+
+    if (preservePage) {
+      this.isLiveRefreshInFlight = true;
+    } else {
+      this.isLoading = true;
+      this.loadError = '';
+    }
+
+    const ordersRequest = forceRefresh
+      ? this.adminApi.refreshOrdersFromDatabase()
+      : this.adminApi.getOrders();
+
+    ordersRequest.subscribe({
       next: (response) => {
         this.allOrders = response.orders.map(order => ({
           id: order.id,
@@ -244,20 +270,46 @@ export class OrderList implements OnInit {
           total: Number(order.total || 0),
           paymentStatus: this.normalizePaymentStatusText(order.paymentStatus),
           orderStatus: this.normalizeOrderStatusText(order.orderStatus),
-          selected: false,
+          selected: selectedIds.has(order.id),
         }));
-        this.currentPage = 1;
+        this.currentPage = preservePage ? previousPage : 1;
         this.rebuildOrderView();
         this.isLoading = false;
+        this.isLiveRefreshInFlight = false;
         this.cdr.detectChanges();
       },
       error: (error) => {
         console.error('Khong the tai danh sach don hang admin:', error);
-        this.loadError = 'Khong the tai danh sach don hang tu backend.';
+        if (!preservePage) {
+          this.loadError = 'Khong the tai danh sach don hang tu backend.';
+        }
         this.isLoading = false;
+        this.isLiveRefreshInFlight = false;
         this.cdr.detectChanges();
       },
     });
+  }
+
+  private startLiveDatabaseRefresh(): void {
+    this.liveRefreshSub?.unsubscribe();
+    this.liveRefreshSub = interval(this.liveRefreshMs).subscribe(() => {
+      if (this.shouldPauseLiveRefresh()) {
+        return;
+      }
+
+      this.loadOrders(true, true);
+    });
+  }
+
+  private shouldPauseLiveRefresh(): boolean {
+    return (
+      this.selectedOrders.length > 0 ||
+      this.isFilterMenuOpen ||
+      this.isSortMenuOpen ||
+      this.isMoreMenuOpen ||
+      this.isEditStatusMenuOpen ||
+      this.isExportMenuOpen
+    );
   }
 
   get totalOrderCount(): number {
@@ -533,9 +585,10 @@ export class OrderList implements OnInit {
     this.rebuildOrderView();
 
     forkJoin(requests).subscribe({
+      next: () => this.loadOrders(true, true),
       error: (error) => {
         console.error('Khong the cap nhat trang thai don hang:', error);
-        this.loadOrders();
+        this.loadOrders(true);
       },
     });
 
@@ -782,5 +835,3 @@ export class OrderList implements OnInit {
     return new Date(year, month - 1, day).getTime();
   }
 }
-
-

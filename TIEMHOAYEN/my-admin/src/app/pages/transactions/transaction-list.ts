@@ -1,6 +1,7 @@
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
+import { ChangeDetectorRef, Component, Inject, OnDestroy, OnInit, PLATFORM_ID } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { interval, Subscription } from 'rxjs';
 import { AdminApiService, AdminTransaction } from '../../services/admin-api.service';
 
 interface TransactionItem {
@@ -25,7 +26,7 @@ interface TransactionItem {
     templateUrl: './transaction-list.html',
     styleUrls: ['./transaction-list.css']
 })
-export class TransactionListComponent implements OnInit {
+export class TransactionListComponent implements OnInit, OnDestroy {
     searchKeyword = '';
     selectedGateway = 'Tất cả';
     selectedStatus = 'Tất cả';
@@ -60,6 +61,9 @@ export class TransactionListComponent implements OnInit {
     pageSize = 10;
 
     editingTransactionIds = new Set<number>();
+    private readonly liveRefreshMs = 10000;
+    private liveRefreshSub?: Subscription;
+    private isLiveRefreshInFlight = false;
 
     constructor(
         private adminApi: AdminApiService,
@@ -74,27 +78,85 @@ export class TransactionListComponent implements OnInit {
     ngOnInit(): void {
         if (isPlatformBrowser(this.platformId)) {
             this.loadTransactions();
+            this.startLiveDatabaseRefresh();
         }
     }
 
-    private loadTransactions(): void {
-        this.adminApi.getTransactions().subscribe({
+    ngOnDestroy(): void {
+        this.liveRefreshSub?.unsubscribe();
+    }
+
+    private loadTransactions(preservePage = false): void {
+        if (preservePage && this.isLiveRefreshInFlight) {
+            return;
+        }
+
+        const previousPage = this.currentPage;
+        const selectedCodes = preservePage
+            ? new Set(this.transactions.filter((item) => item.selected).map((item) => item.code))
+            : new Set<string>();
+
+        if (preservePage) {
+            this.isLiveRefreshInFlight = true;
+        }
+
+        this.adminApi.refreshTransactionsFromDatabase().subscribe({
             next: (response) => {
-                this.transactions = response.transactions.map((transaction) => this.mapTransaction(transaction));
-                this.filteredTransactions = [...this.transactions];
-                this.currentPage = 1;
-                this.editingTransactionIds.clear();
+                this.transactions = response.transactions.map((transaction) => {
+                    const item = this.mapTransaction(transaction);
+                    return {
+                        ...item,
+                        selected: selectedCodes.has(item.code)
+                    };
+                });
+
+                if (preservePage) {
+                    this.applyFilters(false);
+                    this.currentPage = previousPage;
+                    this.ensureValidPage();
+                } else {
+                    this.filteredTransactions = [...this.transactions];
+                    this.currentPage = 1;
+                    this.editingTransactionIds.clear();
+                }
+
+                this.isLiveRefreshInFlight = false;
                 this.cdr.detectChanges();
             },
             error: (error) => {
                 console.error('Cannot load admin transactions', error);
-                this.transactions = [];
-                this.filteredTransactions = [];
-                this.currentPage = 1;
-                this.editingTransactionIds.clear();
+                if (!preservePage) {
+                    this.transactions = [];
+                    this.filteredTransactions = [];
+                    this.currentPage = 1;
+                    this.editingTransactionIds.clear();
+                }
+                this.isLiveRefreshInFlight = false;
                 this.cdr.detectChanges();
             }
         });
+    }
+
+    private startLiveDatabaseRefresh(): void {
+        this.liveRefreshSub?.unsubscribe();
+        this.liveRefreshSub = interval(this.liveRefreshMs).subscribe(() => {
+            if (this.shouldPauseLiveRefresh()) {
+                return;
+            }
+
+            this.loadTransactions(true);
+        });
+    }
+
+    private shouldPauseLiveRefresh(): boolean {
+        return (
+            this.isAddModalOpen ||
+            this.editingTransactionIds.size > 0 ||
+            this.hasSelectedTransactions ||
+            this.isFilterMenuOpen ||
+            this.isSortMenuOpen ||
+            this.isExportMenuOpen
+        );
     }
 
     private mapTransaction(transaction: AdminTransaction): TransactionItem {
@@ -227,7 +289,7 @@ export class TransactionListComponent implements OnInit {
         return this.filteredTransactions.slice(start, start + this.pageSize);
     }
 
-    applyFilters(): void {
+    applyFilters(resetPage = true): void {
         const keyword = this.searchKeyword.trim().toLowerCase();
 
         this.filteredTransactions = this.transactions.filter((item) => {
@@ -251,7 +313,10 @@ export class TransactionListComponent implements OnInit {
             return matchesKeyword && matchesGateway && matchesStatus;
         });
 
-        this.currentPage = 1;
+        if (resetPage) {
+            this.currentPage = 1;
+        }
+        this.ensureValidPage();
         this.cleanEditingRows();
     }
 
@@ -448,6 +513,16 @@ export class TransactionListComponent implements OnInit {
 
         this.currentPage = page;
         this.cleanEditingRows();
+    }
+
+    private ensureValidPage(): void {
+        if (this.currentPage > this.totalPages) {
+            this.currentPage = this.totalPages;
+        }
+
+        if (this.currentPage < 1) {
+            this.currentPage = 1;
+        }
     }
 
     formatPrice(value: number): string {
