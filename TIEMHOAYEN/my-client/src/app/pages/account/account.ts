@@ -237,7 +237,7 @@ export class AccountComponent implements OnInit, OnDestroy {
       email: '',
       birthDate: '',
       phone: '',
-      avatar: 'assets/images/account-avt.png',
+      avatar: '',
     };
 
   // ===== TODO: replace with API call GET /api/orders =====
@@ -670,7 +670,7 @@ export class AccountComponent implements OnInit, OnDestroy {
       next: (res) => {
         const updated = res.customer;
 
-        this.userInfo.avatar = updated.AVATAR || 'assets/images/account-avt.png';
+        this.userInfo.avatar = updated.AVATAR || '';
         localStorage.setItem('khachHang', JSON.stringify(updated));
 
         this.cdr.detectChanges();
