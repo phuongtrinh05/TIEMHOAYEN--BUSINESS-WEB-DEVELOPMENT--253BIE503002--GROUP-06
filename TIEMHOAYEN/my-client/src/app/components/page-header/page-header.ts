@@ -818,7 +818,7 @@ export class PageHeader implements OnInit, OnDestroy {
 
   private getDefaultNotificationLink(type: HeaderNotification['type'], orderCode: string): string {
     if (type === 'promotion') {
-      return '/homepage';
+      return '/';
     }
 
     if (type === 'point') {

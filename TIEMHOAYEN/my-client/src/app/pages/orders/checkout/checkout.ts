@@ -610,11 +610,11 @@ export class CheckoutComponent implements OnInit, OnDestroy {
   }
 
   closeCheckoutResultPopup(): void {
-    this.router.navigate(['/homepage']);
+    this.router.navigate(['/']);
   }
 
   continueShopping(): void {
-    this.router.navigate(['/homepage']);
+    this.router.navigate(['/']);
   }
 
   viewOrderDetail(): void {
@@ -622,7 +622,7 @@ export class CheckoutComponent implements OnInit, OnDestroy {
 
     if (!orderId) {
       console.warn('Không tìm thấy mã đơn hàng để xem chi tiết.');
-      this.router.navigate(['/homepage']);
+      this.router.navigate(['/']);
       return;
     }
 

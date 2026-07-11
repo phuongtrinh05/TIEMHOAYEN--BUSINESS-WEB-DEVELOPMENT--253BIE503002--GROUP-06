@@ -738,7 +738,7 @@ private startBestSellerProductAutoSlide(): void {
           image: product.image,
           maxQuantity: product.maxQuantity,
           breadcrumbGroup: product.occasion || 'Chá»§ Ä‘á»',
-          breadcrumbReturnUrl: '/homepage',
+          breadcrumbReturnUrl: '/',
           filters: {
             chuDe: product.occasion ? [product.occasion] : []
           }

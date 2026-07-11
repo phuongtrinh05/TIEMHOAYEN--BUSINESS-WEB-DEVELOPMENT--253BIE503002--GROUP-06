@@ -52,8 +52,8 @@ export const routes: Routes = [
   // =========================
   {
     path: '',
-    redirectTo: 'homepage',
-    pathMatch: 'full',
+    component: Homepage,
+    title: 'Trang chủ - Tiệm Hoa Yên',
   },
 
   // =========================
@@ -61,8 +61,8 @@ export const routes: Routes = [
   // =========================
   {
     path: 'homepage',
-    component: Homepage,
-    title: 'Trang chủ - Tiệm Hoa Yên',
+    redirectTo: '',
+    pathMatch: 'full',
   },
   {
     path: 'contact',
@@ -331,6 +331,6 @@ export const routes: Routes = [
   // =========================
   {
     path: '**',
-    redirectTo: 'homepage',
+    redirectTo: '',
   },
 ];

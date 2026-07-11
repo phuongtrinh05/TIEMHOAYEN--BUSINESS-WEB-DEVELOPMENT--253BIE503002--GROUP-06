@@ -1856,6 +1856,58 @@ textarea.address-modal-input.address-detail-textarea {
 ========================= */
 
 @media (min-width: 768px) and (max-width: 1024px) {
+  .account-page > .container-fluid > .row > .col-lg-3,
+  .account-page > .container-fluid > .row > .col-lg-9 {
+    flex: 0 0 100%;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .sidebar {
+    position: relative;
+    top: auto;
+    width: 100%;
+  }
+
+  .sidebar-menu {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 8px;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sidebar-menu li {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+    white-space: nowrap;
+  }
+
+  .sidebar-menu li.active::before {
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: -2px;
+    width: auto;
+    height: 3px;
+  }
+
+  .sidebar-menu li.logout-item {
+    margin: 0;
+    border-top: 1px solid transparent;
+  }
+
+  .profile-info {
+    grid-template-columns: 74px minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .btn-edit-profile {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+
   .wishlist-grid {
     grid-template-columns: repeat(3, minmax(0, 190px));
   }
@@ -1866,6 +1918,55 @@ textarea.address-modal-input.address-detail-textarea {
 }
 
 @media (max-width: 768px) {
+  .account-page {
+    width: 100%;
+    padding: 0 12px;
+  }
+
+  .account-page > .container-fluid > .row > [class*="col-"] {
+    flex: 0 0 100%;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .sidebar {
+    position: relative;
+    top: auto;
+    width: 100%;
+  }
+
+  .sidebar-menu {
+    display: flex;
+    gap: 7px;
+    overflow-x: auto;
+    padding: 8px;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sidebar-menu li {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 42px;
+    margin: 0;
+    padding: 9px 11px;
+    white-space: nowrap;
+  }
+
+  .sidebar-menu li.active::before {
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: -2px;
+    width: auto;
+    height: 3px;
+  }
+
+  .sidebar-menu li.logout-item {
+    margin: 0;
+    border-top-color: transparent;
+  }
+
   .table-responsive {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -1901,6 +2002,21 @@ textarea.address-modal-input.address-detail-textarea {
     grid-template-columns: 1fr;
   }
 
+  .avatar-wrap {
+    justify-self: center;
+  }
+
+  .info-grid {
+    display: grid;
+    width: 100%;
+    gap: 12px;
+  }
+
+  .btn-edit-profile {
+    justify-self: stretch;
+    justify-content: center;
+  }
+
   .wishlist-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1909,11 +2025,24 @@ textarea.address-modal-input.address-detail-textarea {
     grid-template-columns: 1fr;
   }
 
+  .address-slider {
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .slider-arrow {
+    width: 30px;
+    height: 30px;
+    align-self: center;
+  }
+
   .voucher-list {
     grid-template-columns: 1fr;
   }
 
   .section-card {
+    width: 100%;
+    min-width: 0;
     padding: 16px;
   }
 
@@ -1981,4 +2110,26 @@ textarea.address-modal-input.address-detail-textarea {
 .avatar-remove-btn i {
   font-size: 12px;
   line-height: 1;
+}
+
+@media (max-width: 480px) {
+  .wishlist-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .voucher-item {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .voucher-code {
+    width: 86px;
+    min-width: 86px;
+  }
+
+  .voucher-right {
+    width: 100%;
+    padding-top: 0;
+    text-align: left;
+  }
 }

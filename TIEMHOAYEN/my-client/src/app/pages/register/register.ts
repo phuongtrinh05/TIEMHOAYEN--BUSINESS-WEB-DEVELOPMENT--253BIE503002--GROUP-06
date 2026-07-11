@@ -121,7 +121,7 @@ export class RegisterComponent {
       new Event('auth-changed')
     );
 
-    this.router.navigate(['/homepage']);
+    this.router.navigate(['/']);
 
   }
 

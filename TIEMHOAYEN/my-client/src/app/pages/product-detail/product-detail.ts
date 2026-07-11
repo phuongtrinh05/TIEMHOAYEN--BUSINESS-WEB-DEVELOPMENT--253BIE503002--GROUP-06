@@ -182,7 +182,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       const productId = params.get('id');
 
       if (!productId) {
-        this.router.navigate(['/homepage']);
+        this.router.navigate(['/']);
         return;
       }
 
