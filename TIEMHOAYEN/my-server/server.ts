@@ -46,11 +46,9 @@ import collectionRoutes from './routes/collection.js';
 import collectionProductRoutes from './routes/collectionProduct.js';
 import styleRoutes from './routes/style.js';
 import categoryProductRoutes from './routes/categoryProduct.js';
-import chatRoute from './routes/chat.js';
 import contactRoutes from './routes/contact.js';
 
 const app = express();
-app.use('/api/chat', chatRoute);
 const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
   .split(',')
   .map((origin) => origin.trim())
@@ -111,6 +109,7 @@ app.use('/api/order-vouchers', orderVoucherRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/wishlists', wishlistRoutes);
 app.use('/api/faqs', faqRoutes);
+app.use('/api/chat', chatRoutes);
 app.use('/api/chats', chatRoutes);
 app.use('/api/image-requests', imageRequestRoutes);
 app.use('/api/notifications', notificationRoutes);
