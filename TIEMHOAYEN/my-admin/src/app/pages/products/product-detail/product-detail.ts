@@ -1,7 +1,7 @@
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   AdminApiService,
   AdminProductDetailForm,
@@ -58,6 +58,7 @@ export class ProductDetail implements OnInit {
 
   constructor(
     private readonly router: Router,
+    private readonly route: ActivatedRoute,
     private readonly adminApi: AdminApiService,
     private readonly cdr: ChangeDetectorRef,
     @Inject(PLATFORM_ID) private readonly platformId: object
@@ -98,6 +99,11 @@ export class ProductDetail implements OnInit {
   }
 
   private getSelectedProductId(): string {
+    const queryProductId = this.route.snapshot.queryParamMap.get('id')?.trim();
+    if (queryProductId) {
+      return queryProductId;
+    }
+
     const raw = localStorage.getItem('selectedProduct');
     if (!raw) {
       return '';

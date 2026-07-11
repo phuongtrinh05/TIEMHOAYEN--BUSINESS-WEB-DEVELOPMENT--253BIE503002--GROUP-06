@@ -1,6 +1,6 @@
 :host{
-    flex:0 0 260px;
-    width:260px;
+    flex:0 0 360px;
+    width:360px;
     transition:.3s ease;
 }
 
@@ -10,7 +10,7 @@
 }
 
 .admin-sidebar{
-    width:260px;
+    width:360px;
     height:100vh;
     position:fixed;
     left:0;
@@ -104,7 +104,6 @@
 
     display:flex;
     align-items:center;
-    gap:12px;
     min-width:0;
 
     padding:0 12px;

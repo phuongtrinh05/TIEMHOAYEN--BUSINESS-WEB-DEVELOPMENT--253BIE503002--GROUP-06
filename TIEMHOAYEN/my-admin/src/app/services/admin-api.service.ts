@@ -240,6 +240,7 @@ export interface AdminChatProduct {
   id?: string;
   name: string;
   price: number;
+  image?: string | null;
 }
 
 export interface AdminChatMessage {

@@ -104,13 +104,19 @@
 
       <div class="order-info-bar" *ngIf="selectedConv.pinnedProduct">
         <div class="order-code">
-          <span class="product-thumb"><i class="bi bi-flower1"></i></span>
+          <span class="product-thumb">
+            <img
+              *ngIf="selectedConv.pinnedProduct!.image"
+              [src]="selectedConv.pinnedProduct!.image!"
+              [alt]="selectedConv.pinnedProduct!.name">
+            <i class="bi bi-flower1"></i>
+          </span>
           <div>
             <strong>{{ selectedConv.pinnedProduct!.name }}</strong>
             <p>{{ selectedConv.pinnedProduct!.price | number }}đ</p>
           </div>
         </div>
-        <button type="button" class="order-link">
+        <button type="button" class="order-link" (click)="openProductDetail(selectedConv.pinnedProduct)">
           Xem chi tiết sản phẩm <i class="bi bi-chevron-right"></i>
         </button>
       </div>
@@ -136,8 +142,21 @@
             </div>
 
             <div class="msg-content" [class.mine]="msg.isCustomer">
-              <div class="product-bubble" *ngIf="msg.product">
-                <div class="pb-thumb"><i class="bi bi-bag-check"></i></div>
+              <div
+                class="product-bubble"
+                *ngIf="msg.product"
+                role="button"
+                tabindex="0"
+                (click)="openProductDetail(msg.product)"
+                (keydown.enter)="openProductDetail(msg.product)"
+                (keydown.space)="openProductDetail(msg.product); $event.preventDefault()">
+                <div class="pb-thumb">
+                  <img
+                    *ngIf="msg.product.image"
+                    [src]="msg.product.image"
+                    [alt]="msg.product.name">
+                  <i class="bi bi-bag-check"></i>
+                </div>
                 <div>
                   <div class="pb-name">{{ msg.product.name }}</div>
                   <div class="pb-price">{{ msg.product.price | number }}đ</div>

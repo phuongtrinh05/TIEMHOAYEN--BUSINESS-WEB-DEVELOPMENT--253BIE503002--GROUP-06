@@ -76,8 +76,10 @@
 
           <img
             *ngIf="msg.imageUrl"
-            [src]="msg.imageUrl"
+            [src]="getDisplayImageUrl(msg.imageUrl)"
             alt="flower"
+            referrerpolicy="no-referrer"
+            (error)="onImageError($event)"
             class="chat-image">
 
           <div>
@@ -98,8 +100,10 @@
           *ngIf="msg.role === 'user' && msg.imageUrl">
 
           <img
-            [src]="msg.imageUrl"
+            [src]="getDisplayImageUrl(msg.imageUrl)"
             class="chat-image"
+            referrerpolicy="no-referrer"
+            (error)="onImageError($event)"
             alt="preview">
 
           <div *ngIf="msg.content">

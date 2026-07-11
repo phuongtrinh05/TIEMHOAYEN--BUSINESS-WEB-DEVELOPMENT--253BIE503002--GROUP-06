@@ -112,7 +112,6 @@
       <!-- Rich-text editor - TinyMCE -->
       <div class="editor-wrap" [class.editor-wrap--error]="submitted && isContentEmpty">
         <editor
-          [apiKey]="tinyMceApiKey"
           [(ngModel)]="editorContent"
           [init]="tinyMceConfig"
           (ngModelChange)="onTinyMceChange()"

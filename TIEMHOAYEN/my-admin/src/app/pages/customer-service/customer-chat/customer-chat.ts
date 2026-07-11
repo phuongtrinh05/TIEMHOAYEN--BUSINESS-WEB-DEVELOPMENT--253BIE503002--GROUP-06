@@ -1,13 +1,16 @@
 import { CommonModule } from '@angular/common';
 import { AfterViewChecked, ChangeDetectorRef, Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { AdminApiService, AdminChatMessage } from '../../../services/admin-api.service';
 
 interface Product {
     id?: string;
+    sku?: string;
+    code?: string;
     name: string;
     price: number;
+    image?: string | null;
 }
 
 interface Message {
@@ -67,6 +70,7 @@ export class CustomerChatComponent implements OnInit, AfterViewChecked {
 
     constructor(
         private readonly adminApi: AdminApiService,
+        private readonly router: Router,
         private readonly cdr: ChangeDetectorRef
     ) {}
 
@@ -106,6 +110,27 @@ export class CustomerChatComponent implements OnInit, AfterViewChecked {
 
     canOpenCustomerDetail(conv: Conversation | null): boolean {
         return !!conv?.customerId && conv.customerId.startsWith('CUST');
+    }
+
+    openProductDetail(product: Product | null | undefined): void {
+        const productId = String(product?.id || product?.sku || product?.code || '').trim();
+        if (!productId) return;
+
+        localStorage.setItem('selectedProduct', JSON.stringify({
+            sku: productId,
+            code: productId,
+            name: product?.name || productId,
+            image: product?.image || '',
+            price: `${Number(product?.price || 0).toLocaleString('vi-VN')}đ`,
+            rating: 0,
+            quantity: 0,
+            featured: false,
+            sale: false,
+            status: ''
+        }));
+        this.router.navigate(['/products/product-detail'], {
+            queryParams: { id: productId }
+        });
     }
 
     selectConversation(conv: Conversation | null): void {

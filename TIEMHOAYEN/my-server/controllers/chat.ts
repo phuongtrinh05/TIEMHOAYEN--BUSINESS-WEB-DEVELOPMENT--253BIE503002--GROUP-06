@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+﻿import { Request, Response } from 'express';
 import { connectDB, sql } from '../db.js';
 import axios from 'axios';
 
@@ -176,10 +176,17 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
         kh.SDT,
         sp.TEN_SAN_PHAM,
         sp.GIA,
-        sp.GIA_KHUYEN_MAI
+        sp.GIA_KHUYEN_MAI,
+        img.URL AS HINH_ANH_SAN_PHAM
       FROM TIN_NHAN_CHAT t
       LEFT JOIN KHACH_HANG kh ON kh.KHACH_HANG_ID = t.KHACH_HANG_ID
       LEFT JOIN SAN_PHAM sp ON sp.SAN_PHAM_ID = t.SAN_PHAM_ID
+      OUTER APPLY (
+        SELECT TOP 1 URL
+        FROM HINH_ANH_SAN_PHAM
+        WHERE HINH_ANH_SAN_PHAM.SAN_PHAM_ID = sp.SAN_PHAM_ID
+        ORDER BY LA_ANH_CHINH DESC, HINH_ANH_ID ASC
+      ) img
       ORDER BY ISNULL(t.KHACH_HANG_ID, t.TIN_NHAN_ID), t.THOI_GIAN_GUI ASC, t.TIN_NHAN_ID ASC
     `);
 
@@ -214,7 +221,8 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
             ? {
                 id: row.SAN_PHAM_ID,
                 name: row.TEN_SAN_PHAM || row.SAN_PHAM_ID,
-                price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0)
+                price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0),
+                image: row.HINH_ANH_SAN_PHAM || null
               }
             : null,
           messages: []
@@ -232,14 +240,19 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
 
       const isStaffMessage = row.LOAI_TIN_NHAN === 'staff_reply';
       const hasQuestion = !isStaffMessage && (!!displayQuestion || !!row.HINH_ANH);
-      const hasAnswer = !!String(row.NOI_DUNG_TRA_LOI || '').trim() || (isStaffMessage && !!row.HINH_ANH);
+      const answerCanUseStoredImage =
+        isStaffMessage || row.LOAI_TIN_NHAN === 'image_generation' || row.LOAI_TIN_NHAN === 'bot_reply';
+      const answerImageUrl = getChatMessageImageUrl(row.NOI_DUNG_TRA_LOI)
+        || (answerCanUseStoredImage ? row.HINH_ANH || null : null);
+      const hasAnswer = !!String(row.NOI_DUNG_TRA_LOI || '').trim() || !!answerImageUrl;
       const pending = isPendingChatStatus(row.TRANG_THAI);
 
-      if (row.SAN_PHAM_ID && !conversation.pinnedProduct) {
+      if (row.SAN_PHAM_ID) {
         conversation.pinnedProduct = {
           id: row.SAN_PHAM_ID,
           name: row.TEN_SAN_PHAM || row.SAN_PHAM_ID,
-          price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0)
+          price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0),
+          image: row.HINH_ANH_SAN_PHAM || null
         };
       }
 
@@ -258,7 +271,8 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
             ? {
                 id: row.SAN_PHAM_ID,
                 name: row.TEN_SAN_PHAM || row.SAN_PHAM_ID,
-                price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0)
+                price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0),
+                image: row.HINH_ANH_SAN_PHAM || null
               }
             : null
         });
@@ -269,13 +283,17 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
         conversation.messages.push({
           id: `${row.TIN_NHAN_ID}-reply`,
           type: 'text',
-          text: row.NOI_DUNG_TRA_LOI || '',
+          text: row.NOI_DUNG_TRA_LOI && row.NOI_DUNG_TRA_LOI !== answerImageUrl
+            ? row.NOI_DUNG_TRA_LOI
+            : row.LOAI_TIN_NHAN === 'image_generation'
+              ? 'Đây là bó hoa mình tạo cho bạn'
+              : '',
           isCustomer: false,
           time,
           status: row.TRANG_THAI,
-          image: isStaffMessage ? row.HINH_ANH || null : null,
-          imageName: isStaffMessage ? row.TEN_FILE_ANH || null : null,
-          imageType: isStaffMessage ? row.LOAI_FILE_ANH || null : null
+          image: answerImageUrl,
+          imageName: answerCanUseStoredImage ? row.TEN_FILE_ANH || null : null,
+          imageType: answerCanUseStoredImage ? row.LOAI_FILE_ANH || null : null
         });
         conversation.lastMessage = row.NOI_DUNG_TRA_LOI || 'Ảnh';
       }
@@ -283,7 +301,7 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
       if (pending) {
         conversation.isPending = true;
         conversation.unread += 1;
-        conversation.pendingChatId = conversation.pendingChatId || row.TIN_NHAN_ID;
+        conversation.pendingChatId = row.TIN_NHAN_ID;
       }
     });
 
@@ -324,29 +342,41 @@ export const getCustomerChatMessages = async (req: Request, res: Response) => {
     const pool = await connectDB();
     const result = await pool.request()
       .input('KHACH_HANG_ID', sql.NVarChar(20), customerId)
+      .input('REPLY_PARENT_START', sql.NVarChar(50), REPLY_PARENT_START)
+      .input('REPLY_PARENT_END', sql.NVarChar(50), REPLY_PARENT_END)
       .query(`
-        SELECT TOP 100
-          TIN_NHAN_ID,
-          KHACH_HANG_ID,
-          DON_HANG_ID,
-          SAN_PHAM_ID,
-          NHAN_VIEN_ID,
-          NOI_DUNG_CAU_HOI,
-          NOI_DUNG_TRA_LOI,
-          LOAI_TIN_NHAN,
-          THOI_GIAN_GUI,
-          TRANG_THAI,
+        SELECT TOP 300
+          t.TIN_NHAN_ID,
+          t.KHACH_HANG_ID,
+          t.DON_HANG_ID,
+          t.SAN_PHAM_ID,
+          t.NHAN_VIEN_ID,
+          t.NOI_DUNG_CAU_HOI,
+          t.NOI_DUNG_TRA_LOI,
+          t.LOAI_TIN_NHAN,
+          t.THOI_GIAN_GUI,
+          t.TRANG_THAI,
           CASE
             WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'HINH_ANH') IS NULL THEN NULL
-            WHEN HINH_ANH IS NULL OR LTRIM(RTRIM(HINH_ANH)) = '' THEN NULL
-            WHEN HINH_ANH LIKE 'http%' THEN HINH_ANH
-            ELSE CONCAT('${CHAT_PUBLIC_BASE_URL}/api/chats/image/', TIN_NHAN_ID)
+            WHEN t.HINH_ANH IS NULL OR LTRIM(RTRIM(t.HINH_ANH)) = '' THEN NULL
+            WHEN t.HINH_ANH LIKE 'http%' THEN t.HINH_ANH
+            ELSE CONCAT('${CHAT_PUBLIC_BASE_URL}/api/chats/image/', t.TIN_NHAN_ID)
           END AS HINH_ANH,
-          CASE WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'TEN_FILE_ANH') IS NULL THEN NULL ELSE TEN_FILE_ANH END AS TEN_FILE_ANH,
-          CASE WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'LOAI_FILE_ANH') IS NULL THEN NULL ELSE LOAI_FILE_ANH END AS LOAI_FILE_ANH
-        FROM TIN_NHAN_CHAT
-        WHERE KHACH_HANG_ID = @KHACH_HANG_ID
-        ORDER BY THOI_GIAN_GUI ASC, TIN_NHAN_ID ASC
+          CASE WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'TEN_FILE_ANH') IS NULL THEN NULL ELSE t.TEN_FILE_ANH END AS TEN_FILE_ANH,
+          CASE WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'LOAI_FILE_ANH') IS NULL THEN NULL ELSE t.LOAI_FILE_ANH END AS LOAI_FILE_ANH
+        FROM TIN_NHAN_CHAT t
+        WHERE
+          t.KHACH_HANG_ID = @KHACH_HANG_ID
+          OR (
+            t.LOAI_TIN_NHAN = 'staff_reply'
+            AND EXISTS (
+              SELECT 1
+              FROM TIN_NHAN_CHAT parent
+              WHERE parent.KHACH_HANG_ID = @KHACH_HANG_ID
+                AND t.NOI_DUNG_CAU_HOI LIKE '%' + @REPLY_PARENT_START + parent.TIN_NHAN_ID + @REPLY_PARENT_END + '%'
+            )
+          )
+        ORDER BY t.THOI_GIAN_GUI ASC, t.TIN_NHAN_ID ASC
       `);
 
     const messages: any[] = [];
@@ -355,7 +385,15 @@ export const getCustomerChatMessages = async (req: Request, res: Response) => {
       const time = formatTime(row.THOI_GIAN_GUI);
       const question = toNullableString(getVisibleQuestion(row.NOI_DUNG_CAU_HOI));
       const answer = toNullableString(row.NOI_DUNG_TRA_LOI);
-      const isStaffMessage = row.LOAI_TIN_NHAN === 'staff_reply';
+      const messageType = toNullableString(row.LOAI_TIN_NHAN) || 'human_request';
+      const isStaffMessage = messageType === 'staff_reply';
+      const detectedAnswerImageUrl = getChatMessageImageUrl(answer);
+      const answerImageUrl = getDisplayChatImageUrl(detectedAnswerImageUrl, row.TIN_NHAN_ID);
+      const answerContent = answer && answer !== detectedAnswerImageUrl && answer !== answerImageUrl
+        ? answer
+        : messageType === 'image_generation'
+          ? 'Day la bo hoa minh tao cho ban'
+          : '';
 
       if (!isStaffMessage && (question || row.HINH_ANH)) {
         messages.push({
@@ -367,19 +405,19 @@ export const getCustomerChatMessages = async (req: Request, res: Response) => {
           imageType: row.LOAI_FILE_ANH || null,
           time,
           status: row.TRANG_THAI,
-          type: row.LOAI_TIN_NHAN
+          type: messageType
         });
       }
 
-      if (answer || (isStaffMessage && row.HINH_ANH)) {
+      if (answer || answerImageUrl) {
         messages.push({
           id: `${row.TIN_NHAN_ID}-reply`,
           role: 'bot',
-          content: answer || '',
-          imageUrl: isStaffMessage ? row.HINH_ANH || null : null,
+          content: answerContent,
+          imageUrl: answerImageUrl,
           time,
           status: row.TRANG_THAI,
-          type: row.LOAI_TIN_NHAN || 'staff_reply'
+          type: messageType === 'human_request' ? 'bot_reply' : messageType
         });
       }
     });
@@ -406,13 +444,15 @@ export const getChatImage = async (req: Request, res: Response) => {
       .input('TIN_NHAN_ID', sql.NVarChar(20), chatId)
       .query(`
         SELECT TOP 1
+          NOI_DUNG_TRA_LOI,
           CASE WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'HINH_ANH') IS NULL THEN NULL ELSE HINH_ANH END AS HINH_ANH,
           CASE WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'LOAI_FILE_ANH') IS NULL THEN NULL ELSE LOAI_FILE_ANH END AS LOAI_FILE_ANH
         FROM TIN_NHAN_CHAT
         WHERE TIN_NHAN_ID = @TIN_NHAN_ID
       `);
 
-    const rawImage = toNullableString(result.recordset[0]?.HINH_ANH);
+    const rawImage = toNullableString(result.recordset[0]?.HINH_ANH)
+      || getChatMessageImageUrl(result.recordset[0]?.NOI_DUNG_TRA_LOI);
     const fileType = toNullableString(result.recordset[0]?.LOAI_FILE_ANH) || 'image/jpeg';
 
     if (!rawImage) {
@@ -458,7 +498,7 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
       .input('REPLY_PARENT_START', sql.NVarChar(50), REPLY_PARENT_START)
       .input('REPLY_PARENT_END', sql.NVarChar(50), REPLY_PARENT_END)
       .query(`
-        SELECT TOP 100
+        SELECT TOP 300
           TIN_NHAN_ID,
           NOI_DUNG_CAU_HOI,
           NOI_DUNG_TRA_LOI,
@@ -485,7 +525,15 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
       const time = formatTime(row.THOI_GIAN_GUI);
       const question = toNullableString(getVisibleQuestion(row.NOI_DUNG_CAU_HOI));
       const answer = toNullableString(row.NOI_DUNG_TRA_LOI);
-      const isStaffMessage = row.LOAI_TIN_NHAN === 'staff_reply';
+      const messageType = toNullableString(row.LOAI_TIN_NHAN) || 'human_request';
+      const isStaffMessage = messageType === 'staff_reply';
+      const detectedAnswerImageUrl = getChatMessageImageUrl(answer);
+      const answerImageUrl = getDisplayChatImageUrl(detectedAnswerImageUrl, row.TIN_NHAN_ID);
+      const answerContent = answer && answer !== detectedAnswerImageUrl && answer !== answerImageUrl
+        ? answer
+        : messageType === 'image_generation'
+          ? 'Day la bo hoa minh tao cho ban'
+          : '';
 
       if (!isStaffMessage && (question || row.HINH_ANH)) {
         messages.push({
@@ -497,21 +545,21 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
           imageType: row.LOAI_FILE_ANH || null,
           time,
           status: row.TRANG_THAI,
-          type: row.LOAI_TIN_NHAN
+          type: messageType
         });
       }
 
-      if (answer || (isStaffMessage && row.HINH_ANH)) {
+      if (answer || answerImageUrl) {
         messages.push({
           id: `${row.TIN_NHAN_ID}-reply`,
           role: 'bot',
-          content: answer || '',
-          imageUrl: isStaffMessage ? row.HINH_ANH || null : null,
+          content: answerContent,
+          imageUrl: answerImageUrl,
           imageName: isStaffMessage ? row.TEN_FILE_ANH || null : null,
           imageType: isStaffMessage ? row.LOAI_FILE_ANH || null : null,
           time,
           status: row.TRANG_THAI,
-          type: row.LOAI_TIN_NHAN || 'staff_reply'
+          type: messageType === 'human_request' ? 'bot_reply' : messageType
         });
       }
     });
@@ -553,7 +601,11 @@ export const replyAdminChat = async (req: Request, res: Response) => {
       .input('CHAT_ID', sql.NVarChar(20), toNullableString(chatId));
 
     const targetResult = await targetRequest.query(`
-      SELECT TOP 1 TIN_NHAN_ID
+      SELECT TOP 1
+        TIN_NHAN_ID,
+        KHACH_HANG_ID,
+        DON_HANG_ID,
+        SAN_PHAM_ID
       FROM TIN_NHAN_CHAT
       WHERE
         (@CHAT_ID IS NOT NULL AND TIN_NHAN_ID = @CHAT_ID)
@@ -579,7 +631,8 @@ export const replyAdminChat = async (req: Request, res: Response) => {
       ORDER BY THOI_GIAN_GUI DESC, TIN_NHAN_ID DESC
     `);
 
-    const targetChatId = targetResult.recordset[0]?.TIN_NHAN_ID;
+    const targetRow = targetResult.recordset[0];
+    const targetChatId = targetRow?.TIN_NHAN_ID;
     const employeeId = toNullableString(staffId);
 
     if (targetChatId) {
@@ -602,11 +655,23 @@ export const replyAdminChat = async (req: Request, res: Response) => {
       WHERE TIN_NHAN_ID LIKE 'CHAT%'
     `);
     const newChatId = makeChatId(Number(nextIdResult.recordset[0]?.NEXT_NUM || 1));
-    const replyParentBlock = conversationId.startsWith('CHAT') ? buildReplyParentBlock(targetChatId || conversationId) : null;
+    const replyParentBlock = targetChatId
+      ? buildReplyParentBlock(targetChatId)
+      : conversationId.startsWith('CHAT')
+        ? buildReplyParentBlock(conversationId)
+        : null;
+    const replyCustomerId = toNullableString(targetRow?.KHACH_HANG_ID)
+      || (conversationId.startsWith('CUST') ? conversationId : null);
+    const replyOrderId = toNullableString(targetRow?.DON_HANG_ID)
+      || (conversationId.startsWith('ORD') || conversationId.startsWith('YEN') ? conversationId : null);
+    const replyProductId = toNullableString(targetRow?.SAN_PHAM_ID)
+      || (conversationId.startsWith('SP') ? conversationId : null);
 
     const insertRequest = pool.request()
       .input('TIN_NHAN_ID', sql.NVarChar(20), newChatId)
-      .input('KHACH_HANG_ID', sql.NVarChar(20), conversationId.startsWith('CUST') ? conversationId : null)
+      .input('KHACH_HANG_ID', sql.NVarChar(20), replyCustomerId)
+      .input('DON_HANG_ID', sql.NVarChar(20), replyOrderId)
+      .input('SAN_PHAM_ID', sql.NVarChar(20), replyProductId)
       .input('NHAN_VIEN_ID', sql.NVarChar(20), employeeId)
       .input('NOI_DUNG_CAU_HOI', sql.NVarChar(sql.MAX), replyParentBlock)
       .input('NOI_DUNG_TRA_LOI', sql.NVarChar(sql.MAX), reply)
@@ -623,6 +688,8 @@ export const replyAdminChat = async (req: Request, res: Response) => {
         INSERT INTO TIN_NHAN_CHAT (
           TIN_NHAN_ID,
           KHACH_HANG_ID,
+          DON_HANG_ID,
+          SAN_PHAM_ID,
           NHAN_VIEN_ID,
           NOI_DUNG_CAU_HOI,
           NOI_DUNG_TRA_LOI,
@@ -636,6 +703,8 @@ export const replyAdminChat = async (req: Request, res: Response) => {
         VALUES (
           @TIN_NHAN_ID,
           @KHACH_HANG_ID,
+          @DON_HANG_ID,
+          @SAN_PHAM_ID,
           @NHAN_VIEN_ID,
           @NOI_DUNG_CAU_HOI,
           @NOI_DUNG_TRA_LOI,
@@ -652,6 +721,8 @@ export const replyAdminChat = async (req: Request, res: Response) => {
         INSERT INTO TIN_NHAN_CHAT (
           TIN_NHAN_ID,
           KHACH_HANG_ID,
+          DON_HANG_ID,
+          SAN_PHAM_ID,
           NHAN_VIEN_ID,
           NOI_DUNG_CAU_HOI,
           NOI_DUNG_TRA_LOI,
@@ -662,6 +733,8 @@ export const replyAdminChat = async (req: Request, res: Response) => {
         VALUES (
           @TIN_NHAN_ID,
           @KHACH_HANG_ID,
+          @DON_HANG_ID,
+          @SAN_PHAM_ID,
           @NHAN_VIEN_ID,
           @NOI_DUNG_CAU_HOI,
           @NOI_DUNG_TRA_LOI,
@@ -813,6 +886,151 @@ const makeChatImageApiUrl = (chatId: unknown): string | null => {
   return id ? `${CHAT_PUBLIC_BASE_URL}/api/chats/image/${encodeURIComponent(id)}` : null;
 };
 
+const getDisplayChatImageUrl = (imageValue: unknown, chatId: unknown): string | null => {
+  const imageUrl = getChatMessageImageUrl(imageValue);
+
+  if (!imageUrl) {
+    return null;
+  }
+
+  return /^https?:\/\//i.test(imageUrl) ? imageUrl : makeChatImageApiUrl(chatId);
+};
+
+const cleanImageUrl = (value: unknown): string | null => {
+  const text = toNullableString(value);
+  if (!text) return null;
+
+  return text
+    .replace(/^["'([{<]+/, '')
+    .replace(/["')\]}>.,;]+$/, '')
+    .trim();
+};
+
+const getChatMessageImageUrl = (value: unknown): string | null => {
+  const text = toNullableString(value);
+  if (!text) return null;
+
+  if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+    try {
+      const parsed = JSON.parse(text);
+      const visited = new Set<unknown>();
+
+      const scan = (item: unknown): string | null => {
+        if (item === null || item === undefined || visited.has(item)) return null;
+        if (typeof item === 'string') return item === text ? null : getChatMessageImageUrl(item);
+        if (typeof item !== 'object') return null;
+
+        visited.add(item);
+
+        if (Array.isArray(item)) {
+          for (const entry of item) {
+            const found = scan(entry);
+            if (found) return found;
+          }
+
+          return null;
+        }
+
+        const row = item as Record<string, unknown>;
+        const direct =
+          row.image_url ??
+          row.imageUrl ??
+          row.url ??
+          row.secure_url ??
+          row.fileUrl ??
+          (row.image as Record<string, unknown> | undefined)?.url ??
+          (row.data as Record<string, unknown> | undefined)?.url;
+        const foundDirect = scan(direct);
+        if (foundDirect) return foundDirect;
+
+        for (const entry of Object.values(row)) {
+          const found = scan(entry);
+          if (found) return found;
+        }
+
+        return null;
+      };
+
+      const parsedUrl = scan(parsed);
+      if (parsedUrl) return parsedUrl;
+    } catch {
+      // Keep scanning as plain text below.
+    }
+  }
+
+  const markdownImage = text.match(/!\[[^\]]*]\(([^)\s]+)[^)]*\)/);
+  const candidate = cleanImageUrl(markdownImage?.[1] || text);
+  if (!candidate) return null;
+
+  if (/^data:image\/[^;]+;base64,/i.test(candidate)) return candidate;
+  if (/^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?$/i.test(candidate)) return candidate;
+  if (/^https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*$/i.test(candidate)) {
+    return candidate;
+  }
+
+  const imageUrlMatch = text.match(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?/i);
+  const storageUrlMatch = text.match(/https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*/i);
+  return cleanImageUrl(imageUrlMatch?.[0] || storageUrlMatch?.[0]) || null;
+};
+
+const parseN8nChatResponse = (response: unknown): { reply: string | null; imageUrl: string | null } => {
+  let reply: string | null = null;
+  let imageUrl: string | null = null;
+  const visited = new Set<unknown>();
+
+  const visit = (value: unknown): void => {
+    if (value === null || value === undefined || visited.has(value)) return;
+
+    if (typeof value === 'string') {
+      const text = value.trim();
+      if (!text) return;
+
+      if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+        try {
+          visit(JSON.parse(text));
+          return;
+        } catch {
+          // Keep scanning the plain text below.
+        }
+      }
+
+      if (!imageUrl) imageUrl = getChatMessageImageUrl(text);
+      return;
+    }
+
+    if (typeof value !== 'object') return;
+    visited.add(value);
+
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    const row = value as Record<string, any>;
+    const textCandidate = row.output ?? row.reply ?? row.message ?? row.text ?? row.content?.parts?.[0]?.text;
+    const imageCandidate =
+      row.image_url ??
+      row.imageUrl ??
+      row.image?.url ??
+      row.image?.src ??
+      row.image?.data ??
+      row.url ??
+      row.secure_url ??
+      row.fileUrl ??
+      row.data?.url;
+
+    if (!reply && typeof textCandidate === 'string' && !getChatMessageImageUrl(textCandidate)) {
+      reply = textCandidate.trim() || null;
+    }
+    if (!imageUrl) imageUrl = getChatMessageImageUrl(imageCandidate);
+
+    Object.values(row).forEach(visit);
+  };
+
+  visit(response);
+  return { reply, imageUrl };
+};
+
 const getCachedChatData = <T>(key: string): T | null => {
   const entry = chatCache.get(key) as CacheEntry<T> | undefined;
 
@@ -941,9 +1159,16 @@ export const sendChat = async (req: Request, res: Response) => {
             TEN_SAN_PHAM,
             GIA,
             GIA_KHUYEN_MAI,
-            MO_TA
-        FROM SAN_PHAM
-        WHERE SAN_PHAM_ID=@SAN_PHAM_ID
+            MO_TA,
+            img.URL AS HINH_ANH
+        FROM SAN_PHAM sp
+        OUTER APPLY (
+          SELECT TOP 1 URL
+          FROM HINH_ANH_SAN_PHAM
+          WHERE HINH_ANH_SAN_PHAM.SAN_PHAM_ID = sp.SAN_PHAM_ID
+          ORDER BY LA_ANH_CHINH DESC, HINH_ANH_ID ASC
+        ) img
+        WHERE sp.SAN_PHAM_ID=@SAN_PHAM_ID
         `);
       productInfo = productResult.recordset[0] ?? null;
     }
@@ -970,6 +1195,86 @@ export const sendChat = async (req: Request, res: Response) => {
       // AI/image workflows can take longer than 30 seconds to finish.
       timeout: 120000
     });
+
+    const parsedResponse = parseN8nChatResponse(n8nRes.data);
+
+    if (customerId && (parsedResponse.reply || parsedResponse.imageUrl)) {
+      const answerText = parsedResponse.reply
+        || (parsedResponse.imageUrl ? 'Đây là bó hoa mình tạo cho bạn' : null);
+      const messageType = parsedResponse.imageUrl ? 'image_generation' : 'bot_reply';
+
+      const existingHistory = await pool.request()
+        .input('KHACH_HANG_ID', sql.NVarChar(20), customerId)
+        .input('NOI_DUNG_CAU_HOI', sql.NVarChar(sql.MAX), chatInput)
+        .input('NOI_DUNG_TRA_LOI', sql.NVarChar(sql.MAX), answerText)
+        .input('HINH_ANH', sql.NVarChar(sql.MAX), parsedResponse.imageUrl)
+        .query(`
+          SELECT TOP 1 TIN_NHAN_ID
+          FROM TIN_NHAN_CHAT
+          WHERE KHACH_HANG_ID = @KHACH_HANG_ID
+            AND ISNULL(NOI_DUNG_CAU_HOI, '') = ISNULL(@NOI_DUNG_CAU_HOI, '')
+            AND THOI_GIAN_GUI >= DATEADD(SECOND, -90, GETDATE())
+            AND (
+              ISNULL(NOI_DUNG_TRA_LOI, '') = ISNULL(@NOI_DUNG_TRA_LOI, '')
+              OR ISNULL(NOI_DUNG_TRA_LOI, '') = ISNULL(@HINH_ANH, '')
+              OR ISNULL(HINH_ANH, '') = ISNULL(@HINH_ANH, '')
+            )
+        `);
+
+      if (existingHistory.recordset.length === 0) {
+        const nextIdResult = await pool.request().query(`
+          SELECT ISNULL(MAX(TRY_CONVERT(int, SUBSTRING(TIN_NHAN_ID, 5, 20))), 0) + 1 AS NEXT_NUM
+          FROM TIN_NHAN_CHAT
+          WHERE TIN_NHAN_ID LIKE 'CHAT%'
+        `);
+        const chatHistoryId = makeChatId(Number(nextIdResult.recordset[0]?.NEXT_NUM || 1));
+
+        await pool.request()
+          .input('TIN_NHAN_ID', sql.NVarChar(20), chatHistoryId)
+          .input('KHACH_HANG_ID', sql.NVarChar(20), customerId)
+          .input('DON_HANG_ID', sql.NVarChar(20), toNullableString(targetOrderId))
+          .input('SAN_PHAM_ID', sql.NVarChar(20), toNullableString(productId))
+          .input('NOI_DUNG_CAU_HOI', sql.NVarChar(sql.MAX), chatInput)
+          .input('NOI_DUNG_TRA_LOI', sql.NVarChar(sql.MAX), answerText)
+          .input('LOAI_TIN_NHAN', sql.NVarChar(50), messageType)
+          .input('TRANG_THAI', sql.NVarChar(50), 'completed')
+          .input('HINH_ANH', sql.NVarChar(sql.MAX), parsedResponse.imageUrl)
+          .input('TEN_FILE_ANH', sql.NVarChar(255), parsedResponse.imageUrl ? 'chatbot-image' : null)
+          .input('LOAI_FILE_ANH', sql.NVarChar(100), parsedResponse.imageUrl ? 'image/web' : null)
+          .query(`
+            INSERT INTO TIN_NHAN_CHAT (
+              TIN_NHAN_ID,
+              KHACH_HANG_ID,
+              DON_HANG_ID,
+              SAN_PHAM_ID,
+              NOI_DUNG_CAU_HOI,
+              NOI_DUNG_TRA_LOI,
+              LOAI_TIN_NHAN,
+              THOI_GIAN_GUI,
+              TRANG_THAI,
+              HINH_ANH,
+              TEN_FILE_ANH,
+              LOAI_FILE_ANH
+            )
+            VALUES (
+              @TIN_NHAN_ID,
+              @KHACH_HANG_ID,
+              @DON_HANG_ID,
+              @SAN_PHAM_ID,
+              @NOI_DUNG_CAU_HOI,
+              @NOI_DUNG_TRA_LOI,
+              @LOAI_TIN_NHAN,
+              GETDATE(),
+              @TRANG_THAI,
+              @HINH_ANH,
+              @TEN_FILE_ANH,
+              @LOAI_FILE_ANH
+            )
+          `);
+
+        clearChatCache();
+      }
+    }
 
     return res.status(200).json(n8nRes.data);
 

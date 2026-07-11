@@ -411,6 +411,20 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    overflow: hidden;
+}
+
+.product-thumb img,
+.pb-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.product-thumb:has(img),
+.pb-thumb:has(img) {
+    background-image: none;
 }
 
 .product-thumb i,
@@ -433,6 +447,7 @@
 
 .order-link {
     border: none;
+    cursor: pointer;
     background: transparent;
     color: #7b8190;
     display: inline-flex;
@@ -636,6 +651,17 @@
     background: #ffffff;
     padding: 10px;
     box-shadow: none;
+    cursor: pointer;
+}
+
+.product-bubble:hover {
+    border-color: #d9b382;
+    background: #fffafa;
+}
+
+.product-bubble:focus-visible {
+    outline: 2px solid #731919;
+    outline-offset: 3px;
 }
 
 .message-image {

@@ -66,6 +66,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   private handoffUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats/handoff';
   private customerMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats/customer';
   private guestMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats/guest';
+  private readonly chatHistoryKeyPrefix = 'tiemHoaYenChatHistory';
   private readonly productContextKey = 'tiemHoaYenCurrentProductContext';
   private readonly guestConversationKey = 'tiemHoaYenGuestConversationId';
   private readonly maxImageSizeBytes = 5 * 1024 * 1024;
@@ -99,8 +100,11 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    // Staff-message polling will be enabled when the matching backend GET
-    // endpoints are available. Direct n8n replies are handled by sendMessage().
+    this.loadLocalHistory();
+    this.syncCustomerReplies();
+    this.syncTimer = window.setInterval(() => {
+      this.syncCustomerReplies();
+    }, 4000);
   }
 
   ngOnDestroy(): void {
@@ -109,7 +113,10 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     }
   }
 
-  openChat(): void { this.isOpen = true; }
+  openChat(): void {
+    this.isOpen = true;
+    this.syncCustomerReplies();
+  }
   closeChat(): void { this.isOpen = false; }
 
   getTime(): string {
@@ -137,7 +144,14 @@ export class ChatbotWidget implements OnInit, OnDestroy {
 
     try {
       const customer = JSON.parse(rawCustomer);
-      return customer?.KHACH_HANG_ID ? String(customer.KHACH_HANG_ID) : null;
+      const customerId =
+        customer?.KHACH_HANG_ID ??
+        customer?.khachHangId ??
+        customer?.customerId ??
+        customer?.id ??
+        customer?.maKhachHang;
+
+      return customerId ? String(customerId) : null;
     } catch {
       return null;
     }
@@ -153,6 +167,181 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     if (value) {
       localStorage.setItem(this.guestConversationKey, value);
     }
+  }
+
+  private getChatHistoryKey(): string {
+    const customerId = this.getCustomerId();
+    if (customerId) {
+      return `${this.chatHistoryKeyPrefix}:customer:${customerId}`;
+    }
+
+    const guestConversationId = this.getGuestConversationId();
+    if (guestConversationId) {
+      return `${this.chatHistoryKeyPrefix}:guest:${guestConversationId}`;
+    }
+
+    return `${this.chatHistoryKeyPrefix}:anonymous`;
+  }
+
+  private loadLocalHistory(): void {
+    const historyKey = this.getChatHistoryKey();
+    const rawHistory = localStorage.getItem(historyKey);
+    if (!rawHistory) {
+      return;
+    }
+
+    try {
+      const history = JSON.parse(rawHistory);
+      if (!Array.isArray(history) || history.length === 0) {
+        return;
+      }
+
+      this.messages = history
+        .filter((item: Partial<Message>) => item?.role && item?.time)
+        .map((item: Partial<Message>) => ({
+          id: item.id,
+          role: item.role === 'user' ? 'user' : 'bot',
+          content: String(item.content || ''),
+          imageUrl: item.imageUrl,
+          type: 'text',
+          time: String(item.time || this.getTime())
+        }));
+
+      this.messages.forEach((item) => {
+        if (item.id) {
+          this.syncedServerMessageIds.add(String(item.id));
+        }
+      });
+    } catch {
+      localStorage.removeItem(historyKey);
+    }
+  }
+
+  private persistMessages(): void {
+    try {
+      localStorage.setItem(this.getChatHistoryKey(), JSON.stringify(this.messages.slice(-100)));
+    } catch {
+      // If browser storage is unavailable, server-side sync still works.
+    }
+  }
+
+  getDisplayImageUrl(value: string | null | undefined): string {
+    return this.cleanImageUrl(value) || '';
+  }
+
+  onImageError(event: Event): void {
+    const image = event.target as HTMLImageElement;
+    image.style.display = 'none';
+  }
+
+  private cleanImageUrl(value: unknown): string {
+    return String(value || '')
+      .trim()
+      .replace(/^["'([{<]+/, '')
+      .replace(/["')\]}>.,;]+$/, '')
+      .trim();
+  }
+
+  private extractImageUrl(value: unknown): string {
+    const visited = new Set<unknown>();
+
+    const visit = (item: unknown): string => {
+      if (item === null || item === undefined || visited.has(item)) {
+        return '';
+      }
+
+      if (typeof item === 'string') {
+        const text = item.trim();
+        if (!text) return '';
+
+        if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+          try {
+            return visit(JSON.parse(text));
+          } catch {
+            // Continue parsing this value as plain text.
+          }
+        }
+
+        const markdownImage = text.match(/!\[[^\]]*]\(([^)\s]+)[^)]*\)/);
+        const candidate = this.cleanImageUrl(markdownImage?.[1] || text);
+
+        if (this.isImageUrl(candidate)) return candidate;
+
+        const imageUrlMatch = text.match(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?/i);
+        const storageUrlMatch = text.match(/https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*/i);
+        return this.cleanImageUrl(imageUrlMatch?.[0] || storageUrlMatch?.[0]);
+      }
+
+      if (typeof item !== 'object') {
+        return '';
+      }
+
+      visited.add(item);
+
+      if (Array.isArray(item)) {
+        for (const entry of item) {
+          const found = visit(entry);
+          if (found) return found;
+        }
+
+        return '';
+      }
+
+      const row = item as Record<string, any>;
+      const direct =
+        row['image_url'] ??
+        row['imageUrl'] ??
+        row['url'] ??
+        row['secure_url'] ??
+        row['fileUrl'] ??
+        row['image']?.['url'] ??
+        row['image']?.['src'] ??
+        row['image']?.['data'] ??
+        row['data']?.['url'];
+      const foundDirect = visit(direct);
+      if (foundDirect) return foundDirect;
+
+      for (const entry of Object.values(row)) {
+        const found = visit(entry);
+        if (found) return found;
+      }
+
+      return '';
+    };
+
+    return visit(value);
+  }
+
+  private isImageUrl(value: unknown): boolean {
+    const url = this.cleanImageUrl(value);
+
+    if (!url) {
+      return false;
+    }
+
+    return /^(https?:\/\/|data:image\/)/i.test(url) &&
+      (
+        /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(url) ||
+        /\/storage\/v1\/object\/public\//i.test(url) ||
+        /\/api\/chats\/image\//i.test(url) ||
+        /^data:image\/[^;]+;base64,/i.test(url)
+      );
+  }
+
+  private normalizeServerMessage(msg: ServerChatMessage): Message {
+    const content = String(msg.content || '').trim();
+    const explicitImageUrl = this.extractImageUrl(msg.imageUrl);
+    const imageFromContent = !explicitImageUrl ? this.extractImageUrl(content) : '';
+    const imageUrl = explicitImageUrl || imageFromContent;
+
+    return {
+      id: msg.id,
+      role: msg.role,
+      content: imageUrl && (content === imageUrl || this.extractImageUrl(content) === imageUrl) ? '' : content,
+      imageUrl: imageUrl || undefined,
+      type: 'text',
+      time: msg.time || this.getTime()
+    };
   }
 
   private normalizeVietnamese(value: string): string {
@@ -262,28 +451,36 @@ export class ChatbotWidget implements OnInit, OnDestroy {
       .pipe(take(1))
       .subscribe({
         next: (res) => {
-          const newServerMessages = (res?.messages || []).filter(
-            (msg) =>
-              (msg.type === 'human_request' || msg.type === 'staff_reply') &&
-              !this.syncedServerMessageIds.has(msg.id)
+          const syncTypes = new Set(['human_request', 'staff_reply', 'image_generation', 'bot_reply']);
+          const serverMessages = (res?.messages || []).filter((msg) =>
+            syncTypes.has(String(msg.type || ''))
           );
 
-          if (!newServerMessages.length) {
+          if (!serverMessages.length) {
             return;
           }
 
+          if (customerId) {
+            this.syncedServerMessageIds = new Set(serverMessages.map((msg) => msg.id));
+            this.messages = serverMessages.map((msg) => this.normalizeServerMessage(msg));
+
+            this.persistMessages();
+            this.cdr.detectChanges();
+            this.scrollToBottom();
+            return;
+          }
+
+          const newServerMessages = serverMessages.filter((msg) => !this.syncedServerMessageIds.has(msg.id));
+
           newServerMessages.forEach((msg) => {
             this.syncedServerMessageIds.add(msg.id);
-            this.messages.push({
-              id: msg.id,
-              role: msg.role,
-              content: msg.content || '',
-              imageUrl: msg.imageUrl || undefined,
-              type: 'text',
-              time: msg.time || this.getTime()
-            });
+            if (this.hasEquivalentMessage(msg)) {
+              return;
+            }
+            this.messages.push(this.normalizeServerMessage(msg));
           });
 
+          this.persistMessages();
           this.cdr.detectChanges();
           this.scrollToBottom();
         },
@@ -315,6 +512,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
             time: this.getTime()
           });
 
+          this.persistMessages();
           this.cdr.detectChanges();
           this.scrollToBottom();
         });
@@ -332,11 +530,24 @@ export class ChatbotWidget implements OnInit, OnDestroy {
             time: this.getTime()
           });
 
+          this.persistMessages();
           this.cdr.detectChanges();
           this.scrollToBottom();
         });
       }
     });
+  }
+
+  private hasEquivalentMessage(msg: ServerChatMessage): boolean {
+    const normalized = this.normalizeServerMessage(msg);
+    const content = String(normalized.content || '').trim();
+    const imageUrl = this.cleanImageUrl(normalized.imageUrl);
+
+    return this.messages.some((item) =>
+      item.role === msg.role &&
+      String(item.content || '').trim() === content &&
+      this.cleanImageUrl(item.imageUrl) === imageUrl
+    );
   }
 
   private openGuestContactForm(text: string, imagePayload: ChatImagePayload | null = null): void {
@@ -399,6 +610,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     });
 
     this.pendingGuestImage = null;
+    this.persistMessages();
     this.cdr.detectChanges();
     this.scrollToBottom();
   }
@@ -407,6 +619,24 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     let reply = '';
     let imageUrl = '';
     const visited = new Set<any>();
+
+    const extractImageUrl = (value: unknown): string => {
+      const text = String(value || '').trim();
+      if (!text) return '';
+
+      const markdownImage = text.match(/!\[[^\]]*]\(([^)\s]+)[^)]*\)/);
+      const candidate = this.cleanImageUrl(markdownImage?.[1] || text);
+
+      if (/^data:image\/[^;]+;base64,/i.test(candidate)) return candidate;
+      if (/^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?$/i.test(candidate)) return candidate;
+      if (/^https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*$/i.test(candidate)) {
+        return candidate;
+      }
+
+      const imageUrlMatch = text.match(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?/i);
+      const storageUrlMatch = text.match(/https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*/i);
+      return this.cleanImageUrl(imageUrlMatch?.[0] || storageUrlMatch?.[0]);
+    };
 
     const visit = (value: any): void => {
       if (value === null || value === undefined || visited.has(value)) return;
@@ -423,6 +653,9 @@ export class ChatbotWidget implements OnInit, OnDestroy {
             // This is a regular text reply, not serialized JSON.
           }
         }
+        if (!imageUrl) {
+          imageUrl = extractImageUrl(text);
+        }
         return;
       }
 
@@ -436,10 +669,19 @@ export class ChatbotWidget implements OnInit, OnDestroy {
 
       const textCandidate =
         value.output ?? value.reply ?? value.message ?? value.text ?? value.content?.parts?.[0]?.text;
-      const imageCandidate = value.image_url ?? value.imageUrl ?? value.image;
+      const imageCandidate =
+        value.image_url ??
+        value.imageUrl ??
+        value.image?.url ??
+        value.image?.src ??
+        value.image?.data ??
+        value.url ??
+        value.secure_url ??
+        value.fileUrl ??
+        value.data?.url;
 
       if (!reply && typeof textCandidate === 'string') reply = textCandidate.trim();
-      if (!imageUrl && typeof imageCandidate === 'string') imageUrl = imageCandidate.trim();
+      if (!imageUrl) imageUrl = extractImageUrl(imageCandidate);
 
       Object.values(value).forEach(visit);
     };
@@ -474,6 +716,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     });
 
     this.clearSelectedFile();
+    this.persistMessages();
 
     this.isLoading = true;
     this.cdr.detectChanges();
@@ -510,12 +753,13 @@ export class ChatbotWidget implements OnInit, OnDestroy {
           this.messages.push({
             role: 'bot',
             content: reply || '',
-            imageUrl: imageUrl,
+            imageUrl: this.cleanImageUrl(imageUrl),
             type: 'text',
             time: this.getTime()
             
           });
 
+          this.persistMessages();
           this.cdr.detectChanges();
           this.scrollToBottom();
         });
@@ -530,6 +774,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
             type: 'text',
             time: this.getTime()
           });
+          this.persistMessages();
           this.cdr.detectChanges();
           this.scrollToBottom();
         });

@@ -5,6 +5,7 @@ import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
 import { routes } from './app.routes';
 import { provideClientHydration } from '@angular/platform-browser';
 import { adminAuthInterceptor } from './services/admin-auth.interceptor';
+import { TINYMCE_SCRIPT_SRC } from '@tinymce/tinymce-angular';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -14,6 +15,7 @@ export const appConfig: ApplicationConfig = {
 
     provideClientHydration(),
 
-    provideCharts(withDefaultRegisterables())
+    provideCharts(withDefaultRegisterables()),
+    { provide: TINYMCE_SCRIPT_SRC, useValue: '/tinymce/tinymce.min.js' }
   ]
 };
