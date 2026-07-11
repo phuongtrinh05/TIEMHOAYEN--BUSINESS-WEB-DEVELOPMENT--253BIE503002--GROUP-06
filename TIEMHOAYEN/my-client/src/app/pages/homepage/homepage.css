@@ -631,8 +631,9 @@
 .review-grid {
     flex: 1;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 18px;
+    min-width: 0;
 }
 
 .review-card {
@@ -641,6 +642,12 @@
     overflow: hidden;
     background: #FFF;
     transition: transform .35s ease, box-shadow .35s ease;
+    animation: reviewSlideIn .45s ease both;
+}
+
+@keyframes reviewSlideIn {
+    from { opacity: 0; transform: translateX(24px); }
+    to { opacity: 1; transform: translateX(0); }
 }
 
 .review-card:hover {

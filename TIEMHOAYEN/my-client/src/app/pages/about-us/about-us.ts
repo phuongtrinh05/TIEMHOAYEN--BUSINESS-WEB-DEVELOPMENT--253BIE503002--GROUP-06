@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, ElementRef, OnDestroy } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, HostListener, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -11,6 +11,9 @@ import { CommonModule } from '@angular/common';
 export class AboutUs implements AfterViewInit, OnDestroy {
 
   private observer?: IntersectionObserver;
+  private reviewIndex = 0;
+  private reviewTimer: ReturnType<typeof setInterval> | null = null;
+  private reviewPaused = false;
 
   constructor(private hostRef: ElementRef<HTMLElement>) {}
 
@@ -35,10 +38,14 @@ export class AboutUs implements AfterViewInit, OnDestroy {
     );
 
     elements.forEach(el => this.observer?.observe(el));
+    this.startReviewAutoSlide();
   }
 
   ngOnDestroy(): void {
     this.observer?.disconnect();
+    if (this.reviewTimer) {
+      clearInterval(this.reviewTimer);
+    }
   }
 
   teamMembers = [
@@ -110,4 +117,49 @@ export class AboutUs implements AfterViewInit, OnDestroy {
       content: 'Hoa tươi không bị héo, hay dập. Giao hàng cẩn thận.'
     }
   ];
+
+  get visibleReviews() {
+    const width = typeof window === 'undefined' ? 1280 : window.innerWidth;
+    const visibleCount = width <= 640 ? 1 : width <= 1024 ? 2 : 3;
+    return Array.from({ length: Math.min(visibleCount, this.reviews.length) }, (_, offset) =>
+      this.reviews[(this.reviewIndex + offset) % this.reviews.length]
+    );
+  }
+
+  @HostListener('window:resize')
+  onResize(): void {}
+
+  previousReview(): void {
+    this.reviewIndex = (this.reviewIndex - 1 + this.reviews.length) % this.reviews.length;
+    this.restartReviewAutoSlide();
+  }
+
+  nextReview(manual = true): void {
+    this.reviewIndex = (this.reviewIndex + 1) % this.reviews.length;
+    if (manual) {
+      this.restartReviewAutoSlide();
+    }
+  }
+
+  pauseReviewSlider(): void { this.reviewPaused = true; }
+  resumeReviewSlider(): void { this.reviewPaused = false; }
+
+  private startReviewAutoSlide(): void {
+    if (typeof window === 'undefined' || this.reviewTimer || this.reviews.length < 2) {
+      return;
+    }
+    this.reviewTimer = setInterval(() => {
+      if (!this.reviewPaused && document.visibilityState === 'visible') {
+        this.nextReview(false);
+      }
+    }, 5000);
+  }
+
+  private restartReviewAutoSlide(): void {
+    if (this.reviewTimer) {
+      clearInterval(this.reviewTimer);
+      this.reviewTimer = null;
+    }
+    this.startReviewAutoSlide();
+  }
 }

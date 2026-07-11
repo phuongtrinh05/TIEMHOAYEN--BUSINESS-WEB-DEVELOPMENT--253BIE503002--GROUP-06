@@ -236,12 +236,12 @@
     <!-- REVIEWS -->
     <section class="reviews">
     <h2 class="reveal">Khách hàng nói gì về Tiệm Hoa Yên</h2>
-        <div class="review-wrapper">
-            <button class="nav-btn left" aria-label="Đánh giá trước">
+        <div class="review-wrapper" (mouseenter)="pauseReviewSlider()" (mouseleave)="resumeReviewSlider()">
+            <button type="button" class="nav-btn left" (click)="previousReview()" aria-label="Đánh giá trước">
                 <i class="bi bi-chevron-left"></i>
             </button>
             <div class="review-list">
-                @for(review of reviews; track review.name){
+                @for(review of visibleReviews; track review.name){
                     <div class="review-card reveal">
                         <div class="review-user">
                             <i class="bi bi-person-circle"></i>
@@ -263,7 +263,7 @@
                     </div>
                 }
             </div>
-            <button class="nav-btn right" aria-label="Đánh giá kế tiếp">
+            <button type="button" class="nav-btn right" (click)="nextReview()" aria-label="Đánh giá kế tiếp">
                 <i class="bi bi-chevron-right"></i>
             </button>
         </div>

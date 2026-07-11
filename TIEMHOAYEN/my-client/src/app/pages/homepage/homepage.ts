@@ -111,6 +111,16 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
       content: 'Đánh giá sản phẩm của khách hàng',
     }
   ];
+  private customerReviewIndex = 0;
+  private customerReviewTimer: ReturnType<typeof setInterval> | null = null;
+  private customerReviewPaused = false;
+
+  get visibleCustomerReviews() {
+    const visibleCount = isPlatformBrowser(this.platformId) && window.innerWidth <= 640 ? 1 : 2;
+    return Array.from({ length: Math.min(visibleCount, this.customerReviews.length) }, (_, offset) =>
+      this.customerReviews[(this.customerReviewIndex + offset) % this.customerReviews.length]
+    );
+  }
 
   blogs: HomeBlog[] = [];
   loadingBlogs = false;
@@ -141,6 +151,48 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
     this.loadBestSellerProducts();
     this.loadLatestBlogs();
     this.loadCustomerWishlist();
+    this.startCustomerReviewAutoSlide();
+  }
+
+  previousCustomerReviews(): void {
+    this.customerReviewIndex = (this.customerReviewIndex - 1 + this.customerReviews.length) % this.customerReviews.length;
+    this.restartCustomerReviewAutoSlide();
+  }
+
+  nextCustomerReviews(manual = true): void {
+    this.customerReviewIndex = (this.customerReviewIndex + 1) % this.customerReviews.length;
+    if (manual) {
+      this.restartCustomerReviewAutoSlide();
+    }
+  }
+
+  pauseCustomerReviewSlider(): void {
+    this.customerReviewPaused = true;
+  }
+
+  resumeCustomerReviewSlider(): void {
+    this.customerReviewPaused = false;
+  }
+
+  private startCustomerReviewAutoSlide(): void {
+    if (!isPlatformBrowser(this.platformId) || this.customerReviewTimer || this.customerReviews.length < 2) {
+      return;
+    }
+
+    this.customerReviewTimer = setInterval(() => {
+      if (!this.customerReviewPaused && document.visibilityState === 'visible') {
+        this.nextCustomerReviews(false);
+        this.cdr.detectChanges();
+      }
+    }, 5000);
+  }
+
+  private restartCustomerReviewAutoSlide(): void {
+    if (this.customerReviewTimer) {
+      clearInterval(this.customerReviewTimer);
+      this.customerReviewTimer = null;
+    }
+    this.startCustomerReviewAutoSlide();
   }
 
   private computeGroupSize(): number {
@@ -231,6 +283,9 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
 
 
   ngOnDestroy(): void {
+    if (this.customerReviewTimer) {
+      clearInterval(this.customerReviewTimer);
+    }
     if (this.newCollectionTimer) {
       clearInterval(this.newCollectionTimer);
     }

@@ -456,12 +456,12 @@
     <!-- REVIEW -->
     <section class="review-section reveal">
         <h2>ĐÁNH GIÁ CỦA KHÁCH HÀNG</h2>
-        <div class="review-wrapper">
-            <button class="review-arrow">
+        <div class="review-wrapper" (mouseenter)="pauseCustomerReviewSlider()" (mouseleave)="resumeCustomerReviewSlider()">
+            <button type="button" class="review-arrow" (click)="previousCustomerReviews()" aria-label="Đánh giá trước">
                 <i class="bi bi-chevron-left"></i>
             </button>
             <div class="review-grid">
-                @for(item of customerReviews; track item.image) {
+                @for(item of visibleCustomerReviews; track item.image) {
                     <div class="review-card">
                         <img
                             [src]="item.image"
@@ -470,7 +470,7 @@
                     </div>
                 }
             </div>
-            <button class="review-arrow">
+            <button type="button" class="review-arrow" (click)="nextCustomerReviews()" aria-label="Đánh giá tiếp theo">
                 <i class="bi bi-chevron-right"></i>
             </button>
         </div>
