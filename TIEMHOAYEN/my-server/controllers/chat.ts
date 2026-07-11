@@ -176,10 +176,17 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
         kh.SDT,
         sp.TEN_SAN_PHAM,
         sp.GIA,
-        sp.GIA_KHUYEN_MAI
+        sp.GIA_KHUYEN_MAI,
+        img.URL AS HINH_ANH_SAN_PHAM
       FROM TIN_NHAN_CHAT t
       LEFT JOIN KHACH_HANG kh ON kh.KHACH_HANG_ID = t.KHACH_HANG_ID
       LEFT JOIN SAN_PHAM sp ON sp.SAN_PHAM_ID = t.SAN_PHAM_ID
+      OUTER APPLY (
+        SELECT TOP 1 URL
+        FROM HINH_ANH_SAN_PHAM
+        WHERE SAN_PHAM_ID = sp.SAN_PHAM_ID
+        ORDER BY LA_ANH_CHINH DESC, HINH_ANH_ID ASC
+      ) img
       ORDER BY ISNULL(t.KHACH_HANG_ID, t.TIN_NHAN_ID), t.THOI_GIAN_GUI ASC, t.TIN_NHAN_ID ASC
     `);
 
@@ -214,7 +221,8 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
             ? {
                 id: row.SAN_PHAM_ID,
                 name: row.TEN_SAN_PHAM || row.SAN_PHAM_ID,
-                price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0)
+                price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0),
+                image: row.HINH_ANH_SAN_PHAM || null
               }
             : null,
           messages: []
@@ -239,7 +247,8 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
         conversation.pinnedProduct = {
           id: row.SAN_PHAM_ID,
           name: row.TEN_SAN_PHAM || row.SAN_PHAM_ID,
-          price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0)
+          price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0),
+          image: row.HINH_ANH_SAN_PHAM || null
         };
       }
 
@@ -258,7 +267,8 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
             ? {
                 id: row.SAN_PHAM_ID,
                 name: row.TEN_SAN_PHAM || row.SAN_PHAM_ID,
-                price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0)
+                price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0),
+                image: row.HINH_ANH_SAN_PHAM || null
               }
             : null
         });
@@ -553,7 +563,11 @@ export const replyAdminChat = async (req: Request, res: Response) => {
       .input('CHAT_ID', sql.NVarChar(20), toNullableString(chatId));
 
     const targetResult = await targetRequest.query(`
-      SELECT TOP 1 TIN_NHAN_ID
+      SELECT TOP 1
+        TIN_NHAN_ID,
+        KHACH_HANG_ID,
+        DON_HANG_ID,
+        SAN_PHAM_ID
       FROM TIN_NHAN_CHAT
       WHERE
         (@CHAT_ID IS NOT NULL AND TIN_NHAN_ID = @CHAT_ID)
@@ -579,7 +593,8 @@ export const replyAdminChat = async (req: Request, res: Response) => {
       ORDER BY THOI_GIAN_GUI DESC, TIN_NHAN_ID DESC
     `);
 
-    const targetChatId = targetResult.recordset[0]?.TIN_NHAN_ID;
+    const targetRow = targetResult.recordset[0];
+    const targetChatId = targetRow?.TIN_NHAN_ID;
     const employeeId = toNullableString(staffId);
 
     if (targetChatId) {
@@ -602,11 +617,23 @@ export const replyAdminChat = async (req: Request, res: Response) => {
       WHERE TIN_NHAN_ID LIKE 'CHAT%'
     `);
     const newChatId = makeChatId(Number(nextIdResult.recordset[0]?.NEXT_NUM || 1));
-    const replyParentBlock = conversationId.startsWith('CHAT') ? buildReplyParentBlock(targetChatId || conversationId) : null;
+    const replyParentBlock = targetChatId
+      ? buildReplyParentBlock(targetChatId)
+      : conversationId.startsWith('CHAT')
+        ? buildReplyParentBlock(conversationId)
+        : null;
+    const replyCustomerId = toNullableString(targetRow?.KHACH_HANG_ID)
+      || (conversationId.startsWith('CUST') ? conversationId : null);
+    const replyOrderId = toNullableString(targetRow?.DON_HANG_ID)
+      || (conversationId.startsWith('ORD') || conversationId.startsWith('YEN') ? conversationId : null);
+    const replyProductId = toNullableString(targetRow?.SAN_PHAM_ID)
+      || (conversationId.startsWith('SP') ? conversationId : null);
 
     const insertRequest = pool.request()
       .input('TIN_NHAN_ID', sql.NVarChar(20), newChatId)
-      .input('KHACH_HANG_ID', sql.NVarChar(20), conversationId.startsWith('CUST') ? conversationId : null)
+      .input('KHACH_HANG_ID', sql.NVarChar(20), replyCustomerId)
+      .input('DON_HANG_ID', sql.NVarChar(20), replyOrderId)
+      .input('SAN_PHAM_ID', sql.NVarChar(20), replyProductId)
       .input('NHAN_VIEN_ID', sql.NVarChar(20), employeeId)
       .input('NOI_DUNG_CAU_HOI', sql.NVarChar(sql.MAX), replyParentBlock)
       .input('NOI_DUNG_TRA_LOI', sql.NVarChar(sql.MAX), reply)
@@ -623,6 +650,8 @@ export const replyAdminChat = async (req: Request, res: Response) => {
         INSERT INTO TIN_NHAN_CHAT (
           TIN_NHAN_ID,
           KHACH_HANG_ID,
+          DON_HANG_ID,
+          SAN_PHAM_ID,
           NHAN_VIEN_ID,
           NOI_DUNG_CAU_HOI,
           NOI_DUNG_TRA_LOI,
@@ -636,6 +665,8 @@ export const replyAdminChat = async (req: Request, res: Response) => {
         VALUES (
           @TIN_NHAN_ID,
           @KHACH_HANG_ID,
+          @DON_HANG_ID,
+          @SAN_PHAM_ID,
           @NHAN_VIEN_ID,
           @NOI_DUNG_CAU_HOI,
           @NOI_DUNG_TRA_LOI,
@@ -652,6 +683,8 @@ export const replyAdminChat = async (req: Request, res: Response) => {
         INSERT INTO TIN_NHAN_CHAT (
           TIN_NHAN_ID,
           KHACH_HANG_ID,
+          DON_HANG_ID,
+          SAN_PHAM_ID,
           NHAN_VIEN_ID,
           NOI_DUNG_CAU_HOI,
           NOI_DUNG_TRA_LOI,
@@ -662,6 +695,8 @@ export const replyAdminChat = async (req: Request, res: Response) => {
         VALUES (
           @TIN_NHAN_ID,
           @KHACH_HANG_ID,
+          @DON_HANG_ID,
+          @SAN_PHAM_ID,
           @NHAN_VIEN_ID,
           @NOI_DUNG_CAU_HOI,
           @NOI_DUNG_TRA_LOI,
