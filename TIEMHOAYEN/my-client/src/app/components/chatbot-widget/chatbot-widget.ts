@@ -460,14 +460,23 @@ export class ChatbotWidget implements OnInit, OnDestroy {
           this.isLoading = false;
           this.isSending = false;
           console.log('Response:', res);
-          const responseData = Array.isArray(res) ? res[0] : res;
+          const responseItems = Array.isArray(res) ? res : [res];
+          const responseData = responseItems.reduce(
+            (merged: Record<string, any>, item: any) => ({
+              ...merged,
+              ...(item && typeof item === 'object' ? item : {})
+            }),
+            {}
+          );
           const reply = responseData?.output ||
             responseData?.reply ||
             responseData?.message ||
             responseData?.text ||
             responseData?.content?.parts?.[0]?.text ||
             '';
-          const imageUrl = responseData?.image_url || responseData?.imageUrl;
+          const imageUrl = String(
+            responseData?.image_url || responseData?.imageUrl || ''
+          ).trim() || undefined;
 
           this.messages.push({
             role: 'bot',
