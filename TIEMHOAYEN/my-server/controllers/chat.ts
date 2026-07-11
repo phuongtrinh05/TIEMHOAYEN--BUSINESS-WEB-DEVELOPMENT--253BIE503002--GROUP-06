@@ -388,8 +388,9 @@ export const getCustomerChatMessages = async (req: Request, res: Response) => {
       const isStaffMessage = row.LOAI_TIN_NHAN === 'staff_reply';
       const answerCanUseStoredImage =
         isStaffMessage || row.LOAI_TIN_NHAN === 'image_generation' || row.LOAI_TIN_NHAN === 'bot_reply';
-      const answerImageUrl = getChatMessageImageUrl(answer) || (answerCanUseStoredImage ? row.HINH_ANH || null : null);
-      const answerContent = answer && answer !== answerImageUrl
+      const detectedAnswerImageUrl = getChatMessageImageUrl(answer) || (answerCanUseStoredImage ? row.HINH_ANH || null : null);
+      const answerImageUrl = detectedAnswerImageUrl ? makeChatImageApiUrl(row.TIN_NHAN_ID) || detectedAnswerImageUrl : null;
+      const answerContent = answer && answer !== detectedAnswerImageUrl
         ? answer
         : row.LOAI_TIN_NHAN === 'image_generation'
           ? 'ÄÃ¢y lÃ  bÃ³ hoa mÃ¬nh táº¡o cho báº¡n'
@@ -444,13 +445,15 @@ export const getChatImage = async (req: Request, res: Response) => {
       .input('TIN_NHAN_ID', sql.NVarChar(20), chatId)
       .query(`
         SELECT TOP 1
+          NOI_DUNG_TRA_LOI,
           CASE WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'HINH_ANH') IS NULL THEN NULL ELSE HINH_ANH END AS HINH_ANH,
           CASE WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'LOAI_FILE_ANH') IS NULL THEN NULL ELSE LOAI_FILE_ANH END AS LOAI_FILE_ANH
         FROM TIN_NHAN_CHAT
         WHERE TIN_NHAN_ID = @TIN_NHAN_ID
       `);
 
-    const rawImage = toNullableString(result.recordset[0]?.HINH_ANH);
+    const rawImage = toNullableString(result.recordset[0]?.HINH_ANH)
+      || getChatMessageImageUrl(result.recordset[0]?.NOI_DUNG_TRA_LOI);
     const fileType = toNullableString(result.recordset[0]?.LOAI_FILE_ANH) || 'image/jpeg';
 
     if (!rawImage) {
@@ -526,8 +529,9 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
       const isStaffMessage = row.LOAI_TIN_NHAN === 'staff_reply';
       const answerCanUseStoredImage =
         isStaffMessage || row.LOAI_TIN_NHAN === 'image_generation' || row.LOAI_TIN_NHAN === 'bot_reply';
-      const answerImageUrl = getChatMessageImageUrl(answer) || (answerCanUseStoredImage ? row.HINH_ANH || null : null);
-      const answerContent = answer && answer !== answerImageUrl
+      const detectedAnswerImageUrl = getChatMessageImageUrl(answer) || (answerCanUseStoredImage ? row.HINH_ANH || null : null);
+      const answerImageUrl = detectedAnswerImageUrl ? makeChatImageApiUrl(row.TIN_NHAN_ID) || detectedAnswerImageUrl : null;
+      const answerContent = answer && answer !== detectedAnswerImageUrl
         ? answer
         : row.LOAI_TIN_NHAN === 'image_generation'
           ? 'ÄÃ¢y lÃ  bÃ³ hoa mÃ¬nh táº¡o cho báº¡n'

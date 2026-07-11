@@ -144,7 +144,14 @@ export class ChatbotWidget implements OnInit, OnDestroy {
 
     try {
       const customer = JSON.parse(rawCustomer);
-      return customer?.KHACH_HANG_ID ? String(customer.KHACH_HANG_ID) : null;
+      const customerId =
+        customer?.KHACH_HANG_ID ??
+        customer?.khachHangId ??
+        customer?.customerId ??
+        customer?.id ??
+        customer?.maKhachHang;
+
+      return customerId ? String(customerId) : null;
     } catch {
       return null;
     }
