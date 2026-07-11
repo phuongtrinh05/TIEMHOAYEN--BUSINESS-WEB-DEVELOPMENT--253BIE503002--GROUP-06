@@ -218,6 +218,23 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     }
   }
 
+  getDisplayImageUrl(value: string | null | undefined): string {
+    return this.cleanImageUrl(value) || '';
+  }
+
+  onImageError(event: Event): void {
+    const image = event.target as HTMLImageElement;
+    image.style.display = 'none';
+  }
+
+  private cleanImageUrl(value: unknown): string {
+    return String(value || '')
+      .trim()
+      .replace(/^["'([{<]+/, '')
+      .replace(/["')\]}>.,;]+$/, '')
+      .trim();
+  }
+
   private normalizeVietnamese(value: string): string {
     return value
       .toLowerCase()
@@ -343,7 +360,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
               id: msg.id,
               role: msg.role,
               content: msg.content || '',
-              imageUrl: msg.imageUrl || undefined,
+              imageUrl: this.cleanImageUrl(msg.imageUrl) || undefined,
               type: 'text',
               time: msg.time || this.getTime()
             });
@@ -493,7 +510,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
       if (!text) return '';
 
       const markdownImage = text.match(/!\[[^\]]*]\(([^)\s]+)[^)]*\)/);
-      const candidate = markdownImage?.[1] || text;
+      const candidate = this.cleanImageUrl(markdownImage?.[1] || text);
 
       if (/^data:image\/[^;]+;base64,/i.test(candidate)) return candidate;
       if (/^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?$/i.test(candidate)) return candidate;
@@ -503,7 +520,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
 
       const imageUrlMatch = text.match(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?/i);
       const storageUrlMatch = text.match(/https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*/i);
-      return imageUrlMatch?.[0] || storageUrlMatch?.[0] || '';
+      return this.cleanImageUrl(imageUrlMatch?.[0] || storageUrlMatch?.[0]);
     };
 
     const visit = (value: any): void => {
@@ -621,7 +638,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
           this.messages.push({
             role: 'bot',
             content: reply || '',
-            imageUrl: imageUrl,
+            imageUrl: this.cleanImageUrl(imageUrl),
             type: 'text',
             time: this.getTime()
             

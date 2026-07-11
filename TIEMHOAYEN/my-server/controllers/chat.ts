@@ -342,29 +342,41 @@ export const getCustomerChatMessages = async (req: Request, res: Response) => {
     const pool = await connectDB();
     const result = await pool.request()
       .input('KHACH_HANG_ID', sql.NVarChar(20), customerId)
+      .input('REPLY_PARENT_START', sql.NVarChar(50), REPLY_PARENT_START)
+      .input('REPLY_PARENT_END', sql.NVarChar(50), REPLY_PARENT_END)
       .query(`
         SELECT TOP 100
-          TIN_NHAN_ID,
-          KHACH_HANG_ID,
-          DON_HANG_ID,
-          SAN_PHAM_ID,
-          NHAN_VIEN_ID,
-          NOI_DUNG_CAU_HOI,
-          NOI_DUNG_TRA_LOI,
-          LOAI_TIN_NHAN,
-          THOI_GIAN_GUI,
-          TRANG_THAI,
+          t.TIN_NHAN_ID,
+          t.KHACH_HANG_ID,
+          t.DON_HANG_ID,
+          t.SAN_PHAM_ID,
+          t.NHAN_VIEN_ID,
+          t.NOI_DUNG_CAU_HOI,
+          t.NOI_DUNG_TRA_LOI,
+          t.LOAI_TIN_NHAN,
+          t.THOI_GIAN_GUI,
+          t.TRANG_THAI,
           CASE
             WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'HINH_ANH') IS NULL THEN NULL
-            WHEN HINH_ANH IS NULL OR LTRIM(RTRIM(HINH_ANH)) = '' THEN NULL
-            WHEN HINH_ANH LIKE 'http%' THEN HINH_ANH
-            ELSE CONCAT('${CHAT_PUBLIC_BASE_URL}/api/chats/image/', TIN_NHAN_ID)
+            WHEN t.HINH_ANH IS NULL OR LTRIM(RTRIM(t.HINH_ANH)) = '' THEN NULL
+            WHEN t.HINH_ANH LIKE 'http%' THEN t.HINH_ANH
+            ELSE CONCAT('${CHAT_PUBLIC_BASE_URL}/api/chats/image/', t.TIN_NHAN_ID)
           END AS HINH_ANH,
-          CASE WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'TEN_FILE_ANH') IS NULL THEN NULL ELSE TEN_FILE_ANH END AS TEN_FILE_ANH,
-          CASE WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'LOAI_FILE_ANH') IS NULL THEN NULL ELSE LOAI_FILE_ANH END AS LOAI_FILE_ANH
-        FROM TIN_NHAN_CHAT
-        WHERE KHACH_HANG_ID = @KHACH_HANG_ID
-        ORDER BY THOI_GIAN_GUI ASC, TIN_NHAN_ID ASC
+          CASE WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'TEN_FILE_ANH') IS NULL THEN NULL ELSE t.TEN_FILE_ANH END AS TEN_FILE_ANH,
+          CASE WHEN COL_LENGTH('dbo.TIN_NHAN_CHAT', 'LOAI_FILE_ANH') IS NULL THEN NULL ELSE t.LOAI_FILE_ANH END AS LOAI_FILE_ANH
+        FROM TIN_NHAN_CHAT t
+        WHERE
+          t.KHACH_HANG_ID = @KHACH_HANG_ID
+          OR (
+            t.LOAI_TIN_NHAN = 'staff_reply'
+            AND EXISTS (
+              SELECT 1
+              FROM TIN_NHAN_CHAT parent
+              WHERE parent.KHACH_HANG_ID = @KHACH_HANG_ID
+                AND t.NOI_DUNG_CAU_HOI LIKE '%' + @REPLY_PARENT_START + parent.TIN_NHAN_ID + @REPLY_PARENT_END + '%'
+            )
+          )
+        ORDER BY t.THOI_GIAN_GUI ASC, t.TIN_NHAN_ID ASC
       `);
 
     const messages: any[] = [];
@@ -872,12 +884,23 @@ const makeChatImageApiUrl = (chatId: unknown): string | null => {
   return id ? `${CHAT_PUBLIC_BASE_URL}/api/chats/image/${encodeURIComponent(id)}` : null;
 };
 
+const cleanImageUrl = (value: unknown): string | null => {
+  const text = toNullableString(value);
+  if (!text) return null;
+
+  return text
+    .replace(/^["'([{<]+/, '')
+    .replace(/["')\]}>.,;]+$/, '')
+    .trim();
+};
+
 const getChatMessageImageUrl = (value: unknown): string | null => {
   const text = toNullableString(value);
   if (!text) return null;
 
   const markdownImage = text.match(/!\[[^\]]*]\(([^)\s]+)[^)]*\)/);
-  const candidate = markdownImage?.[1] || text;
+  const candidate = cleanImageUrl(markdownImage?.[1] || text);
+  if (!candidate) return null;
 
   if (/^data:image\/[^;]+;base64,/i.test(candidate)) return candidate;
   if (/^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?$/i.test(candidate)) return candidate;
@@ -887,7 +910,7 @@ const getChatMessageImageUrl = (value: unknown): string | null => {
 
   const imageUrlMatch = text.match(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?/i);
   const storageUrlMatch = text.match(/https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*/i);
-  return imageUrlMatch?.[0] || storageUrlMatch?.[0] || null;
+  return cleanImageUrl(imageUrlMatch?.[0] || storageUrlMatch?.[0]) || null;
 };
 
 const parseN8nChatResponse = (response: unknown): { reply: string | null; imageUrl: string | null } => {
