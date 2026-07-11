@@ -125,7 +125,9 @@ export class CustomerChatComponent implements OnInit, AfterViewChecked {
             sale: false,
             status: ''
         }));
-        this.router.navigate(['/products/product-detail']);
+        this.router.navigate(['/products/product-detail'], {
+            queryParams: { id: product.id }
+        });
     }
 
     selectConversation(conv: Conversation | null): void {

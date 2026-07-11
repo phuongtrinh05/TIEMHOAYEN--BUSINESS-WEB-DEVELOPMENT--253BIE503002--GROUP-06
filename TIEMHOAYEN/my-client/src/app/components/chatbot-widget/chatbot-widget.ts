@@ -99,8 +99,10 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    // Staff-message polling will be enabled when the matching backend GET
-    // endpoints are available. Direct n8n replies are handled by sendMessage().
+    this.syncCustomerReplies();
+    this.syncTimer = window.setInterval(() => {
+      this.syncCustomerReplies();
+    }, 4000);
   }
 
   ngOnDestroy(): void {
@@ -109,7 +111,10 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     }
   }
 
-  openChat(): void { this.isOpen = true; }
+  openChat(): void {
+    this.isOpen = true;
+    this.syncCustomerReplies();
+  }
   closeChat(): void { this.isOpen = false; }
 
   getTime(): string {
