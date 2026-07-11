@@ -239,6 +239,9 @@ export class PageHeader implements OnInit, OnDestroy {
 
 
   private notificationHoverTimer: ReturnType<typeof setTimeout> | null = null;
+  private notificationRefreshTimer: number | null = null;
+  private isLoadingNotifications = false;
+  private readonly notificationRefreshIntervalMs = 10000;
   private cartHoverTimer: ReturnType<typeof setTimeout> | null = null;
   private accountHoverTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -313,6 +316,7 @@ export class PageHeader implements OnInit, OnDestroy {
     this.loadNotifications();
     this.loadSearchProductCache();
     this.startCartAutoRefresh();
+    this.startNotificationAutoRefresh();
 
     this.routerSubscription = this.router.events
       .pipe(filter(event => event instanceof NavigationEnd))
@@ -372,6 +376,11 @@ export class PageHeader implements OnInit, OnDestroy {
       this.cartRefreshTimer = null;
     }
 
+    if (this.notificationRefreshTimer !== null && this.isBrowser()) {
+      window.clearInterval(this.notificationRefreshTimer);
+      this.notificationRefreshTimer = null;
+    }
+
     if (this.searchDebounceTimer) {
       clearTimeout(this.searchDebounceTimer);
       this.searchDebounceTimer = null;
@@ -413,6 +422,13 @@ export class PageHeader implements OnInit, OnDestroy {
     }
 
     this.loadCartCount();
+  }
+
+  @HostListener('document:visibilitychange')
+  onNotificationVisibilityChange(): void {
+    if (this.isBrowser() && document.visibilityState === 'visible') {
+      this.loadNotifications();
+    }
   }
 
   loadLoggedInCustomer(): void {
@@ -688,9 +704,11 @@ export class PageHeader implements OnInit, OnDestroy {
 
 
   private loadNotifications(): void {
-    if (!this.isBrowser()) {
+    if (!this.isBrowser() || this.isLoadingNotifications) {
       return;
     }
+
+    this.isLoadingNotifications = true;
 
     const customerId = this.getLoggedInCustomerId();
     const requestUrl = customerId
@@ -708,13 +726,30 @@ export class PageHeader implements OnInit, OnDestroy {
               : [];
 
         this.notifications = items.map((item: any) => this.mapNotification(item));
+        this.isLoadingNotifications = false;
         this.cdr.detectChanges();
       },
       error: (err) => {
         console.warn('Chưa lấy được thông báo từ backend:', err);
-        this.notifications = [];
+        this.isLoadingNotifications = false;
         this.cdr.detectChanges();
       }
+    });
+  }
+
+  private startNotificationAutoRefresh(): void {
+    if (!this.isBrowser() || this.notificationRefreshTimer !== null) {
+      return;
+    }
+
+    this.ngZone.runOutsideAngular(() => {
+      this.notificationRefreshTimer = window.setInterval(() => {
+        if (document.visibilityState !== 'visible') {
+          return;
+        }
+
+        this.ngZone.run(() => this.loadNotifications());
+      }, this.notificationRefreshIntervalMs);
     });
   }
 

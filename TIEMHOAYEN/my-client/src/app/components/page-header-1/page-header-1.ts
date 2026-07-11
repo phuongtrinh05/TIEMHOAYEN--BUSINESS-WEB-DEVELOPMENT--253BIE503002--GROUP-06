@@ -7,7 +7,8 @@ import {
   ChangeDetectorRef,
   Inject,
   PLATFORM_ID,
-  ViewChild
+  ViewChild,
+  NgZone
 } from '@angular/core';
 
 import { isPlatformBrowser, NgIf } from '@angular/common';
@@ -226,6 +227,9 @@ export class PageHeader1 implements OnInit, OnDestroy {
 
 
   private notificationHoverTimer: ReturnType<typeof setTimeout> | null = null;
+  private notificationRefreshTimer: number | null = null;
+  private isLoadingNotifications = false;
+  private readonly notificationRefreshIntervalMs = 10000;
   private cartHoverTimer: ReturnType<typeof setTimeout> | null = null;
   private accountHoverTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -271,7 +275,8 @@ export class PageHeader1 implements OnInit, OnDestroy {
     private cartService: CartService,
     private http: HttpClient,
     private cdr: ChangeDetectorRef,
-    private router: Router
+    private router: Router,
+    private ngZone: NgZone
   ) {}
 
   private isBrowser(): boolean {
@@ -296,6 +301,7 @@ export class PageHeader1 implements OnInit, OnDestroy {
     this.loadNotifications();
     this.loadSearchProductCache();
     this.startCartAutoRefresh();
+    this.startNotificationAutoRefresh();
 
     this.routerSubscription = this.router.events
       .pipe(filter(event => event instanceof NavigationEnd))
@@ -333,6 +339,11 @@ export class PageHeader1 implements OnInit, OnDestroy {
     if (this.cartRefreshTimer !== null && this.isBrowser()) {
       window.clearInterval(this.cartRefreshTimer);
       this.cartRefreshTimer = null;
+    }
+
+    if (this.notificationRefreshTimer !== null && this.isBrowser()) {
+      window.clearInterval(this.notificationRefreshTimer);
+      this.notificationRefreshTimer = null;
     }
 
     if (this.searchDebounceTimer) {
@@ -374,6 +385,13 @@ export class PageHeader1 implements OnInit, OnDestroy {
     }
 
     this.loadCartCount();
+  }
+
+  @HostListener('document:visibilitychange')
+  onNotificationVisibilityChange(): void {
+    if (this.isBrowser() && document.visibilityState === 'visible') {
+      this.loadNotifications();
+    }
   }
 
   loadLoggedInCustomer(): void {
@@ -649,9 +667,11 @@ export class PageHeader1 implements OnInit, OnDestroy {
 
 
   private loadNotifications(): void {
-    if (!this.isBrowser()) {
+    if (!this.isBrowser() || this.isLoadingNotifications) {
       return;
     }
+
+    this.isLoadingNotifications = true;
 
     const customerId = this.getLoggedInCustomerId();
     const requestUrl = customerId
@@ -669,13 +689,30 @@ export class PageHeader1 implements OnInit, OnDestroy {
               : [];
 
         this.notifications = items.map((item: any) => this.mapNotification(item));
+        this.isLoadingNotifications = false;
         this.cdr.detectChanges();
       },
       error: (err) => {
         console.warn('Chưa lấy được thông báo từ backend:', err);
-        this.notifications = [];
+        this.isLoadingNotifications = false;
         this.cdr.detectChanges();
       }
+    });
+  }
+
+  private startNotificationAutoRefresh(): void {
+    if (!this.isBrowser() || this.notificationRefreshTimer !== null) {
+      return;
+    }
+
+    this.ngZone.runOutsideAngular(() => {
+      this.notificationRefreshTimer = window.setInterval(() => {
+        if (document.visibilityState !== 'visible') {
+          return;
+        }
+
+        this.ngZone.run(() => this.loadNotifications());
+      }, this.notificationRefreshIntervalMs);
     });
   }
 

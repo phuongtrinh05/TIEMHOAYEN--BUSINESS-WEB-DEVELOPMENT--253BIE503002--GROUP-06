@@ -1055,7 +1055,7 @@
 
 /* Desktop/tablet use a complete five-card row; the sixth card is reserved
    to complete the two-column grid on small screens. */
-@media (min-width: 641px) {
+@media (min-width: 1025px) {
     .related-card:nth-child(n + 6) {
         display: none;
     }
@@ -1372,39 +1372,170 @@
     }
 
     .related-list {
-        grid-template-columns: repeat(5, minmax(0, 1fr));
-        gap: 14px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 20px 16px;
     }
 
     .related-card h3 {
-        font-size: 13px;
-        padding: 10px 8px 0;
+        font-size: 15px;
+        padding: 12px 10px 0;
     }
 
     .related-price {
-        font-size: 15px;
+        font-size: 17px;
     }
 
     .related-old-price {
-        font-size: 9.5px;
+        font-size: 11px;
     }
 
     .related-card .related-buy-btn,
     .related-card .related-cart-btn {
-        height: 28px;
+        height: 34px;
         margin: 0;
-        border-radius: 6px;
-        font-size: 10.5px;
+        border-radius: 7px;
+        font-size: 12px;
     }
 
     .related-actions {
-        padding: 0 8px 10px;
-        gap: 6px;
+        padding: 0 10px 12px;
+        gap: 8px;
     }
 
     .related-card .related-cart-btn {
-        width: 28px;
-        flex-basis: 28px;
+        width: 34px;
+        flex-basis: 34px;
+    }
+}
+
+@media (min-width: 700px) and (max-width: 1024px) {
+    .product-detail-page {
+        padding: 24px 22px 32px;
+    }
+
+    .product-breadcrumb {
+        margin-bottom: 22px;
+        gap: 9px;
+        font-size: 15px;
+    }
+
+    .product-breadcrumb__separator {
+        font-size: 14px;
+    }
+
+    .product-container {
+        grid-template-columns: minmax(300px, 44%) minmax(0, 1fr);
+        gap: 24px;
+    }
+
+    .main-image {
+        height: clamp(400px, 52vw, 500px);
+    }
+
+    .thumbnail-list {
+        gap: 10px;
+        margin-top: 12px;
+    }
+
+    .thumbnail {
+        flex-basis: 82px;
+        width: 82px;
+        height: 82px;
+    }
+
+    .product-info h1 {
+        font-size: clamp(23px, 3vw, 27px);
+    }
+
+    .sku,
+    .rating-row,
+    .vat-note,
+    .stock {
+        font-size: 13px;
+    }
+
+    .product-info hr {
+        margin: 10px 0 20px;
+    }
+
+    .price-box {
+        margin-bottom: 18px;
+    }
+
+    .price-line {
+        gap: 10px;
+    }
+
+    .sale-price {
+        font-size: 24px;
+    }
+
+    .old-price {
+        font-size: 14px;
+    }
+
+    .discount {
+        min-height: 24px;
+        padding: 3px 9px;
+        font-size: 12px;
+    }
+
+    .stock {
+        min-height: 30px;
+        margin-bottom: 20px;
+        padding: 5px 11px;
+    }
+
+    .quantity-row {
+        gap: 10px;
+        margin-bottom: 22px;
+        font-size: 14px;
+    }
+
+    .action-buttons {
+        gap: 12px;
+        margin-bottom: 26px;
+    }
+
+    .action-buttons button {
+        flex: 1 1 0;
+        width: auto;
+        min-width: 0;
+        height: 46px;
+        padding: 0 8px;
+        font-size: 13px;
+    }
+
+    .product-benefits {
+        gap: 16px 18px;
+        padding-top: 22px;
+    }
+
+    .product-benefit {
+        grid-template-columns: 27px minmax(0, 1fr);
+        gap: 9px;
+    }
+
+    .product-benefit i {
+        font-size: 21px;
+    }
+
+    .product-benefit strong {
+        font-size: 13px;
+    }
+
+    .product-benefit span {
+        font-size: 12px;
+    }
+
+    .description-section,
+    .review-section,
+    .related-section {
+        margin-top: 34px;
+    }
+
+    .review-card {
+        padding: 20px;
     }
 }
 
