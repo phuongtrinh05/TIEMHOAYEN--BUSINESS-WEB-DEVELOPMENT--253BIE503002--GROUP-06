@@ -47,6 +47,8 @@ import collectionProductRoutes from './routes/collectionProduct.js';
 import styleRoutes from './routes/style.js';
 import categoryProductRoutes from './routes/categoryProduct.js';
 import contactRoutes from './routes/contact.js';
+import adminRoutes from './routes/admin.js';
+import rolePermissionRoutes from './routes/rolePermission.js';
 
 const app = express();
 const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
@@ -119,6 +121,8 @@ app.use('/api/collection-products', collectionProductRoutes);
 app.use('/api/styles', styleRoutes);
 app.use('/api/category-products', categoryProductRoutes);
 app.use('/api/contacts', contactRoutes);
+app.use('/api/admin', rolePermissionRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Backend TIEM_HOA_YEN đang chạy!');
