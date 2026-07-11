@@ -1,0 +1,225 @@
+<div class="admin-layout">
+
+  <div class="article-detail-page">
+
+    <!-- ===== TOAST THÔNG BÁO ===== -->
+    <div class="toast" *ngIf="toastVisible">
+      <i class="bi bi-check-circle-fill"></i>
+      {{ toastMessage }}
+    </div>
+
+    <!-- ===== POPUP XÁC NHẬN XÓA ===== -->
+    <div class="confirm-overlay" *ngIf="isDeleteConfirmOpen" (click)="cancelDeleteArticle()">
+      <div class="confirm-modal" (click)="$event.stopPropagation()">
+
+        <div class="confirm-modal__topbar">
+          <button type="button" class="confirm-modal__close" (click)="cancelDeleteArticle()">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+
+        <div class="confirm-modal__icon">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+        </div>
+
+        <h2 class="confirm-modal__title">Xóa bài viết</h2>
+        <p class="confirm-modal__desc">
+          Bạn có chắc muốn xóa bài viết này không? Hành động này không thể hoàn tác.
+        </p>
+
+        <div class="confirm-modal__actions">
+          <button type="button" class="confirm-btn confirm-btn--cancel" (click)="cancelDeleteArticle()">
+            Hủy
+          </button>
+          <button type="button" class="confirm-btn confirm-btn--danger" (click)="confirmDeleteArticle()">
+            Xóa bài viết
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PAGE HEADER ===== -->
+    <div class="page-header" *ngIf="article">
+      <div class="page-header__actions">
+        <button
+          type="button"
+          class="btn-save"
+          [class.btn-save--loading]="isSaving"
+          [disabled]="isSaving"
+          (click)="saveArticle()"
+        >
+          <i class="bi bi-floppy" *ngIf="!isSaving"></i>
+          <span class="spinner" *ngIf="isSaving"></span>
+          Lưu bài viết
+        </button>
+        <button type="button" class="btn-delete" (click)="requestDeleteArticle()">
+          <i class="bi bi-trash3"></i>
+          Xóa bài viết
+        </button>
+      </div>
+    </div>
+
+    <ng-container *ngIf="article; else noArticle">
+
+      <!-- ===== AUTHOR CARD ===== -->
+      <div class="author-card-wrap">
+        <div class="detail-card author-card">
+
+          <!-- Avatar -->
+          <div class="author-avatar">
+            <img *ngIf="article.avatarUrl" [src]="article.avatarUrl" [alt]="article.author" />
+            <span *ngIf="!article.avatarUrl" class="author-avatar__initials">
+              <i class="bi bi-person-circle"></i>
+            </span>
+          </div>
+
+          <!-- Info -->
+          <div class="author-info">
+            <!-- Title row -->
+            <div class="author-info__title-row">
+              <h1 class="article-title" *ngIf="!isEditing">{{ article.title }}</h1>
+              <div *ngIf="isEditing" class="title-field-wrap">
+                <input
+                  type="text"
+                  class="input-title"
+                  [class.input-title--error]="editSubmitted && !draft.title?.trim()"
+                  [(ngModel)]="draft.title"
+                  placeholder="Tiêu đề bài viết"
+                />
+                <span class="meta-field-error" *ngIf="editSubmitted && !draft.title?.trim()">Vui lòng nhập Tiêu đề</span>
+              </div>
+
+              <button
+                type="button"
+                class="btn-edit"
+                (click)="isEditing ? cancelEdit() : startEdit()"
+              >
+                <i class="bi" [ngClass]="isEditing ? 'bi-x-lg' : 'bi-pencil-square'"></i>
+                {{ isEditing ? 'Huỷ' : 'Chỉnh sửa' }}
+              </button>
+            </div>
+
+            <div class="author-info__divider"></div>
+
+            <!-- Meta fields -->
+            <div class="author-meta">
+
+              <div class="meta-row">
+                <span class="meta-label">Người viết:</span>
+                <span class="meta-value" *ngIf="!isEditing">{{ article.author }}</span>
+                <div *ngIf="isEditing" class="meta-field-wrap">
+                  <input type="text" class="meta-input" [class.meta-input--error]="editSubmitted && !draft.author?.trim()" [(ngModel)]="draft.author" placeholder="Tên người viết" />
+                  <span class="meta-field-error" *ngIf="editSubmitted && !draft.author?.trim()">Vui lòng nhập Người viết</span>
+                </div>
+              </div>
+
+              <div class="meta-row">
+                <span class="meta-label">Email:</span>
+                <span class="meta-value" *ngIf="!isEditing">{{ article.email }}</span>
+                <div *ngIf="isEditing" class="meta-field-wrap">
+                  <input type="email" class="meta-input" [class.meta-input--error]="editSubmitted && !draft.email?.trim()" [(ngModel)]="draft.email" placeholder="Email" />
+                  <span class="meta-field-error" *ngIf="editSubmitted && !draft.email?.trim()">Vui lòng nhập Email</span>
+                </div>
+              </div>
+
+              <div class="meta-row">
+                <span class="meta-label">Ngày cập nhật:</span>
+                <span class="meta-value" *ngIf="!isEditing">{{ article.updatedAt }}</span>
+                <div *ngIf="isEditing" class="meta-field-wrap">
+                  <div class="meta-date-wrap">
+                    <input
+                      type="text"
+                      class="meta-input meta-input--date"
+                      [class.meta-input--error]="editSubmitted && !draft.updatedAt?.trim()"
+                      [(ngModel)]="draft.updatedAt"
+                      placeholder="dd/mm/yyyy"
+                    >
+                    <div class="meta-date-icon-wrap">
+                      <i class="bi bi-calendar3"></i>
+                      <input #dateNative type="date" class="meta-date-native" (click)="openDatePicker()" (change)="onDraftDatePicked($any($event.target).value)">
+                    </div>
+                  </div>
+                  <span class="meta-field-error" *ngIf="editSubmitted && !draft.updatedAt?.trim()">Vui lòng nhập Ngày cập nhật</span>
+                </div>
+              </div>
+
+              <div class="meta-row">
+                <span class="meta-label">Danh mục:</span>
+                <span *ngIf="!isEditing" class="category-badge" [ngClass]="categoryClass(article.category)">{{ article.category }}</span>
+                <div *ngIf="isEditing" class="meta-field-wrap">
+                  <select class="meta-select" [(ngModel)]="draft.category">
+                    <option value="Hoa hồng">Hoa hồng</option>
+                    <option value="Hoa cưới">Hoa cưới</option>
+                    <option value="Hoa sinh nhật">Hoa sinh nhật</option>
+                    <option value="Hoa tang lễ">Hoa tang lễ</option>
+                    <option value="Hoa văn phòng">Hoa văn phòng</option>
+                    <option value="Mẹo cắm hoa">Mẹo cắm hoa</option>
+                    <option value="Tin tức">Tin tức</option>
+                  </select>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Nút lưu / xóa bên dưới card -->
+        <div class="author-card-actions">
+          <button
+            type="button"
+            class="btn-save"
+            [class.btn-save--loading]="isSaving"
+            (click)="saveArticle()"
+          >
+            <i class="bi bi-floppy" *ngIf="!isSaving"></i>
+            <span class="spinner" *ngIf="isSaving"></span>
+            Lưu bài viết
+          </button>
+          <button type="button" class="btn-delete" (click)="requestDeleteArticle()">
+            <i class="bi bi-trash3"></i>
+            Xóa bài viết
+          </button>
+        </div>
+      </div>
+
+      <!-- ===== CONTENT CARD ===== -->
+      <div class="detail-card content-card">
+        <h2 class="content-card__heading">Nội dung bài viết</h2>
+        <div class="content-card__divider"></div>
+
+        <!-- Rich-text editor - TinyMCE -->
+        <div class="editor-wrap">
+          <editor
+            *ngIf="isEditorReady"
+            [attr.data-editor-key]="editorKey"
+            [apiKey]="tinyMceApiKey"
+            [(ngModel)]="editorContent"
+            [init]="tinyMceConfig"
+            [disabled]="!isEditing"
+            (ngModelChange)="onTinyMceChange()"
+          ></editor>
+        </div>
+      </div>
+
+    </ng-container>
+
+    <!-- ===== EMPTY STATE ===== -->
+    <ng-template #noArticle>
+      <div class="empty-state">
+        <ng-container *ngIf="isLoadingArticle; else articleNotFound">
+          <span class="spinner spinner--dark"></span>
+          <p>Đang tải bài viết...</p>
+        </ng-container>
+
+        <ng-template #articleNotFound>
+          <i class="bi bi-file-earmark-x"></i>
+          <p>Không tìm thấy bài viết</p>
+          <button type="button" class="btn-back" (click)="goBack()">
+            <i class="bi bi-chevron-left"></i> Quay lại danh sách
+          </button>
+        </ng-template>
+      </div>
+    </ng-template>
+
+  </div>
+</div>

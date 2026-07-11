@@ -1,0 +1,579 @@
+<div class="admin-layout">
+
+  <div class="create-order-page">
+
+    <!-- ===== TOAST THÔNG BÁO ===== -->
+    <div class="toast" *ngIf="toastVisible">
+      <i class="bi bi-check-circle-fill"></i>
+      {{ toastMessage }}
+    </div>
+
+    <!-- ===== PAGE META ===== -->
+    <div class="order-meta">
+      <div class="order-meta__left">
+        <div class="order-meta__title">
+          <span class="meta-label">ĐƠN HÀNG MỚI</span>
+        </div>
+      </div>
+      <div class="order-meta__right">
+        <div class="status-field-wrap">
+          <div class="status-btn-wrap">
+            <button
+              class="btn-icon-text btn-icon-text--secondary"
+              type="button"
+              (click)="toggleStatusDropdown()"
+              [class.btn-icon-text--error]="errors.orderStatus"
+            >
+              Cập nhật trạng thái
+              <i class="bi" [ngClass]="showStatusDropdown ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+            </button>
+            <div class="status-dropdown-wrap" *ngIf="showStatusDropdown">
+              <div class="status-dropdown">
+                <button
+                  class="status-dropdown-item"
+                  type="button"
+                  *ngFor="let s of statusOptions"
+                  (click)="selectStatus(s)"
+                >{{ s }}</button>
+              </div>
+            </div>
+          </div>
+          <div class="form-error" *ngIf="errors.orderStatus">{{ errors.orderStatus }}</div>
+        </div>
+        <span
+          *ngIf="statusSelected"
+          class="badge-status order-status-badge"
+          [ngClass]="orderStatusBadgeClass(form.orderStatus)"
+        >
+          <i class="bi order-status-badge__icon" [ngClass]="orderStatusIcon(form.orderStatus)"></i>
+          {{ form.orderStatus }}
+        </span>
+        <button class="btn-icon-text btn-icon-text--primary" type="button" (click)="submitOrder()">
+          <i class="bi bi-plus-lg"></i> Tạo đơn hàng
+        </button>
+      </div>
+    </div>
+
+    <!-- ===== MAIN GRID ===== -->
+    <div class="detail-grid">
+
+      <!-- CỘT TRÁI -->
+      <div class="detail-col-main">
+
+        <!-- THÔNG TIN NGƯỜI GỬI -->
+        <div class="detail-card">
+          <div class="card-header-row">
+            <h2 class="card-title">
+              <span class="card-title__bar"></span>
+              Thông tin người gửi
+            </h2>
+          </div>
+
+          <!-- Tìm kiếm khách hàng -->
+          <div class="customer-search-wrap">
+            <div class="customer-search-box" [class.focused]="customerSearchFocused">
+              <i class="bi bi-search customer-search-icon"></i>
+              <input
+                type="text"
+                class="customer-search-input"
+                placeholder="Tìm kiếm khách hàng (mã, email, sđt)"
+                [(ngModel)]="customerSearchQuery"
+                (input)="onCustomerSearch()"
+                (focus)="customerSearchFocused = true; onCustomerSearch()"
+                (blur)="onCustomerSearchBlur()"
+              />
+            </div>
+          </div>
+
+          <div class="customer-search-dropdown" *ngIf="showCustomerSearch && customerSearchResults.length > 0">
+            <button
+              class="customer-search-item"
+              type="button"
+              *ngFor="let c of customerSearchResults"
+              (click)="selectCustomer(c)"
+            >
+              <div class="customer-search-avatar">
+                <i class="bi bi-person-fill"></i>
+              </div>
+              <div class="customer-search-info">
+                <div class="customer-search-name">{{ c.name }}</div>
+                <div class="customer-search-meta">{{ c.id }} · {{ c.phone }}</div>
+              </div>
+            </button>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-field form-field--full">
+              <label class="form-label">Họ và tên <span class="required">*</span></label>
+              <input
+                type="text"
+                class="form-input"
+                placeholder="Nhập họ và tên"
+                [(ngModel)]="form.senderName"
+                [class.form-input--error]="errors.senderName"
+              />
+              <div class="form-error" *ngIf="errors.senderName">{{ errors.senderName }}</div>
+            </div>
+
+            <div class="form-field">
+              <label class="form-label">Số điện thoại <span class="required">*</span></label>
+              <input
+                type="text"
+                class="form-input"
+                placeholder="Nhập số điện thoại"
+                [(ngModel)]="form.senderPhone"
+                [class.form-input--error]="errors.senderPhone"
+                maxlength="10"
+              />
+              <div class="form-error" *ngIf="errors.senderPhone">{{ errors.senderPhone }}</div>
+            </div>
+
+            <div class="form-field">
+              <label class="form-label">Email</label>
+              <input
+                type="email"
+                class="form-input"
+                placeholder="Nhập email"
+                [(ngModel)]="form.senderEmail"
+                [class.form-input--error]="errors.senderEmail"
+              />
+              <div class="form-error" *ngIf="errors.senderEmail">{{ errors.senderEmail }}</div>
+            </div>
+
+            <div class="form-field form-field--full">
+              <label class="form-label">Mã khách hàng</label>
+              <input
+                type="text"
+                class="form-input form-input--readonly"
+                [value]="form.senderCustomerId || ''"
+                placeholder="Tự động điền khi chọn khách hàng"
+                readonly
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- DANH SÁCH SẢN PHẨM -->
+        <div class="detail-card">
+          <div class="card-header-row">
+            <h2 class="card-title">
+              <span class="card-title__bar"></span>
+              Danh sách sản phẩm ({{ totalQty }})
+            </h2>
+            <div class="product-search-wrap">
+              <div class="product-search-box" [class.focused]="showProductSearch">
+                <input
+                  type="text"
+                  class="product-search-input"
+                  placeholder="Tìm kiếm sản phẩm"
+                  [(ngModel)]="productSearchQuery"
+                  (input)="onProductSearch()"
+                  (focus)="openProductSearch()"
+                  (blur)="onProductSearchBlur()"
+                />
+                <i class="bi bi-search product-search-icon"></i>
+              </div>
+              <div class="product-search-dropdown" *ngIf="showProductSearch">
+                <div class="product-search-empty" *ngIf="productSearchResults.length === 0">
+                  Không tìm thấy sản phẩm
+                </div>
+                <button
+                  class="product-search-item"
+                  type="button"
+                  *ngFor="let p of productSearchResults"
+                  (mousedown)="addProduct(p)"
+                >
+                  <img [src]="p.image" [alt]="p.name" class="product-search-thumb"
+                    onerror="this.src='assets/images/logo-main.png'">
+                  <div class="product-search-info">
+                    <div class="product-search-name">{{ p.name }}</div>
+                    <div class="product-search-sku">{{ p.id }}</div>
+                  </div>
+                  <div class="product-search-price">{{ formatVND(p.price) }}</div>
+                </button>
+              </div>
+            </div>
+            <div class="form-error" *ngIf="errors.products">{{ errors.products }}</div>
+          </div>
+
+          <div class="empty-products" *ngIf="form.products.length === 0">
+            <i class="bi bi-box-seam empty-products__icon"></i>
+            <div class="empty-products__text">Chưa có sản phẩm nào. Tìm kiếm để thêm vào đơn.</div>
+          </div>
+
+          <table class="product-table" *ngIf="form.products.length > 0">
+            <thead>
+              <tr>
+                <th>TÊN SẢN PHẨM</th>
+                <th class="text-center">SỐ LƯỢNG</th>
+                <th class="text-center">GIÁ</th>
+                <th class="text-center">THÀNH TIỀN</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let p of form.products; let i = index">
+                <td>
+                  <div class="product-name-cell">
+                    <img [src]="p.image" [alt]="p.name" class="product-thumb"
+                      onerror="this.src='assets/images/logo-main.png'">
+                    <div>
+                      <div class="product-name">{{ p.name }}</div>
+                      <div class="product-sku">{{ p.id }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="text-center">
+                  <div class="qty-spinner">
+                    <span class="qty-val">{{ p.qty }}</span>
+                    <div class="qty-btns">
+                      <button class="qty-btn" type="button" (click)="updateQty(i, 1)">
+                        <i class="bi bi-chevron-up"></i>
+                      </button>
+                      <button class="qty-btn" type="button" (click)="updateQty(i, -1)">
+                        <i class="bi bi-chevron-down"></i>
+                      </button>
+                    </div>
+                  </div>
+                </td>
+                <td class="text-center price-col">{{ formatVND(p.price) }}</td>
+                <td class="text-center price-col price-total">{{ formatVND(lineTotal(p)) }}</td>
+                <td class="text-center">
+                  <button class="btn-remove-product" type="button" (click)="removeProduct(i)">
+                    <i class="bi bi-trash3"></i>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- GHI CHÚ KHÁCH HÀNG -->
+        <div class="detail-card">
+          <h2 class="card-title">
+            <span class="card-title__bar"></span>
+            Ghi chú của khách hàng
+          </h2>
+          <textarea
+            class="form-textarea"
+            placeholder="Nhập ghi chú của khách hàng..."
+            [(ngModel)]="form.customerNote"
+            rows="3"
+          ></textarea>
+        </div>
+
+        <!-- LỜI NHẮN / THIỆP -->
+        <div class="detail-card">
+          <h2 class="card-title">
+            <span class="card-title__bar"></span>
+            Lời nhắn / Thiệp
+          </h2>
+          <div class="form-field-row">
+            <label class="form-label">Mẫu thiệp</label>
+            <div class="form-select-wrap">
+              <select class="form-select" [(ngModel)]="form.cardTemplate">
+                <option value="Không có thiệp">Không có thiệp</option>
+                <option *ngFor="let t of cardTemplates" [value]="t">{{ t }}</option>
+              </select>
+              <i class="bi bi-chevron-down form-select-chevron"></i>
+            </div>
+          </div>
+          <div class="form-field-row" *ngIf="form.cardTemplate !== 'Không có thiệp'">
+            <label class="form-label">Nội dung lời nhắn</label>
+            <textarea
+              class="form-textarea"
+              placeholder="Nhập nội dung lời nhắn..."
+              [(ngModel)]="form.cardMessage"
+              rows="2"
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- THANH TOÁN -->
+        <div class="detail-card">
+          <h2 class="card-title">
+            <span class="card-title__bar"></span>
+            Thanh toán
+          </h2>
+
+          <div class="payment-rows">
+            <div class="payment-row">
+              <span class="payment-label payment-label--italic">Tạm tính</span>
+              <span class="payment-val-italic">{{ formatVND(computedSubtotal) }}</span>
+            </div>
+            <div class="payment-row">
+              <span class="payment-label payment-label--italic">Phí ship</span>
+              <span class="payment-val-italic">{{ formatVND(shippingFee) }}</span>
+            </div>
+
+            <!-- Voucher: label + input trên cùng 1 dòng -->
+            <div class="payment-row payment-row--voucher">
+              <span class="payment-label payment-label--italic">Voucher</span>
+              <div class="voucher-inline-wrap">
+                <input
+                  type="text"
+                  class="voucher-input"
+                  placeholder="Nhập mã voucher"
+                  [(ngModel)]="voucherInput"
+                  (keyup.enter)="applyVoucher()"
+                />
+                <button class="btn-apply-voucher" type="button" (click)="applyVoucher()">Áp dụng</button>
+              </div>
+            </div>
+            <!-- Voucher có sẵn của khách -->
+            <div class="customer-vouchers" *ngIf="customerVouchers.length > 0">
+              <div class="customer-vouchers__list">
+                <button
+                  class="customer-voucher-chip"
+                  type="button"
+                  *ngFor="let v of customerVouchers"
+                  [class.customer-voucher-chip--active]="form.voucher === v.code"
+                  (click)="selectCustomerVoucher(v)"
+                >
+                  <i class="bi bi-ticket-perforated-fill"></i>
+                  {{ v.code }} <span class="chip-discount">-{{ formatVND(v.discount) }}</span>
+                </button>
+              </div>
+            </div>
+            <div class="voucher-error" *ngIf="voucherError">{{ voucherError }}</div>
+            <div class="payment-row voucher-success-row" *ngIf="!voucherError && form.voucher">
+              <span class="voucher-success">
+                <i class="bi bi-check-circle-fill"></i> Đã áp dụng <strong>{{ form.voucher }}</strong>
+              </span>
+              <span class="discount-voucher">-{{ formatVND(voucherDiscount) }}</span>
+            </div>
+
+            <!-- Điểm thưởng -->
+            <div class="loyalty-bar">
+              <span class="loyalty-bar__label">
+                Sử dụng {{ selectedCustomerLoyalty }} điểm thưởng
+                <label class="loyalty-switch" [class.loyalty-switch--disabled]="selectedCustomerLoyalty === 0">
+                  <input
+                    type="checkbox"
+                    [(ngModel)]="useLoyalty"
+                    (change)="onLoyaltyToggle()"
+                    [disabled]="selectedCustomerLoyalty === 0"
+                  >
+                  <span class="loyalty-switch__track"></span>
+                </label>
+              </span>
+              <span class="loyalty-bar__discount" *ngIf="useLoyalty && loyaltyDiscount > 0">
+                -{{ formatVND(loyaltyDiscount) }}
+              </span>
+              <span *ngIf="!useLoyalty || loyaltyDiscount === 0"></span>
+            </div>
+
+            <div class="payment-row">
+              <span class="payment-label">Tổng cộng</span>
+              <span class="payment-val">{{ formatVND(computedTotalBeforeTax) }}</span>
+            </div>
+            <div class="payment-row">
+              <span class="payment-label">Phí & Thuế dự kiến</span>
+              <span class="payment-val">{{ formatVND(tax) }}</span>
+            </div>
+
+            <div class="payment-divider"></div>
+
+            <div class="payment-row payment-row--total">
+              <span class="payment-label">Tổng tiền</span>
+              <span class="total-val">{{ formatVND(computedGrandTotal) }}</span>
+            </div>
+
+            <div class="payment-row payment-row--paid">
+              <span class="payment-label">Đã thanh toán</span>
+              <input
+                type="text"
+                class="payment-text-input payment-text-input--highlight"
+                [(ngModel)]="paidInput"
+                (ngModelChange)="onPaidInputChange()"
+                placeholder="Nhập số tiền..."
+              />
+            </div>
+            <div class="payment-row" *ngIf="paidInput">
+              <span class="payment-label">Còn lại</span>
+              <span class="payment-val"
+                    [class.remaining--positive]="computedRemaining > 0"
+                    [class.remaining--zero]="computedRemaining === 0">{{ formatVND(computedRemaining) }}</span>
+            </div>
+            <div class="payment-row" *ngIf="paidInput">
+              <span class="payment-label">Phương thức thanh toán</span>
+              <span class="payment-method-text">
+                {{ computedRemaining > 0 ? 'COD' : 'Chuyển khoản full' }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <!-- /CỘT TRÁI -->
+
+      <!-- CỘT PHẢI -->
+      <div class="detail-col-side">
+
+        <!-- THÔNG TIN GIAO HÀNG -->
+        <div class="detail-card">
+          <h2 class="card-title">
+            <span class="card-title__bar"></span>
+            Thông tin giao hàng
+          </h2>
+
+          <div class="form-grid">
+            <div class="form-field form-field--full">
+              <label class="form-label">Tên người nhận <span class="required">*</span></label>
+              <input
+                type="text"
+                class="form-input"
+                placeholder="Nhập tên người nhận"
+                [(ngModel)]="form.receiverName"
+                [class.form-input--error]="errors.receiverName"
+              />
+              <div class="form-error" *ngIf="errors.receiverName">{{ errors.receiverName }}</div>
+            </div>
+
+            <div class="form-field form-field--full">
+              <label class="form-label">Số điện thoại <span class="required">*</span></label>
+              <input
+                type="text"
+                class="form-input"
+                placeholder="Nhập số điện thoại"
+                [(ngModel)]="form.receiverPhone"
+                [class.form-input--error]="errors.receiverPhone"
+                maxlength="10"
+              />
+              <div class="form-error" *ngIf="errors.receiverPhone">{{ errors.receiverPhone }}</div>
+            </div>
+
+            <div class="form-field form-field--full">
+              <label class="form-label">Email</label>
+              <input
+                type="email"
+                class="form-input"
+                placeholder="Nhập email người nhận"
+                [(ngModel)]="form.receiverEmail"
+                [class.form-input--error]="errors.receiverEmail"
+              />
+              <div class="form-error" *ngIf="errors.receiverEmail">{{ errors.receiverEmail }}</div>
+            </div>
+
+            <div class="form-field form-field--full">
+              <label class="form-label">Ngày giao hàng <span class="required">*</span></label>
+              <div class="form-input-icon-wrap form-input-icon-wrap--date">
+                <input
+                  type="text"
+                  class="form-input form-input--date"
+                  placeholder="dd/mm/yyyy"
+                  [value]="deliveryDateDisplay"
+                  readonly
+                  [class.form-input--error]="errors.deliveryDate"
+                />
+                <input
+                  #deliveryDatePicker
+                  type="date"
+                  class="date-hidden-input"
+                  [ngModel]="form.deliveryDate"
+                  (ngModelChange)="onDatePickerChange($event)"
+                />
+                <button
+                  class="date-picker-btn"
+                  type="button"
+                  aria-label="Chọn ngày giao hàng"
+                  (click)="openDatePicker(deliveryDatePicker)"
+                >
+                  <i class="bi bi-calendar3"></i>
+                </button>
+              </div>
+              <div class="form-error" *ngIf="errors.deliveryDate">{{ errors.deliveryDate }}</div>
+            </div>
+
+            <div class="form-field form-field--full">
+              <label class="form-label">Khung giờ giao <span class="required">*</span></label>
+              <div class="form-select-wrap">
+                <select
+                  class="form-select"
+                  [(ngModel)]="form.deliverySlot"
+                  [class.form-select--error]="errors.deliverySlot"
+                >
+                  <option value="" disabled>Chọn khung giờ</option>
+                  <option *ngFor="let slot of deliverySlots" [value]="slot">{{ slot }}</option>
+                </select>
+                <i class="bi bi-chevron-down form-select-chevron"></i>
+              </div>
+              <div class="form-error" *ngIf="errors.deliverySlot">{{ errors.deliverySlot }}</div>
+            </div>
+
+            <div class="form-field form-field--full">
+              <label class="form-label">Địa chỉ giao hàng <span class="required">*</span></label>
+              <input
+                type="text"
+                class="form-input"
+                placeholder="Số nhà, tên đường, phường, quận, thành phố"
+                [(ngModel)]="form.deliveryAddress"
+                [class.form-input--error]="errors.deliveryAddress"
+              />
+              <div class="form-error" *ngIf="errors.deliveryAddress">{{ errors.deliveryAddress }}</div>
+            </div>
+          </div>
+
+          <!-- Người giao hàng -->
+          <div class="section-divider">
+            <span>Người giao hàng</span>
+          </div>
+          <div class="shipper-select-wrap">
+            <div class="shipper-card">
+              <div class="shipper-info">
+                <div class="shipper-name">{{ selectedShipper?.name || 'Chưa chọn shipper' }}</div>
+                <div class="shipper-phone">{{ selectedShipper?.phone || '' }}</div>
+              </div>
+              <button class="btn-icon-sm" type="button" (click)="toggleShipperDropdown()">
+                <i class="bi" [ngClass]="showShipperDropdown ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+              </button>
+            </div>
+
+            <div class="shipper-dropdown" *ngIf="showShipperDropdown">
+              <button
+                class="shipper-option"
+                type="button"
+                *ngFor="let shipper of shippers"
+                (click)="selectShipper(shipper)"
+              >
+                <div class="shipper-option__info">
+                  <div class="shipper-option__name">{{ shipper.name }}</div>
+                  <div class="shipper-option__phone">{{ shipper.phone }}</div>
+                </div>
+                <i
+                  class="bi bi-check-lg shipper-option__check"
+                  *ngIf="selectedShipper?.name === shipper.name"
+                ></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- GHI CHÚ ĐƠN HÀNG -->
+        <div class="detail-card">
+          <div class="card-header-row">
+            <h2 class="card-title">
+              <span class="card-title__bar"></span>
+              Ghi chú đơn hàng
+            </h2>
+            <button class="btn-icon-sm" type="button">
+              <i class="bi bi-pencil-square"></i>
+            </button>
+          </div>
+          <textarea
+            class="note-textarea"
+            placeholder="Ghi chú nội bộ cho đơn hàng này..."
+            [(ngModel)]="form.adminNote"
+            rows="3"
+          ></textarea>
+        </div>
+
+      </div>
+      <!-- /CỘT PHẢI -->
+
+    </div>
+    <!-- /MAIN GRID -->
+
+  </div>
+
+</div>

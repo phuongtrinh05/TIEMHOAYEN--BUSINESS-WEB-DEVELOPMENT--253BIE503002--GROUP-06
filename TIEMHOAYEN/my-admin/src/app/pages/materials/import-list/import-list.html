@@ -1,0 +1,593 @@
+
+<div class="material-page">
+    <div class="material-card">
+
+        <div class="material-toolbar">
+            <div class="material-tabs">
+                <a routerLink="/materials" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
+                    Danh sách NVL
+                </a>
+
+                <a routerLink="/materials/imports" routerLinkActive="active">
+                    Nhập kho
+                </a>
+
+                <a routerLink="/materials/exports" routerLinkActive="active">
+                    Xuất kho
+                </a>
+
+                <a routerLink="/materials/suppliers" routerLinkActive="active">
+                    Nhà cung cấp
+                </a>
+            </div>
+
+            <div class="toolbar-right">
+                <div class="search-box">
+                    <input
+                        type="text"
+                        placeholder="Tìm kiếm phiếu nhập"
+                        [(ngModel)]="searchKeyword"
+                        (input)="applyFilters()"
+                    >
+                    <span class="search-icon">
+                        <i class="bi bi-search"></i>
+                    </span>
+                </div>
+
+                <div class="dropdown-wrapper">
+                    <button class="tool-btn" type="button" (click)="$event.stopPropagation(); toggleFilterMenu()">
+                        <i class="bi bi-filter"></i>
+                    </button>
+
+                    <div class="dropdown-menu filter-menu" *ngIf="isFilterMenuOpen" (click)="$event.stopPropagation()">
+                        <div class="filter-group">
+                            <label>Nhà cung cấp</label>
+                            <select [(ngModel)]="selectedSupplier" (change)="applyFilters()">
+                                <option value="Tất cả">Tất cả</option>
+                                <option value="NCC001">NCC001</option>
+                                <option value="NCC002">NCC002</option>
+                                <option value="NCC003">NCC003</option>
+                                <option value="NCC004">NCC004</option>
+                                <option value="NCC005">NCC005</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="tool-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleSortMenu()"
+                    >
+                        <i class="bi bi-arrow-down-up"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu sort-menu"
+                        *ngIf="isSortMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button" (click)="sortImports('code')">
+                            Theo mã phiếu nhập
+                        </button>
+
+                        <button type="button" (click)="sortImports('supplier')">
+                            Theo nhà cung cấp
+                        </button>
+
+                        <button type="button" (click)="sortImports('importDate')">
+                            Theo ngày nhập
+                        </button>
+
+                        <button type="button" (click)="sortImports('totalAmount')">
+                            Theo tổng tiền
+                        </button>
+                    </div>
+                </div>
+
+                <button class="tool-btn" type="button">
+                    <i class="bi bi-three-dots"></i>
+                </button>
+
+                <button class="tool-btn add-btn" type="button" title="Thêm phiếu nhập" (click)="openAddModal()">
+                    <i class="bi bi-plus-circle"></i>
+                </button>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="export-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleExportMenu()"
+                    >
+                        <i class="bi bi-file-earmark-arrow-down"></i>
+                        Xuất
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu export-menu"
+                        *ngIf="isExportMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button">
+                            Xuất Excel
+                        </button>
+
+                        <button type="button">
+                            Xuất PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="material-table import-table">
+                <thead>
+                    <tr>
+                        <th class="checkbox-col">
+                            <input
+                                type="checkbox"
+                                [checked]="isAllSelected()"
+                                (change)="toggleSelectAll($event)"
+                            >
+                        </th>
+
+                        <th>Mã phiếu nhập</th>
+                        <th>Nhà cung cấp</th>
+                        <th>Ngày nhập</th>
+                        <th>Tổng tiền</th>
+                        <th class="action-col">Thao tác</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr *ngFor="let item of pagedImports">
+                        <td class="checkbox-col">
+                            <input
+                                type="checkbox"
+                                [(ngModel)]="item.selected"
+                            >
+                        </td>
+
+                        <td class="code-text">
+                            {{ item.code }}
+                        </td>
+
+                        <td class="code-text">
+                            {{ item.supplier }}
+                        </td>
+
+                        <td>
+                            {{ item.importDate | date: 'dd/MM/yyyy' }}
+                        </td>
+
+                        <td>
+                            {{ formatPrice(item.totalAmount) }}
+                        </td>
+
+                        <td class="action-col">
+                            <div class="action-buttons">
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Sửa"
+                                    (click)="editImport(item)"
+                                >
+                                    <i class="bi bi-pencil-square"></i>
+                                </button>
+
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Xóa"
+                                    (click)="deleteImport(item)"
+                                >
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <button
+                class="page-nav"
+                type="button"
+                [disabled]="currentPage === 1"
+                (click)="previousPage()"
+            >
+                <i class="bi bi-arrow-left"></i>
+                <span> Trước</span>
+            </button>
+
+            <div class="page-numbers">
+                <button
+                    type="button"
+                    *ngFor="let page of pages"
+                    [class.active]="page === currentPage"
+                    [class.dots]="page === '...'"
+                    [disabled]="page === '...'"
+                    (click)="goToPage(page)"
+                >
+                    {{ page }}
+                </button>
+            </div>
+
+            <button
+                class="page-nav"
+                type="button"
+                [disabled]="currentPage === totalPages"
+                (click)="nextPage()"
+            >
+                <span>Sau </span>
+                <i class="bi bi-arrow-right"></i>
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<!-- MODAL SỬA PHIẾU NHẬP -->
+<div class="edit-modal-overlay" *ngIf="isEditModalOpen && editingImport">
+    <div class="import-form-modal">
+        <div class="import-form-header">
+            <h2>Phiếu nhập {{ editingImport.code }}</h2>
+
+            <button type="button" class="modal-edit-btn" disabled>
+                <i class="bi bi-pencil-square"></i>
+                Chỉnh sửa
+            </button>
+        </div>
+
+        <div class="modal-divider"></div>
+
+        <div class="import-form-body">
+            <div class="form-group full-width">
+                <label>Mã phiếu nhập</label>
+                <input
+                    type="text"
+                    [(ngModel)]="editingImport.code"
+                    readonly
+                    class="readonly-input"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Ghi chú</label>
+                <textarea [(ngModel)]="editingImport.note"></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Ngày nhập</label>
+                    <div class="date-input">
+                        <input
+                            type="text"
+                            placeholder="DD/MM/YYYY"
+                            maxlength="10"
+                            [(ngModel)]="editingImportDateText"
+                        >
+                        <i class="bi bi-calendar3"></i>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Tổng tiền</label>
+                    <div class="money-input readonly-money">
+                        <input
+                            type="text"
+                            [value]="formatPrice(editingImport.totalAmount)"
+                            readonly
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-header-row">
+                <h3>CHI TIẾT ({{ editingImport.details.length }})</h3>
+
+                <div class="detail-tools">
+                    <div class="detail-search material-search-wrapper">
+                        <input
+                            type="text"
+                            placeholder="Tìm kiếm nguyên vật liệu"
+                            [(ngModel)]="editingMaterialSearch"
+                            (focus)="openEditingMaterialDropdown()"
+                            (input)="openEditingMaterialDropdown()"
+                        >
+
+                        <i class="bi bi-search"></i>
+
+                        <div
+                            class="material-dropdown"
+                            *ngIf="isEditingMaterialDropdownOpen && filteredEditingMaterials.length > 0"
+                        >
+                            <button
+                                type="button"
+                                class="material-option"
+                                *ngFor="let material of filteredEditingMaterials"
+                                (click)="selectMaterialForImport(editingImport!, material, 'edit')"
+                            >
+                                <img [src]="material.image" [alt]="material.name">
+
+                                <span>
+                                    <strong>{{ material.name }}</strong>
+                                    <small>{{ material.code }}</small>
+                                </span>
+
+                                <em>{{ formatPrice(material.importPrice) }}</em>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <table class="import-detail-table">
+                <thead>
+                    <tr>
+                        <th>NGUYÊN VẬT LIỆU</th>
+                        <th>SỐ LƯỢNG NHẬP</th>
+                        <th>ĐƠN GIÁ NHẬP</th>
+                        <th>THÀNH TIỀN</th>
+                        <th></th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr *ngFor="let detail of editingImport.details">
+                        <td>
+                            <div class="detail-material-preview readonly-material">
+                                <img
+                                    *ngIf="detail.image"
+                                    [src]="detail.image"
+                                    [alt]="detail.materialName"
+                                >
+
+                                <div>
+                                    <strong>{{ detail.materialName || 'Chưa chọn NVL' }}</strong>
+                                    <span>{{ detail.materialCode || '---' }}</span>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td>
+                            <input
+                                class="detail-number-input"
+                                type="number"
+                                min="0"
+                                [(ngModel)]="detail.quantity"
+                                (ngModelChange)="updateImportTotal(editingImport!)"
+                            >
+                        </td>
+
+                        <td>
+                            <div class="detail-money">
+                                <input
+                                    type="number"
+                                    min="0"
+                                    [(ngModel)]="detail.unitPrice"
+                                    (ngModelChange)="updateImportTotal(editingImport!)"
+                                >
+                                <span>đ</span>
+                            </div>
+                        </td>
+
+                        <td class="detail-total">
+                            {{ formatPrice(getDetailAmount(detail)) }}
+                        </td>
+
+                        <td>
+                            <button
+                                type="button"
+                                class="remove-detail-btn"
+                                (click)="removeImportDetail(editingImport!, detail.id)"
+                            >
+                                <i class="bi bi-trash3"></i>
+                            </button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="import-form-actions">
+            <button
+                type="button"
+                class="cancel-btn"
+                (click)="closeEditModal()"
+            >
+                Huỷ
+            </button>
+
+            <button
+                type="button"
+                class="save-btn"
+                (click)="saveImport()"
+            >
+                Lưu
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL THÊM PHIẾU NHẬP -->
+<div class="edit-modal-overlay" *ngIf="isAddModalOpen && newImport">
+    <div class="import-form-modal">
+        <div class="import-form-header">
+            <h2>Tạo phiếu nhập</h2>
+        </div>
+
+        <div class="modal-divider"></div>
+
+        <div class="import-form-body">
+            <div class="form-group full-width">
+                <label>Mã phiếu nhập</label>
+                <input
+                    type="text"
+                    [(ngModel)]="newImport.code"
+                    readonly
+                    class="readonly-input"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Ghi chú</label>
+                <textarea [(ngModel)]="newImport.note"></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Ngày nhập</label>
+                    <div class="date-input">
+                        <input
+                            type="text"
+                            placeholder="DD/MM/YYYY"
+                            maxlength="10"
+                            [(ngModel)]="newImportDateText"
+                        >
+                        <i class="bi bi-calendar3"></i>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Tổng tiền</label>
+                    <div class="money-input readonly-money">
+                        <input
+                            type="text"
+                            [value]="formatPrice(newImport.totalAmount)"
+                            readonly
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-header-row">
+                <h3>CHI TIẾT</h3>
+
+                <div class="detail-tools">
+                    <div class="detail-search material-search-wrapper">
+                        <input
+                            type="text"
+                            placeholder="Tìm kiếm nguyên vật liệu"
+                            [(ngModel)]="newMaterialSearch"
+                            (focus)="openNewMaterialDropdown()"
+                            (input)="openNewMaterialDropdown()"
+                        >
+
+                        <i class="bi bi-search"></i>
+
+                        <div
+                            class="material-dropdown"
+                            *ngIf="isNewMaterialDropdownOpen && filteredNewMaterials.length > 0"
+                        >
+                            <button
+                                type="button"
+                                class="material-option"
+                                *ngFor="let material of filteredNewMaterials"
+                                (click)="selectMaterialForImport(newImport!, material, 'new')"
+                            >
+                                <img [src]="material.image" [alt]="material.name">
+
+                                <span>
+                                    <strong>{{ material.name }}</strong>
+                                    <small>{{ material.code }}</small>
+                                </span>
+
+                                <em>{{ formatPrice(material.importPrice) }}</em>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <table class="import-detail-table">
+                <thead>
+                    <tr>
+                        <th>NGUYÊN VẬT LIỆU</th>
+                        <th>SỐ LƯỢNG NHẬP</th>
+                        <th>ĐƠN GIÁ NHẬP</th>
+                        <th>THÀNH TIỀN</th>
+                        <th></th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr *ngFor="let detail of newImport.details">
+                        <td>
+                            <div class="detail-material-preview readonly-material">
+                                <img
+                                    *ngIf="detail.image"
+                                    [src]="detail.image"
+                                    [alt]="detail.materialName"
+                                >
+
+                                <div>
+                                    <strong>{{ detail.materialName || 'Chưa chọn NVL' }}</strong>
+                                    <span>{{ detail.materialCode || '---' }}</span>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td>
+                            <input
+                                class="detail-number-input"
+                                type="number"
+                                min="0"
+                                [(ngModel)]="detail.quantity"
+                                (ngModelChange)="updateImportTotal(newImport!)"
+                            >
+                        </td>
+
+                        <td>
+                            <div class="detail-money">
+                                <input
+                                    type="number"
+                                    min="0"
+                                    [(ngModel)]="detail.unitPrice"
+                                    (ngModelChange)="updateImportTotal(newImport!)"
+                                >
+                                <span>đ</span>
+                            </div>
+                        </td>
+
+                        <td class="detail-total">
+                            {{ formatPrice(getDetailAmount(detail)) }}
+                        </td>
+
+                        <td>
+                            <button
+                                type="button"
+                                class="remove-detail-btn"
+                                (click)="removeImportDetail(newImport!, detail.id)"
+                            >
+                                <i class="bi bi-trash3"></i>
+                            </button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="import-form-actions">
+            <button
+                type="button"
+                class="cancel-btn"
+                (click)="closeAddModal()"
+            >
+                Huỷ
+            </button>
+
+            <button
+                type="button"
+                class="save-btn"
+                (click)="saveNewImport()"
+            >
+                Lưu
+            </button>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,399 @@
+<div class="promotion-page">
+    <div class="promotion-card">
+
+        <div class="promotion-toolbar">
+            <div class="promotion-tabs">
+                <a
+                    routerLink="/promotions"
+                    routerLinkActive="active"
+                    [routerLinkActiveOptions]="{ exact: true }"
+                >
+                    Chiến dịch
+                </a>
+
+                <a
+                    routerLink="/promotions/vouchers"
+                    routerLinkActive="active"
+                >
+                    Voucher
+                </a>
+            </div>
+
+            <div class="toolbar-right">
+                <div class="search-box">
+                    <input
+                        type="text"
+                        placeholder="Tìm kiếm chiến dịch"
+                        [(ngModel)]="searchKeyword"
+                        (ngModelChange)="applyFilters()"
+                    >
+
+                    <span class="search-icon">
+                        <i class="bi bi-search"></i>
+                    </span>
+                </div>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="tool-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleFilterMenu()"
+                    >
+                        <i class="bi bi-filter"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu filter-menu"
+                        *ngIf="isFilterMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <div class="filter-group">
+                            <label>Trạng thái</label>
+
+                            <select
+                                [(ngModel)]="selectedStatus"
+                                (change)="applyFilters()"
+                            >
+                                <option value="Tất cả">Tất cả</option>
+                                <option value="Đang diễn ra">Đang diễn ra</option>
+                                <option value="Sắp diễn ra">Sắp diễn ra</option>
+                                <option value="Đã kết thúc">Đã kết thúc</option>
+                                <option value="Tạm dừng">Tạm dừng</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="tool-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleSortMenu()"
+                    >
+                        <i class="bi bi-arrow-down-up"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu sort-menu"
+                        *ngIf="isSortMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button" (click)="sortCampaigns('code')">
+                            Theo mã
+                        </button>
+
+                        <button type="button" (click)="sortCampaigns('name')">
+                            Theo tên
+                        </button>
+
+                        <button type="button" (click)="sortCampaigns('startDate')">
+                            Theo ngày bắt đầu
+                        </button>
+
+                        <button type="button" (click)="sortCampaigns('endDate')">
+                            Theo ngày kết thúc
+                        </button>
+
+                        <button type="button" (click)="sortCampaigns('status')">
+                            Theo trạng thái
+                        </button>
+                    </div>
+                </div>
+
+                <button class="tool-btn" type="button">
+                    <i class="bi bi-three-dots"></i>
+                </button>
+
+                <button
+                    class="tool-btn add-btn"
+                    type="button"
+                    title="Thêm chiến dịch"
+                    (click)="openAddModal()"
+                >
+                    <i class="bi bi-plus-circle"></i>
+                </button>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="export-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleExportMenu()"
+                    >
+                        <i class="bi bi-file-earmark-arrow-down"></i>
+                        Xuất
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu export-menu"
+                        *ngIf="isExportMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button">Xuất PDF</button>
+                        <button type="button">Xuất Excel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="promotion-table campaign-table">
+                <thead>
+                    <tr>
+                        <th class="checkbox-col">
+                            <input
+                                type="checkbox"
+                                [checked]="isAllSelected()"
+                                (change)="toggleSelectAll($event)"
+                            >
+                        </th>
+
+                        <th>Chiến dịch</th>
+                        <th>Mô tả</th>
+                        <th>Ngày bắt đầu</th>
+                        <th>Ngày kết thúc</th>
+                        <th>Trạng thái</th>
+                        <th class="action-col">Thao tác</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr *ngFor="let item of pagedCampaigns" class="campaign-row" (click)="editCampaign(item)">
+                        <td class="checkbox-col">
+                            <input type="checkbox" [(ngModel)]="item.selected" (click)="$event.stopPropagation()">
+                        </td>
+
+                        <td class="campaign-name">
+                            <strong>{{ item.name }}</strong>
+                            <span>{{ item.code }}</span>
+                        </td>
+
+                        <td class="description-col">
+                            {{ item.description }}
+                        </td>
+
+                        <td>{{ item.startDate | date: 'dd/MM/yyyy' }}</td>
+
+                        <td>{{ item.endDate | date: 'dd/MM/yyyy' }}</td>
+
+                        <td>{{ item.status }}</td>
+
+                        <td class="action-col">
+                            <div class="action-buttons">
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Sửa"
+                                    (click)="$event.stopPropagation(); editCampaign(item)"
+                                >
+                                    <i class="bi bi-pencil-square"></i>
+                                </button>
+
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Xóa"
+                                    (click)="$event.stopPropagation(); deleteCampaign(item)"
+                                >
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <button class="page-nav" type="button" [disabled]="currentPage === 1" (click)="previousPage()">
+                <i class="bi bi-arrow-left"></i>
+                <span>Trước</span>
+            </button>
+
+            <div class="page-numbers">
+                <button
+                    type="button"
+                    *ngFor="let page of pages"
+                    [class.active]="page === currentPage"
+                    [class.dots]="page === '...'"
+                    [disabled]="page === '...'"
+                    (click)="goToPage(page)"
+                >
+                    {{ page }}
+                </button>
+            </div>
+
+            <button class="page-nav" type="button" [disabled]="currentPage === totalPages" (click)="nextPage()">
+                <span>Sau</span>
+                <i class="bi bi-arrow-right"></i>
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<div class="edit-modal-overlay" *ngIf="isEditModalOpen && editingCampaign" (click)="closeEditModalFromBackdrop($event)">
+    <div class="campaign-form-modal" (click)="$event.stopPropagation()">
+        <div class="campaign-form-header">
+            <div class="title-mark"></div>
+            <h2>Chỉnh sửa chiến dịch</h2>
+        </div>
+
+        <div class="campaign-form-body">
+            <div class="form-group full-width">
+                <label>Mã chiến dịch</label>
+                <input
+                    type="text"
+                    [(ngModel)]="editingCampaign.code"
+                    readonly
+                    class="readonly-input"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Tên chiến dịch</label>
+                <input
+                    type="text"
+                    [(ngModel)]="editingCampaign.name"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Mô tả</label>
+                <textarea [(ngModel)]="editingCampaign.description"></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Ngày bắt đầu</label>
+                    <div class="date-input">
+                        <input
+                            type="date"
+                            [(ngModel)]="editingStartDateText"
+                        >
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Ngày kết thúc</label>
+                    <div class="date-input">
+                        <input
+                            type="date"
+                            [(ngModel)]="editingEndDateText"
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group status-field">
+                <label>Trạng thái</label>
+                <select [(ngModel)]="editingCampaign.status">
+                    <option *ngFor="let status of statusOptions" [value]="status">
+                        {{ status }}
+                    </option>
+                </select>
+            </div>
+        </div>
+
+        <div class="campaign-form-actions">
+            <button
+                type="button"
+                class="cancel-btn"
+                (click)="closeEditModal()"
+            >
+                Hủy
+            </button>
+
+            <button
+                type="button"
+                class="save-btn"
+                (click)="saveCampaign()"
+            >
+                Lưu
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="edit-modal-overlay" *ngIf="isAddModalOpen && newCampaign" (click)="closeAddModalFromBackdrop($event)">
+    <div class="campaign-form-modal" (click)="$event.stopPropagation()">
+        <div class="campaign-form-header">
+            <div class="title-mark"></div>
+            <h2>Thêm chiến dịch</h2>
+        </div>
+
+        <div class="campaign-form-body">
+            <div class="form-group full-width">
+                <label>Mã chiến dịch</label>
+                <input
+                    type="text"
+                    [(ngModel)]="newCampaign.code"
+                    readonly
+                    class="readonly-input"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Tên chiến dịch</label>
+                <input
+                    type="text"
+                    [(ngModel)]="newCampaign.name"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Mô tả</label>
+                <textarea [(ngModel)]="newCampaign.description"></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Ngày bắt đầu</label>
+                    <div class="date-input">
+                        <input
+                            type="date"
+                            [(ngModel)]="newStartDateText"
+                        >
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Ngày kết thúc</label>
+                    <div class="date-input">
+                        <input
+                            type="date"
+                            [(ngModel)]="newEndDateText"
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group status-field">
+                <label>Trạng thái</label>
+                <select [(ngModel)]="newCampaign.status">
+                    <option *ngFor="let status of statusOptions" [value]="status">
+                        {{ status }}
+                    </option>
+                </select>
+            </div>
+        </div>
+
+        <div class="campaign-form-actions">
+            <button
+                type="button"
+                class="cancel-btn"
+                (click)="closeAddModal()"
+            >
+                Hủy
+            </button>
+
+            <button
+                type="button"
+                class="save-btn"
+                (click)="saveNewCampaign()"
+            >
+                Thêm
+            </button>
+        </div>
+    </div>
+</div>

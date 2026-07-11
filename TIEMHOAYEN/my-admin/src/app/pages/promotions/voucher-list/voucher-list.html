@@ -1,0 +1,443 @@
+<div class="promotion-page">
+    <div class="promotion-card">
+
+        <div class="promotion-toolbar">
+            <div class="promotion-tabs">
+                <a
+                    routerLink="/promotions"
+                    routerLinkActive="active"
+                    [routerLinkActiveOptions]="{ exact: true }"
+                >
+                    Chiến dịch
+                </a>
+
+                <a
+                    routerLink="/promotions/vouchers"
+                    routerLinkActive="active"
+                >
+                    Voucher
+                </a>
+            </div>
+
+            <div class="toolbar-right">
+                <div class="search-box">
+                    <input
+                        type="text"
+                        placeholder="Tìm kiếm voucher"
+                        [(ngModel)]="searchKeyword"
+                        (ngModelChange)="applyFilters()"
+                    >
+
+                    <span class="search-icon">
+                        <i class="bi bi-search"></i>
+                    </span>
+                </div>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="tool-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleFilterMenu()"
+                    >
+                        <i class="bi bi-filter"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu filter-menu"
+                        *ngIf="isFilterMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <div class="filter-group">
+                            <label>Loại giảm giá</label>
+
+                            <select
+                                [(ngModel)]="selectedDiscountType"
+                                (change)="applyFilters()"
+                            >
+                                <option value="Tất cả">Tất cả</option>
+                                <option *ngFor="let type of discountTypes" [value]="type">
+                                    {{ type }}
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="tool-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleSortMenu()"
+                    >
+                        <i class="bi bi-arrow-down-up"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu sort-menu"
+                        *ngIf="isSortMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button" (click)="sortVouchers('voucherCode')">
+                            Theo voucher
+                        </button>
+
+                        <button type="button" (click)="sortVouchers('campaignCode')">
+                            Theo mã chiến dịch
+                        </button>
+
+                        <button type="button" (click)="sortVouchers('discountType')">
+                            Theo loại giảm giá
+                        </button>
+
+                        <button type="button" (click)="sortVouchers('discountValue')">
+                            Theo giá trị giảm
+                        </button>
+
+                        <button type="button" (click)="sortVouchers('startDate')">
+                            Theo ngày bắt đầu
+                        </button>
+
+                        <button type="button" (click)="sortVouchers('endDate')">
+                            Theo ngày kết thúc
+                        </button>
+                    </div>
+                </div>
+
+                <button class="tool-btn" type="button">
+                    <i class="bi bi-three-dots"></i>
+                </button>
+
+                <button
+                    class="tool-btn add-btn"
+                    type="button"
+                    title="Thêm voucher"
+                    (click)="openAddModal()"
+                >
+                    <i class="bi bi-plus-circle"></i>
+                </button>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="export-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleExportMenu()"
+                    >
+                        <i class="bi bi-file-earmark-arrow-down"></i>
+                        Xuất
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu export-menu"
+                        *ngIf="isExportMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button">Xuất PDF</button>
+                        <button type="button">Xuất Excel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="promotion-table voucher-table">
+                <thead>
+                    <tr>
+                        <th class="checkbox-col">
+                            <input
+                                type="checkbox"
+                                [checked]="isAllSelected()"
+                                (change)="toggleSelectAll($event)"
+                            >
+                        </th>
+
+                        <th>Voucher</th>
+                        <th>Mã chiến dịch</th>
+                        <th>Loại giảm giá</th>
+                        <th>Giá trị giảm</th>
+                        <th>Ngày bắt đầu</th>
+                        <th>Ngày kết thúc</th>
+                        <th class="action-col">Thao tác</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr *ngFor="let item of pagedVouchers" class="voucher-row" (click)="editVoucher(item)">
+                        <td class="checkbox-col">
+                            <input type="checkbox" [(ngModel)]="item.selected" (click)="$event.stopPropagation()">
+                        </td>
+
+                        <td class="voucher-name">
+                            <strong>{{ item.voucherCode }}</strong>
+                            <span>{{ item.code }}</span>
+                        </td>
+
+                        <td class="code-text">
+                            {{ item.campaignCode }}
+                        </td>
+
+                        <td>{{ item.discountType }}</td>
+
+                        <td>
+                            {{ item.discountType === 'Phần trăm' ? item.discountValue + '%' : item.discountValue.toLocaleString('vi-VN') + 'đ' }}
+                        </td>
+
+                        <td>{{ item.startDate | date: 'dd/MM/yyyy' }}</td>
+
+                        <td>{{ item.endDate | date: 'dd/MM/yyyy' }}</td>
+
+                        <td class="action-col">
+                            <div class="action-buttons">
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Sửa"
+                                    (click)="$event.stopPropagation(); editVoucher(item)"
+                                >
+                                    <i class="bi bi-pencil-square"></i>
+                                </button>
+
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Xóa"
+                                    (click)="$event.stopPropagation(); deleteVoucher(item)"
+                                >
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <button class="page-nav" type="button" [disabled]="currentPage === 1" (click)="previousPage()">
+                <i class="bi bi-arrow-left"></i>
+                <span>Trước</span>
+            </button>
+
+            <div class="page-numbers">
+                <button
+                    type="button"
+                    *ngFor="let page of pages"
+                    [class.active]="page === currentPage"
+                    [class.dots]="page === '...'"
+                    [disabled]="page === '...'"
+                    (click)="goToPage(page)"
+                >
+                    {{ page }}
+                </button>
+            </div>
+
+            <button class="page-nav" type="button" [disabled]="currentPage === totalPages" (click)="nextPage()">
+                <span>Sau</span>
+                <i class="bi bi-arrow-right"></i>
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<div class="edit-modal-overlay" *ngIf="isEditModalOpen && editingVoucher">
+    <div class="voucher-form-modal">
+        <div class="voucher-form-header">
+            <div class="title-mark"></div>
+            <h2>Chỉnh sửa Voucher</h2>
+        </div>
+
+        <div class="voucher-form-body">
+            <div class="form-group full-width">
+                <label>Mã voucher</label>
+                <input
+                    type="text"
+                    [(ngModel)]="editingVoucher.code"
+                    readonly
+                    class="readonly-input"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Tên voucher</label>
+                <input
+                    type="text"
+                    [(ngModel)]="editingVoucher.voucherCode"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Mã chiến dịch</label>
+                <select [(ngModel)]="editingVoucher.campaignCode">
+                    <option *ngFor="let campaign of campaignOptions" [value]="campaign.code">
+                        {{ campaign.name }}
+                    </option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Ngày bắt đầu</label>
+                    <div class="date-input">
+                        <input
+                            type="date"
+                            [(ngModel)]="editingStartDateText"
+                        >
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Ngày kết thúc</label>
+                    <div class="date-input">
+                        <input
+                            type="date"
+                            [(ngModel)]="editingEndDateText"
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Loại giảm giá</label>
+                    <select [(ngModel)]="editingVoucher.discountType">
+                        <option *ngFor="let type of discountTypes" [value]="type">
+                            {{ type }}
+                        </option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Giá trị giảm</label>
+                    <div class="discount-input">
+                        <input
+                            type="number"
+                            min="0"
+                            [(ngModel)]="editingVoucher.discountValue"
+                        >
+                        <span>{{ editingVoucher.discountType === 'Phần trăm' ? '%' : 'đ' }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="voucher-form-actions">
+            <button
+                type="button"
+                class="cancel-btn"
+                (click)="closeEditModal()"
+            >
+                Hủy
+            </button>
+
+            <button
+                type="button"
+                class="save-btn"
+                (click)="saveVoucher()"
+            >
+                Lưu
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="edit-modal-overlay" *ngIf="isAddModalOpen && newVoucher">
+    <div class="voucher-form-modal">
+        <div class="voucher-form-header">
+            <div class="title-mark"></div>
+            <h2>Thêm Voucher</h2>
+        </div>
+
+        <div class="voucher-form-body">
+            <div class="form-group full-width">
+                <label>Mã voucher</label>
+                <input
+                    type="text"
+                    [(ngModel)]="newVoucher.code"
+                    readonly
+                    class="readonly-input"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Tên voucher</label>
+                <input
+                    type="text"
+                    [(ngModel)]="newVoucher.voucherCode"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Mã chiến dịch</label>
+                <select [(ngModel)]="newVoucher.campaignCode">
+                    <option *ngFor="let campaign of campaignOptions" [value]="campaign.code">
+                        {{ campaign.name }}
+                    </option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Ngày bắt đầu</label>
+                    <div class="date-input">
+                        <input
+                            type="date"
+                            [(ngModel)]="newStartDateText"
+                        >
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Ngày kết thúc</label>
+                    <div class="date-input">
+                        <input
+                            type="date"
+                            [(ngModel)]="newEndDateText"
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Loại giảm giá</label>
+                    <select [(ngModel)]="newVoucher.discountType">
+                        <option *ngFor="let type of discountTypes" [value]="type">
+                            {{ type }}
+                        </option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Giá trị giảm</label>
+                    <div class="discount-input">
+                        <input
+                            type="number"
+                            min="0"
+                            [(ngModel)]="newVoucher.discountValue"
+                        >
+                        <span>{{ newVoucher.discountType === 'Phần trăm' ? '%' : 'đ' }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="voucher-form-actions">
+            <button
+                type="button"
+                class="cancel-btn"
+                (click)="closeAddModal()"
+            >
+                Hủy
+            </button>
+
+            <button
+                type="button"
+                class="save-btn"
+                (click)="saveNewVoucher()"
+            >
+                Thêm
+            </button>
+        </div>
+    </div>
+</div>

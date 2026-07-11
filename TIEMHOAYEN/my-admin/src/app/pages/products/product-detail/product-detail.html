@@ -1,0 +1,439 @@
+<div class="product-page">
+
+  <!-- PRODUCT DETAIL -->
+
+  <div class="detail-card">
+    <div class = detail-back (click)="goBack()">
+      <i class="bi bi-arrow-left"></i>
+      Sản phẩm chi tiết
+    </div>
+
+    <div class="detail-header">
+
+      <h2>{{ product.name }}</h2>
+
+      <div class="header-actions">
+
+        <button
+          class="edit-btn"
+          (click)="toggleEdit()">
+          <i class="bi bi-pencil-square"></i>
+          {{isEditing ? 'Hủy' : 'Chỉnh sửa'}}
+      </button>
+
+        <div class="status-wrap">
+          <span>{{ product.status }}</span>
+
+          <label class="switch">
+            <input
+              type="checkbox"
+              [(ngModel)]="product.isPublished"
+              [disabled]="statusSaving"
+              (change)="toggleStatus()">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- FORM -->
+
+    <div class="row-2">
+
+      <div class="form-group">
+        <label>Tên sản phẩm</label>
+        <input type="text" [(ngModel)]="product.name" [disabled]="!isEditing">
+      </div>
+
+      <div class="form-group">
+        <label>Mã sản phẩm</label>
+        <input type="text" [(ngModel)]="product.code" [disabled]="!isEditing">
+      </div>
+
+    </div>
+
+    <div class="form-group">
+
+      <label>Mô tả</label>
+
+      <textarea rows="5" [(ngModel)]="product.note" [disabled]="!isEditing">
+      </textarea>
+
+    </div>
+
+    <div class="row-3">
+
+      <div class="form-group">
+        <label>Màu sắc</label>
+        <select
+            [(ngModel)]="product.color"
+            [disabled]="!isEditing">
+
+            <option
+                *ngFor="let color of colors"
+                [value]="color">
+
+                {{ color }}
+
+            </option>
+
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Kiểu dáng</label>
+        <select
+            [(ngModel)]="product.style"
+            [disabled]="!isEditing">
+
+            <option
+                *ngFor="let style of styles"
+                [value]="style">
+
+                {{ style }}
+
+            </option>
+
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Đối tượng</label>
+        <select
+            [(ngModel)]="product.target"
+            [disabled]="!isEditing">
+
+            <option
+                *ngFor="let target of targets"
+                [value]="target">
+
+                {{ target }}
+
+            </option>
+
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Chủ đề</label>
+        <select
+            [(ngModel)]="product.topic"
+            [disabled]="!isEditing">
+
+            <option
+                *ngFor="let topic of topics"
+                [value]="topic">
+
+                {{ topic }}
+
+            </option>
+
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Hoa tươi</label>
+        <select
+            [(ngModel)]="product.flower"
+            [disabled]="!isEditing">
+
+            <option
+                *ngFor="let flower of flowers"
+                [value]="flower">
+
+                {{ flower }}
+
+            </option>
+
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Số lượng</label>
+        <input type="number" [(ngModel)]="product.quantity" [disabled]="!isEditing">
+      </div>
+    </div>
+
+    <!-- IMAGE -->
+
+      <div class="image-title">
+        Hình ảnh
+      </div>
+
+      <div class="image-section">
+        <div
+            class="image-box"
+            *ngFor="let img of product.images; let i=index">
+            <img [src]="img">
+
+            <button
+                class="remove-btn"
+                *ngIf="isEditing"
+                type="button"
+                (click)="removeImage(i)">
+                <i class="bi bi-x-lg"></i>
+            </button>
+
+        </div>
+
+        <input
+            #fileInput
+            type="file"
+            hidden
+            multiple
+            accept="image/*"
+            (change)="onImageSelected($event)">
+
+        <div
+            class="upload-box"
+            *ngIf="isEditing"
+            (click)="fileInput.click()">
+            <i class="bi bi-plus-lg"></i>
+            <span>Thêm ảnh</span>
+        </div>
+      </div>
+    <!-- PRICE -->
+
+    <div class="price-table">
+
+      <div class="price-item">
+        <div class="price-head">GIÁ NHẬP</div>
+        <input type="number" [(ngModel)]="product.importPrice" [disabled]="!isEditing">
+      </div>
+
+      <div class="price-item">
+        <div class="price-head">GIÁ BÁN</div>
+        <input type="number" [(ngModel)]="product.salePrice" [disabled]="!isEditing">
+      </div>
+
+      <div class="price-item">
+        <div class="price-head">GIÁ KHUYẾN MẠI</div>
+        <input type="number" [(ngModel)]="product.discountPrice" [disabled]="!isEditing">
+      </div>
+    </div>
+
+    <!-- FORMULA -->
+    <div class="formula-header">
+      <h3>CÔNG THỨC HOA</h3>
+      <div class="formula-actions">
+        <div class="search-box">
+            <input
+                placeholder="Tìm kiếm nguyên vật liệu"
+                [(ngModel)]="searchKeyword"
+                (input)="searchMaterial()">
+            <i class="bi bi-search"></i>
+        </div>
+
+        <button
+            class="add-btn"
+            type="button"
+            (click)="addMaterial()">
+            <i class="bi bi-plus-circle"></i>
+            Thêm NVL
+        </button>
+
+    </div>
+    </div>
+
+    <table class="material-table">
+
+      <thead>
+
+        <tr>
+          <th>NGUYÊN VẬT LIỆU</th>
+          <th>SỐ LƯỢNG CẦN</th>
+          <th>ĐƠN VỊ TÍNH</th>
+          <th>GHI CHÚ</th>
+          <th></th>
+        </tr>
+
+      </thead>
+
+      <tbody>
+        <tr
+          *ngFor="let item of filteredMaterials;let i=index">
+          <!-- <td>
+            <div class="material-info">
+                <img  *ngIf="item.image" [src]="item.image">
+                <div>
+                    <strong>{{item.name}}</strong>
+                    <span>{{item.code}}</span>
+                </div>
+            </div>
+          </td> -->
+          <td>
+            <input
+              [(ngModel)]="item.name"
+              [disabled]="!isEditing">
+          </td>
+          <td>
+              <input
+              [(ngModel)]="item.quantity"
+              [disabled]="!isEditing">
+          </td>
+          <td>
+            <input
+            [(ngModel)]="item.unit"
+            [disabled]="!isEditing">
+          </td>
+          <td>
+            <input
+            [(ngModel)]="item.note"
+            [disabled]="!isEditing">
+          </td>
+          <td>
+            <button
+              *ngIf="isEditing"
+              (click)="removeMaterial(i)" class="delete-btn">
+              <i class="bi bi-trash"></i>
+            </button>
+          </td>
+        </tr> 
+      </tbody>
+    </table>
+
+    <div class="form-group recipe">
+      <label>Mô tả chi tiết cách làm</label>
+      <textarea rows="4" [(ngModel)]="product.recipe" [disabled]="!isEditing"></textarea>
+    </div>
+
+    <div class="save-wrap">
+      <button
+          *ngIf="isEditing"
+          class="save-btn"
+          (click)="saveProduct()">
+          Lưu
+      </button>
+    </div>
+
+  </div>
+
+  <!-- REVIEW -->
+
+  <div class="review-card">
+    <div class="review-header">
+        <h3>Review & Ratings</h3>
+        <div class="review-top-actions">
+          <select [(ngModel)]="sortType" (change)="sortReviews()">
+              <option value="newest">Mới nhất</option>
+              <option value="oldest">Cũ nhất</option>
+          </select>
+
+          <select [(ngModel)]="selectedRating" (change)="filterReview()">
+              <option value="all">Tất cả Ratings</option>
+              <option value="5">5 sao</option>
+              <option value="4">4 sao</option>
+              <option value="3">3 sao</option>
+              <option value="2">2 sao</option>
+              <option value="1">1 sao</option>
+          </select>
+      </div>
+    </div>
+
+    <div class="review-body">
+        <!-- LEFT -->
+        <div class="review-left">
+          <div class="score">
+              {{ averageRating || 0 | number:'1.1-1' }}<span>/5.0</span>
+          </div>
+
+          <div class="big-stars">
+              <i class="bi bi-star-fill"></i>
+              <i class="bi bi-star-fill"></i>
+              <i class="bi bi-star-fill"></i>
+              <i class="bi bi-star-fill"></i>
+              <i class="bi bi-star-fill"></i>
+          </div>
+
+          <p class="review-count">
+            {{ reviewCount }} ratings, {{ reviews.length }} reviews
+          </p>
+
+          <div
+            class="rating-row"
+            *ngFor="let item of ratingSummary">
+
+            <span>
+              {{ '★'.repeat(item.star) }}
+              {{ '☆'.repeat(5-item.star) }}
+            </span>
+
+          <div class="bar">
+            <div
+              class="fill"
+              [style.width.%]="item.percent">
+            </div>
+          </div>
+            <strong>{{item.count}}</strong>
+          </div>
+        </div>
+
+        <!-- RIGHT -->
+
+        <div class="review-right">
+
+            <div
+                class="review-item"
+                *ngFor="let review of pagedReviews">
+
+                <img
+                    class="avatar"
+                    [src]="review.avatar">
+
+                <div class="review-content">
+                    <h4>{{review.name}}</h4>
+                    <div class="review-stars">
+                        <i class="bi bi-star-fill"></i>
+                        <i class="bi bi-star-fill"></i>
+                        <i class="bi bi-star-fill"></i>
+                        <i class="bi bi-star-fill"></i>
+                        <i class="bi bi-star-fill"></i> 
+                        <span>(5.0)</span>
+                    </div>
+                    <p>{{review.content}}</p>
+                    <small>{{review.date}}</small>
+
+                    <div
+                        class="review-images"
+                        *ngIf="review.images?.length">
+                        <img
+                            *ngFor="let img of review.images"
+                            [src]="img">
+                    </div>
+
+                </div>
+
+                <button
+                  class="reply-btn"
+                  type="button"
+                  (click)="replyReview(review)">
+                  <i class="bi bi-arrow-return-right"></i>
+                  <span>Trả lời</span>
+                </button>
+
+            </div>
+
+            <div class="review-pagination">
+              <button
+                  (click)="previousPage()"
+                  [disabled]="currentPage==1">
+                  <i class="bi bi-arrow-left"></i>
+              </button>
+              <button
+                  *ngFor="let page of pages"
+                  (click)="goToPage(page)"
+                  [class.active]="page==currentPage">
+                  {{page}}
+              </button>
+
+              <button
+                  (click)="nextPage()"
+                  [disabled]="currentPage==totalPages">
+                  <i class="bi bi-arrow-right"></i>
+              </button>
+            </div>
+        </div>
+    </div>
+</div>

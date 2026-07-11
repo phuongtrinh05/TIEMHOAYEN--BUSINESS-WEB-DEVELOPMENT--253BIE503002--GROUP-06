@@ -1,0 +1,125 @@
+<div class="admin-layout">
+
+  <div class="create-article-page">
+
+    <!-- ===== TOAST THÔNG BÁO ===== -->
+    <div class="toast" *ngIf="toastVisible">
+      <i class="bi bi-check-circle-fill"></i>
+      {{ toastMessage }}
+    </div>
+
+    <!-- ===== AUTHOR CARD + NÚT TẠO ===== -->
+    <div class="author-card-wrap">
+
+      <div class="detail-card author-card">
+
+        <!-- Avatar -->
+        <div class="author-avatar">
+          <span class="author-avatar__initials">
+            <i class="bi bi-person-circle"></i>
+          </span>
+        </div>
+
+        <!-- Info -->
+        <div class="author-info">
+          <!-- Title row -->
+          <div class="author-info__title-row">
+            <div class="title-field-wrap">
+              <input
+                type="text"
+                class="input-title"
+                [class.input-title--error]="submitted && !form.title.trim()"
+                [(ngModel)]="form.title"
+                placeholder="Chưa có tiêu đề"
+              />
+              <span class="meta-field-error" *ngIf="submitted && !form.title.trim()">Vui lòng nhập Tiêu đề</span>
+            </div>
+            <button type="button" class="btn-edit" (click)="goBack()">
+              <i class="bi bi-x-lg"></i>
+              Huỷ
+            </button>
+          </div>
+
+          <div class="author-info__divider"></div>
+
+          <!-- Meta fields -->
+          <div class="author-meta">
+
+            <div class="meta-row">
+              <span class="meta-label">Người viết:</span>
+              <div class="meta-field-wrap">
+                <input type="text" class="meta-input" [class.meta-input--error]="submitted && !form.author.trim()" [(ngModel)]="form.author" placeholder="Chưa nhập" />
+                <span class="meta-field-error" *ngIf="submitted && !form.author.trim()">Vui lòng nhập Người viết</span>
+              </div>
+            </div>
+
+            <div class="meta-row">
+              <span class="meta-label">Email:</span>
+              <div class="meta-field-wrap">
+                <input type="email" class="meta-input" [class.meta-input--error]="submitted && !form.email.trim()" [(ngModel)]="form.email" placeholder="Chưa nhập" />
+                <span class="meta-field-error" *ngIf="submitted && !form.email.trim()">Vui lòng nhập Email</span>
+              </div>
+            </div>
+
+            <div class="meta-row">
+              <span class="meta-label">Ngày cập nhật:</span>
+              <span class="meta-value">{{ today }}</span>
+            </div>
+
+            <div class="meta-row">
+              <span class="meta-label">Danh mục:</span>
+              <div class="meta-field-wrap">
+                <select class="meta-select" [class.meta-input--error]="submitted && !form.category" [(ngModel)]="form.category">
+                  <option value="">Chưa chọn</option>
+                  <option value="Hoa hồng">Hoa hồng</option>
+                  <option value="Hoa cưới">Hoa cưới</option>
+                  <option value="Hoa sinh nhật">Hoa sinh nhật</option>
+                  <option value="Hoa tang lễ">Hoa tang lễ</option>
+                  <option value="Hoa văn phòng">Hoa văn phòng</option>
+                  <option value="Mẹo cắm hoa">Mẹo cắm hoa</option>
+                  <option value="Tin tức">Tin tức</option>
+                </select>
+                <span class="meta-field-error" *ngIf="submitted && !form.category">Vui lòng chọn Danh mục</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Nút tạo bài viết bên phải khung -->
+      <div class="author-card-actions">
+        <button
+          type="button"
+          class="btn-save"
+          [class.btn-save--loading]="isSaving"
+          (click)="saveArticle()"
+        >
+          <i class="bi bi-plus-circle" *ngIf="!isSaving"></i>
+          <span class="spinner" *ngIf="isSaving"></span>
+          Tạo bài viết
+        </button>
+      </div>
+
+    </div>
+
+
+    <!-- ===== CONTENT CARD ===== -->
+    <div class="detail-card content-card">
+      <h2 class="content-card__heading">Nội dung bài viết</h2>
+      <div class="content-card__divider"></div>
+
+      <!-- Rich-text editor - TinyMCE -->
+      <div class="editor-wrap" [class.editor-wrap--error]="submitted && isContentEmpty">
+        <editor
+          [apiKey]="tinyMceApiKey"
+          [(ngModel)]="editorContent"
+          [init]="tinyMceConfig"
+          (ngModelChange)="onTinyMceChange()"
+        ></editor>
+      </div>
+      <span class="meta-field-error" *ngIf="submitted && isContentEmpty">Vui lòng nhập Nội dung bài viết</span>
+    </div>
+
+  </div>
+</div>

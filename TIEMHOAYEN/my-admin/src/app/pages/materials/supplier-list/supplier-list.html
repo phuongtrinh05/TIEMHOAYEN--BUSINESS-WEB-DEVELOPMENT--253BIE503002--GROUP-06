@@ -1,0 +1,534 @@
+<div class="material-page">
+    <div class="material-card">
+
+        <div class="material-toolbar">
+            <div class="material-tabs">
+                <a
+                    routerLink="/materials"
+                    routerLinkActive="active"
+                    [routerLinkActiveOptions]="{ exact: true }"
+                >
+                    Danh sách NVL
+                </a>
+
+                <a
+                    routerLink="/materials/imports"
+                    routerLinkActive="active"
+                >
+                    Nhập kho
+                </a>
+
+                <a
+                    routerLink="/materials/exports"
+                    routerLinkActive="active"
+                >
+                    Xuất kho
+                </a>
+
+                <a
+                    routerLink="/materials/suppliers"
+                    routerLinkActive="active"
+                >
+                    Nhà cung cấp
+                </a>
+            </div>
+
+            <div class="toolbar-right">
+                <div class="search-box">
+                    <input
+                        type="text"
+                        placeholder="Tìm kiếm nhà cung cấp"
+                        [(ngModel)]="searchKeyword"
+                        (ngModelChange)="applyFilters()"
+                    >
+
+                    <span class="search-icon">
+                        <i class="bi bi-search"></i>
+                    </span>
+                </div>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="tool-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleFilterMenu()"
+                    >
+                        <i class="bi bi-filter"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu filter-menu"
+                        *ngIf="isFilterMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <div class="filter-group">
+                            <label>Trạng thái</label>
+
+                            <select
+                                [(ngModel)]="selectedStatus"
+                                (change)="applyFilters()"
+                            >
+                                <option value="Tất cả">Tất cả</option>
+                                <option value="Đang hợp tác">Đang hợp tác</option>
+                                <option value="Tạm ngưng">Tạm ngưng</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="tool-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleSortMenu()"
+                    >
+                        <i class="bi bi-arrow-down-up"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu sort-menu"
+                        *ngIf="isSortMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button" (click)="sortSuppliers('code')">
+                            Theo mã NCC
+                        </button>
+
+                        <button type="button" (click)="sortSuppliers('name')">
+                            Theo tên NCC
+                        </button>
+
+                        <button type="button" (click)="sortSuppliers('representative')">
+                            Theo người đại diện
+                        </button>
+
+                        <button type="button" (click)="sortSuppliers('status')">
+                            Theo trạng thái
+                        </button>
+                    </div>
+                </div>
+
+                <button class="tool-btn" type="button">
+                    <i class="bi bi-three-dots"></i>
+                </button>
+
+                <button
+                    class="tool-btn add-btn"
+                    type="button"
+                    title="Thêm nhà cung cấp"
+                    (click)="openAddModal()"
+                >
+                    <i class="bi bi-plus-circle"></i>
+                </button>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="export-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleExportMenu()"
+                    >
+                        <i class="bi bi-file-earmark-arrow-down"></i>
+                        Xuất
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu export-menu"
+                        *ngIf="isExportMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button">Xuất PDF</button>
+                        <button type="button">Xuất Excel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="material-table supplier-table">
+                <thead>
+                    <tr>
+                        <th class="checkbox-col">
+                            <input
+                                type="checkbox"
+                                [checked]="isAllSelected()"
+                                (change)="toggleSelectAll($event)"
+                            >
+                        </th>
+
+                        <th>Nhà cung cấp</th>
+                        <th>Người đại diện</th>
+                        <th>Số điện thoại</th>
+                        <th>Email</th>
+                        <th>Địa chỉ</th>
+                        <th>Mã số thuế</th>
+                        <th>Trạng thái</th>
+                        <th class="action-col">Thao tác</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr *ngFor="let item of pagedSuppliers">
+                        <td class="checkbox-col">
+                            <input
+                                type="checkbox"
+                                [(ngModel)]="item.selected"
+                            >
+                        </td>
+
+                        <td class="supplier-name">
+                            <strong>{{ item.name }}</strong>
+                            <span>{{ item.code }}</span>
+                        </td>
+
+                        <td class="code-text">
+                            {{ item.representative }}
+                        </td>
+
+                        <td>
+                            {{ item.phone }}
+                        </td>
+
+                        <td>
+                            {{ item.email }}
+                        </td>
+
+                        <td class="address-col">
+                            {{ item.address }}
+                        </td>
+
+                        <td>
+                            {{ item.taxCode }}
+                        </td>
+
+                        <td>
+                            {{ item.status }}
+                        </td>
+
+                        <td class="action-col">
+                            <div class="action-buttons">
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Sửa"
+                                    (click)="editSupplier(item)"
+                                >
+                                    <i class="bi bi-pencil-square"></i>
+                                </button>
+
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Xóa"
+                                    (click)="deleteSupplier(item)"
+                                >
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <button
+                class="page-nav"
+                type="button"
+                [disabled]="currentPage === 1"
+                (click)="previousPage()"
+            >
+                <i class="bi bi-arrow-left"></i>
+                <span> Trước</span>
+            </button>
+
+            <div class="page-numbers">
+                <button
+                    type="button"
+                    *ngFor="let page of pages"
+                    [class.active]="page === currentPage"
+                    [class.dots]="page === '...'"
+                    [disabled]="page === '...'"
+                    (click)="goToPage(page)"
+                >
+                    {{ page }}
+                </button>
+            </div>
+
+            <button
+                class="page-nav"
+                type="button"
+                [disabled]="currentPage === totalPages"
+                (click)="nextPage()"
+            >
+                <span>Sau </span>
+                <i class="bi bi-arrow-right"></i>
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<div class="edit-modal-overlay" *ngIf="isEditModalOpen && editingSupplier">
+    <div class="supplier-form-modal">
+        <div class="supplier-form-header">
+            <div class="title-mark"></div>
+            <h2>Sửa nhà cung cấp</h2>
+        </div>
+
+        <div class="supplier-image-row">
+            <div class="supplier-avatar">
+                <img
+                    *ngIf="editingSupplier.image"
+                    [src]="editingSupplier.image"
+                    [alt]="editingSupplier.name"
+                >
+
+                <i *ngIf="!editingSupplier.image" class="bi bi-person-plus"></i>
+            </div>
+
+            <button
+                type="button"
+                class="upload-picture-btn"
+                (click)="uploadSupplierImage(editingSupplier!)"
+            >
+                <i class="bi bi-plus-lg"></i>
+                Upload new picture
+            </button>
+
+            <button
+                type="button"
+                class="remove-picture-btn"
+                (click)="removeSupplierImage(editingSupplier!)"
+            >
+                Remove
+            </button>
+        </div>
+
+        <div class="supplier-form-body">
+            <div class="form-group full-width">
+                <label>Mã nhà cung cấp</label>
+                <input
+                    type="text"
+                    [(ngModel)]="editingSupplier.code"
+                    readonly
+                    class="readonly-input"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Họ và tên</label>
+                <input
+                    type="text"
+                    placeholder="Chelsie Jhonson"
+                    [(ngModel)]="editingSupplier.name"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Số điện thoại</label>
+                <input
+                    type="text"
+                    placeholder="(+84) 0795583254"
+                    [(ngModel)]="editingSupplier.phone"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Email</label>
+                <input
+                    type="email"
+                    placeholder="example@bindirigu.com"
+                    [(ngModel)]="editingSupplier.email"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Địa chỉ</label>
+                <textarea
+                    placeholder="G. P. O., Asafoatse Nettey Road, Accra..."
+                    [(ngModel)]="editingSupplier.address"
+                ></textarea>
+            </div>
+
+            <div class="form-group full-width">
+                <label>Người đại diện</label>
+                <input
+                    type="text"
+                    placeholder="Chelsie Jhonson"
+                    [(ngModel)]="editingSupplier.representative"
+                >
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Mã số thuế</label>
+                    <input
+                        type="text"
+                        placeholder="0101248141"
+                        [(ngModel)]="editingSupplier.taxCode"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label>Trạng thái</label>
+                    <select [(ngModel)]="editingSupplier.status">
+                        <option *ngFor="let status of statusOptions" [value]="status">
+                            {{ status }}
+                        </option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="supplier-form-actions">
+            <button
+                type="button"
+                class="cancel-btn"
+                (click)="closeEditModal()"
+            >
+                Hủy
+            </button>
+
+            <button
+                type="button"
+                class="save-btn"
+                (click)="saveSupplier()"
+            >
+                Lưu
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="edit-modal-overlay" *ngIf="isAddModalOpen && newSupplier">
+    <div class="supplier-form-modal">
+        <div class="supplier-form-header">
+            <div class="title-mark"></div>
+            <h2>Thêm nhà cung cấp</h2>
+        </div>
+
+        <div class="supplier-image-row">
+            <div class="supplier-avatar">
+                <img
+                    *ngIf="newSupplier.image"
+                    [src]="newSupplier.image"
+                    [alt]="newSupplier.name"
+                >
+
+                <i *ngIf="!newSupplier.image" class="bi bi-person-plus"></i>
+            </div>
+
+            <button
+                type="button"
+                class="upload-picture-btn"
+                (click)="uploadSupplierImage(newSupplier!)"
+            >
+                <i class="bi bi-plus-lg"></i>
+                Upload new picture
+            </button>
+
+            <button
+                type="button"
+                class="remove-picture-btn"
+                (click)="removeSupplierImage(newSupplier!)"
+            >
+                Remove
+            </button>
+        </div>
+
+        <div class="supplier-form-body">
+            <div class="form-group full-width">
+                <label>Mã nhà cung cấp</label>
+                <input
+                    type="text"
+                    [(ngModel)]="newSupplier.code"
+                    readonly
+                    class="readonly-input"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Họ và tên</label>
+                <input
+                    type="text"
+                    placeholder="Chelsie Jhonson"
+                    [(ngModel)]="newSupplier.name"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Số điện thoại</label>
+                <input
+                    type="text"
+                    placeholder="(+84) 0795583254"
+                    [(ngModel)]="newSupplier.phone"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Email</label>
+                <input
+                    type="email"
+                    placeholder="example@bindirigu.com"
+                    [(ngModel)]="newSupplier.email"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Địa chỉ</label>
+                <textarea
+                    placeholder="G. P. O., Asafoatse Nettey Road, Accra..."
+                    [(ngModel)]="newSupplier.address"
+                ></textarea>
+            </div>
+
+            <div class="form-group full-width">
+                <label>Người đại diện</label>
+                <input
+                    type="text"
+                    placeholder="Chelsie Jhonson"
+                    [(ngModel)]="newSupplier.representative"
+                >
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Mã số thuế</label>
+                    <input
+                        type="text"
+                        placeholder="0101248141"
+                        [(ngModel)]="newSupplier.taxCode"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label>Trạng thái</label>
+                    <select [(ngModel)]="newSupplier.status">
+                        <option *ngFor="let status of statusOptions" [value]="status">
+                            {{ status }}
+                        </option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="supplier-form-actions">
+            <button
+                type="button"
+                class="cancel-btn"
+                (click)="closeAddModal()"
+            >
+                Hủy
+            </button>
+
+            <button
+                type="button"
+                class="save-btn"
+                (click)="saveNewSupplier()"
+            >
+                Thêm
+            </button>
+        </div>
+    </div>
+</div>

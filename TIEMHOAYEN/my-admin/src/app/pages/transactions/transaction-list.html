@@ -1,0 +1,398 @@
+<div class="transaction-page">
+    <div class="transaction-card">
+
+        <div class="toolbar">
+            <div class="search-box">
+                <input
+                    type="text"
+                    placeholder="Tìm kiếm giao dịch"
+                    [(ngModel)]="searchKeyword"
+                    (ngModelChange)="applyFilters()"
+                >
+
+                <span class="search-icon">
+                    <i class="bi bi-search"></i>
+                </span>
+            </div>
+
+            <div class="toolbar-actions">
+                <span class="selected-count">
+                    Đã chọn: {{ selectedCount }}
+                </span>
+
+                <button
+                    class="tool-btn delete-selected-btn"
+                    type="button"
+                    title="Xóa giao dịch đã chọn"
+                    [disabled]="!hasSelectedTransactions"
+                    (click)="deleteSelectedTransactions()"
+                >
+                    <i class="bi bi-trash3"></i>
+                    <span>Xóa</span>
+                </button>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="tool-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleFilterMenu()"
+                    >
+                        <i class="bi bi-filter"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu filter-menu"
+                        *ngIf="isFilterMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <div class="filter-group">
+                            <label>Cổng thanh toán</label>
+
+                            <select
+                                [(ngModel)]="selectedGateway"
+                                (change)="applyFilters()"
+                            >
+                                <option value="Tất cả">Tất cả</option>
+                                <option value="Thanh toán khi nhận hàng (COD)">Thanh toán khi nhận hàng (COD)</option>
+                                <option value="VNPay">VNPay</option>
+                                <option value="Chuyển khoản ngân hàng">Chuyển khoản ngân hàng</option>
+                                <option value="Momo">Momo</option>
+                            </select>
+                        </div>
+
+                        <div class="filter-group">
+                            <label>Trạng thái</label>
+
+                            <select
+                                [(ngModel)]="selectedStatus"
+                                (change)="applyFilters()"
+                            >
+                                <option value="Tất cả">Tất cả</option>
+                                <option value="Đã thanh toán">Đã thanh toán</option>
+                                <option value="Chờ thanh toán">Chờ thanh toán</option>
+                                <option value="Thanh toán thất bại">Thanh toán thất bại</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="tool-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleSortMenu()"
+                    >
+                        <i class="bi bi-arrow-down-up"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu sort-menu"
+                        *ngIf="isSortMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button" (click)="sortTransactions('code')">
+                            Theo mã giao dịch
+                        </button>
+
+                        <button type="button" (click)="sortTransactions('orderCode')">
+                            Theo mã đơn hàng
+                        </button>
+
+                        <button type="button" (click)="sortTransactions('gateway')">
+                            Theo cổng thanh toán
+                        </button>
+
+                        <button type="button" (click)="sortTransactions('status')">
+                            Theo trạng thái
+                        </button>
+
+                        <button type="button" (click)="sortTransactions('amount')">
+                            Theo số tiền
+                        </button>
+
+                        <button type="button" (click)="sortTransactions('transactionDate')">
+                            Theo ngày giao dịch
+                        </button>
+                    </div>
+                </div>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="export-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleExportMenu()"
+                    >
+                        <i class="bi bi-file-earmark-arrow-down"></i>
+                        Xuất
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu export-menu"
+                        *ngIf="isExportMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button">Xuất PDF</button>
+                        <button type="button">Xuất Excel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="transaction-table">
+                <thead>
+                    <tr>
+                        <th class="checkbox-col">
+                            <input
+                                type="checkbox"
+                                [checked]="isAllSelected()"
+                                (change)="toggleSelectAll($event)"
+                            >
+                        </th>
+
+                        <th>Mã giao dịch</th>
+                        <th>Mã đơn hàng</th>
+                        <th>Cổng thanh toán</th>
+                        <th>Trạng thái</th>
+                        <th>Số tiền</th>
+                        <th>Mã tham chiếu</th>
+                        <th>Ngày giao dịch</th>
+                        <th class="action-col">Thao tác</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr
+                        *ngFor="let item of pagedTransactions"
+                        [class.selected-row]="item.selected"
+                        [class.editing-row]="isEditingTransaction(item)"
+                    >
+                        <td class="checkbox-col">
+                            <input
+                                type="checkbox"
+                                [(ngModel)]="item.selected"
+                                (ngModelChange)="onRowSelectionChange(item)"
+                            >
+                        </td>
+
+                        <td class="code-text">
+                            {{ item.code }}
+                        </td>
+
+                        <td class="code-text">
+                            {{ item.orderCode }}
+                        </td>
+
+                        <td>
+                            <span>{{ item.gateway }}</span>
+                        </td>
+
+                        <td>
+                            <select
+                                *ngIf="isEditingTransaction(item)"
+                                class="inline-control status-control"
+                                [(ngModel)]="item.status"
+                            >
+                                <option
+                                    *ngIf="!editableStatusOptions.includes(item.status)"
+                                    [value]="item.status"
+                                    disabled
+                                    hidden
+                                >
+                                    {{ item.status }}
+                                </option>
+                                <option *ngFor="let status of editableStatusOptions" [value]="status">
+                                    {{ status }}
+                                </option>
+                            </select>
+                            <span
+                                *ngIf="!isEditingTransaction(item)"
+                                class="status-badge"
+                                [ngClass]="transactionStatusClass(item.status)"
+                            >
+                                {{ item.status }}
+                            </span>
+                        </td>
+
+                        <td>
+                            <span>{{ formatPrice(item.amount) }}</span>
+                        </td>
+
+                        <td class="code-text">
+                            {{ item.referenceCode }}
+                        </td>
+
+                        <td>
+                            {{ item.transactionDate | date: 'dd/MM/yyyy' }}
+                        </td>
+
+                        <td class="action-col">
+                            <button
+                                class="edit-row-btn"
+                                type="button"
+                                [title]="isEditingTransaction(item) ? 'Lưu chỉnh sửa' : 'Chỉnh sửa'"
+                                [disabled]="!canEditTransaction(item)"
+                                (click)="toggleEditTransaction(item)"
+                            >
+                                <i
+                                    class="bi"
+                                    [class.bi-pencil-square]="!isEditingTransaction(item)"
+                                    [class.bi-check2]="isEditingTransaction(item)"
+                                ></i>
+                            </button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <button
+                class="page-nav"
+                type="button"
+                [disabled]="currentPage === 1"
+                (click)="previousPage()"
+            >
+                <i class="bi bi-arrow-left"></i>
+                <span>Trước</span>
+            </button>
+
+            <div class="page-numbers">
+                <button
+                    type="button"
+                    *ngFor="let page of pages"
+                    [class.active]="page === currentPage"
+                    [class.dots]="page === '...'"
+                    [disabled]="page === '...'"
+                    (click)="goToPage(page)"
+                >
+                    {{ page }}
+                </button>
+            </div>
+
+            <button
+                class="page-nav"
+                type="button"
+                [disabled]="currentPage === totalPages"
+                (click)="nextPage()"
+            >
+                <span>Sau</span>
+                <i class="bi bi-arrow-right"></i>
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<div class="add-modal-overlay" *ngIf="isAddModalOpen && newTransaction">
+<div class="add-modal">
+<div class="add-modal-header">
+    <div class="title-mark"></div>
+    <h2>Thêm thanh toán</h2>
+
+    <button
+        type="button"
+        class="close-add-modal-btn"
+        title="Đóng"
+        (click)="closeAddModal()"
+    >
+        <i class="bi bi-x-lg"></i>
+    </button>
+</div>
+
+<div class="add-form">
+    <div class="form-group">
+        <label>Mã thanh toán</label>
+        <input
+            type="text"
+            [(ngModel)]="newTransaction.code"
+            readonly
+            class="readonly-input"
+        >
+    </div>
+
+    <div class="form-group">
+        <label>Mã đơn hàng</label>
+        <input
+            type="text"
+            placeholder="Nhập mã đơn hàng"
+            [(ngModel)]="newTransaction.orderCode"
+        >
+    </div>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label>Cổng thanh toán</label>
+            <select [(ngModel)]="newTransaction.gateway">
+                <option *ngFor="let gateway of gatewayOptions" [value]="gateway">
+                    {{ gateway }}
+                </option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Trạng thái thanh toán</label>
+            <select [(ngModel)]="newTransaction.status">
+                <option *ngFor="let status of statusOptions" [value]="status">
+                    {{ status }}
+                </option>
+            </select>
+        </div>
+    </div>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label>Số tiền</label>
+            <div class="money-input">
+                <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    [(ngModel)]="newTransaction.amount"
+                >
+                <span>đ</span>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Mã giao dịch</label>
+            <input
+                type="text"
+                placeholder="Nhập mã giao dịch"
+                [(ngModel)]="newTransaction.referenceCode"
+            >
+        </div>
+    </div>
+
+    <div class="form-group date-field">
+        <label>Ngày giao dịch</label>
+        <div class="date-input">
+            <input
+                type="text"
+                placeholder="DD/MM/YYYY"
+                maxlength="10"
+                [(ngModel)]="newTransactionDateText"
+            >
+            <i class="bi bi-calendar3"></i>
+        </div>
+    </div>
+</div>
+
+<div class="add-modal-actions">
+    <button
+        type="button"
+        class="cancel-add-btn"
+        (click)="closeAddModal()"
+    >
+        Hủy
+    </button>
+
+    <button
+        type="button"
+        class="save-add-btn"
+        (click)="saveNewTransaction()"
+    >
+        Thêm
+    </button>
+</div>

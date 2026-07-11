@@ -1,0 +1,602 @@
+<div class="material-page">
+    <div class="material-card">
+
+        <div class="material-toolbar">
+            <div class="material-tabs">
+                <a routerLink="/materials" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
+                    Danh sách NVL
+                </a>
+
+                <a routerLink="/materials/imports" routerLinkActive="active">
+                    Nhập kho
+                </a>
+
+                <a routerLink="/materials/exports" routerLinkActive="active">
+                    Xuất kho
+                </a>
+
+                <a routerLink="/materials/suppliers" routerLinkActive="active">
+                    Nhà cung cấp
+                </a>
+            </div>
+
+            <div class="toolbar-right">
+                <div class="search-box">
+                    <input
+                        type="text"
+                        placeholder="Tìm kiếm nguyên vật liệu"
+                        [(ngModel)]="searchKeyword"
+                        (input)="applyFilters()"
+                    >
+                    <span class="search-icon">
+                        <i class="bi bi-search"></i>
+                    </span>
+                </div>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="tool-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleFilterMenu()"
+                    >
+                        <i class="bi bi-filter"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu filter-menu"
+                        *ngIf="isFilterMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <div class="filter-group">
+                            <label>Đơn vị tính</label>
+
+                            <select
+                                [(ngModel)]="selectedUnit"
+                                (change)="onUnitFilterChange()"
+                            >
+                                <option [value]="allUnitsOption">Tất cả</option>
+                                <option *ngFor="let unit of availableUnitOptions; trackBy: trackByText" [value]="unit">
+                                    {{ unit }}
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="tool-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleSortMenu()"
+                    >
+                        <i class="bi bi-arrow-down-up"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu sort-menu"
+                        *ngIf="isSortMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button" (click)="sortMaterials('name')">
+                            Theo tên
+                        </button>
+
+                        <button type="button" (click)="sortMaterials('code')">
+                            Theo mã
+                        </button>
+
+                        <button type="button" (click)="sortMaterials('quantity')">
+                            Theo số lượng tồn
+                        </button>
+
+                        <button type="button" (click)="sortMaterials('importPrice')">
+                            Theo giá nhập
+                        </button>
+
+                        <button type="button" (click)="sortMaterials('sellPrice')">
+                            Theo giá bán
+                        </button>
+                    </div>
+                </div>
+
+                <button class="tool-btn" type="button">
+                    <i class="bi bi-three-dots"></i>
+                </button>
+
+                <button
+                    class="tool-btn add-btn"
+                    type="button"
+                    title="Thêm nguyên vật liệu"
+                    (click)="openAddModal()"
+                >
+                    <i class="bi bi-plus-circle"></i>
+                </button>
+
+                <div class="dropdown-wrapper">
+                    <button
+                        class="export-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleExportMenu()"
+                    >
+                        <i class="bi bi-file-earmark-arrow-down"></i>
+                        Xuất
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu export-menu"
+                        *ngIf="isExportMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button">Xuất PDF</button>
+                        <button type="button">Xuất Excel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="material-table material-table-list">
+                <thead>
+                    <tr>
+                        <th class="checkbox-col">
+                            <input
+                                type="checkbox"
+                                [checked]="isAllSelected()"
+                                (change)="toggleSelectAll($event)"
+                            >
+                        </th>
+                        <th>Nguyên vật liệu</th>
+                        <th>Màu sắc</th>
+                        <th>Đơn vị tính</th>
+                        <th>Số lượng tồn</th>
+                        <th>Giá nhập</th>
+                        <th>Giá bán</th>
+                        <th class="action-col">Thao tác</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr
+                        *ngFor="let item of pagedMaterials; let rowIndex = index; trackBy: trackByMaterialCode"
+                        class="material-row"
+                        (click)="openDetailModal(item)"
+                    >
+                        <td class="checkbox-col">
+                            <input
+                                type="checkbox"
+                                [(ngModel)]="item.selected"
+                                (click)="$event.stopPropagation()"
+                            >
+                        </td>
+
+                        <td class="material-name-col">
+                            <div class="material-name">
+                                <img
+                                    *ngIf="item.image"
+                                    class="material-image"
+                                    [src]="item.image"
+                                    [alt]="item.name"
+                                    width="46"
+                                    height="46"
+                                    decoding="async"
+                                    [attr.loading]="rowIndex < 4 ? 'eager' : 'lazy'"
+                                    [attr.fetchpriority]="rowIndex < 4 ? 'high' : 'low'"
+                                    referrerpolicy="no-referrer"
+                                    (error)="onMaterialImageError($event)"
+                                >
+                                <span class="material-image-placeholder" *ngIf="!item.image"></span>
+
+                                <div>
+                                    <strong>{{ item.name }}</strong>
+                                    <span>{{ item.code }}</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td>{{ item.color }}</td>
+                        <td>{{ item.unit }}</td>
+                        <td>{{ item.quantity }}</td>
+                        <td>{{ formatPrice(item.importPrice) }}</td>
+                        <td>{{ formatPrice(item.sellPrice) }}</td>
+
+                        <td class="action-col">
+                            <div class="action-buttons">
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Sửa"
+                                    (click)="$event.stopPropagation(); editMaterial(item)"
+                                >
+                                    <i class="bi bi-pencil-square"></i>
+                                </button>
+
+                                <button
+                                    class="icon-btn"
+                                    type="button"
+                                    title="Xóa"
+                                    (click)="$event.stopPropagation(); deleteMaterial(item)"
+                                >
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <button
+                class="page-nav"
+                type="button"
+                [disabled]="currentPage === 1"
+                (click)="previousPage()"
+            >
+                <i class="bi bi-arrow-left"></i>
+                <span> Trước</span>
+            </button>
+
+            <div class="page-numbers">
+                <button
+                    type="button"
+                    *ngFor="let page of pages; trackBy: trackByPage"
+                    [class.active]="page === currentPage"
+                    [class.dots]="page === '...'"
+                    [disabled]="page === '...'"
+                    (click)="goToPage(page)"
+                >
+                    {{ page }}
+                </button>
+            </div>
+
+            <button
+                class="page-nav"
+                type="button"
+                [disabled]="currentPage === totalPages"
+                (click)="nextPage()"
+            >
+                <span>Sau </span>
+                <i class="bi bi-arrow-right"></i>
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<div
+    class="edit-modal-overlay"
+    *ngIf="isDetailModalOpen && detailMaterial"
+    (click)="closeDetailModalFromBackdrop($event)"
+>
+    <div class="material-form-modal material-detail-modal" (click)="$event.stopPropagation()">
+        <div class="material-form-header">
+            <h2>Chi tiết sản phẩm</h2>
+        </div>
+
+        <div class="modal-divider"></div>
+
+        <div class="material-detail-body">
+            <div class="detail-image-wrap">
+                <img
+                    *ngIf="detailMaterial.image"
+                    [src]="detailMaterial.image"
+                    [alt]="detailMaterial.name"
+                    width="220"
+                    height="220"
+                    decoding="async"
+                    loading="eager"
+                    fetchpriority="high"
+                    referrerpolicy="no-referrer"
+                    (error)="onMaterialImageError($event)"
+                >
+                <div class="detail-image-empty" *ngIf="!detailMaterial.image">
+                    Chưa có ảnh
+                </div>
+            </div>
+
+            <div class="detail-info-grid">
+                <div>
+                    <span>Mã NVL</span>
+                    <strong>{{ detailMaterial.code }}</strong>
+                </div>
+                <div>
+                    <span>Tên nguyên vật liệu</span>
+                    <strong>{{ detailMaterial.name }}</strong>
+                </div>
+                <div>
+                    <span>Đơn vị tính</span>
+                    <strong>{{ detailMaterial.unit || '--' }}</strong>
+                </div>
+                <div>
+                    <span>Số lượng tồn</span>
+                    <strong>{{ detailMaterial.quantity }}</strong>
+                </div>
+                <div>
+                    <span>Giá nhập</span>
+                    <strong>{{ formatPrice(detailMaterial.importPrice) }}</strong>
+                </div>
+                <div>
+                    <span>Giá bán</span>
+                    <strong>{{ formatPrice(detailMaterial.sellPrice) }}</strong>
+                </div>
+                <div class="detail-full">
+                    <span>Mô tả</span>
+                    <strong>{{ detailMaterial.description || '--' }}</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="material-form-actions">
+            <button type="button" class="cancel-btn" (click)="closeDetailModal()">
+                Đóng
+            </button>
+
+            <button type="button" class="save-btn" (click)="editMaterial(detailMaterial)">
+                Chỉnh sửa
+            </button>
+        </div>
+    </div>
+</div>
+
+<div
+    class="edit-modal-overlay"
+    *ngIf="isEditModalOpen && editingMaterial"
+    (click)="closeEditModalFromBackdrop($event)"
+>
+    <div class="material-form-modal" (click)="$event.stopPropagation()">
+        <div class="material-form-header">
+            <h2>{{ editingMaterial.name || 'NGUYÊN VẬT LIỆU' }}</h2>
+
+            <button
+                type="button"
+                class="modal-edit-btn"
+                disabled
+            >
+                <i class="bi bi-pencil-square"></i>
+                Chỉnh sửa
+            </button>
+        </div>
+
+        <div class="modal-divider"></div>
+
+        <div class="material-form-body">
+            <div class="form-group full-width">
+                <label>Tên nguyên vật liệu</label>
+                <input type="text" [(ngModel)]="editingMaterial.name">
+            </div>
+
+            <div class="form-group full-width">
+                <label>Mã NVL</label>
+                <input
+                    type="text"
+                    [(ngModel)]="editingMaterial.code"
+                    readonly
+                    class="readonly-input"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Mô tả</label>
+                <textarea [(ngModel)]="editingMaterial.description"></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Màu sắc</label>
+                    <select [(ngModel)]="editingMaterial.color">
+                        <option value="">Chọn màu sắc</option>
+                        <option *ngFor="let color of colorOptions; trackBy: trackByText" [value]="color">
+                            {{ color }}
+                        </option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Đơn vị tính</label>
+                    <select [(ngModel)]="editingMaterial.unit">
+                        <option value="">Chọn đơn vị</option>
+                        <option *ngFor="let unit of unitOptions; trackBy: trackByText" [value]="unit">
+                            {{ unit }}
+                        </option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Số lượng tồn</label>
+                    <input type="number" min="0" [(ngModel)]="editingMaterial.quantity">
+                </div>
+
+                <div class="form-group">
+                    <label>Trạng thái</label>
+                    <select [(ngModel)]="editingMaterial.status">
+                        <option value="">Chọn trạng thái</option>
+                        <option *ngFor="let status of statusOptions; trackBy: trackByText" [value]="status">
+                            {{ status }}
+                        </option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="image-section">
+                <label>Hình ảnh</label>
+
+                <div class="image-grid">
+                    <div class="image-preview" *ngIf="editingMaterial.image">
+                        <img [src]="editingMaterial.image" [alt]="editingMaterial.name">
+
+                        <button
+                            type="button"
+                            class="remove-image-btn"
+                            (click)="$event.stopPropagation(); editingMaterial.image = ''"
+                        >
+                            ×
+                        </button>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="add-image-box"
+                        [disabled]="isUploadingMaterialImage"
+                        (click)="$event.stopPropagation(); selectMaterialImage(editingMaterial)"
+                    >
+                        + Thêm ảnh
+                    </button>
+                </div>
+            </div>
+
+            <div class="price-table">
+                <div class="price-head">GIÁ NHẬP</div>
+                <div class="price-head">GIÁ BÁN</div>
+
+                <div class="price-cell">
+                    <input type="number" min="0" [(ngModel)]="editingMaterial.importPrice">
+                    <span>đ</span>
+                </div>
+
+                <div class="price-cell">
+                    <input type="number" min="0" [(ngModel)]="editingMaterial.sellPrice">
+                    <span>đ</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="material-form-actions">
+            <button type="button" class="cancel-btn" (click)="closeEditModal()">
+                Hủy
+            </button>
+
+            <button type="button" class="save-btn" (click)="saveMaterial()">
+                Lưu
+            </button>
+        </div>
+    </div>
+</div>
+
+<div
+    class="edit-modal-overlay"
+    *ngIf="isAddModalOpen && newMaterial"
+    (click)="closeAddModalFromBackdrop($event)"
+>
+    <div class="material-form-modal" (click)="$event.stopPropagation()">
+        <div class="material-form-header">
+            <h2>THÊM MỚI NGUYÊN VẬT LIỆU</h2>
+        </div>
+
+        <div class="modal-divider"></div>
+
+        <div class="material-form-body">
+            <div class="form-group full-width">
+                <label>Tên nguyên vật liệu</label>
+                <input type="text" [(ngModel)]="newMaterial.name">
+            </div>
+
+            <div class="form-group full-width">
+                <label>Mã NVL</label>
+                <input
+                    type="text"
+                    [(ngModel)]="newMaterial.code"
+                    readonly
+                    class="readonly-input"
+                >
+            </div>
+
+            <div class="form-group full-width">
+                <label>Mô tả</label>
+                <textarea [(ngModel)]="newMaterial.description"></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Màu sắc</label>
+                    <select [(ngModel)]="newMaterial.color">
+                        <option value="">Chọn màu sắc</option>
+                        <option *ngFor="let color of colorOptions; trackBy: trackByText" [value]="color">
+                            {{ color }}
+                        </option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Đơn vị tính</label>
+                    <select [(ngModel)]="newMaterial.unit">
+                        <option value="">Chọn đơn vị</option>
+                        <option *ngFor="let unit of unitOptions; trackBy: trackByText" [value]="unit">
+                            {{ unit }}
+                        </option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Số lượng tồn</label>
+                    <input type="number" min="0" [(ngModel)]="newMaterial.quantity">
+                </div>
+
+                <div class="form-group">
+                    <label>Trạng thái</label>
+                    <select [(ngModel)]="newMaterial.status">
+                        <option value="">Chọn trạng thái</option>
+                        <option *ngFor="let status of statusOptions; trackBy: trackByText" [value]="status">
+                            {{ status }}
+                        </option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="image-section">
+                <label>Hình ảnh</label>
+
+                <div class="image-grid">
+                    <div class="image-preview" *ngIf="newMaterial.image">
+                        <img [src]="newMaterial.image" [alt]="newMaterial.name">
+
+                        <button
+                            type="button"
+                            class="remove-image-btn"
+                            (click)="$event.stopPropagation(); newMaterial.image = ''"
+                        >
+                            ×
+                        </button>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="add-image-box"
+                        [disabled]="isUploadingMaterialImage"
+                        (click)="$event.stopPropagation(); selectMaterialImage(newMaterial)"
+                    >
+                        + Thêm ảnh
+                    </button>
+                </div>
+            </div>
+
+            <div class="price-table">
+                <div class="price-head">GIÁ NHẬP</div>
+                <div class="price-head">GIÁ BÁN</div>
+
+                <div class="price-cell">
+                    <input type="number" min="0" [(ngModel)]="newMaterial.importPrice">
+                    <span>đ</span>
+                </div>
+
+                <div class="price-cell">
+                    <input type="number" min="0" [(ngModel)]="newMaterial.sellPrice">
+                    <span>đ</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="material-form-actions">
+            <button type="button" class="cancel-btn" (click)="closeAddModal()">
+                Hủy
+            </button>
+
+            <button type="button" class="save-btn" (click)="saveNewMaterial()">
+                Lưu
+            </button>
+        </div>
+    </div>
+</div>

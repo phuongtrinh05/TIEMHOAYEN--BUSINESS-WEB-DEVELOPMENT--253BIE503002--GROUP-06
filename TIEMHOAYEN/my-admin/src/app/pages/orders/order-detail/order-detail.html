@@ -1,0 +1,595 @@
+<div class="admin-layout">
+
+  <div class="order-detail-page">
+    <div class="order-toast" *ngIf="toastVisible" [class.order-toast--error]="toastType === 'error'">
+      <i
+        class="bi"
+        [ngClass]="toastType === 'error' ? 'bi-exclamation-circle-fill' : 'bi-check-circle-fill'"
+      ></i>
+      {{ toastMessage }}
+    </div>
+
+    <!-- ===== ORDER META ===== -->
+    <div class="order-meta">
+      <div class="order-meta__left">
+        <div class="order-meta__top">
+          <div class="order-meta__title">
+            <span class="meta-label">Đơn hàng</span>
+            <span class="meta-id">{{ order.id }}</span>
+          </div>
+
+          <div class="order-meta__badges">
+            <span
+              class="badge-status order-status-badge"
+              [ngClass]="orderStatusBadgeClass(order.orderStatus)"
+            >
+              <i
+                class="bi order-status-badge__icon"
+                [ngClass]="orderStatusIcon(order.orderStatus)"
+              ></i>
+              {{ order.orderStatus }}
+            </span>
+
+            <span
+              class="badge-status"
+              [class.badge-paid]="order.paymentStatus === 'Đã thanh toán'"
+              [class.badge-unpaid]="order.paymentStatus === 'Chờ thanh toán'"
+              [class.badge-deposit]="order.paymentStatus === 'Đã cọc'"
+              [class.badge-failed]="order.paymentStatus === 'Thanh toán thất bại'"
+            >
+              {{ order.paymentStatus }}
+            </span>
+          </div>
+        </div>
+
+        <div class="meta-date">
+          Ngày tạo:
+          <strong>{{ order.createdAt }}</strong>
+          <strong>{{ order.createdTime }}</strong>
+        </div>
+      </div>
+
+      <div class="order-meta__right">
+        <button class="btn-icon-text" type="button" (click)="printOrder()">
+          <i class="bi bi-printer"></i> In đơn hàng
+        </button>
+        <ng-container *ngIf="!isEditing">
+          <button class="btn-icon-text" type="button" (click)="editOrder()" *ngIf="canEdit">
+            <i class="bi bi-pencil"></i> Chỉnh sửa
+          </button>
+        </ng-container>
+        <ng-container *ngIf="isEditing">
+          <button class="btn-icon-text btn-icon-text--cancel" type="button" (click)="cancelEdit()">
+            <i class="bi bi-x-lg"></i> Hủy
+          </button>
+          <button class="btn-icon-text btn-icon-text--save" type="button" (click)="saveEdit()">
+            <i class="bi bi-check-lg"></i> Lưu
+          </button>
+        </ng-container>
+      </div>
+    </div>
+
+    <!-- ===== MAIN GRID ===== -->
+    <div class="detail-grid">
+
+      <!-- CỘT TRÁI -->
+      <div class="detail-col-main">
+
+        <!-- TRẠNG THÁI ĐƠN HÀNG -->
+        <div class="detail-card">
+          <div class="card-header-row">
+            <h2 class="card-title">
+              <span class="card-title__bar"></span>
+              Trạng thái đơn hàng
+            </h2>
+            <span class="estimated-time" *ngIf="!isCancelled">
+              Thời gian giao hàng dự kiến: <strong>{{ order.estimatedDelivery }}</strong>
+            </span>
+          </div>
+
+          <div class="timeline-map-wrap">
+
+            <!-- Timeline -->
+            <div class="timeline">
+              <div
+                *ngFor="let step of timeline; let last = last"
+                class="timeline-step"
+                [class.timeline-step--done]="step.done"
+                [class.timeline-step--cancel]="step.status === 'Đã hủy'"
+                [class.timeline-step--refund-request]="step.status === 'Yêu cầu hoàn tiền/trả hàng'"
+                [class.timeline-step--refund-accepted]="step.status === 'Chấp nhận hoàn tiền'"
+                [class.timeline-step--refund-processing]="step.status === 'Đang hoàn tiền'"
+                [class.timeline-step--refund-paid]="step.status === 'Đã hoàn tiền'"
+                [class.timeline-step--refund-rejected]="step.status === 'Từ chối hoàn tiền/trả hàng'"
+              >
+                <div class="timeline-step__left">
+                  <div class="timeline-step__check">
+                    <i class="bi"
+                      [ngClass]="step.done ? 'bi-check-circle-fill' : 'bi-circle'"
+                      [class.check--cancel]="step.status === 'Đã hủy'"
+                    ></i>
+                  </div>
+                  <div class="timeline-line" *ngIf="!last" [class.timeline-line--done]="step.done"></div>
+                </div>
+
+                <div class="timeline-icon" [ngClass]="timelineIconClass(step.status)">
+                  <i class="bi timeline-icon__glyph" [ngClass]="step.icon"></i>
+                </div>
+
+                <div class="timeline-step__content">
+                  <div class="timeline-status">{{ step.status }}</div>
+                  <div class="timeline-time" *ngIf="step.time">{{ step.time }}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Cột bản đồ + nút cập nhật trạng thái -->
+            <div class="map-column">
+              <div class="map-wrap" *ngIf="!isCancelled">
+                <div class="map-grid"></div>
+                <div class="map-street map-street-1"></div>
+                <div class="map-street map-street-2"></div>
+                <div class="map-street map-street-3"></div>
+
+                <div class="route-line route-line-back"></div>
+                <div class="route-line route-line-front" [style.width.%]="getDeliveryProgress()"></div>
+
+                <div class="map-marker shop-marker">
+                  <span><i class="bi bi-shop"></i></span>
+                  <strong>Tiệm Hoa Yến</strong>
+                </div>
+
+                <div
+                  class="map-marker shipper-marker"
+                  [class.is-moving]="isOrderDelivering()"
+                  [style.left.%]="getShipperPosition()"
+                >
+                  <span><i class="bi bi-truck"></i></span>
+                  <strong>Shipper</strong>
+                </div>
+
+                <div class="map-marker customer-marker">
+                  <span><i class="bi bi-house-heart"></i></span>
+                  <strong>Người nhận</strong>
+                </div>
+              </div>
+
+              <div class="card-footer-row">
+                <div class="status-update-wrap" *ngIf="canUpdateStatus">
+                  <button class="btn-update-status" type="button" (click)="toggleStatusDropdown()">
+                    Cập nhật trạng thái
+                    <i class="bi" [ngClass]="showStatusDropdown ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                  </button>
+
+                  <div class="status-update-panel" *ngIf="showStatusDropdown">
+                    <div class="status-update-panel__title">Chọn trạng thái đơn hàng</div>
+                    <div class="status-update-panel__body">
+                      <select class="status-update-select" [(ngModel)]="selectedNextStatus">
+                        <option value="" disabled>Chọn trạng thái</option>
+                        <option
+                          *ngFor="let status of statusOptions"
+                          [ngValue]="status"
+                          [disabled]="isStatusOptionDisabled(status)"
+                        >
+                          {{ status }}
+                        </option>
+                      </select>
+                      <button
+                        class="status-update-confirm"
+                        type="button"
+                        [disabled]="!canApplySelectedStatus"
+                        (click)="applySelectedStatus()"
+                      >
+                        Cập nhật
+                      </button>
+                      <button class="status-update-cancel" type="button" (click)="closeStatusDropdown()">
+                        Hủy
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- DANH SÁCH SẢN PHẨM -->
+        <div class="detail-card">
+          <div class="card-header-row">
+            <h2 class="card-title">
+              <span class="card-title__bar"></span>
+              Danh sách sản phẩm ({{ totalQty }})
+            </h2>
+          </div>
+
+          <table class="product-table">
+            <thead>
+              <tr>
+                <th>TÊN SẢN PHẨM</th>
+                <th class="text-center">SỐ LƯỢNG</th>
+                <th class="text-center">GIÁ</th>
+                <th class="text-center">THÀNH TIỀN</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngIf="order.products.length === 0">
+                <td colspan="4" class="text-center">Ch&#432;a c&#243; d&#7919; li&#7879;u s&#7843;n ph&#7849;m t&#7915; &#273;&#417;n h&#224;ng</td>
+              </tr>
+              <tr *ngFor="let p of order.products; let i = index">
+                <td>
+                  <div class="product-name-cell">
+                    <img [src]="p.image" [alt]="p.name" class="product-thumb"
+                      onerror="this.src='assets/images/logo-main.png'">
+                    <div>
+                      <div class="product-name">{{ p.name }}</div>
+                      <div class="product-sku">{{ p.id }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="text-center">{{ p.qty }}</td>
+                <td class="text-center price-col">{{ formatVND(p.price) }}</td>
+                <td class="text-center price-col price-total">{{ formatVND(lineTotal(p)) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- GHI CHÚ KHÁCH HÀNG -->
+        <div class="detail-card" *ngIf="order.customerNote">
+          <h2 class="card-title">
+            <span class="card-title__bar"></span>
+            Ghi chú của khách hàng
+          </h2>
+          <div class="customer-note">{{ order.customerNote }}</div>
+        </div>
+
+        <!-- LỜI NHẮN / THIỆP -->
+        <div class="detail-card" *ngIf="hasCardInfo">
+          <h2 class="card-title">
+            <span class="card-title__bar"></span>
+            Lời nhắn / Thiệp
+          </h2>
+          <div class="card-info-row">
+            <span class="info-label">Mẫu thiệp</span>
+            <span class="info-value" *ngIf="!isEditing"><strong>{{ order.cardTemplate }}</strong></span>
+            <input *ngIf="isEditing" class="edit-input" type="text" [(ngModel)]="order.cardTemplate">
+          </div>
+          <div class="card-info-row" *ngIf="order.cardMessage">
+            <span class="info-label">Nội dung lời nhắn</span>
+            <span class="info-value card-message" *ngIf="!isEditing">{{ order.cardMessage }}</span>
+            <textarea *ngIf="isEditing" class="edit-textarea" [(ngModel)]="order.cardMessage" rows="2"></textarea>
+          </div>
+        </div>
+
+        <!-- THANH TOÁN -->
+        <div class="detail-card">
+          <h2 class="card-title">
+            <span class="card-title__bar"></span>
+            Thanh toán
+          </h2>
+
+          <div class="payment-rows">
+            <div class="payment-row">
+              <span class="payment-label">Tạm tính</span>
+              <span class="payment-val-italic">{{ formatVND(computedSubtotal) }}</span>
+            </div>
+
+            <div class="payment-row">
+              <span class="payment-label">Phí ship</span>
+              <span class="payment-val-italic">{{ formatVND(order.shippingFee) }}</span>
+            </div>
+
+            <div class="payment-row" *ngIf="order.voucher">
+              <span class="payment-label">Voucher (<span class="voucher-code">{{ order.voucher }}</span>)</span>
+              <span class="payment-val-italic discount-voucher">-{{ formatVND(computedVoucherDiscount) }}</span>
+            </div>
+
+            <div class="payment-row" *ngIf="order.loyaltyPoints">
+              <span class="payment-label">Điểm tích lũy (<span class="loyalty-pts">{{ order.loyaltyPoints }} điểm</span>)</span>
+              <span class="payment-val-italic discount-loyalty">-{{ formatVND(computedLoyaltyDiscount) }}</span>
+            </div>
+
+            <div class="payment-row">
+              <span>Tổng cộng</span>
+              <span>{{ formatVND(computedTotalBeforeTax) }}</span>
+            </div>
+
+            <div class="payment-row">
+              <span>Phí & Thuế dự kiến</span>
+              <span>{{ formatVND(order.tax) }}</span>
+            </div>
+
+            <div class="payment-divider"></div>
+
+            <div class="payment-row payment-row--total">
+              <span>Tổng tiền</span>
+              <span class="total-val">{{ formatVND(computedGrandTotal) }}</span>
+            </div>
+
+            <div class="payment-row">
+              <span>Đã thanh toán</span>
+              <span>{{ formatVND(computedPaid) }}</span>
+            </div>
+
+            <div class="payment-row">
+              <span>Còn lại</span>
+              <span>{{ formatVND(computedRemaining) }}</span>
+            </div>
+
+            <div class="payment-row">
+              <span>Phương thức thanh toán</span>
+              <span>{{ order.paymentMethod }}</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <!-- /CỘT TRÁI -->
+
+      <!-- CỘT PHẢI -->
+      <div class="detail-col-side">
+
+        <!-- THÔNG TIN NGƯỜI GỬI -->
+        <div class="detail-card">
+          <h2 class="card-title">
+            <span class="card-title__bar"></span>
+            Thông tin người gửi
+          </h2>
+          <div class="sender-avatar">
+            <div class="avatar-circle">
+              <i class="bi bi-person-fill"></i>
+            </div>
+          </div>
+          <div class="sender-name">{{ order.senderName }}</div>
+          <div class="sender-id">{{ senderCustomerCodeLabel }}</div>
+          <div class="sender-contact">
+            <div class="contact-row">
+              <i class="bi bi-telephone"></i>
+              <span *ngIf="!isEditing">{{ order.senderPhone }}</span>
+              <input *ngIf="isEditing" class="edit-input" type="text" [(ngModel)]="order.senderPhone">
+            </div>
+            <div class="contact-row">
+              <i class="bi bi-envelope"></i>
+              <a *ngIf="!isEditing" [href]="'mailto:' + order.senderEmail">{{ order.senderEmail }}</a>
+              <input *ngIf="isEditing" class="edit-input" type="text" [(ngModel)]="order.senderEmail">
+            </div>
+          </div>
+        </div>
+
+        <!-- THÔNG TIN GIAO HÀNG -->
+        <div class="detail-card">
+          <h2 class="card-title">
+            <span class="card-title__bar"></span>
+            Thông tin giao hàng
+          </h2>
+
+          <div class="delivery-info">
+            <div class="delivery-row">
+              <i class="bi bi-person"></i>
+              <span class="delivery-label">Người nhận</span>
+              <span class="delivery-val" *ngIf="!isEditing">{{ order.receiverName }}</span>
+              <input *ngIf="isEditing" class="edit-input" type="text" [(ngModel)]="order.receiverName">
+            </div>
+            <div class="delivery-row">
+              <i class="bi bi-telephone"></i>
+              <span class="delivery-label">Số điện thoại</span>
+              <span class="delivery-val" *ngIf="!isEditing">{{ order.receiverPhone }}</span>
+              <input *ngIf="isEditing" class="edit-input" type="text" [(ngModel)]="order.receiverPhone">
+            </div>
+            <div class="delivery-row">
+              <i class="bi bi-envelope-fill"></i>
+              <span class="delivery-label">Email</span>
+              <span class="delivery-val" *ngIf="!isEditing">{{ order.receiverEmail }}</span>
+              <input *ngIf="isEditing" class="edit-input" type="text" [(ngModel)]="order.receiverEmail">
+            </div>
+            <div class="delivery-row">
+              <i class="bi bi-calendar3"></i>
+              <span class="delivery-label">Ngày giao hàng</span>
+              <span class="delivery-val" *ngIf="!isEditing">{{ order.deliveryDate }}</span>
+              <input *ngIf="isEditing" class="edit-input" type="text" [(ngModel)]="order.deliveryDate">
+            </div>
+            <div class="delivery-row">
+              <i class="bi bi-calendar2-check"></i>
+              <span class="delivery-label">Khung giờ giao</span>
+              <span class="delivery-val" *ngIf="!isEditing">{{ order.deliverySlot }}</span>
+              <input *ngIf="isEditing" class="edit-input" type="text" [(ngModel)]="order.deliverySlot">
+            </div>
+            <div class="delivery-row delivery-row--address">
+              <i class="bi bi-geo-alt"></i>
+              <span class="delivery-label">Địa chỉ</span>
+              <span class="delivery-val" *ngIf="!isEditing">{{ order.deliveryAddress }}</span>
+              <input *ngIf="isEditing" class="edit-input" type="text" [(ngModel)]="order.deliveryAddress">
+            </div>
+          </div>
+
+          <div class="shipper-select-wrap">
+            <div class="shipper-card">
+              <div class="shipper-avatar" aria-hidden="true">
+                <i class="bi bi-person-fill"></i>
+              </div>
+              <div class="shipper-info">
+                <div class="shipper-name">{{ order.shipperName }}</div>
+                <div class="shipper-phone">{{ order.shipperPhone }}</div>
+              </div>
+              <button class="btn-icon-sm" type="button" (click)="toggleShipperDropdown()">
+                <i class="bi" [ngClass]="showShipperDropdown ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+              </button>
+            </div>
+
+            <div class="shipper-dropdown" *ngIf="showShipperDropdown">
+              <button
+                class="shipper-option"
+                type="button"
+                *ngFor="let shipper of shippers"
+                (click)="selectShipper(shipper)"
+              >
+                <div class="shipper-option__avatar" aria-hidden="true">
+                  <i class="bi bi-person-fill"></i>
+                </div>
+                <div class="shipper-option__info">
+                  <div class="shipper-option__name">{{ shipper.name }}</div>
+                  <div class="shipper-option__phone">{{ shipper.phone }}</div>
+                </div>
+                <i
+                  class="bi bi-check-lg shipper-option__check"
+                  *ngIf="shipper.name === order.shipperName"
+                ></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- GHI CHÚ ADMIN -->
+        <div class="detail-card">
+          <div class="card-header-row">
+            <h2 class="card-title">
+              <span class="card-title__bar"></span>
+              Ghi chú đơn hàng
+            </h2>
+            <button class="btn-icon-sm" type="button" *ngIf="!editingNote && !isEditing" (click)="startEditNote()">
+              <i class="bi bi-pencil-square"></i>
+            </button>
+          </div>
+
+          <ng-container *ngIf="!editingNote && !isEditing">
+            <div class="admin-note">{{ order.adminNote || 'Chưa có ghi chú' }}</div>
+            <div class="admin-note-time" *ngIf="order.adminNoteTime">{{ order.adminNoteTime }}</div>
+          </ng-container>
+
+          <div *ngIf="editingNote || isEditing" class="note-edit">
+            <textarea class="note-textarea" [(ngModel)]="order.adminNote" rows="3"></textarea>
+            <div class="note-edit-actions" *ngIf="editingNote && !isEditing">
+              <button class="btn-note-cancel" type="button" (click)="cancelEditNote()">Hủy</button>
+              <button class="btn-note-save" type="button" (click)="saveNote()">Lưu</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ĐÁNH GIÁ -->
+        <div class="detail-card" *ngIf="order.rating">
+          <h2 class="card-title">
+            <span class="card-title__bar"></span>
+            Đánh giá của khách hàng
+          </h2>
+          <div class="review-stars">
+            <i class="bi bi-star-fill" *ngFor="let s of stars(order.rating)"></i>
+          </div>
+          <div class="review-text">{{ order.reviewText }}</div>
+          <div class="review-footer">
+            <span class="review-time">{{ order.reviewTime }}</span>
+            <button
+              class="btn-reply"
+              type="button"
+              *ngIf="!isReplying && !order.adminReplyText"
+              (click)="isReplying = true"
+            >
+              <i class="bi bi-reply"></i> Trả lời
+            </button>
+          </div>
+
+          <div class="admin-reply-box" *ngIf="order.adminReplyText">
+            <div class="admin-reply-content">{{ order.adminReplyText }}</div>
+            <div class="admin-reply-time">
+              Được trả lời bởi Admin | {{ order.adminReplyTime }}
+            </div>
+          </div>
+
+          <div class="reply-box" *ngIf="isReplying">
+            <textarea class="reply-textarea" [(ngModel)]="replyText"
+              placeholder="Nhập nội dung trả lời..." rows="3"></textarea>
+            <div class="reply-actions">
+              <button class="btn-reply-cancel" type="button" (click)="isReplying = false; replyText = ''">Huỷ</button>
+              <button class="btn-reply-send" type="button" (click)="submitReply()">Gửi trả lời</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- LÝ DO TRẢ HÀNG/HOÀN TIỀN -->
+        <div class="detail-card" *ngIf="isRefundFlow && order.refundReason">
+          <h2 class="card-title">
+            <span class="card-title__bar"></span>
+            Lý do trả hàng/hoàn tiền của khách hàng
+          </h2>
+          <div class="customer-note">{{ order.refundReason }}</div>
+        </div>
+
+      </div>
+      <!-- /CỘT PHẢI -->
+
+    </div>
+    <!-- /MAIN GRID -->
+
+  </div>
+
+  <!-- POPUP TỪ CHỐI HOÀN TIỀN -->
+  <div class="popup-overlay" *ngIf="showRejectPopup" (click)="closeRejectPopup()">
+    <div class="popup-box" (click)="$event.stopPropagation()">
+      <!-- THÀNH -->
+      <h3 class="popup-title">
+        <span class="card-title__bar"></span>
+        Từ chối yêu cầu hoàn tiền/trả hàng
+        <button class="popup-close-btn" type="button" (click)="closeRejectPopup()">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </h3>
+
+      <div class="popup-section-label">Thông tin đơn hàng</div>
+      <div class="popup-info-row">
+        <span class="popup-info-label">Mã đơn hàng</span>
+        <span class="popup-info-val">{{ order.id }}</span>
+      </div>
+      <div class="popup-info-row">
+        <span class="popup-info-label">Mã khách hàng</span>
+        <span class="popup-info-val">{{ order.senderCustomerId }}</span>
+      </div>
+      <div class="popup-info-row">
+        <span class="popup-info-label">Tổng tiền</span>
+        <span class="popup-info-val popup-info-val--price">{{ formatVND(computedGrandTotal) }}</span>
+      </div>
+
+      <div class="popup-field-label">Lý do hoàn tiền/trả hàng của khách hàng</div>
+      <div class="popup-customer-reason">{{ customerRefundReason }}</div>
+
+      <div class="popup-field-label">Lý do từ chối hoàn tiền/trả hàng</div>
+
+      <!-- THÀNH -->
+      <div class="popup-select-wrap">
+        <select
+          class="popup-reason-select"
+          [(ngModel)]="rejectReasonInput"
+          [class.popup-reason-select--error]="rejectReasonError"
+          (ngModelChange)="rejectReasonError = ''"
+        >
+          <option value="" disabled>Chọn lý do từ chối</option>
+          <option *ngFor="let r of rejectReasonOptions" [value]="r">
+            {{ r }}
+          </option>
+        </select>
+        <i class="bi bi-chevron-down popup-select-chevron"></i>
+      </div>
+
+      <div class="popup-or-divider">
+        <span>hoặc nhập lý do khác</span>
+      </div>
+
+      <textarea
+        class="popup-reason-textarea"
+        [(ngModel)]="rejectReasonInput"
+        (input)="rejectReasonError = ''"
+        [class.popup-reason-textarea--error]="rejectReasonError"
+        placeholder="Nhập lý do từ chối..."
+        rows="3"
+      ></textarea>
+
+      <div class="popup-error-text" *ngIf="rejectReasonError">
+        {{ rejectReasonError }}
+      </div>
+
+      <div class="popup-actions">
+        <button class="popup-btn-reject" type="button" (click)="confirmReject()">Từ chối</button>
+      </div>
+    </div>
+  </div>
+
+</div>

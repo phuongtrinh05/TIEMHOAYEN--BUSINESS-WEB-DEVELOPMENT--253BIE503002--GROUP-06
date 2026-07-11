@@ -1,0 +1,862 @@
+* {
+    box-sizing: border-box;
+}
+
+:host {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* ---------- PAGE ---------- */
+.promotion-page {
+    width: 100%;
+    max-width: 100%;
+    min-height: calc(100vh - 80px);
+    overflow-x: hidden;
+    overflow-y: visible;
+    background-color: #f7f8fa;
+    font-family: "Nunito Sans", sans-serif;
+    color: #2c2c2c;
+}
+
+.promotion-card {
+    width: 100%;
+    max-width: 100%;
+    background-color: #ffffff;
+    border-radius: 12px;
+    padding: 20px 16px 24px;
+    overflow: visible;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* ---------- TOOLBAR ---------- */
+.promotion-toolbar {
+    width: 100%;
+    max-width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+    overflow: visible;
+}
+
+.promotion-tabs {
+    display: flex;
+    align-items: center;
+    background-color: #ffd4d7;
+    border-radius: 10px;
+    padding: 5px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.promotion-tabs a {
+    height: 42px;
+    min-width: 118px;
+    border-radius: 7px;
+    color: #4d5968;
+    font-size: 15px;
+    font-family: inherit;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.promotion-tabs a:hover {
+    background-color: rgba(255, 255, 255, 0.55);
+    color: #7f1717;
+}
+
+.promotion-tabs a.active {
+    background-color: #ffffff;
+    color: #7f1717;
+    font-weight: 800;
+    border: 3px solid #ffd4d7;
+    box-shadow: 0 4px 10px rgba(127, 23, 23, 0.16);
+    transform: translateY(-1px);
+}
+
+.toolbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex: 1 1 420px;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+    overflow: visible;
+}
+
+.search-box {
+    width: 280px;
+    max-width: 100%;
+    flex: 1 1 220px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #e0e2e7;
+    border-radius: 6px;
+    padding: 0 14px;
+    background-color: #ffffff;
+}
+
+.search-box input {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    color: #333333;
+    background-color: transparent;
+    font-size: 15px;
+    font-family: inherit;
+}
+
+.search-icon {
+    font-size: 20px;
+    color: #314052;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tool-btn,
+.export-btn {
+    height: 44px;
+    border: 1px solid #dce0e6;
+    border-radius: 6px;
+    background-color: #ffffff;
+    color: #4d5968;
+    font-size: 16px;
+    font-family: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.18s ease;
+}
+
+.tool-btn {
+    width: 48px;
+    min-width: 48px;
+    padding: 0;
+}
+
+.add-btn {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.export-btn {
+    width: 122px;
+    min-width: 122px;
+    height: 44px;
+    padding: 0 14px;
+    background-color: #7f1717;
+    border: 1px solid #7f1717;
+    color: #ffffff;
+    gap: 9px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.tool-btn i,
+.export-btn i,
+.icon-btn i,
+.page-nav i,
+.search-icon i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.tool-btn:hover {
+    color: #7f1717;
+    border-color: #7f1717;
+    background-color: #fff1f1;
+    box-shadow: 0 4px 10px rgba(127, 23, 23, 0.12);
+}
+
+.export-btn:hover {
+    background-color: #5f0f0f;
+    border-color: #5f0f0f;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(127, 23, 23, 0.22);
+}
+
+/* ---------- DROPDOWN ---------- */
+.dropdown-wrapper {
+    position: relative;
+    overflow: visible;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.dropdown-menu {
+    display: block;
+    position: absolute;
+    right: 0;
+    top: 52px;
+    min-width: 180px;
+    padding: 10px;
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
+    z-index: 9999;
+    animation: dropdownFade 0.18s ease;
+}
+
+@keyframes dropdownFade {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.filter-menu {
+    width: 240px;
+}
+
+.filter-group {
+    margin-bottom: 12px;
+}
+
+.filter-group:last-child {
+    margin-bottom: 0;
+}
+
+.filter-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    font-weight: 800;
+    color: #7f1717;
+}
+
+.filter-group select,
+.form-group select {
+    width: 100%;
+    height: 38px;
+    border: 1px solid #dce0e6;
+    border-radius: 6px;
+    padding: 0 10px;
+    font-family: inherit;
+    outline: none;
+    background-color: #ffffff;
+}
+
+.sort-menu button,
+.export-menu button {
+    width: 100%;
+    height: 38px;
+    border: none;
+    border-radius: 5px;
+    background-color: transparent;
+    color: #4b5563;
+    font-size: 14px;
+    font-family: inherit;
+    text-align: left;
+    padding: 0 12px;
+    cursor: pointer;
+}
+
+.sort-menu button:hover,
+.export-menu button:hover {
+    color: #7f1717;
+    background-color: #fff1f1;
+}
+
+/* ---------- TABLE ---------- */
+.table-wrapper {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    overflow-y: visible;
+}
+
+.promotion-table {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.promotion-table thead tr {
+    background-color: #ffd4d7;
+}
+
+.promotion-table th {
+    height: 62px;
+    padding: 14px 8px;
+    text-align: center;
+    color: #003c3c;
+    font-size: 15px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.promotion-table td {
+    height: 76px;
+    padding: 12px 8px;
+    border-bottom: 1px solid #d9dee5;
+    color: #111111;
+    font-size: 15px;
+    text-align: center;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.promotion-table th,
+.promotion-table td {
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.promotion-table th:first-child {
+    border-top-left-radius: 6px;
+    border-bottom-left-radius: 6px;
+}
+
+.promotion-table th:last-child {
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+}
+
+/* ---------- COLUMN WIDTH ---------- */
+.voucher-table th:nth-child(1),
+.voucher-table td:nth-child(1) {
+    width: 4%;
+}
+
+.voucher-table th:nth-child(2),
+.voucher-table td:nth-child(2) {
+    width: 18%;
+}
+
+.voucher-table th:nth-child(3),
+.voucher-table td:nth-child(3) {
+    width: 14%;
+}
+
+.voucher-table th:nth-child(4),
+.voucher-table td:nth-child(4) {
+    width: 15%;
+}
+
+.voucher-table th:nth-child(5),
+.voucher-table td:nth-child(5) {
+    width: 13%;
+}
+
+.voucher-table th:nth-child(6),
+.voucher-table td:nth-child(6) {
+    width: 13%;
+}
+
+.voucher-table th:nth-child(7),
+.voucher-table td:nth-child(7) {
+    width: 13%;
+}
+
+.voucher-table th:nth-child(8),
+.voucher-table td:nth-child(8) {
+    width: 10%;
+}
+
+/* ---------- CHECKBOX ---------- */
+.checkbox-col {
+    width: 4%;
+    text-align: center;
+}
+
+.promotion-table input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 2px solid #c7ccd4;
+    border-radius: 5px;
+    background-color: #ffffff;
+    cursor: pointer;
+    display: inline-grid;
+    place-content: center;
+    transition: all 0.18s ease;
+}
+
+.promotion-table input[type="checkbox"]:hover {
+    border-color: #7f1717;
+    background-color: #fff5f5;
+    box-shadow: 0 0 0 3px rgba(127, 23, 23, 0.12);
+}
+
+.promotion-table input[type="checkbox"]:checked {
+    background-color: #5f0f0f;
+    border-color: #5f0f0f;
+}
+
+.promotion-table input[type="checkbox"]:checked::after {
+    content: "";
+    width: 6px;
+    height: 11px;
+    border: solid #ffffff;
+    border-width: 0 2.5px 2.5px 0;
+    transform: rotate(45deg);
+    margin-top: -2px;
+}
+
+/* ---------- TABLE HOVER ---------- */
+.promotion-table tbody tr {
+    transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.promotion-table tbody tr.voucher-row {
+    cursor: pointer;
+}
+
+.promotion-table tbody tr:hover {
+    background-color: #fff7f7;
+}
+
+.promotion-table tbody tr:hover td {
+    color: #7f1717;
+}
+
+.promotion-table tbody tr:hover .code-text,
+.promotion-table tbody tr:hover .voucher-name strong,
+.promotion-table tbody tr:hover .voucher-name span {
+    color: #7f1717;
+}
+
+.promotion-table tbody tr:has(input[type="checkbox"]:checked) {
+    background-color: #fff1f1;
+}
+
+.promotion-table tbody tr:has(input[type="checkbox"]:checked) td {
+    color: #5f0f0f;
+}
+
+.promotion-table tbody tr:has(input[type="checkbox"]:checked) .voucher-name strong,
+.promotion-table tbody tr:has(input[type="checkbox"]:checked) .voucher-name span {
+    color: #5f0f0f;
+}
+
+/* ---------- TEXT ---------- */
+.voucher-name {
+    text-align: left !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.voucher-name strong {
+    display: block;
+    color: #111111;
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.voucher-name span {
+    display: block;
+    margin-top: 3px;
+    color: #6b7280;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.code-text {
+    color: #111111;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.description-col {
+    display: table-cell;
+    text-align: left !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap !important;
+    line-height: 1.35;
+    word-break: normal;
+}
+
+/* ---------- ACTION ---------- */
+.action-col {
+    width: 10%;
+    text-align: center;
+}
+
+.action-buttons {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.icon-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    background-color: transparent;
+    color: #6f7a89;
+    font-size: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.icon-btn:hover {
+    color: #7f1717;
+    background-color: #fff1f1;
+}
+
+/* ---------- PAGINATION ---------- */
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 46px;
+}
+
+.page-nav,
+.page-numbers button {
+    height: 42px;
+    min-width: 42px;
+    border: 1px solid #d9dee5;
+    border-radius: 6px;
+    background-color: #ffffff;
+    color: #003c3c;
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.page-nav {
+    min-width: 96px;
+    padding: 0 16px;
+    color: #111111;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.page-nav:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.page-numbers {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.page-numbers button.active {
+    background-color: #ffd4d7;
+    border-color: #ffd4d7;
+    color: #5f0f0f;
+    font-weight: 800;
+}
+
+.page-numbers button.dots {
+    cursor: default;
+    background-color: #ffffff;
+    border-color: #d9dee5;
+    color: #6b7280;
+    box-shadow: none;
+}
+
+.page-nav:hover:not(:disabled),
+.page-numbers button:hover:not(.active):not(.dots) {
+    color: #7f1717;
+    border-color: #7f1717;
+    background-color: #fff1f1;
+}
+
+/* ---------- VOUCHER FORM MODAL ---------- */
+.edit-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background-color: rgba(17, 17, 17, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.voucher-form-modal {
+    width: 620px;
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 22px 28px 24px;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
+}
+
+.voucher-form-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.title-mark {
+    width: 8px;
+    height: 28px;
+    border-radius: 4px;
+    background-color: #8b1a1a;
+    flex-shrink: 0;
+}
+
+.voucher-form-header h2 {
+    margin: 0;
+    color: #20242a;
+    font-size: 22px;
+    line-height: 1.2;
+    font-weight: 700;
+}
+
+.voucher-form-body {
+    display: grid;
+    gap: 14px;
+}
+
+.full-width {
+    width: 100%;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #343941;
+    font-size: 15px;
+    font-weight: 800;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    height: 42px;
+    border: 1px solid #c9ced6;
+    border-radius: 5px;
+    background-color: #ffffff;
+    color: #343941;
+    font-size: 15px;
+    font-family: inherit;
+    outline: none;
+    padding: 0 12px;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.date-input:focus-within,
+.discount-input:focus-within {
+    border-color: #8b1a1a;
+    box-shadow: 0 0 0 3px rgba(139, 26, 26, 0.09);
+}
+
+.readonly-input {
+    background-color: #e9edf1 !important;
+    color: #6b7280 !important;
+    cursor: not-allowed;
+    font-weight: 700;
+}
+
+.date-input,
+.discount-input {
+    width: 100%;
+    height: 42px;
+    border: 1px solid #c9ced6;
+    border-radius: 5px;
+    padding: 0 12px;
+    background-color: #ffffff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.date-input input,
+.discount-input input {
+    height: 100%;
+    border: none;
+    padding: 0;
+    box-shadow: none;
+    background-color: transparent;
+}
+
+.date-input input {
+    color-scheme: light;
+}
+
+.date-input input:focus,
+.discount-input input:focus {
+    box-shadow: none;
+}
+
+.date-input input[type="date"]::-webkit-calendar-picker-indicator {
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+    opacity: 1;
+    filter: invert(12%) sepia(54%) saturate(3120%) hue-rotate(348deg) brightness(88%) contrast(92%);
+}
+
+.date-input i {
+    color: #8b1a1a;
+    font-size: 18px;
+}
+
+.discount-input span {
+    color: #8b1a1a;
+    font-size: 15px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.voucher-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.cancel-btn,
+.save-btn {
+    height: 38px;
+    min-width: 76px;
+    border: none;
+    border-radius: 6px;
+    padding: 0 18px;
+    font-size: 15px;
+    font-weight: 800;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.cancel-btn {
+    background-color: #f3f4f6;
+    color: #4b5563;
+}
+
+.cancel-btn:hover {
+    background-color: #e5e7eb;
+}
+
+.save-btn {
+    background-color: #8b1a1a;
+    color: #ffffff;
+}
+
+.save-btn:hover {
+    background-color: #741313;
+}
+
+/* ---------- RESPONSIVE ---------- */
+@media screen and (max-width: 992px) {
+    .promotion-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .toolbar-right {
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+
+    .search-box {
+        width: 100%;
+    }
+}
+
+@media screen and (max-width: 576px) {
+    .promotion-page {
+        padding: 16px;
+    }
+
+    .promotion-card {
+        padding: 16px 12px 24px;
+    }
+
+    .promotion-tabs {
+        width: 100%;
+        overflow-x: auto;
+    }
+
+    .promotion-tabs a {
+        min-width: 110px;
+    }
+
+    .pagination {
+        gap: 20px;
+        flex-direction: column;
+    }
+
+    .page-numbers {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .voucher-form-modal {
+        width: 100%;
+        max-height: calc(100vh - 24px);
+        padding: 24px 18px;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+        gap: 22px;
+    }
+
+    .voucher-form-actions {
+        margin-top: 24px;
+    }
+
+    .cancel-btn,
+    .save-btn {
+        height: 48px;
+        min-width: 82px;
+        font-size: 16px;
+    }
+}

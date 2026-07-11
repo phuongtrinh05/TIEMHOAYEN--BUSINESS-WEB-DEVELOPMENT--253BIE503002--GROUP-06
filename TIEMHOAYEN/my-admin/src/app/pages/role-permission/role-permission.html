@@ -1,0 +1,61 @@
+<div class="role-page">
+  <div class="role-sidebar">
+    <div class="role-toolbar">
+      <div class="search-box">
+        <input
+          type="text"
+          placeholder="Tìm kiếm vai trò"
+          [(ngModel)]="searchKeyword"
+          (input)="searchRole()">
+        <i class="bi bi-search"></i>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Vai trò</th>
+          <th>Số tài khoản</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          *ngFor="let role of filteredRoles"
+          (click)="selectRole(role.name)"
+          [class.active]="selectedRole === role.name">
+          <td>{{ role.name }}</td>
+          <td>{{ role.total }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="permission-card">
+    <h2>Vai trò {{ selectedRole }}</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Danh mục quyền</th>
+          <th *ngFor="let action of actions">{{ action.label }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let item of modules">
+          <td>{{ item.name }}</td>
+          <td *ngFor="let action of actions">
+            <i
+              class="bi"
+              [class.bi-check-circle-fill]="hasPermission(item.key, action.key)"
+              [class.bi-x-circle-fill]="!hasPermission(item.key, action.key)"
+              [class.success]="hasPermission(item.key, action.key)"
+              [class.locked]="!hasPermission(item.key, action.key)">
+            </i>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p *ngIf="errorMessage" class="permission-state error">{{ errorMessage }}</p>
+  </div>
+</div>

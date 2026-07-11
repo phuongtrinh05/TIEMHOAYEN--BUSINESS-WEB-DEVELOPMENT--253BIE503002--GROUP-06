@@ -1,0 +1,673 @@
+<section class="customer-detail-page">
+    <section class="profile-card">
+        <button type="button" class="back-btn" (click)="goBack()">
+            <i class="bi bi-arrow-left"></i>
+            <span> Quay lại</span>
+        </button>
+
+        <div class="profile-actions">
+            <button type="button" class="primary-action" (click)="createOrder()">
+                <i class="bi bi-plus-circle"></i>
+                <span>Tạo đơn</span>
+            </button>
+
+            <button type="button" class="primary-action" (click)="openChat()">
+                <i class="bi bi-chat-dots"></i>
+                <span>Chat</span>
+            </button>
+
+            <button type="button" class="edit-icon-btn" title="Chỉnh sửa" (click)="startCustomerEdit()">
+                <i class="bi bi-pencil-square"></i>
+            </button>
+        </div>
+
+        <div class="profile-main">
+            <div class="profile-avatar">
+                <i class="bi bi-person-circle"></i>
+            </div>
+
+            <div class="profile-info">
+                <div class="name-row">
+                    <h1>{{ customer.name }}</h1>
+
+                    <img
+                        class="rank-tag-img"
+                        [src]="getRankImage(customer.point)"
+                        [alt]="rank"
+                    >
+                </div>
+
+                <div class="code-row">
+                    <strong>Mã khách hàng:</strong>
+                    <span>{{ customer.code }}</span>
+                </div>
+
+        <p class="contact-row">
+            <span class="contact-icon">
+                <i class="bi bi-telephone"></i>
+            </span>
+
+            <span class="contact-text">
+                {{ customer.phone }}
+            </span>
+
+            <button
+                type="button"
+                class="copy-btn"
+                title="Sao chép số điện thoại"
+                (click)="copyText(customer.phone, 'số điện thoại')"
+            >
+                <i class="bi bi-copy"></i>
+            </button>
+        </p>
+
+        <p class="contact-row">
+            <span class="contact-icon">
+                <i class="bi bi-envelope"></i>
+            </span>
+
+            <span class="contact-text email-text">
+                {{ customer.email }}
+            </span>
+
+            <button
+                type="button"
+                class="copy-btn"
+                title="Sao chép email"
+                (click)="copyText(customer.email, 'email')"
+            >
+                <i class="bi bi-copy"></i>
+            </button>
+        </p>
+
+        <p class="contact-row">
+            <span class="contact-icon">
+                <i class="bi bi-calendar3"></i>
+            </span>
+
+            <span class="contact-text">
+                Thành viên từ {{ customer.createdAt | date: 'dd/MM/yyyy' }}
+            </span>
+        </p>
+            </div>
+        </div>
+
+
+        <div class="stat-grid">
+            <article class="stat-card red">
+                <div class="stat-icon">
+                    <i class="bi bi-receipt"></i>
+                </div>
+
+                <div>
+                    <p>Tổng đơn hàng</p>
+                    <h3>{{ totalOrders }} đơn</h3>
+                </div>
+            </article>
+
+            <article class="stat-card green">
+                <div class="stat-icon">
+                    <i class="bi bi-wallet2"></i>
+                </div>
+
+                <div>
+                    <p>Tổng chi tiêu</p>
+                    <h3>{{ formatPrice(totalSpent) }}</h3>
+                </div>
+            </article>
+
+            <article class="stat-card purple">
+                <div class="stat-icon">
+                    <i class="bi bi-star"></i>
+                </div>
+
+                <div>
+                    <p>Đánh giá trung bình</p>
+                    <h3>{{ averageRating }}</h3>
+                    <span>{{ customer.reviewCount }} đánh giá</span>
+                </div>
+            </article>
+
+            <article class="stat-card blue">
+                <div class="stat-icon">
+                    <i class="bi bi-clock-history"></i>
+                </div>
+
+                <div>
+                    <p>Đơn gần nhất</p>
+                    <h3>{{ latestOrderDate | date: 'dd/MM/yyyy' }}</h3>
+                    <span>{{ latestOrderAgoText }}</span>
+                </div>
+            </article>
+
+            <article class="stat-card orange">
+                <div class="stat-icon">
+                    <i class="bi bi-gem"></i>
+                </div>
+
+                <div>
+                    <p>Điểm tích lũy</p>
+                    <h3>{{ customer.point }} điểm</h3>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <nav class="detail-tabs">
+        <button
+            type="button"
+            [class.active]="activeTab === 'overview'"
+            (click)="setActiveTab('overview')"
+        >
+            Tổng quan
+        </button>
+
+        <button
+            type="button"
+            [class.active]="activeTab === 'orders'"
+            (click)="setActiveTab('orders')"
+        >
+            Đơn hàng
+        </button>
+
+        <button
+            type="button"
+            [class.active]="activeTab === 'favorites'"
+            (click)="setActiveTab('favorites')"
+        >
+            Yêu thích
+        </button>
+
+        <button
+            type="button"
+            [class.active]="activeTab === 'reviews'"
+            (click)="setActiveTab('reviews')"
+        >
+            Đánh giá
+        </button>
+    </nav>
+
+    <section class="overview-content" *ngIf="activeTab === 'overview'">
+        <div class="overview-grid">
+            <article class="info-box">
+                <div class="info-box-header">
+                    <h2>Thông tin cá nhân</h2>
+
+                    <div class="customer-edit-actions" *ngIf="isCustomerEditing">
+                        <button type="button" class="customer-cancel-btn" (click)="cancelCustomerEdit()">Hủy</button>
+                        <button type="button" class="customer-save-btn" [disabled]="isCustomerSaving" (click)="saveCustomerInfo()">
+                            {{ isCustomerSaving ? 'Đang lưu...' : 'Lưu' }}
+                        </button>
+                    </div>
+                </div>
+
+                <div class="info-row">
+                    <strong>Họ tên:</strong>
+                    <input
+                        *ngIf="isCustomerEditing; else customerNameView"
+                        class="info-edit-control"
+                        type="text"
+                        [value]="customerForm.name"
+                        (input)="updateCustomerForm('name', $event)"
+                    />
+                    <ng-template #customerNameView>
+                        <span>{{ customer.name }}</span>
+                    </ng-template>
+                </div>
+
+                <div class="info-row">
+                    <strong>Ngày sinh:</strong>
+                    <input
+                        *ngIf="isCustomerEditing; else customerBirthView"
+                        class="info-edit-control"
+                        type="date"
+                        [value]="customerForm.birthDate"
+                        (input)="updateCustomerForm('birthDate', $event)"
+                    />
+                    <ng-template #customerBirthView>
+                        <span>{{ customer.birthDate ? (customer.birthDate | date: 'dd/MM/yyyy') : '--' }}</span>
+                    </ng-template>
+                </div>
+
+                <div class="info-row">
+                    <strong>Giới tính:</strong>
+                    <select
+                        *ngIf="isCustomerEditing; else customerGenderView"
+                        class="info-edit-control"
+                        [value]="customerForm.gender"
+                        (change)="updateCustomerForm('gender', $event)"
+                    >
+                        <option value="">--</option>
+                        <option value="Nam">Nam</option>
+                        <option value="Nữ">Nữ</option>
+                        <option value="Khác">Khác</option>
+                    </select>
+                    <ng-template #customerGenderView>
+                        <span>{{ customer.gender || '--' }}</span>
+                    </ng-template>
+                </div>
+
+                <div class="info-row">
+                    <strong>Email:</strong>
+                    <input
+                        *ngIf="isCustomerEditing; else customerEmailView"
+                        class="info-edit-control"
+                        type="email"
+                        [value]="customerForm.email"
+                        (input)="updateCustomerForm('email', $event)"
+                    />
+                    <ng-template #customerEmailView>
+                        <span>{{ customer.email }}</span>
+                    </ng-template>
+                </div>
+
+                <div class="info-row">
+                    <strong>Số điện thoại:</strong>
+                    <input
+                        *ngIf="isCustomerEditing; else customerPhoneView"
+                        class="info-edit-control"
+                        type="tel"
+                        [value]="customerForm.phone"
+                        (input)="updateCustomerForm('phone', $event)"
+                    />
+                    <ng-template #customerPhoneView>
+                        <span>{{ customer.phone }}</span>
+                    </ng-template>
+                </div>
+
+                <div class="info-row">
+                    <strong>Ngày đăng ký:</strong>
+                    <span>{{ customer.createdAt | date: 'dd/MM/yyyy' }}</span>
+                </div>
+
+                <p class="customer-form-error" *ngIf="customerFormError">{{ customerFormError }}</p>
+            </article>
+
+            <article class="membership-panel">
+                <h2>Hạng thành viên</h2>
+
+                <div class="membership-card">
+                    <img
+                        class="membership-frame"
+                        [src]="getRankFrame()"
+                        [alt]="rank"
+                    >
+
+                    <div class="membership-content">
+                        <div class="membership-row">
+                            <div class="membership-icon">
+                                <i class="bi bi-award"></i>
+                            </div>
+
+                            <div>
+                                <h3>{{ rank }}</h3>
+                            </div>
+
+                            <strong class="upgrade-text">
+                                <ng-container *ngIf="rank !== 'Kim cương'; else highestRank">
+                                    Còn {{ formatPrice(nextRankAmount) }} để nâng hạng
+                                </ng-container>
+
+                                <ng-template #highestRank>
+                                    Hạng cao nhất
+                                </ng-template>
+                            </strong>
+                        </div>
+
+                        <div class="progress-area">
+                            <div class="progress-title">
+                                <span>{{ progressTitle }}</span>
+                                <strong>{{ progressPercent }}%</strong>
+                            </div>
+
+                            <div class="progress-bar">
+                                <div [style.width.%]="progressPercent"></div>
+                            </div>
+
+                            <p>{{ progressAmountText }}</p>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+        <article class="address-section">
+            <div class="section-header">
+                <h2>Địa chỉ giao hàng</h2>
+
+                <button type="button" class="add-address-btn" (click)="addAddress()">
+                    <i class="bi bi-plus-circle"></i>
+                    <span>Thêm địa chỉ</span>
+                </button>
+            </div>
+
+            <div class="address-grid">
+                <p class="empty-address" *ngIf="addresses.length === 0">
+                    Chưa có địa chỉ giao hàng.
+                </p>
+
+                <article
+                    class="address-card"
+                    *ngFor="let address of addresses"
+                    [class.default-address]="address.isDefault"
+                    tabindex="0"
+                >
+                    <div class="address-header">
+                        <h3>{{ address.name }}</h3>
+
+                        <span *ngIf="address.isDefault">Mặc định</span>
+
+                        <div class="address-action">
+                            <button
+                                type="button"
+                                class="address-more-btn"
+                                (click)="toggleAddressMenu(address.id)"
+                            >
+                                <i class="bi bi-three-dots-vertical"></i>
+                            </button>
+
+                            <div
+                                class="address-menu"
+                                *ngIf="openedAddressMenuId === address.id"
+                            >
+                                <button
+                                    type="button"
+                                    class="menu-action default-action"
+                                    [class.active]="address.isDefault"
+                                    [disabled]="address.isDefault"
+                                    (click)="setDefaultAddress(address)"
+                                >
+                                    <i class="bi bi-key-fill"></i>
+                                    <span>Mặc định</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="menu-action edit-action"
+                                    (click)="editAddress(address)"
+                                >
+                                    <i class="bi bi-pencil"></i>
+                                    <span>Sửa</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="menu-action delete-action"
+                                    (click)="deleteAddress(address)"
+                                >
+                                    <i class="bi bi-x-circle"></i>
+                                    <span>Xóa</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p>{{ address.phone }}</p>
+                    <p>{{ address.address }}</p>
+                </article>
+            </div>
+        </article>
+    </section>
+
+    <div class="address-modal-backdrop" *ngIf="isAddressModalOpen">
+        <form class="address-modal" (submit)="$event.preventDefault(); saveAddress()">
+            <div class="address-modal-header">
+                <h2>{{ addressModalMode === 'create' ? 'Thêm địa chỉ' : 'Sửa địa chỉ' }}</h2>
+                <button type="button" class="address-modal-close" (click)="closeAddressModal()">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            <label>
+                <span>Họ và tên</span>
+                <input
+                    type="text"
+                    [value]="addressForm.name"
+                    (input)="updateAddressForm('name', $event)"
+                    placeholder="Nhập tên người nhận"
+                />
+            </label>
+
+            <label>
+                <span>Số điện thoại</span>
+                <input
+                    type="tel"
+                    [value]="addressForm.phone"
+                    (input)="updateAddressForm('phone', $event)"
+                    placeholder="Nhập số điện thoại"
+                />
+            </label>
+
+            <label>
+                <span>Tỉnh/Thành phố</span>
+                <select [value]="addressForm.province" (change)="onProvinceChange($event)">
+                    <option value="">Tỉnh/Thành phố</option>
+                    <option
+                        *ngFor="let province of provinceSelectOptions"
+                        [value]="province.name"
+                        [selected]="province.name === addressForm.province"
+                    >
+                        {{ province.name }}
+                    </option>
+                </select>
+            </label>
+
+            <label>
+                <span>Quận/Huyện</span>
+                <select
+                    [value]="addressForm.district"
+                    (change)="onDistrictChange($event)"
+                    [disabled]="!addressForm.province"
+                >
+                    <option value="">Quận/Huyện</option>
+                    <option
+                        *ngFor="let district of districtSelectOptions"
+                        [value]="district.name"
+                        [selected]="district.name === addressForm.district"
+                    >
+                        {{ district.name }}
+                    </option>
+                </select>
+            </label>
+
+            <label>
+                <span>Phường/Xã</span>
+                <select
+                    [value]="addressForm.ward"
+                    (change)="updateAddressForm('ward', $event)"
+                    [disabled]="!addressForm.district"
+                >
+                    <option value="">Phường/Xã</option>
+                    <option
+                        *ngFor="let ward of wardSelectOptions"
+                        [value]="ward"
+                        [selected]="ward === addressForm.ward"
+                    >
+                        {{ ward }}
+                    </option>
+                </select>
+            </label>
+
+            <label>
+                <span>Địa chỉ cụ thể</span>
+                <textarea
+                    rows="3"
+                    [value]="addressForm.detailAddress"
+                    (input)="updateAddressForm('detailAddress', $event)"
+                    placeholder="Nhập địa chỉ chi tiết"
+                ></textarea>
+            </label>
+
+            <label class="address-default-check">
+                <input
+                    type="checkbox"
+                    [checked]="addressForm.isDefault"
+                    (change)="updateAddressForm('isDefault', $event)"
+                />
+                <span>Đặt làm địa chỉ mặc định</span>
+            </label>
+
+            <p class="address-form-error" *ngIf="addressFormError">{{ addressFormError }}</p>
+
+            <div class="address-modal-actions">
+                <button type="button" class="address-cancel-btn" (click)="closeAddressModal()">Hủy</button>
+                <button type="submit" class="address-save-btn" [disabled]="isAddressSaving">
+                    {{ isAddressSaving ? 'Đang lưu...' : 'Lưu' }}
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <section class="orders-content" *ngIf="activeTab === 'orders'">
+        <div class="orders-toolbar">
+            <div class="order-filter-group">
+                <button
+                    type="button"
+                    [class.active]="orderFilter === 'all'"
+                    (click)="setOrderFilter('all')"
+                >
+                    Tất cả <span *ngIf="orderFilter === 'all'">({{ orders.length }})</span>
+                </button>
+
+                <button
+                    type="button"
+                    [class.active]="orderFilter === 'completed'"
+                    (click)="setOrderFilter('completed')"
+                >
+                    Đã hoàn thành <span *ngIf="orderFilter === 'completed'">({{ completedOrderCount }})</span>
+                </button>
+
+                <button
+                    type="button"
+                    [class.active]="orderFilter === 'pending'"
+                    (click)="setOrderFilter('pending')"
+                >
+                    Chờ xử lý <span *ngIf="orderFilter === 'pending'">({{ pendingOrderCount }})</span>
+                </button>
+
+                <button
+                    type="button"
+                    [class.active]="orderFilter === 'cancelled'"
+                    (click)="setOrderFilter('cancelled')"
+                >
+                    Đã hủy <span *ngIf="orderFilter === 'cancelled'">({{ cancelledOrderCount }})</span>
+                </button>
+            </div>
+
+            <label class="order-search">
+                <input
+                    type="text"
+                    [value]="orderSearchTerm"
+                    (input)="updateOrderSearch($event)"
+                    placeholder="Tìm kiếm đơn hàng"
+                >
+                <i class="bi bi-search"></i>
+            </label>
+        </div>
+
+        <div class="orders-table-wrap" *ngIf="filteredOrders.length > 0; else emptyOrders">
+            <table class="orders-table">
+                <thead>
+                    <tr>
+                        <th>
+                            <input type="checkbox" aria-label="Chọn tất cả đơn hàng">
+                        </th>
+                        <th>Mã đơn</th>
+                        <th>Ngày tạo</th>
+                        <th>Tổng tiền</th>
+                        <th>Thanh toán</th>
+                        <th>Trạng thái</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr
+                        *ngFor="let order of filteredOrders"
+                        class="order-row"
+                        tabindex="0"
+                        role="button"
+                        [attr.aria-label]="'Mở chi tiết đơn ' + order.code"
+                        (click)="openOrderDetail(order)"
+                        (keydown.enter)="openOrderDetail(order)"
+                        (keydown.space)="openOrderDetail(order); $event.preventDefault()"
+                    >
+                        <td>
+                            <input
+                                type="checkbox"
+                                [attr.aria-label]="'Chọn đơn ' + order.code"
+                                (click)="$event.stopPropagation()"
+                                (keydown.enter)="$event.stopPropagation()"
+                                (keydown.space)="$event.stopPropagation()"
+                            >
+                        </td>
+                        <td class="order-code">#{{ order.code }}</td>
+                        <td>{{ formatDate(order.createdAt) }}</td>
+                        <td>{{ formatPrice(order.total) }}</td>
+                        <td>
+                            <span class="payment-status" [ngClass]="getPaymentStatusClass(order.paymentStatus)">
+                                {{ order.paymentStatus }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="order-status" [ngClass]="getOrderStatusClass(order.status)">
+                                {{ order.status }}
+                            </span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <ng-template #emptyOrders>
+            <div class="orders-empty">
+                <i class="bi bi-receipt"></i>
+                <p>Khách hàng này chưa có đơn hàng phù hợp.</p>
+            </div>
+        </ng-template>
+    </section>
+
+    <section class="favorites-content" *ngIf="activeTab === 'favorites'">
+        <ng-container *ngIf="favoriteProducts.length > 0; else emptyFavorites">
+            <div class="favorites-grid">
+                <article class="favorite-card" *ngFor="let product of visibleFavoriteProducts">
+                    <button type="button" class="favorite-heart" aria-label="Sản phẩm yêu thích">
+                        <i class="bi bi-heart-fill"></i>
+                    </button>
+
+                    <img
+                        [src]="product.image"
+                        [alt]="product.name"
+                        (error)="onFavoriteImageError($event)">
+
+                    <h3>{{ product.name }}</h3>
+                    <p>{{ product.code }}</p>
+                    <strong>{{ formatPrice(product.price) }}</strong>
+
+                    <button type="button" class="favorite-detail-btn" (click)="openFavoriteProduct(product)">
+                        CHI TIẾT
+                    </button>
+                </article>
+            </div>
+
+            <button
+                type="button"
+                class="favorites-more-btn"
+                *ngIf="hasMoreFavoriteProducts"
+                (click)="showMoreFavorites()">
+                Xem thêm
+            </button>
+        </ng-container>
+
+        <ng-template #emptyFavorites>
+            <div class="favorites-empty">
+                <i class="bi bi-heart"></i>
+                <p>Khách hàng này chưa có sản phẩm yêu thích.</p>
+            </div>
+        </ng-template>
+    </section>
+
+    <section class="placeholder-content" *ngIf="activeTab === 'reviews'">
+        <i class="bi bi-star"></i>
+        <p>Chưa có dữ liệu đánh giá.</p>
+    </section>
+</section>

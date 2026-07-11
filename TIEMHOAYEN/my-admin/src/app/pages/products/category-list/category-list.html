@@ -1,0 +1,240 @@
+<div class="category-page">
+    <div class="category-card">
+        <!-- HEADER FILTER -->
+        <div class="category-toolbar">
+
+            <div class="category-tabs">
+
+                <button
+                    [class.active]="activeTab === 'topic'"
+                    (click)="changeTab('topic')">
+                    Chủ đề
+                </button>
+
+                <button
+                    [class.active]="activeTab === 'target'"
+                    (click)="changeTab('target')">
+                    Đối tượng
+                </button>
+
+                <button
+                    [class.active]="activeTab === 'style'"
+                    (click)="changeTab('style')">
+                    Kiểu dáng
+                </button>
+
+                <button
+                    [class.active]="activeTab === 'color'"
+                    (click)="changeTab('color')">
+                    Màu sắc
+                </button>
+
+                <button
+                    [class.active]="activeTab === 'collection'"
+                    (click)="changeTab('collection')">
+                    Bộ sưu tập
+                </button>
+
+            </div>
+
+            <div class="toolbar-actions">
+                <div class="search-box">
+                    <input
+                        type="text"
+                        placeholder="Tìm kiếm"
+                        [(ngModel)]="searchKeyword"
+                        (input)="searchCategory()">
+                    <i class="bi bi-search"></i>
+                </div>
+
+                <div class="sort-wrapper">
+                    <button
+                        class="icon-btn"
+                        (click)="toggleSortMenu()">
+                        <i class="bi bi-arrow-down-up"></i>
+                    </button>
+
+                    <div
+                        class="sort-menu"
+                        *ngIf="showSortMenu">
+                        <div (click)="resetSort()">
+                            <i class="bi bi-arrow-clockwise"></i>
+                            Mặc định
+                        </div>
+                        <div (click)="sortSkuAsc()">
+                            <i class="bi bi-sort-alpha-down"></i>
+                            SKU (A → Z)
+                        </div>
+                        <div (click)="sortSkuDesc()">
+                            <i class="bi bi-sort-alpha-up"></i>
+                            SKU (Z → A)
+                        </div>
+                        <div (click)="sortQuantityAsc()">
+                            <i class="bi bi-sort-numeric-down"></i>
+                            Số lượng tăng dần
+                        </div>
+                        <div (click)="sortQuantityDesc()">
+                            <i class="bi bi-sort-numeric-up"></i>
+                            Số lượng giảm dần
+                        </div>
+                    </div>
+
+                </div>
+
+                <button
+                    class="icon-btn"
+                    (click)="openAddPopup()">
+                    <i class="bi bi-plus-circle"></i>
+                </button>
+
+                <button class="export-btn">
+                    <i class="bi bi-box-arrow-up"></i>
+                    Xuất
+                    <i class="bi bi-chevron-down"></i>
+                </button>
+            </div>
+        </div>
+        
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="checkbox-col">
+                            <input type="checkbox" [checked]="isAllSelected()" (change)="toggleAll($event)">
+                        </th>
+
+                        <th>{{ categoryTitle }}</th>
+                        <th>Số lượng sản phẩm</th>
+                        <th>Thao tác</th>
+
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr *ngFor="let category of pagedCategories">
+                        <td class="checkbox-col">
+                            <input type="checkbox" [(ngModel)]="category.selected">
+                        </td>
+
+                        <td>
+                            <div class="category-info">
+                                <strong>{{ category.name }}</strong>
+                                <span>{{ category.code }}</span>
+                            </div>
+                        </td>
+
+                        <td>
+                            {{category.total}}
+                        </td>
+
+                        <td>
+                            <div class="actions">
+                                <i
+                                    class="bi bi-trash"
+                                    (click)="openDeletePopup(category)">
+                                </i>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+    
+
+        <div class="pagination">
+                <button
+                    class="page-nav"
+                    (click)="previousPage()"
+                    [disabled]="currentPage === 1">
+                    <i class="bi bi-arrow-left"></i>
+                    Trước
+                </button>
+                <div class="page-numbers">
+                    <button
+                        *ngFor="let page of pages"
+                        (click)="goToPage(page)"
+                        [class.active]="page === currentPage">
+                        {{ page }}
+                    </button>
+                </div>
+                <button
+                    class="page-nav"
+                    (click)="nextPage()"
+                    [disabled]="currentPage === totalPages">
+                    <i class="bi bi-arrow-right"></i>
+                    Sau
+                </button>
+        </div>
+    </div>
+</div>
+
+
+
+<div
+    class="popup-overlay"
+    *ngIf="showAddPopup">
+
+    <div class="popup">
+
+        <button
+            class="close-btn"
+            (click)="showAddPopup = false">
+
+            <i class="bi bi-x-lg"></i>
+
+        </button>
+
+        <h2>
+            Thêm chủ đề
+        </h2>
+
+        <label>
+            Tên chủ đề
+        </label>
+
+        <input
+            type="text"
+            placeholder="Nhập tên chủ đề"
+            [(ngModel)]="newCategoryName">
+
+        <button
+            class="confirm-btn"
+            (click)="addCategory()">
+
+            Xác nhận
+
+        </button>
+    </div>
+</div>
+
+<div
+    class="popup-overlay"
+    *ngIf="showDeletePopup">
+    <div class="popup">
+        <h2>
+            Xóa chủ đề
+            {{selectedCategory?.name}}
+        </h2>
+
+        <p>
+            Bạn có chắc chắn muốn
+            xóa danh mục này?
+        </p>
+
+        <div class="popup-actions">
+            <button
+                (click)="showDeletePopup = false">
+                Hủy bỏ
+            </button>
+
+            <button
+                class="delete-btn"
+                (click)="deleteCategory()">
+
+                Xóa
+
+            </button>
+        </div>
+    </div>
+</div>

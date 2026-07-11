@@ -1,0 +1,399 @@
+<div class="admin-layout">
+
+  <div class="order-list-page" (click)="closeAllMenus()">
+
+    <!-- ===== STAT CARDS ===== -->
+    <div class="stat-cards">
+      <div class="stat-card">
+        <div class="stat-card__header">
+          <span class="stat-card__label">Tổng đơn hàng</span>
+        </div>
+
+        <div class="stat-card__value">
+          {{ totalOrderCount }}
+          <span class="stat-card__trend stat-card__trend--up">
+            <i class="bi bi-arrow-up-short"></i>
+            14.4%
+          </span>
+        </div>
+
+        <div class="stat-card__sub">7 ngày gần nhất</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-card__header">
+          <span class="stat-card__label">Đơn hàng mới</span>
+        </div>
+
+        <div class="stat-card__value">
+          {{ newOrderCount }}
+          <span class="stat-card__trend stat-card__trend--up">
+            <i class="bi bi-arrow-up-short"></i>
+            20%
+          </span>
+        </div>
+
+        <div class="stat-card__sub">7 ngày gần nhất</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-card__header">
+          <span class="stat-card__label">Đã hoàn thành</span>
+        </div>
+
+        <div class="stat-card__value">
+          {{ completedOrderCount }}
+          <span class="stat-card__trend stat-card__trend--up">
+            85%
+          </span>
+        </div>
+
+        <div class="stat-card__sub">7 ngày gần nhất</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-card__header">
+          <span class="stat-card__label">Đã hủy</span>
+        </div>
+
+        <div class="stat-card__value">
+          {{ cancelledOrderCount }}
+          <span class="stat-card__trend stat-card__trend--down">
+            <i class="bi bi-arrow-down-short"></i>
+            5%
+          </span>
+        </div>
+
+        <div class="stat-card__sub">7 ngày gần nhất</div>
+      </div>
+    </div>
+
+    <!-- ===== ORDER TABLE CARD ===== -->
+    <div class="order-table-card">
+
+      <!-- ===== TOOLBAR ===== -->
+      <div class="order-toolbar">
+        <div class="order-tabs">
+          <button
+            *ngFor="let tab of tabs"
+            type="button"
+            class="order-tab"
+            [class.order-tab--active]="activeTab === tab"
+            (click)="setTab(tab)"
+          >
+            {{ tab }}
+            <span class="order-tab__count" *ngIf="tab === 'Tất cả'">
+              ({{ allOrders.length }})
+            </span>
+          </button>
+        </div>
+
+        <div class="order-toolbar__actions">
+
+          <!-- Search -->
+          <div class="order-search">
+            <input
+              type="text"
+              placeholder="Tìm kiếm đơn hàng"
+              [(ngModel)]="searchKeyword"
+              (ngModelChange)="onSearch()"
+            >
+            <i class="bi bi-search"></i>
+          </div>
+
+          <!-- Filter -->
+          <div class="filter-wrap" (click)="$event.stopPropagation()">
+            <button
+              class="toolbar-btn toolbar-btn--filter"
+              type="button"
+              title="Lọc đơn hàng"
+              [class.toolbar-btn--active]="hasActiveFilter || isFilterMenuOpen"
+              (click)="toggleFilterMenu()"
+            >
+              <i class="bi bi-filter"></i>
+            </button>
+
+            <div class="filter-panel" *ngIf="isFilterMenuOpen">
+              <div class="filter-panel__grid">
+                <div class="filter-panel__group">
+                  <label class="filter-panel__label">Ngày tạo</label>
+                  <div class="filter-select-wrap">
+                    <select
+                      class="filter-select"
+                      [(ngModel)]="dateFilter"
+                      (change)="applyFilter()"
+                    >
+                      <option *ngFor="let item of dateFilters" [ngValue]="item">
+                        {{ item }}
+                      </option>
+                    </select>
+                    <i class="bi bi-chevron-down"></i>
+                  </div>
+                </div>
+
+                <div class="filter-panel__group">
+                  <label class="filter-panel__label">Tổng tiền</label>
+                  <div class="filter-select-wrap">
+                    <select
+                      class="filter-select"
+                      [(ngModel)]="totalFilter"
+                      (change)="applyFilter()"
+                    >
+                      <option *ngFor="let item of totalFilters" [ngValue]="item">
+                        {{ item }}
+                      </option>
+                    </select>
+                    <i class="bi bi-chevron-down"></i>
+                  </div>
+                </div>
+
+                <div class="filter-panel__group">
+                  <label class="filter-panel__label">Thanh toán</label>
+                  <div class="filter-select-wrap">
+                    <select
+                      class="filter-select"
+                      [(ngModel)]="paymentFilter"
+                      (change)="applyFilter()"
+                    >
+                      <option *ngFor="let item of paymentFilters" [ngValue]="item">
+                        {{ item }}
+                      </option>
+                    </select>
+                    <i class="bi bi-chevron-down"></i>
+                  </div>
+                </div>
+
+                <div class="filter-panel__group">
+                  <label class="filter-panel__label">Trạng thái</label>
+                  <div class="filter-select-wrap">
+                    <select
+                      class="filter-select"
+                      [(ngModel)]="orderStatusFilter"
+                      (change)="applyFilter()"
+                    >
+                      <option *ngFor="let status of orderStatusFilters" [ngValue]="status">
+                        {{ status }}
+                      </option>
+                    </select>
+                    <i class="bi bi-chevron-down"></i>
+                  </div>
+                </div>
+
+              </div>
+
+              <div class="filter-panel__actions">
+                <button type="button" class="filter-clear-btn" (click)="clearFilters()">
+                  Xóa lọc
+                </button>
+
+                <button type="button" class="filter-apply-btn" (click)="closeAllMenus()">
+                  Áp dụng
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sort -->
+          <div class="sort-wrap" (click)="$event.stopPropagation()">
+            <button
+              class="toolbar-btn"
+              title="Sắp xếp"
+              type="button"
+              [class.toolbar-btn--active]="isSortMenuOpen || sortOption !== 'Mặc định'"
+              (click)="toggleSortMenu()"
+            >
+              <i class="bi bi-arrow-down-up"></i>
+            </button>
+
+            <div class="toolbar-dropdown sort-dropdown" *ngIf="isSortMenuOpen">
+              <button
+                type="button"
+                *ngFor="let item of sortOptions"
+                [class.dropdown-option--active]="sortOption === item"
+                (click)="setSortOption(item)"
+              >
+                {{ item }}
+              </button>
+            </div>
+          </div>
+
+          <!-- More actions -->
+          <div class="more-wrap" (click)="$event.stopPropagation()">
+            <button
+              class="toolbar-btn toolbar-btn--more"
+              title="Tác vụ khác"
+              type="button"
+              [class.toolbar-btn--active]="isMoreMenuOpen"
+              (click)="toggleMoreMenu()"
+            >
+              <i class="bi bi-three-dots"></i>
+            </button>
+
+            <div class="toolbar-dropdown more-dropdown" *ngIf="isMoreMenuOpen && !isEditStatusMenuOpen">
+              <button type="button" (click)="openEditStatusMenu()">
+                <i class="bi bi-pencil-square"></i>
+                Sửa
+              </button>
+
+              <button type="button" (click)="deleteSelectedOrders()">
+                <i class="bi bi-trash3"></i>
+                Xóa
+              </button>
+            </div>
+
+            <div class="toolbar-dropdown status-edit-dropdown" *ngIf="isMoreMenuOpen && isEditStatusMenuOpen">
+              <button
+                type="button"
+                *ngFor="let status of editableOrderStatuses"
+                (click)="updateSelectedOrderStatus(status)"
+              >
+                {{ status }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Add -->
+          <button
+            class="toolbar-btn"
+            title="Thêm đơn hàng"
+            type="button"
+            (click)="goToCreateOrder(); $event.stopPropagation()"
+          >
+            <i class="bi bi-plus-circle"></i>
+          </button>
+
+          <!-- Export -->
+          <div class="export-wrap" (click)="$event.stopPropagation()">
+            <button class="btn-export" type="button" (click)="toggleExportMenu()">
+              <i class="bi bi-file-earmark-arrow-down"></i>
+              Xuất
+              <i class="bi bi-chevron-down"></i>
+            </button>
+
+            <div class="toolbar-dropdown export-dropdown" *ngIf="isExportMenuOpen">
+              <button type="button" (click)="exportExcel()">
+                <i class="bi bi-file-earmark-excel"></i>
+                Xuất Excel
+              </button>
+
+              <button type="button" (click)="exportPdf()">
+                <i class="bi bi-file-earmark-pdf"></i>
+                Xuất PDF
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ===== TABLE ===== -->
+      <div class="order-table-wrap">
+        <table class="order-table">
+
+          <thead>
+            <tr>
+              <th class="col-check">
+                <input
+                  type="checkbox"
+                  [checked]="allSelected"
+                  (change)="toggleSelectAll($any($event.target).checked)"
+                >
+              </th>
+              <th>Mã đơn</th>
+              <th>Mã khách hàng</th>
+              <th>Ngày tạo</th>
+              <th>Tổng tiền</th>
+              <th>Thanh toán</th>
+              <th>Trạng thái</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            <tr
+              *ngFor="let order of pagedOrders; trackBy: trackByOrderId"
+              [class.row--selected]="order.selected"
+              (click)="goToOrderDetail(order)"
+            >
+              <td class="col-check" (click)="$event.stopPropagation()">
+                <input type="checkbox" [(ngModel)]="order.selected">
+              </td>
+
+              <td class="cell-id">{{ order.id }}</td>
+              <td class="cell-id">{{ displayCustomerId(order) }}</td>
+              <td>{{ order.createdAt }}</td>
+              <td class="cell-total">{{ formatCurrency(order.total) }}</td>
+
+              <td>
+                <span
+                  class="payment-badge"
+                  [ngClass]="paymentClass(order.paymentStatus)"
+                >
+                  <span class="payment-dot"></span>
+                  {{ order.paymentStatus }}
+                </span>
+              </td>
+
+              <td>
+                <span
+                  class="order-status"
+                  [ngClass]="orderStatusClass(order.orderStatus)"
+                >
+                  {{ order.orderStatus }}
+                </span>
+              </td>
+            </tr>
+
+            <tr *ngIf="pagedOrders.length === 0">
+              <td colspan="7" class="empty-row">
+                <i class="bi bi-inbox"></i>
+                <span>Không có đơn hàng nào</span>
+              </td>
+            </tr>
+          </tbody>
+
+        </table>
+      </div>
+
+      <!-- ===== PAGINATION ===== -->
+      <div class="pagination-row">
+
+        <button
+          class="page-btn page-btn--nav"
+          type="button"
+          [disabled]="currentPage === 1"
+          (click)="prevPage()"
+        >
+          <i class="bi bi-arrow-left"></i>
+          Trước
+        </button>
+
+        <div class="page-numbers">
+          <button
+            *ngFor="let p of pageNumbers"
+            type="button"
+            class="page-btn"
+            [class.page-btn--active]="p === currentPage"
+            [class.page-btn--ellipsis]="p === '...'"
+            [disabled]="p === '...'"
+            (click)="setPage(p)"
+          >
+            {{ p }}
+          </button>
+        </div>
+
+        <button
+          class="page-btn page-btn--nav"
+          type="button"
+          [disabled]="currentPage === totalPages"
+          (click)="nextPage()"
+        >
+          Sau
+          <i class="bi bi-arrow-right"></i>
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+</div>

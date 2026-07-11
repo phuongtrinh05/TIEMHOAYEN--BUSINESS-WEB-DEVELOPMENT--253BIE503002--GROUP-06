@@ -1,0 +1,324 @@
+<div class="chatbot-wrapper">
+
+
+
+    <!-- PAGE CONTENT -->
+    <div class="page">
+      <div class="card">
+        <!-- TOOLBAR -->
+        <div class="toolbar">
+          <div class="top-tabs-group">
+            <button
+              routerLink="/customer-service/customer-chat"
+              routerLinkActive="active"
+              [routerLinkActiveOptions]="{ exact: true }">
+              Chat
+            </button>
+            <button
+              routerLink="/customer-service/chatbot-management"
+              routerLinkActive="active">
+              Quản lý chatbot
+            </button>
+          </div>
+
+          <div class="toolbar-right">
+          <div class="search-box">
+            <i class="bi bi-search"></i>
+            <input
+              type="text"
+              placeholder="Tìm kiếm câu hỏi"
+              [(ngModel)]="searchKeyword"
+              (ngModelChange)="applyFilters()">
+          </div>
+
+          <!-- Filter -->
+          <div class="dropdown-wrapper">
+            <button class="tool-btn" (click)="toggleFilter()" title="Lọc">
+              <i class="bi bi-filter"></i>
+            </button>
+            <div class="dropdown-menu filter-menu" *ngIf="isFilterOpen">
+              <div class="filter-group">
+                <label>Trạng thái</label>
+                <select [(ngModel)]="selectedStatus" (change)="applyFilters()">
+                  <option value="">Tất cả</option>
+                  <option [value]="activeStatus">{{ activeStatus }}</option>
+                  <option [value]="lockedStatus">{{ lockedStatus }}</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label>Danh mục</label>
+                <select [(ngModel)]="selectedCategory" (change)="applyFilters()">
+                  <option value="">Tất cả</option>
+                  <option *ngFor="let cat of categoryOptions" [value]="cat">{{ cat }}</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+        <!-- Sort -->
+          <div class="dropdown-wrapper">
+            <button class="tool-btn" (click)="toggleSort()" title="Sắp xếp">
+              <i class="bi bi-arrow-down-up"></i>
+            </button>
+            <div class="dropdown-menu sort-menu" *ngIf="isSortOpen">
+              <button (click)="sortBy('code')">Theo mã</button>
+              <button (click)="sortBy('question')">Theo câu hỏi</button>
+              <button (click)="sortBy('category')">Theo danh mục</button>
+              <button (click)="sortBy('status')">Theo trạng thái</button>
+            </div>
+          </div>
+
+          <!-- More options -->
+          <div class="dropdown-wrapper">
+            <button class="tool-btn" (click)="toggleMore()" title="Thêm tùy chọn">
+              <i class="bi bi-three-dots"></i>
+            </button>
+            <div class="dropdown-menu sort-menu" *ngIf="isMoreOpen">
+              <button (click)="lockSelected()"><i class="bi bi-lock"></i> Khóa đã chọn</button>
+              <button (click)="unlockSelected()"><i class="bi bi-unlock"></i> Mở khóa đã chọn</button>
+              <button class="danger-btn" (click)="deleteSelected()"><i class="bi bi-trash3"></i> Xóa đã chọn</button>
+            </div>
+          </div>
+
+          <!-- Add -->
+          <button class="tool-btn" (click)="openAddModal()" title="Thêm câu hỏi">
+            <i class="bi bi-plus-circle"></i>
+          </button>
+
+          <!-- Export -->
+          <div class="dropdown-wrapper">
+            <button class="export-btn" (click)="toggleExport()">
+              <i class="bi bi-box-arrow-down"></i> Xuất <i class="bi bi-chevron-down"></i>
+            </button>
+            <div class="dropdown-menu sort-menu" *ngIf="isExportOpen">
+              <button>Xuất PDF</button>
+              <button>Xuất Excel</button>
+            </div>
+          </div>
+          </div>
+        </div>
+
+        <!-- TABLE -->
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th class="checkbox-col">
+                  <input
+                    type="checkbox"
+                    [checked]="isAllSelected()"
+                    (change)="toggleSelectAll($event)">
+                </th>
+                <th>Câu hỏi</th>
+                <th>Câu trả lời</th>
+                <th>Danh mục câu hỏi</th>
+                <th>Trạng thái</th>
+                <th class="action-col">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let item of pagedItems" class="clickable-row" (click)="openEditModal(item)">
+                <td class="checkbox-col" (click)="$event.stopPropagation()">
+                  <input type="checkbox" [(ngModel)]="item.selected">
+                </td>
+                <td>
+                  <div class="q-name">{{ item.question }}</div>
+                  <div class="q-code">{{ item.code }}</div>
+                </td>
+                <td class="answer-col">
+                  <div class="answer-text">{{ item.answer }}</div>
+                </td>
+                <td>
+                  <span class="category-badge" [ngClass]="getCategoryClass(item.category)">
+                    {{ item.category }}
+                  </span>
+                </td>
+                <td>
+                  <span
+                    class="status-text"
+                    [class.active]="item.status === activeStatus"
+                    [class.locked]="item.status === lockedStatus">
+                    {{ item.status }}
+                  </span>
+                </td>
+                <td class="action-col" (click)="$event.stopPropagation()">
+                  <div class="action-buttons">
+                    <button type="button" class="icon-btn" title="Sửa" (click)="openEditModal(item, $event)">
+                      <i class="bi bi-pencil-square"></i>
+                    </button>
+                    <button type="button" class="icon-btn delete" title="Xóa" (click)="deleteItem(item, $event)">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+
+              <tr *ngIf="pagedItems.length === 0">
+                <td colspan="6" style="text-align:center; color:#aaa; padding:32px;">
+                  {{ isLoading ? 'Đang tải danh sách câu hỏi...' : 'Không tìm thấy câu hỏi nào.' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- PAGINATION -->
+        <div class="pagination">
+          <button
+            class="page-nav"
+            [disabled]="currentPage === 1"
+            (click)="previousPage()">
+            <i class="bi bi-arrow-left"></i> Trước
+          </button>
+
+          <div class="page-numbers">
+            <button
+              *ngFor="let page of pages"
+              [class.active]="page === currentPage"
+              [class.dots]="page === '...'"
+              [disabled]="page === '...'"
+              (click)="goToPage(page)">
+              {{ page }}
+            </button>
+          </div>
+
+          <button
+            class="page-nav"
+            [disabled]="currentPage === totalPages"
+            (click)="nextPage()">
+            Sau <i class="bi bi-arrow-right"></i>
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ADD MODAL -->
+    <div class="modal-overlay" *ngIf="isAddModalOpen">
+      <div class="chatbot-modal">
+        <div class="modal-header">
+          <div class="title-mark"></div>
+          <h2>Thêm câu hỏi</h2>
+          <button class="modal-close-btn" (click)="closeAddModal()"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="form-group">
+          <label>Câu hỏi</label>
+          <textarea
+            class="question-field"
+            [(ngModel)]="newItem.question"
+            placeholder="Nhập câu hỏi..."
+            autocomplete="new-password"
+            autocapitalize="off"
+            spellcheck="false"
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-form-type="other"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Câu trả lời</label>
+          <textarea
+            [(ngModel)]="newItem.answer"
+            placeholder="Nhập câu trả lời..."
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            data-lpignore="true"
+            data-form-type="other"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Danh mục</label>
+            <select [(ngModel)]="newItem.category">
+              <option *ngFor="let cat of categoryOptions" [value]="cat">{{ cat }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Mã câu hỏi</label>
+            <input
+              type="text"
+              [value]="newItem.code"
+              readonly
+              class="readonly-input"
+              autocomplete="off"
+              data-lpignore="true"
+              data-form-type="other">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Trạng thái</label>
+          <select [(ngModel)]="newItem.status">
+            <option [value]="activeStatus">{{ activeStatus }}</option>
+            <option [value]="lockedStatus">{{ lockedStatus }}</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button class="save-btn" [disabled]="isSaving" (click)="saveNewItem()">Thêm</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- EDIT MODAL -->
+    <div class="modal-overlay" *ngIf="isEditModalOpen && editingItem">
+      <div class="chatbot-edit-modal">
+        <div class="modal-header">
+          <div class="title-mark"></div>
+          <h2>Chi tiết / chỉnh sửa câu hỏi</h2>
+          <button class="modal-close-btn" (click)="closeEditModal()"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="form-group">
+          <label>Câu hỏi</label>
+          <textarea
+            class="question-field"
+            [(ngModel)]="editingItem!.question"
+            autocomplete="new-password"
+            autocapitalize="off"
+            spellcheck="false"
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-form-type="other"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Câu trả lời</label>
+          <textarea
+            [(ngModel)]="editingItem!.answer"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            data-lpignore="true"
+            data-form-type="other"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Danh mục</label>
+            <select [(ngModel)]="editingItem!.category">
+              <option *ngFor="let cat of categoryOptions" [value]="cat">{{ cat }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Mã câu hỏi</label>
+            <input
+              type="text"
+              [value]="editingItem!.code"
+              readonly
+              class="readonly-input"
+              autocomplete="off"
+              data-lpignore="true"
+              data-form-type="other">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Trạng thái</label>
+          <select [(ngModel)]="editingItem!.status">
+            <option [value]="activeStatus">{{ activeStatus }}</option>
+            <option [value]="lockedStatus">{{ lockedStatus }}</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button class="save-btn" [disabled]="isSaving" (click)="saveEdit()">
+            {{ isSaving ? 'Đang lưu...' : 'Lưu' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+</div>

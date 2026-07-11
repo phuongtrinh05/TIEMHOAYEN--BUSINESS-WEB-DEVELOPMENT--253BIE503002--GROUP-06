@@ -1,0 +1,403 @@
+<div class="account-page">
+    <div class="account-card">
+        <div class="toolbar">
+            <div class="search-box">
+                <input
+                    type="text"
+                    placeholder="Tìm kiếm nhân viên"
+                    [(ngModel)]="searchKeyword"
+                    (input)="searchEmployee()">
+                <i class="bi bi-search"></i>
+            </div>
+
+            <div class="toolbar-actions">
+                <div
+                    class="filter-wrapper"
+                    (mouseleave)="closeToolbarPopup('filter')">
+                    <button
+                        class="tool-btn"
+                        (click)="openFilterPopup()">
+                        <i class="bi bi-filter"></i>
+                    </button>
+                    <div
+                        class="filter-popup"
+                        *ngIf="showFilter">
+                        <div class="filter-group">
+                            <label>Vai trò</label>
+                            <select [(ngModel)]="selectedRole">
+                                <option value="">
+                                    Tất cả
+                                </option>
+                                <option
+                                    *ngFor="let role of roleOptions"
+                                    [value]="role">
+                                    {{ role }}
+                                </option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Ngày tạo</label>
+                            <input
+                                type="date"
+                                [(ngModel)]="selectedDate">
+                        </div>
+                        <div class="filter-group">
+                            <label>Trạng thái</label>
+                            <select [(ngModel)]="selectedStatus">
+                                <option value="">
+                                    Tất cả trạng thái
+                                </option>
+                                <option
+                                    *ngFor="let status of statusOptions"
+                                    [value]="status">
+                                    {{ status }}
+                                </option>
+                            </select>
+                        </div>
+                        <div class="filter-actions">
+                            <button
+                                class="reset-btn"
+                                (click)="resetFilter()">
+                                Xóa lọc
+                            </button>
+                            <button
+                                class="apply-btn"
+                                (click)="applyFilter()">
+                                Áp dụng
+                            </button>
+
+                        </div>
+
+                    </div>
+                </div>
+
+                <div
+                    class="sort-wrapper"
+                    (mouseleave)="closeToolbarPopup('sort')">
+                    <button
+                        class="tool-btn"
+                        (click)="openSortPopup()">
+
+                        <i class="bi bi-arrow-down-up"></i>
+
+                    </button>
+
+                    <div
+                        class="sort-popup"
+                        *ngIf="showSortMenu">
+
+                        <div
+                            class="sort-item"
+                            (click)="sortBy('default')">
+
+                            Mặc định
+
+                        </div>
+
+                        <div
+                            class="sort-item"
+                            (click)="sortBy('newest')">
+
+                            Ngày tạo mới nhất
+
+                        </div>
+
+                        <div
+                            class="sort-item"
+                            (click)="sortBy('oldest')">
+
+                            Ngày tạo cũ nhất
+
+                        </div>
+
+                        <div
+                            class="sort-item"
+                            (click)="sortBy('7days')">
+
+                            7 ngày gần nhất
+
+                        </div>
+
+                        <div
+                            class="sort-item"
+                            (click)="sortBy('30days')">
+
+                            30 ngày gần nhất
+
+                        </div>
+
+                        <div
+                            class="sort-item"
+                            (click)="sortBy('roleAZ')">
+
+                            Vai trò A-Z
+
+                        </div>
+
+                        <div
+                            class="sort-item"
+                            (click)="sortBy('roleZA')">
+
+                            Vai trò Z-A
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div
+                    class="menu-wrapper"
+                    (mouseleave)="closeToolbarPopup('action')">
+
+                <button
+                    class="tool-btn"
+                    (click)="openActionMenu()">
+
+                    <i class="bi bi-three-dots"></i>
+
+                </button>
+
+                <div
+                    class="action-menu"
+                    *ngIf="showMenu">
+
+                    <button (click)="lockSelected()">
+                        <i class="bi bi-lock"></i>
+                    </button>
+
+                    <button (click)="unlockSelected()">
+                        <i class="bi bi-unlock"></i>
+                    </button>
+
+                    <button
+                        class="delete-btn"
+                        (click)="deleteSelected()">
+
+                        <i class="bi bi-trash"></i>
+
+                    </button>
+
+                </div>
+
+            </div>
+
+                <button
+                    class="tool-btn"
+                    (click)="addEmployee()">
+                    <i class="bi bi-plus-circle"></i>
+                </button>
+
+                <button class="export-btn" (click)="exportExcel()">
+                    <i class="bi bi-box-arrow-down"></i>
+                    Xuất
+                    <i class="bi bi-chevron-down"></i>
+                </button>
+
+            </div>
+
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="checkbox-col">
+                            <input type="checkbox" (change)="toggleAll($event)">
+                        </th>
+                        <th>Mã nhân viên</th>
+                        <th>Họ và tên</th>
+                        <th>Email</th>
+                        <th>Số điện thoại</th>
+                        <th>Vai trò</th>
+                        <th>Ngày tạo</th>
+                        <th>Trạng thái</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    <tr *ngFor="let employee of pagedEmployees; trackBy: trackByEmployeeCode">
+                        <td class=checkbox-col >
+                            <input type="checkbox" [(ngModel)]="employee.selected">
+                        </td>
+
+                        <td class="employee-code">
+                            {{ employee.code }}
+                        </td>
+
+                        <td>
+
+                            <ng-container
+                                *ngIf="
+                                    editingEmployeeCode
+                                    === employee.code;
+                                    else viewName
+                                ">
+
+                                <input
+                                    [(ngModel)]="employee.name"
+                                    (keydown.enter)="saveEmployee(employee, $event)">
+
+                            </ng-container>
+
+                            <ng-template #viewName>
+
+                                {{employee.name}}
+
+                            </ng-template>
+
+                        </td>
+
+                        <td>
+
+                            <ng-container
+                                *ngIf="
+                                    editingEmployeeCode
+                                    === employee.code;
+                                    else viewEmail
+                                ">
+
+                                <input
+                                    [(ngModel)]="employee.email"
+                                    (keydown.enter)="saveEmployee(employee, $event)">
+
+                            </ng-container>
+
+                            <ng-template #viewEmail>
+
+                                {{employee.email}}
+
+                            </ng-template>
+
+                        </td>
+
+                        <td>
+
+                            <ng-container
+                                *ngIf="
+                                    editingEmployeeCode
+                                    === employee.code;
+                                    else viewPhone
+                                ">
+
+                                <input
+                                    [(ngModel)]="employee.phone"
+                                    (keydown.enter)="saveEmployee(employee, $event)">
+
+                            </ng-container>
+
+                            <ng-template #viewPhone>
+
+                                {{employee.phone}}
+
+                            </ng-template>
+
+                        </td>
+
+                        <td>
+
+                            <ng-container
+                                *ngIf="
+                                    editingEmployeeCode === employee.code;
+                                    else viewRole
+                                ">
+
+                                <select
+                                    [(ngModel)]="employee.role"
+                                    (keydown.enter)="saveEmployee(employee, $event)">
+
+                                    <option>Admin</option>
+                                    <option>Nhân viên bán hàng</option>
+                                    <option>Nhân viên giao hàng</option>
+                                    <option>Nhân viên Marketing</option>
+                                    <option>Nhân viên CSKH</option>
+
+                                </select>
+
+                            </ng-container>
+
+                            <ng-template #viewRole>
+
+                                {{ employee.role }}
+
+                            </ng-template>
+
+                        </td>
+
+                        <td>{{ employee.createdAt }}</td>
+
+                        <td>
+
+                        <ng-container
+                            *ngIf="
+                                editingEmployeeCode === employee.code;
+                                else viewStatus
+                            ">
+
+                            <select
+                                [(ngModel)]="employee.status" 
+                                (keydown.enter)="saveEmployee(employee, $event)">
+
+                                <option>Hoạt động</option>
+                                <option>Bị khóa</option>
+                                <option>Đã nghỉ</option>
+
+                            </select>
+
+                        </ng-container>
+
+                        <ng-template #viewStatus>
+
+                            <span
+                                class="status"
+                                [ngClass]="employee.statusClass">
+
+                                {{ employee.status }}
+
+                            </span>
+
+                        </ng-template>
+
+                    </td>
+                    </tr>
+                    <tr *ngIf="isLoading">
+                        <td colspan="8" class="empty-row">
+                            Đang tải tài khoản quản trị...
+                        </td>
+                    </tr>
+                    <tr *ngIf="!isLoading && !pagedEmployees.length">
+                        <td colspan="8" class="empty-row">
+                            {{ loadError || 'Không có tài khoản quản trị nào.' }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="pagination">
+            <button
+                class="page-nav"
+                (click)="previousPage()"
+                [disabled]="currentPage === 1">
+                <i class="bi bi-arrow-left"></i>
+                Trước
+                
+            </button>
+            <div class="page-numbers">
+                <button
+                    *ngFor="let page of pages"
+                    (click)="goToPage(page)"
+                    [class.active]="page === currentPage">
+                    {{ page }}
+                </button>
+            </div>
+            <button
+                class="page-nav"
+                (click)="nextPage()"
+                [disabled]="currentPage === totalPages">
+                <i class="bi bi-arrow-right"></i>
+                Sau
+            </button>
+        </div>
+    </div>
+</div>

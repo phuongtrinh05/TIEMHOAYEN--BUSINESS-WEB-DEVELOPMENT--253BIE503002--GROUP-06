@@ -1,0 +1,101 @@
+<header class="admin-header">
+
+    <div class="header-left">
+        <div
+            class="product-tabs"
+            *ngIf="isProductPage; else pageTitleTemplate">
+
+                <button
+                    class="tab-btn"
+                    [class.active]="activeTab === 'products'"
+                    routerLink="/products/product-list">
+
+                    Sản phẩm ({{ productCount }})
+
+                </button>
+
+                <button
+                    class="tab-btn"
+                    [class.active]="activeTab === 'categories'"
+                    routerLink="/products/category-list">
+
+                    Danh mục
+
+                </button>
+
+        </div>
+
+        <ng-template #pageTitleTemplate>
+
+            <h1>{{ pageTitle }}</h1>
+
+        </ng-template>
+
+    </div>
+
+    <div class="header-right">
+
+        <div class="search-box">
+            <input
+                type="text"
+                placeholder="Tìm kiếm">
+            <i class="bi bi-search"></i>
+        </div>
+
+        <button class="header-icon">
+            <i class="bi bi-bell"></i>
+            <span class="dot"></span>
+        </button>
+
+        <div
+            class="language-switch"
+            (click)="toggleLanguage()">
+
+            <div
+                class="language-slider"
+                [class.english]="currentLanguage === 'en'">
+            </div>
+
+            <span
+                [class.active]="currentLanguage === 'vi'">
+                VI
+            </span>
+
+            <span
+                [class.active]="currentLanguage === 'en'">
+                EN
+            </span>
+
+        </div>
+
+        <div class="profile-wrapper">
+            <button
+                class="profile-btn"
+                (click)="toggleProfileMenu()">
+
+                <i class="bi bi-person-circle"></i>
+
+            </button>
+
+            <div
+                class="profile-menu"
+                *ngIf="showProfileMenu">
+
+                <button>
+                    <i class="bi bi-person"></i>
+                    Hồ sơ cá nhân
+                </button>
+
+                <button>
+                    <i class="bi bi-gear"></i>
+                    Cài đặt
+                </button>
+
+                <button class="logout-btn" type="button" (click)="logout()">
+                    <i class="bi bi-box-arrow-right"></i>
+                    Đăng xuất
+                </button>
+            </div>
+        </div>
+    </div>
+</header>

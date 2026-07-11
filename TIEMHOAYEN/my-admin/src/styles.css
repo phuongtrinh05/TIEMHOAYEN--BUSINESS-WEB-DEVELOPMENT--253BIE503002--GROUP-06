@@ -1,4 +1,4 @@
-/* You can add global styles to this file, and also import other style files */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,700;1,6..12,700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wdth,wght@0,6..12,75..125,200;1,6..12,75..125,200&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wdth,wght@0,6..12,75..125,300;1,6..12,75..125,300&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
@@ -16,6 +16,9 @@
     --text-color:#000000;
     --color-blush-white:#FFF8F5;
     --accent-color:#D9B382;
+    --neutral-50: #F9FAFB;
+    --surface-color: #FFFFFF; /* nền card / table / header vùng nội dung */
+
 
      /* Font */
     --font-heading: 'Playfair Display', serif;

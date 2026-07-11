@@ -1,0 +1,547 @@
+<div class="product-page">
+    <div class="product-card">
+          <!-- FILTER -->
+        <div class="product-filter">
+
+            <div class="filter-tabs">
+
+                <button
+                    [class.active]="selectedFilter === 'all'"
+                    (click)="filterProducts('all')">
+                    Tất cả <span *ngIf="selectedFilter === 'all'">({{ productFilterCount }})</span>
+                </button>
+
+                <button
+                    [class.active]="selectedFilter === 'featured'"
+                    (click)="filterProducts('featured')">
+                    Nổi bật <span *ngIf="selectedFilter === 'featured'">({{ productFilterCount }})</span>
+                </button>
+
+                <button
+                    [class.active]="selectedFilter === 'sale'"
+                    (click)="filterProducts('sale')">
+                    Đang sale <span *ngIf="selectedFilter === 'sale'">({{ productFilterCount }})</span>
+                </button>
+
+                <button
+                    [class.active]="selectedFilter === 'stop'"
+                    (click)="filterProducts('stop')">
+                    Ngừng bán <span *ngIf="selectedFilter === 'stop'">({{ productFilterCount }})</span>
+                </button>
+
+            </div>
+
+            <div class="table-actions">
+
+                <div class="search-box">
+                    <input
+                        type="text"
+                        placeholder="Tìm kiếm sản phẩm"
+                        [(ngModel)]="searchKeyword"
+                        (input)="searchProducts()">
+
+                    <i class="bi bi-search"></i>
+                </div>
+
+                <div class="menu-wrapper">
+                    <button
+                        class="icon-btn"
+                        (click)="toggleFilterMenu()">
+
+                        <i class="bi bi-filter"></i>
+                    </button>
+
+                    <div
+                        class="filter-menu"
+                        *ngIf="showFilterMenu">
+                        <h5>Giá bán</h5>
+                        <select [(ngModel)]="selectedPrice">
+                            <option value="">Tất cả</option>
+                            <option value="lt1000">Dưới 1.000.000đ</option>
+                            <option value="1000-3000">1.000.000đ - 3.000.000đ</option>
+                            <option value="gt3000">Trên 3.000.000đ</option>
+                        </select>
+
+                        <h5>Số lượng</h5>
+                        <select [(ngModel)]="selectedQuantity">
+                            <option value="">Tất cả</option>
+                            <option value="low">≤ 5</option>
+                            <option value="many">> 5</option>
+                        </select>
+
+                        <h5>Trạng thái</h5>
+                        <select [(ngModel)]="selectedStatus">
+                            <option value="">Tất cả</option>
+                            <option>Đang bán</option>
+                            <option>Ngừng bán</option>
+                        </select>
+
+                        <div class="filter-footer">
+                            <button class="clear-filter-btn" (click)="clearFilter()">
+                                Xóa lọc
+                            </button>
+                            <button class="apply-btn" (click)="applyFilter()">
+                                Áp dụng
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="menu-wrapper">
+                    <button
+                        class="icon-btn"
+                        (click)="toggleSortMenu()">
+                        <i class="bi bi-arrow-down-up"></i>
+                    </button>
+
+                    <div
+                        class="sort-menu"
+                        *ngIf="showSortMenu">
+                        <button (click)="sortPriceAsc()">
+                            Giá <i class="bi bi-arrow-up"></i>
+                        </button>
+
+                        <button (click)="sortPriceDesc()">
+                            Giá <i class="bi bi-arrow-down"></i>
+                        </button>
+
+                        <button (click)="sortQuantityAsc()">
+                            SL <i class="bi bi-arrow-up"></i>
+                        </button>
+
+                        <button (click)="sortQuantityDesc()">
+                            SL <i class="bi bi-arrow-down"></i>
+                        </button>
+
+                        <button (click)="sortStatus()">
+                            Trạng thái
+                        </button>
+
+                        <button (click)="resetSort()">
+                            Mặc định
+                        </button>
+
+                    </div>
+                </div>
+
+                <div class="menu-wrapper">
+                    <button
+                        class="icon-btn"
+                        (click)="showMenu = !showMenu">
+                        <i class="bi bi-three-dots"></i>
+
+                    </button>
+
+                    <div
+                        class="action-menu"
+                        *ngIf="showMenu">
+
+                        <button (click)="setSelectedStatus('Đang bán')">
+                            <i class="bi bi-check-circle"></i>
+                        </button>
+
+                        <button (click)="setSelectedStatus('Ngừng bán')">
+                            <i class="bi bi-pause-circle"></i>
+                        </button>
+
+                        <button
+                            class="delete-btn"
+                            (click)="deleteSelected()">
+                            <i class="bi bi-trash"></i>
+                        </button>
+
+                    </div>
+
+                </div>
+
+                <button
+                    class="icon-btn"
+                    (click)="openCreatePopup()">
+
+                    <i class="bi bi-plus-circle"></i>
+                </button>
+
+                <button class="export-btn"  class="export-btn" (click)="exportExcel()">
+                    <i class="bi bi-box-arrow-down"></i>
+                    Xuất
+                    <i class="bi bi-chevron-down"></i>
+                </button>
+
+            </div>
+
+        </div>
+
+        <!-- TABLE -->
+
+        <div class="table-wrapper">
+
+            <table>
+
+                <thead>
+
+                    <tr>
+
+                        <th>
+                            <input type="checkbox" (change)="toggleAll($event)">
+                        </th>
+
+                        <th>Sản phẩm</th>
+                        <th>Giá bán</th>
+                        <th>Đánh giá</th>
+                        <th>Số lượng</th>
+                        <th>Trạng thái</th>
+                        <th>Thao tác</th>
+
+                    </tr>
+
+                </thead>
+
+                <tbody>
+
+                    <tr *ngFor="let product of pagedProducts; trackBy: trackByProductSku">
+
+                        <td class="checkbox-col">
+                            <input type="checkbox" [(ngModel)]="product.selected">
+                        </td>
+
+                        <td>
+
+                            <div
+                                class="product-info product-info--clickable"
+                                role="button"
+                                tabindex="0"
+                                (click)="openProductDetail(product)"
+                                (keydown.enter)="openProductDetail(product)"
+                                (keydown.space)="openProductDetail(product); $event.preventDefault()">
+
+                                <img
+                                    [src]="product.image"
+                                    [alt]="product.name"
+                                    loading="lazy"
+                                    decoding="async"
+                                    (error)="onProductImageError($event)">
+
+                                <div>
+
+                                    <h4>{{product.name}}</h4>
+
+                                    <span>
+                                        {{product.sku}}
+                                    </span>
+
+                                </div>
+
+                            </div>
+
+                        </td>
+
+                        <td>
+                            {{product.price}}
+                        </td>
+
+                        <td>
+
+                            <div class="rating">
+                                <i
+                                    *ngFor="let filled of ratingStars(product); trackBy: trackByRatingIndex"
+                                    class="bi"
+                                    [ngClass]="filled ? 'bi-star-fill' : 'bi-star'">
+                                </i>
+                                <span>{{product.rating || 0}}/5</span>
+
+                            </div>
+
+                        </td>
+
+                        <td>
+                            {{product.quantity}}
+                        </td>
+
+                        <td>
+
+                            <span
+                                class="status"
+                                [ngClass]="product.statusClass">
+
+                                {{product.status}}
+
+                            </span>
+
+                        </td>
+
+                        <td>
+
+                            <div class="actions">
+
+                                <i
+                                    class="bi bi-pencil-square"
+                                    (click)="editProduct(product)">
+                                </i>
+
+                                <i
+                                    class="bi bi-trash"
+                                    (click)="openDeletePopup(product)">
+                                </i>
+
+                            </div>
+
+                        </td>
+
+                    </tr>
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+        <!-- PAGINATION -->
+
+        <div class="pagination">
+                <button
+                    class="page-nav"
+                    (click)="previousPage()"
+                    [disabled]="currentPage === 1">
+                    <i class="bi bi-arrow-left"></i>
+                    Trước
+                </button>
+                <div class="page-numbers">
+                    <ng-container *ngFor="let page of pages; trackBy: trackByPage">
+                        <button
+                            *ngIf="page !== 'ellipsis'; else ellipsisPage"
+                            (click)="goToPage(page)"
+                            [class.active]="page === currentPage">
+                            {{ page }}
+                        </button>
+
+                        <ng-template #ellipsisPage>
+                            <span class="page-ellipsis">...</span>
+                        </ng-template>
+                    </ng-container>
+                </div>
+                <button
+                    class="page-nav"
+                    (click)="nextPage()"
+                    [disabled]="currentPage === totalPages">
+                    <i class="bi bi-arrow-right"></i>
+                    Sau
+                </button>
+        </div>
+    </div>
+
+</div>
+
+<div
+    class="popup-overlay"
+    *ngIf="showCreatePopup">
+
+    <div class="create-product-popup">
+
+        <button
+            class="close-btn"
+            (click)="closePopup()">
+
+            <i class="bi bi-x-lg"></i>
+
+        </button>
+
+        <h2>THÊM MỚI SẢN PHẨM</h2>
+
+        <div class="form-group">
+            <label>Tên sản phẩm</label>
+            <input type="text"  [(ngModel)]="newProduct.name">
+        </div>
+
+        <div class="form-group">
+            <label>Mã sản phẩm</label>
+            <input
+                type="text"
+                value=""
+                [(ngModel)]="newProduct.sku">
+        </div>
+
+        <div class="form-group">
+            <label>Mô tả</label>
+            <textarea rows="5" [(ngModel)]="newProduct.description"></textarea>
+        </div>
+
+        <div class="form-grid">
+
+            <div class="form-group">
+                <label>Màu sắc</label>
+                <select [(ngModel)]="newProduct.color">
+                    <option>Màu đỏ</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Kiểu dáng</label>
+                <select [(ngModel)]="newProduct.style">
+                    <option>Bó hoa</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Đối tượng</label>
+                <select [(ngModel)]="newProduct.target">
+                    <option>Người yêu</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Hoa tươi</label>
+                <select  [(ngModel)]="newProduct.flower">
+                    <option>Hoa hồng</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Chủ đề</label>
+                <select [(ngModel)]="newProduct.topic">
+                    <option>Kỷ niệm</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Số lượng</label>
+                <input type="number" [(ngModel)]="newProduct.quantity">
+            </div>
+
+        </div>
+
+        <div class="upload-wrapper">
+            <div
+                class="image-item"
+                *ngFor="let img of productImages; let i = index; trackBy: trackByIndex">
+                <img [src]="img">
+                <button
+                    type="button"
+                    class="remove-image"
+                    (click)="removeImage(i)">
+
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <input
+                #fileInput
+                hidden
+                type="file"
+                accept="image/*"
+                multiple
+                (change)="onImageSelected($event)">
+
+            <div
+                class="upload-image"
+                (click)="fileInput.click()">
+
+                <i class="bi bi-plus-lg"></i>
+                <span>Thêm ảnh</span>
+            </div>
+        </div>
+        
+        <div class="price-grid">
+            <div class="price-item">
+                <label>GIÁ NHẬP</label>
+                <input
+                    type="number"
+                    [(ngModel)]="newProduct.importPrice">
+            </div>
+
+            <div class="price-item">
+                <label>GIÁ BÁN</label>
+                <input
+                    type="number"
+                    [(ngModel)]="newProduct.salePrice">
+            </div>
+
+            <div class="price-item">
+                <label>GIÁ KHUYẾN MẠI</label>
+                <input
+                    type="number"
+                    [(ngModel)]="newProduct.discountPrice">
+            </div>
+
+        </div>
+        <div class="formula-header">
+            <h3>CÔNG THỨC HOA</h3>
+
+            <div class="formula-actions">
+
+                <div class="search-material">
+                    <input placeholder="Tìm kiếm nguyên vật liệu">
+                    <i class="bi bi-search"></i>
+                </div>
+
+                <button class="add-material-btn" (click)="addMaterial()">
+                    <i class="bi bi-plus-circle"></i>
+                    Thêm NVL
+                </button>
+
+            </div>
+
+        </div>
+        <table class="material-table">
+            <thead>
+                <tr>
+                    <th>NGUYÊN VẬT LIỆU</th>
+                    <th>SỐ LƯỢNG CẦN</th>
+                    <th>ĐƠN VỊ TÍNH</th>
+                    <th>GHI CHÚ</th>
+                    <th></th>
+                </tr>
+
+            </thead>
+
+            <tbody>
+
+                <tr
+                    *ngFor="let item of materials; let i=index; trackBy: trackByIndex">
+
+                    <td>
+                        <input
+                            [(ngModel)]="item.name">
+                    </td>
+
+                    <td>
+                        <input
+                            type="number"
+                            [(ngModel)]="item.quantity">
+                    </td>
+
+                    <td>
+                        <input
+                            [(ngModel)]="item.unit">
+                    </td>
+
+                    <td>
+                        <input
+                            [(ngModel)]="item.note">
+                    </td>
+                </tr>
+
+            </tbody>
+
+        </table>
+
+        <div class="form-group">
+            <label>Mô tả chi tiết cách làm</label>
+
+            <textarea
+                rows="5"
+                [(ngModel)]="newProduct.recipeDescription">
+
+            </textarea>
+        </div>
+
+
+        <button
+            class="save-btn"  (click)="saveProduct()">
+
+            Lưu
+
+        </button>
+
+    </div>
+
+</div>

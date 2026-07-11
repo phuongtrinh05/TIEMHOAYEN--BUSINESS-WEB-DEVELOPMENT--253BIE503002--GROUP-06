@@ -1,0 +1,606 @@
+<div class="admin-layout">
+
+  <div class="article-list-page" (click)="closeAllMenus()">
+
+    <!-- ===== TABLE CARD ===== -->
+    <div class="article-table-card">
+
+      <!-- ===== TOOLBAR ===== -->
+      <div class="article-toolbar">
+
+        <!-- Tabs -->
+        <div class="article-tabs">
+          <button
+            *ngFor="let tab of tabs"
+            type="button"
+            class="article-tab"
+            [class.article-tab--active]="activeTab === tab"
+            (click)="setTab(tab)"
+          >
+            {{ tab }}
+          </button>
+        </div>
+
+        <div class="article-toolbar__actions">
+
+          <!-- Search -->
+          <div class="article-search">
+            <input
+              type="text"
+              [placeholder]="activeTab === 'Blog' ? 'Tìm kiếm bài viết' : 'Tìm kiếm nội dung'"
+              [(ngModel)]="searchKeyword"
+              (ngModelChange)="onSearch()"
+            >
+            <i class="bi bi-search"></i>
+          </div>
+
+          <!-- Filter -->
+          <div class="filter-wrap" (click)="$event.stopPropagation()">
+            <button
+              class="toolbar-btn toolbar-btn--filter"
+              type="button"
+              title="Lọc bài viết"
+              [class.toolbar-btn--active]="hasActiveFilter || isFilterMenuOpen"
+              (click)="toggleFilterMenu()"
+            >
+              <i class="bi bi-filter"></i>
+            </button>
+
+            <div class="filter-panel" *ngIf="isFilterMenuOpen">
+              <div class="filter-panel__grid">
+
+                <!-- ===== BLOG FILTERS ===== -->
+                <ng-container *ngIf="activeTab === 'Blog'">
+                  <div class="filter-panel__group">
+                    <label class="filter-panel__label">Ngày cập nhật</label>
+                    <div class="filter-select-wrap">
+                      <select class="filter-select" [(ngModel)]="dateFilter" (change)="applyFilter()">
+                        <option *ngFor="let item of dateFilters" [ngValue]="item">{{ item }}</option>
+                      </select>
+                      <i class="bi bi-chevron-down"></i>
+                    </div>
+                  </div>
+
+                  <div class="filter-panel__group">
+                    <label class="filter-panel__label">Danh mục</label>
+                    <div class="filter-select-wrap">
+                      <select class="filter-select" [(ngModel)]="categoryFilter" (change)="applyFilter()">
+                        <option *ngFor="let item of categoryFilters" [ngValue]="item">{{ item }}</option>
+                      </select>
+                      <i class="bi bi-chevron-down"></i>
+                    </div>
+                  </div>
+
+                  <div class="filter-panel__group">
+                    <label class="filter-panel__label">Lượt xem</label>
+                    <div class="filter-select-wrap">
+                      <select class="filter-select" [(ngModel)]="viewFilter" (change)="applyFilter()">
+                        <option *ngFor="let item of viewFilters" [ngValue]="item">{{ item }}</option>
+                      </select>
+                      <i class="bi bi-chevron-down"></i>
+                    </div>
+                  </div>
+                </ng-container>
+
+                <!-- ===== THÔNG TIN WEBSITE FILTERS ===== -->
+                <ng-container *ngIf="activeTab === 'Thông tin website'">
+                  <div class="filter-panel__group">
+                    <label class="filter-panel__label">Ngày cập nhật</label>
+                    <div class="filter-select-wrap">
+                      <select class="filter-select" [(ngModel)]="wcDateFilter" (change)="applyFilter()">
+                        <option *ngFor="let item of dateFilters" [ngValue]="item">{{ item }}</option>
+                      </select>
+                      <i class="bi bi-chevron-down"></i>
+                    </div>
+                  </div>
+
+                  <div class="filter-panel__group">
+                    <label class="filter-panel__label">Loại nội dung</label>
+                    <div class="filter-select-wrap">
+                      <select class="filter-select" [(ngModel)]="wcContentTypeFilter" (change)="applyFilter()">
+                        <option *ngFor="let item of wcContentTypeFilters" [ngValue]="item">{{ item }}</option>
+                      </select>
+                      <i class="bi bi-chevron-down"></i>
+                    </div>
+                  </div>
+
+                  <div class="filter-panel__group">
+                    <label class="filter-panel__label">Trạng thái</label>
+                    <div class="filter-select-wrap">
+                      <select class="filter-select" [(ngModel)]="wcStatusFilter" (change)="applyFilter()">
+                        <option *ngFor="let item of wcStatusFilters" [ngValue]="item">{{ item }}</option>
+                      </select>
+                      <i class="bi bi-chevron-down"></i>
+                    </div>
+                  </div>
+                </ng-container>
+
+              </div>
+
+              <div class="filter-panel__actions">
+                <button type="button" class="filter-clear-btn" (click)="clearFilters()">Xóa lọc</button>
+                <button type="button" class="filter-apply-btn" (click)="closeAllMenus()">Áp dụng</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sort — chỉ hiện ở tab Blog -->
+          <!-- Sort -->
+          <div class="sort-wrap" (click)="$event.stopPropagation()">
+            <button
+              class="toolbar-btn"
+              title="Sắp xếp"
+              type="button"
+              [class.toolbar-btn--active]="isSortMenuOpen || (activeTab === 'Blog' ? sortOption !== 'Mặc định' : wcSortOption !== 'Mặc định')"
+              (click)="toggleSortMenu()"
+            >
+              <i class="bi bi-arrow-down-up"></i>
+            </button>
+
+            <div class="toolbar-dropdown sort-dropdown" *ngIf="isSortMenuOpen">
+              <!-- Blog sort -->
+              <ng-container *ngIf="activeTab === 'Blog'">
+                <button
+                  type="button"
+                  *ngFor="let item of sortOptions"
+                  [class.dropdown-option--active]="sortOption === item"
+                  (click)="setSortOption(item)"
+                >
+                  {{ item }}
+                </button>
+              </ng-container>
+              <!-- Thông tin website sort -->
+              <ng-container *ngIf="activeTab === 'Thông tin website'">
+                <button
+                  type="button"
+                  *ngFor="let item of wcSortOptions"
+                  [class.dropdown-option--active]="wcSortOption === item"
+                  (click)="setWcSortOption(item)"
+                >
+                  {{ item }}
+                </button>
+              </ng-container>
+            </div>
+          </div>
+
+          <!-- Xóa hàng loạt — chỉ hiện ở tab Blog -->
+          <button
+            *ngIf="activeTab === 'Blog'"
+            class="toolbar-btn toolbar-btn--delete"
+            title="Xóa các bài đã chọn"
+            type="button"
+            [disabled]="!selectedArticles.length"
+            (click)="deleteSelectedArticles(); $event.stopPropagation()"
+          >
+            <i class="bi bi-trash3"></i>
+          </button>
+
+          <!-- Xóa hàng loạt — chỉ hiện ở tab Thông tin website -->
+          <button
+            *ngIf="activeTab === 'Thông tin website'"
+            class="toolbar-btn toolbar-btn--delete"
+            title="Xóa các nội dung đã chọn"
+            type="button"
+            [disabled]="!selectedWebContents.length"
+            (click)="deleteSelectedWebContents(); $event.stopPropagation()"
+          >
+            <i class="bi bi-trash3"></i>
+          </button>
+
+          <!-- Add -->
+          <button class="toolbar-btn" title="Thêm mới" type="button"
+            (click)="onAddClick(); $event.stopPropagation()">
+            <i class="bi bi-plus-circle"></i>
+          </button>
+
+          <!-- Export -->
+          <div class="export-wrap" (click)="$event.stopPropagation()">
+            <button class="btn-export" type="button" (click)="toggleExportMenu()">
+              <i class="bi bi-file-earmark-arrow-down"></i>
+              Xuất
+              <i class="bi bi-chevron-down"></i>
+            </button>
+
+            <div class="toolbar-dropdown export-dropdown" *ngIf="isExportMenuOpen">
+              <button type="button" (click)="exportExcel()">
+                <i class="bi bi-file-earmark-excel"></i>
+                Xuất Excel
+              </button>
+              <button type="button" (click)="exportPdf()">
+                <i class="bi bi-file-earmark-pdf"></i>
+                Xuất PDF
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ============================= -->
+      <!-- TAB: BLOG                     -->
+      <!-- ============================= -->
+      <ng-container *ngIf="activeTab === 'Blog'">
+        <div class="article-table-wrap">
+          <table class="article-table">
+            <thead>
+              <tr>
+                <th class="col-check">
+                  <input
+                    type="checkbox"
+                    [checked]="allSelected"
+                    (change)="toggleSelectAll($any($event.target).checked)"
+                  >
+                </th>
+                <th>Mã bài viết</th>
+                <th class="col-title">Tiêu đề</th>
+                <th>Ngày cập nhật</th>
+                <th>Danh mục</th>
+                <th>Người viết</th>
+                <th>Lượt xem</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <tr
+                *ngFor="let article of pagedArticles"
+                [class.row--selected]="article.selected"
+                [class.row--editing]="editingArticleId === article.id"
+                (click)="goToArticleDetail(article)"
+              >
+                <td class="col-check" (click)="$event.stopPropagation()">
+                  <input type="checkbox" [(ngModel)]="article.selected" [disabled]="editingArticleId === article.id">
+                </td>
+                <td class="cell-id">{{ article.id }}</td>
+
+                <ng-container *ngIf="editingArticleId === article.id; else articleViewRow">
+                  <td class="cell-title">
+                    <input
+                      type="text"
+                      class="inline-edit-input"
+                      [class.inline-edit-input--error]="articleEditErrors.title"
+                      [(ngModel)]="articleEditForm.title"
+                      placeholder="Nhập tiêu đề"
+                    >
+                  </td>
+                  <td>
+                    <input
+                      type="date"
+                      class="inline-edit-input"
+                      [class.inline-edit-input--error]="articleEditErrors.updatedAt"
+                      [value]="articleEditNativeUpdatedAt"
+                      (change)="onArticleEditDatePicked($any($event.target).value)"
+                    >
+                  </td>
+                  <td>
+                    <select
+                      class="inline-edit-select"
+                      [class.inline-edit-input--error]="articleEditErrors.category"
+                      [(ngModel)]="articleEditForm.category"
+                    >
+                      <option [ngValue]="''" disabled>Chọn danh mục</option>
+                      <option *ngFor="let c of articleCategories" [ngValue]="c">{{ c }}</option>
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      class="inline-edit-input"
+                      [class.inline-edit-input--error]="articleEditErrors.author"
+                      [(ngModel)]="articleEditForm.author"
+                      placeholder="Nhập tên người viết"
+                    >
+                  </td>
+                  <td class="cell-views">{{ article.views }}</td>
+                  <td class="col-actions">
+                    <button class="action-btn action-btn--save" title="Lưu" type="button"
+                      (click)="saveArticleEdit(article); $event.stopPropagation()">
+                      <i class="bi bi-check-lg"></i>
+                    </button>
+                    <button class="action-btn action-btn--cancel" title="Hủy" type="button"
+                      (click)="cancelArticleEdit(); $event.stopPropagation()">
+                      <i class="bi bi-x-lg"></i>
+                    </button>
+                  </td>
+                </ng-container>
+
+                <ng-template #articleViewRow>
+                  <td class="cell-title">{{ article.title }}</td>
+                  <td>{{ article.updatedAt }}</td>
+                  <td>
+                    <span class="category-badge" [ngClass]="categoryClass(article.category)">
+                      {{ article.category }}
+                    </span>
+                  </td>
+                  <td>{{ article.author }}</td>
+                  <td class="cell-views">{{ article.views }}</td>
+                  <td class="col-actions">
+                    <button class="action-btn action-btn--edit" title="Chỉnh sửa" type="button"
+                      (click)="editArticle(article); $event.stopPropagation()">
+                      <i class="bi bi-pencil-square"></i>
+                    </button>
+                    <button class="action-btn action-btn--delete" title="Xóa" type="button"
+                      (click)="deleteArticle(article); $event.stopPropagation()">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  </td>
+                </ng-template>
+              </tr>
+
+              <tr *ngIf="pagedArticles.length === 0">
+                <td colspan="8" class="empty-row">
+                  <i class="bi bi-file-earmark-x"></i>
+                  <span>Không có bài viết nào</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </ng-container>
+
+      <!-- ============================= -->
+      <!-- TAB: THÔNG TIN WEBSITE        -->
+      <!-- ============================= -->
+      <ng-container *ngIf="activeTab === 'Thông tin website'">
+        <div class="article-table-wrap">
+          <table class="article-table web-table">
+            <thead>
+              <tr>
+                <th class="col-check">
+                  <input type="checkbox" [checked]="allWebSelected" (change)="toggleSelectAllWeb($any($event.target).checked)">
+                </th>
+                <th class="col-name">Tên nội dung</th>
+                <th>Loại nội dung</th>
+                <th>File</th>
+                <th>Ngày cập nhật</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <tr *ngFor="let wc of pagedWebContents" [class.row--selected]="wc.selected" (click)="openViewPopup(wc)">
+                <td class="col-check" (click)="$event.stopPropagation()">
+                  <input type="checkbox" [(ngModel)]="wc.selected">
+                </td>
+                <td>
+                  <div class="cell-name">
+                    <span class="file-icon-wrap">
+                      <i class="bi" [ngClass]="[fileTypeIcon(wc.fileType), fileTypeIconClass(wc.fileType)]"></i>
+                    </span>
+
+                    <span class="cell-name__text" [title]="wc.name">
+                      {{ wc.name }}
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <span class="wctype-badge" [ngClass]="contentTypeClass(wc.contentType)">
+                    {{ wc.contentType }}
+                  </span>
+                </td>
+                <td class="cell-filetype">{{ wc.fileType }}</td>
+                <td>{{ wc.updatedAt }}</td>
+                <td class="col-actions" (click)="$event.stopPropagation()">
+                  <button class="action-btn action-btn--upload" title="Tải lên file mới" type="button"
+                    (click)="startInlineUpload(wc); quickUploadInput.click()">
+                    <i class="bi bi-cloud-upload"></i>
+                  </button>
+                  <input #quickUploadInput type="file" accept=".pdf,.doc,.docx" hidden (change)="onQuickUpload($event, wc)">
+                  <button class="action-btn action-btn--edit" title="Chỉnh sửa" type="button"
+                    (click)="editWebContent(wc); $event.stopPropagation()">
+                    <i class="bi bi-pencil-square"></i>
+                  </button>
+                  <button class="action-btn action-btn--delete" title="Xóa" type="button"
+                    (click)="deleteWebContent(wc); $event.stopPropagation()">
+                    <i class="bi bi-trash3"></i>
+                  </button>
+                </td>
+              </tr>
+
+              <tr *ngIf="pagedWebContents.length === 0">
+                <td colspan="6" class="empty-row">
+                  <i class="bi bi-folder-x"></i>
+                  <span>Không có nội dung nào</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </ng-container>
+
+      <!-- ===== PAGINATION ===== -->
+      <div class="pagination-row">
+        <button
+          class="page-btn page-btn--nav"
+          type="button"
+          [disabled]="currentPage === 1"
+          (click)="prevPage()"
+        >
+          <i class="bi bi-arrow-left"></i>
+          Trước
+        </button>
+
+        <div class="page-numbers">
+          <button
+            *ngFor="let p of pageNumbers"
+            type="button"
+            class="page-btn"
+            [class.page-btn--active]="p === currentPage"
+            [class.page-btn--ellipsis]="p === '...'"
+            [disabled]="p === '...'"
+            (click)="setPage(p)"
+          >
+            {{ p }}
+          </button>
+        </div>
+
+        <button
+          class="page-btn page-btn--nav"
+          type="button"
+          [disabled]="currentPage === totalPages"
+          (click)="nextPage()"
+        >
+          Sau
+          <i class="bi bi-arrow-right"></i>
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ===== POPUP: CHI TIẾT / THÊM MỚI NỘI DUNG WEBSITE ===== -->
+<div class="wc-modal-overlay" *ngIf="isPopupOpen">
+  <div class="wc-modal" (click)="$event.stopPropagation()">
+
+    <div class="wc-modal__header">
+      <h2 class="wc-modal__title">
+        {{ popupMode === 'add' ? 'Tạo nội dung mới' : (popupMode === 'edit' ? 'Chỉnh sửa nội dung' : 'Chi tiết nội dung') }}
+      </h2>
+      <div class="wc-modal__header-actions">
+        <button
+          type="button"
+          class="wc-edit-btn"
+          *ngIf="popupMode !== 'add'"
+          [disabled]="popupMode !== 'view'"
+          (click)="switchToEditMode()"
+        >
+          <i class="bi bi-pencil-square"></i>
+          Chỉnh sửa
+        </button>
+        <button type="button" class="wc-close-btn" (click)="closePopup()" title="Đóng">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="wc-modal__body">
+
+      <div class="wc-form-row">
+        <div class="wc-form-group">
+          <label class="wc-label">Tên chính sách</label>
+          <input
+            type="text"
+            class="wc-input"
+            [class.wc-input--error]="formErrors.name"
+            [(ngModel)]="form.name"
+            [disabled]="popupMode === 'view'"
+            placeholder="Nhập tên chính sách"
+          >
+          <span class="wc-error-msg" *ngIf="formErrors.name">Vui lòng nhập tên chính sách</span>
+        </div>
+
+        <div class="wc-form-group">
+          <label class="wc-label">Loại nội dung</label>
+          <div class="wc-select-wrap">
+            <select class="wc-select" [class.wc-input--error]="formErrors.contentType" [(ngModel)]="form.contentType" [disabled]="popupMode === 'view'">
+              <option [ngValue]="''" disabled>Chọn loại nội dung</option>
+              <option *ngFor="let t of webContentTypes" [ngValue]="t">{{ t }}</option>
+            </select>
+            <i class="bi bi-chevron-down"></i>
+          </div>
+          <span class="wc-error-msg" *ngIf="formErrors.contentType">Vui lòng chọn loại nội dung</span>
+        </div>
+      </div>
+
+      <div class="wc-form-group">
+        <label class="wc-label">Ghi chú</label>
+        <textarea
+          class="wc-textarea"
+          rows="3"
+          [(ngModel)]="form.note"
+          [disabled]="popupMode === 'view'"
+          placeholder="Nhập ghi chú (nếu có)"
+        ></textarea>
+      </div>
+
+      <div class="wc-form-row">
+        <div class="wc-form-group">
+          <label class="wc-label">Ngày cập nhật</label>
+          <input
+            type="date"
+            class="wc-input wc-date-native"
+            [class.wc-input--error]="formErrors.updatedAt"
+            [value]="nativeUpdatedAt"
+            [disabled]="popupMode === 'view'"
+            (change)="onDatePicked($any($event.target).value)"
+          >
+          <span class="wc-error-msg" *ngIf="formErrors.updatedAt">
+            {{ form.updatedAt.trim() ? 'Ngày cập nhật chưa đầy đủ, vui lòng nhập đủ dd/mm/yyyy' : 'Vui lòng nhập ngày cập nhật' }}
+          </span>
+        </div>
+
+        <div class="wc-form-group">
+          <label class="wc-label">Trạng thái</label>
+          <div class="wc-select-wrap">
+            <select class="wc-select" [class.wc-input--error]="formErrors.status" [(ngModel)]="form.status" [disabled]="popupMode === 'view'">
+              <option [ngValue]="''" disabled>Chọn trạng thái</option>
+              <option *ngFor="let s of webContentStatuses" [ngValue]="s">{{ s }}</option>
+            </select>
+            <i class="bi bi-chevron-down"></i>
+          </div>
+          <span class="wc-error-msg" *ngIf="formErrors.status">Vui lòng chọn trạng thái</span>
+        </div>
+      </div>
+
+      <!-- FILE -->
+      <div class="wc-form-group">
+        <label class="wc-label">{{ popupMode === 'add' ? 'Tải file lên' : 'File đính kèm' }}</label>
+
+        <!-- Add mode: vùng kéo-thả/chọn file -->
+        <div
+          class="wc-file-dropzone"
+          [class.wc-input--error]="formErrors.file"
+          *ngIf="popupMode === 'add'"
+          (click)="fileInput.click()"
+        >
+          <i class="bi bi-cloud-upload"></i>
+          <span>{{ form.fileName || 'Chọn file tải lên' }}</span>
+        </div>
+        <span class="wc-error-msg" *ngIf="formErrors.file">Vui lòng chọn file tải lên</span>
+
+        <!-- View/Edit mode: thẻ file đã đính kèm -->
+        <div class="wc-file-card" *ngIf="popupMode !== 'add'">
+          <span class="wc-file-card__icon">
+            <i class="bi" [ngClass]="[attachedFileIcon, attachedFileIconClass]"></i>
+          </span>
+          <div class="wc-file-card__info">
+            <div class="wc-file-card__name">{{ form.fileName }}</div>
+            <div class="wc-file-card__size">{{ form.fileSize }}</div>
+          </div>
+          <button
+            type="button"
+            class="wc-file-card__download"
+            title="Tải xuống"
+            (click)="downloadAttachedFile(); $event.stopPropagation()"
+          >
+            <i class="bi bi-arrow-down"></i>
+          </button>
+          <button
+            type="button"
+            class="wc-file-replace-btn"
+            *ngIf="popupMode === 'edit'"
+            (click)="fileInput.click()"
+          >
+            <i class="bi bi-cloud-upload"></i>
+            Thay thế file
+          </button>
+        </div>
+
+        <input
+          #fileInput
+          type="file"
+          accept=".pdf,.doc,.docx"
+          hidden
+          (change)="onFileSelected($event)"
+        >
+      </div>
+
+    </div>
+
+    <div class="wc-modal__footer">
+      <button type="button" class="btn-export" (click)="savePopup()">Lưu</button>
+    </div>
+
+  </div>
+</div>

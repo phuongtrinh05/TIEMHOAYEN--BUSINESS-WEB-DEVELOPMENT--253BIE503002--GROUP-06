@@ -1,0 +1,247 @@
+<div class="chatbot-wrapper">
+  <div class="support-card">
+  <div class="top-tabs">
+    <div class="top-tabs-group">
+      <button class="active" routerLink="/customer-service/customer-chat">
+        Chat
+      </button>
+
+      <button routerLink="/customer-service/chatbot-management" routerLinkActive="active">
+        Quản lý chatbot
+      </button>
+    </div>
+  </div>
+
+  <div class="chat-workspace" [class.info-open]="showInfoPanel">
+    <section class="conv-panel">
+      <div class="panel-heading">
+        <div>
+          <span class="title-mark"></span>
+          <span>Chat</span>
+        </div>
+      </div>
+
+      <div class="conv-toolbar">
+        <div class="search-box">
+          <i class="bi bi-search"></i>
+          <input
+            type="text"
+            placeholder="Tìm kiếm khách hàng"
+            [(ngModel)]="searchKeyword"
+            (ngModelChange)="filterConversations()">
+        </div>
+
+      </div>
+
+      <div class="filter-tabs">
+        <button
+          [class.active]="activeFilter === 'all'"
+          (click)="setFilter('all')">
+          Tất cả
+        </button>
+        <button
+          [class.active]="activeFilter === 'pending'"
+          (click)="setFilter('pending')">
+          Chưa xử lý
+          <span class="badge" *ngIf="pendingCount > 0">{{ pendingCount }}</span>
+        </button>
+      </div>
+
+      <div class="conv-list">
+        <button
+          type="button"
+          class="conv-item"
+          *ngFor="let conv of filteredConversations"
+          [class.active]="selectedConvId === conv.id"
+          (click)="selectConversation(conv)">
+          <div class="avatar" [style.background]="conv.avatarColor">
+            {{ conv.initials }}
+          </div>
+          <div class="conv-info">
+            <div class="conv-name">{{ conv.name }}</div>
+            <div class="conv-preview">{{ conv.lastMessage }}</div>
+          </div>
+          <span class="conv-badge" *ngIf="conv.unread > 0">{{ conv.unread }}</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="thread-panel" *ngIf="selectedConv; else noConv">
+      <div class="thread-header">
+        <div class="thread-header-left">
+          <div class="avatar sm" [style.background]="selectedConv.avatarColor">
+            {{ selectedConv.initials }}
+          </div>
+          <div>
+            <div class="thread-name">
+              {{ selectedConv.name }}
+              <span class="thread-meta">#{{ selectedConv.customerId }} | {{ selectedConv.phone }}</span>
+            </div>
+            <div class="thread-status">
+              <span class="online-dot" [class.offline]="!selectedConv.isOnline"></span>
+              {{ selectedConv.isOnline ? 'Hoạt động' : 'Ngoại tuyến' }}
+            </div>
+          </div>
+        </div>
+
+        <div class="quick-menu header-menu">
+          <button class="icon-btn lg" type="button" aria-label="Mở menu hội thoại" (click)="toggleInfoPanel()">
+            <i class="bi bi-list"></i>
+          </button>
+
+          <div class="quick-menu-panel" *ngIf="false">
+            <button type="button" routerLink="/customer-service/chatbot-management" (click)="closeQuickMenus()">
+              <i class="bi bi-robot"></i>
+              <span>Quản lý chatbot</span>
+            </button>
+            <button type="button" (click)="toggleInfoPanel()">
+              <i class="bi bi-person-lines-fill"></i>
+              <span>{{ showInfoPanel ? 'Ẩn hồ sơ khách' : 'Hiện hồ sơ khách' }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="order-info-bar" *ngIf="selectedConv.pinnedProduct">
+        <div class="order-code">
+          <span class="product-thumb"><i class="bi bi-flower1"></i></span>
+          <div>
+            <strong>{{ selectedConv.pinnedProduct!.name }}</strong>
+            <p>{{ selectedConv.pinnedProduct!.price | number }}đ</p>
+          </div>
+        </div>
+        <button type="button" class="order-link">
+          Xem chi tiết sản phẩm <i class="bi bi-chevron-right"></i>
+        </button>
+      </div>
+
+      <div class="messages" #messageContainer>
+        <ng-container *ngFor="let msg of selectedConv.messages">
+          <div class="date-divider" *ngIf="msg.type === 'date'">{{ msg.text }}</div>
+          <div class="system-msg" *ngIf="msg.type === 'system'">{{ msg.text }}</div>
+
+          <div class="handoff-divider" *ngIf="msg.type === 'handoff'">
+            <span class="handoff-line"></span>
+            <span class="handoff-text">{{ msg.text }}</span>
+            <span class="handoff-line"></span>
+          </div>
+
+          <div
+            class="msg-row"
+            *ngIf="msg.type === 'text' || msg.type === 'product'"
+            [class.mine]="msg.isCustomer">
+
+            <div class="msg-avatar brand" *ngIf="!msg.isCustomer">
+              <img src="assets/images/logoAI.png" alt="Hoa Yên Assistant">
+            </div>
+
+            <div class="msg-content" [class.mine]="msg.isCustomer">
+              <div class="product-bubble" *ngIf="msg.product">
+                <div class="pb-thumb"><i class="bi bi-bag-check"></i></div>
+                <div>
+                  <div class="pb-name">{{ msg.product.name }}</div>
+                  <div class="pb-price">{{ msg.product.price | number }}đ</div>
+                </div>
+                <i class="bi bi-chevron-right pb-arrow"></i>
+              </div>
+
+              <img
+                *ngIf="msg.image"
+                class="message-image"
+                [src]="msg.image"
+                [alt]="msg.imageName || 'Ảnh khách gửi'">
+
+              <div
+                class="bubble"
+                *ngIf="msg.text"
+                [class.mine]="msg.isCustomer"
+                [class.theirs]="!msg.isCustomer">
+                {{ msg.text }}
+              </div>
+
+              <div class="msg-time">{{ msg.time }}</div>
+            </div>
+
+            <div
+              class="msg-avatar"
+              *ngIf="msg.isCustomer"
+              [style.background]="selectedConv.avatarColor">
+              {{ selectedConv.initials }}
+            </div>
+          </div>
+        </ng-container>
+      </div>
+
+      <div class="reply-preview" *ngIf="selectedImageDataUrl">
+        <img [src]="selectedImageDataUrl" [alt]="selectedFile?.name || 'Anh dinh kem'">
+        <div class="reply-preview-info">
+          <span>{{ selectedFile?.name || 'Anh dinh kem' }}</span>
+          <button type="button" (click)="clearSelectedFile()">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="input-bar">
+        <input
+          #replyFileInput
+          type="file"
+          accept="image/*"
+          class="reply-file-input"
+          (change)="onFileSelected($event)">
+        <button class="attach-btn" type="button" (click)="openFilePicker()"><i class="bi bi-paperclip"></i></button>
+        <input
+          type="text"
+          placeholder="Nhập tin nhắn"
+          [(ngModel)]="newMessage"
+          (keydown.enter)="sendMessage()">
+        <button class="send-btn" type="button" (click)="sendMessage()">
+          <i class="bi bi-send-fill"></i>
+        </button>
+      </div>
+    </section>
+
+    <ng-template #noConv>
+      <section class="no-conv">
+        <i class="bi bi-chat-dots"></i>
+        <p>Chọn một hội thoại để bắt đầu</p>
+      </section>
+    </ng-template>
+
+    <aside class="info-panel" *ngIf="selectedConv && showInfoPanel">
+      <div class="info-section">
+        <div class="info-section-title">Thông tin khách hàng</div>
+        <div class="cust-avatar-big">{{ selectedConv.initials }}</div>
+        <div class="cust-name">{{ selectedConv.name }}</div>
+        <div class="cust-id">#{{ selectedConv.customerId }}</div>
+        <div class="cust-phone">{{ selectedConv.phone }}</div>
+        <button
+          class="view-detail-btn"
+          type="button"
+          [routerLink]="['/customers', selectedConv.customerId]"
+          [disabled]="!canOpenCustomerDetail(selectedConv)">
+          Xem chi tiết khách hàng
+        </button>
+      </div>
+
+      <hr class="section-divider">
+
+      <div class="info-section">
+        <div class="info-section-title">Ảnh và video</div>
+        <div class="media-empty">
+          <i class="bi bi-image"></i>
+          <p>Hình, video mới nhất của trò chuyện sẽ xuất hiện tại đây.</p>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <div class="info-section">
+        <button class="hide-chat-btn" type="button">
+          <i class="bi bi-eye-slash"></i> Ẩn hội thoại
+        </button>
+      </div>
+    </aside>
+  </div>
+  </div>
+</div>

@@ -1,12 +1,24 @@
-import { Component, signal } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { Component } from '@angular/core';
+import { Router, RouterOutlet } from '@angular/router';
+
+import { AdminSidebar } from './components/admin-sidebar/admin-sidebar';
+import { AdminHeader } from './components/admin-header/admin-header';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  standalone: true,
+  imports: [
+    RouterOutlet,
+    AdminSidebar,
+    AdminHeader
+  ],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
 export class App {
-  protected readonly title = signal('my-admin');
+  constructor(private router: Router) {}
+
+  isLoginPage(): boolean {
+      return this.router.url.startsWith('/login');
+}
 }

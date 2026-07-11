@@ -1,0 +1,304 @@
+<div class="customer-page">
+    <div class="customer-card">
+        <!-- TOOLBAR -->
+        <div class="toolbar">
+            <div class="search-box">
+                <span class="search-icon">
+                    <i class="bi bi-search"></i>
+                </span>
+
+                <input
+                    type="text"
+                    placeholder="Tìm kiếm khách hàng"
+                    [(ngModel)]="searchKeyword"
+                    (ngModelChange)="applyFilters()"
+                >
+            </div>
+
+            <div class="toolbar-actions">
+                <span class="selected-text">
+                    Đã chọn: {{ selectedCount }}
+                </span>
+
+                <button
+                    class="delete-selected-btn"
+                    type="button"
+                    [disabled]="selectedCount === 0"
+                    (click)="deleteSelectedCustomers()"
+                >
+                    <i class="bi bi-trash3"></i>
+                    Xóa
+                </button>
+
+                <!-- FILTER -->
+<div class="dropdown-wrapper">
+<button
+class="tool-btn"
+type="button"
+(click)="$event.stopPropagation(); toggleFilterMenu()"
+>
+<i class="bi bi-filter"></i>
+<span>Lọc</span>
+</button>
+
+<div
+class="dropdown-menu filter-menu"
+*ngIf="isFilterMenuOpen"
+(click)="$event.stopPropagation()"
+>
+<div class="filter-group">
+    <label>Hạng</label>
+
+    <select
+        [(ngModel)]="selectedRank"
+        (change)="applyFilters()"
+    >
+        <option value="Tất cả">Tất cả</option>
+        <option value="Đồng">Đồng</option>
+        <option value="Bạc">Bạc</option>
+        <option value="Vàng">Vàng</option>
+        <option value="Kim cương">Kim cương</option>
+    </select>
+</div>
+
+<div class="filter-group">
+    <label>Ngày tạo</label>
+
+    <select
+        [(ngModel)]="selectedDateFilter"
+        (change)="applyFilters()"
+    >
+        <option value="Tất cả">Tất cả</option>
+        <option value="7 ngày gần đây">7 ngày gần đây</option>
+        <option value="30 ngày gần đây">30 ngày gần đây</option>
+        <option value="1 năm gần đây">1 năm gần đây</option>
+    </select>
+</div>
+</div>
+</div>
+
+                <!-- SORT -->
+                <div class="dropdown-wrapper">
+                    <button
+                        class="tool-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleSortMenu()"
+                    >
+                        <i class="bi bi-arrow-down-up"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu sort-menu"
+                        *ngIf="isSortMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button" (click)="sortCustomers('name')">
+                            Theo tên
+                        </button>
+
+                        <button type="button" (click)="sortCustomers('code')">
+                            Theo mã khách hàng
+                        </button>
+
+                        <button type="button" (click)="sortCustomers('point')">
+                            Theo điểm
+                        </button>
+
+                        <button type="button" (click)="sortCustomers('createdAt')">
+                            Theo ngày tạo
+                        </button>
+                    </div>
+                </div>
+
+                <!-- EXPORT -->
+                <div class="dropdown-wrapper">
+                    <button
+                        class="export-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleExportMenu()"
+                    >
+                        <i class="bi bi-file-earmark-arrow-down"></i>
+                        Xuất
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+
+                    <div
+                        class="dropdown-menu export-menu"
+                        *ngIf="isExportMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <button type="button">Xuất PDF</button>
+                        <button type="button">Xuất Excel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TABLE -->
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="checkbox-col">
+                            <input
+                                type="checkbox"
+                                [checked]="isAllSelected()"
+                                (change)="toggleSelectAll($event)"
+                            >
+                        </th>
+                        <th>Mã khách hàng</th>
+                        <th>Tên</th>
+                        <th>SĐT</th>
+                        <th class="email-col">Email</th>
+                        <th>Điểm tích lũy</th>
+                        <th>Hạng</th>
+                        <th>Ngày tạo</th>
+                        <th class="action-col">Thao tác</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr
+                        *ngFor="let customer of pagedCustomers"
+                        [class.selected-row]="customer.selected"
+                    >
+                        <td class="checkbox-col">
+                            <input
+                                type="checkbox"
+                                [(ngModel)]="customer.selected"
+                                (change)="onCustomerSelectionChange(customer)"
+                            >
+                        </td>
+
+                        <td class="customer-code">
+                            <button
+                                type="button"
+                                class="link-cell"
+                                (click)="goToCustomerDetail(customer)"
+                            >
+                                {{ customer.code }}
+                            </button>
+                        </td>
+
+                        <td>
+                            <div class="customer-name">
+                                <div class="avatar">
+                                    {{ getAvatarText(customer.name) }}
+                                </div>
+
+                                <input
+                                    *ngIf="editingCustomerId === customer.id"
+                                    class="table-input name-input"
+                                    type="text"
+                                    [(ngModel)]="customer.name"
+                                >
+
+                                <button
+                                    *ngIf="editingCustomerId !== customer.id"
+                                    type="button"
+                                    class="link-cell customer-name-link"
+                                    (click)="goToCustomerDetail(customer)"
+                                >
+                                    {{ customer.name }}
+                                </button>
+                            </div>
+                        </td>
+
+                        <td>
+                            <input
+                                *ngIf="editingCustomerId === customer.id"
+                                class="table-input"
+                                type="text"
+                                [(ngModel)]="customer.phone"
+                            >
+
+                            <span *ngIf="editingCustomerId !== customer.id">
+                                {{ customer.phone }}
+                            </span>
+                        </td>
+
+                        <td class="email-col">
+                            <input
+                                *ngIf="editingCustomerId === customer.id"
+                                class="table-input email-input"
+                                type="email"
+                                [(ngModel)]="customer.email"
+                            >
+
+                            <span *ngIf="editingCustomerId !== customer.id">
+                                {{ customer.email }}
+                            </span>
+                        </td>
+
+                        <td>
+                            {{ customer.point }}
+                        </td>
+
+                        <td>
+                            <img
+                                class="rank-image"
+                                [src]="getRankImage(customer)"
+                                [alt]="getCustomerRank(customer)"
+                            >
+                        </td>
+
+                        <td>{{ customer.createdAt | date: 'dd/MM/yyyy' }}</td>
+
+                        <td class="action-col">
+                            <button
+                                class="edit-row-btn"
+                                type="button"
+                                title="Chỉnh sửa"
+                                [disabled]="isEditButtonDisabled(customer)"
+                                (click)="toggleInlineEdit(customer)"
+                            >
+                                <i
+                                    class="bi"
+                                    [class.bi-pencil-square]="editingCustomerId !== customer.id"
+                                    [class.bi-check2-square]="editingCustomerId === customer.id"
+                                ></i>
+                            </button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- PAGINATION -->
+        <div class="pagination">
+            <button
+                class="page-nav"
+                type="button"
+                [disabled]="currentPage === 1"
+                (click)="previousPage()"
+            >
+                <i class="bi bi-arrow-left"></i>
+                <span>Trước</span>
+            </button>
+
+            <div class="page-numbers">
+                <button
+                    type="button"
+                    *ngFor="let page of pages"
+                    [class.active]="page === currentPage"
+                    [class.dots]="page === '...'"
+                    [disabled]="page === '...'"
+                    (click)="goToPage(page)"
+                >
+                    {{ page }}
+                </button>
+            </div>
+
+            <button
+                class="page-nav"
+                type="button"
+                [disabled]="currentPage === totalPages"
+                (click)="nextPage()"
+            >
+                <span>Sau</span>
+                <i class="bi bi-arrow-right"></i>
+            </button>
+        </div>
+
+    </div>
+</div>

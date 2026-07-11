@@ -1,0 +1,285 @@
+<div class="dashboard-page">
+
+    <!-- ROW 1: STAT CARDS -->
+    <div class="stat-row">
+
+        <div class="stat-card">
+            <div class="stat-card-top">
+                <div>
+                    <p class="stat-label">Tổng doanh thu</p>
+                    <p class="stat-sub">7 ngày gần đây</p>
+                </div>
+                <button class="more-btn"><i class="bi bi-three-dots-vertical"></i></button>
+            </div>
+            <div class="stat-value">
+                {{ totalRevenueText }}
+                <span class="stat-unit">đ</span>
+
+                <span class="stat-badge up">
+                    <i class="bi bi-arrow-up"></i> 10.4%
+                </span>
+            </div>
+
+            <p class="stat-compare">
+                So với tuần trước <span class="compare-link">(19tr)</span>
+            </p>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-card-top">
+                <div>
+                    <p class="stat-label">Tổng đơn hàng</p>
+                    <p class="stat-sub">7 ngày gần đây</p>
+                </div>
+                <button class="more-btn"><i class="bi bi-three-dots-vertical"></i></button>
+            </div>
+            <div class="stat-value">
+                {{ totalOrdersText }}
+                <span class="stat-unit">đơn</span>
+
+                <span class="stat-badge up">
+                    <i class="bi bi-arrow-up"></i> 14.4%
+                </span>
+            </div>
+            <p class="stat-compare">So với tuần trước <span class="compare-link">(7.6k)</span></p>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-card-top">
+                <div>
+                    <p class="stat-label">Chờ xử lý và Đã hủy</p>
+                    <p class="stat-sub">7 ngày gần đây</p>
+                </div>
+                <button class="more-btn"><i class="bi bi-three-dots-vertical"></i></button>
+            </div>
+            <div class="stat-double">
+                <div>
+                    <p class="stat-double-label">Chờ xử lý</p>
+                    <div class="stat-value small">
+                        {{ pendingOrdersText }}
+                        <span class="stat-unit">đơn</span>
+
+                        <span class="stat-badge up">
+                            <i class="bi bi-arrow-up"></i> 14.4%
+                        </span>
+                    </div>
+                </div>
+                <div>
+                    <p class="stat-double-label">Đã hủy</p>
+                    <div class="stat-value small red">
+                        {{ cancelledOrdersText }}
+                        <span class="stat-unit">đơn</span>
+
+                        <span class="stat-badge down">
+                            <i class="bi bi-arrow-down"></i> 14.4%
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <div class="middle-grid">
+        <div class="report-card">
+            <div class="card-header">
+                <h3>Báo cáo tuần này</h3>
+
+                <div class="card-actions">
+                    <button class="tab-btn" [class.active]="selectedWeek === 'this'" (click)="changeWeek('this')">
+                        Tuần này
+                    </button>
+
+                    <button class="tab-btn" [class.active]="selectedWeek === 'last'" (click)="changeWeek('last')">
+                        Tuần trước
+                    </button>
+
+                    <button class="more-btn">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="report-stats">
+                <div class="report-item" *ngFor="let item of reportItems" [class.active]="selectedMetric === item.key"
+                    (click)="changeMetric(item.key)">
+
+                    <h2>{{ item.value }}</h2>
+                    <p>{{ item.label }}</p>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <canvas baseChart [data]="lineChartData" [options]="lineChartOptions" [type]="'line'">
+                </canvas>
+            </div>
+        </div>
+        <div class="delivery-card">
+            <h3>Lịch giao hoa trong 2h tới</h3>
+
+            <div class="delivery-list">
+                <div class="delivery-item" *ngFor="let item of deliveries.slice(0, 6)">
+                    <div class="delivery-time">{{ item.time }}</div>
+
+                    <div class="delivery-order">
+                        <h4>{{ item.orderId }}</h4>
+                        <p>{{ item.quantity }} món | {{ item.price }}</p>
+                    </div>
+
+                    <div class="delivery-customer">
+                        <h4>{{ item.customer }}</h4>
+                        <p>{{ item.address }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <div class="bottom-grid">
+
+        <div class="orders-card">
+            <div class="section-header">
+                <h3>Đơn hàng</h3>
+
+                <button class="filter-btn">
+                    Filter
+                    <i class="bi bi-filter"></i>
+                </button>
+            </div>
+            <table class="order-table">
+                <thead>
+                    <tr>
+                        <th>Mã đơn</th>
+                        <th>Mã khách hàng</th>
+                        <th>Ngày tạo</th>
+                        <th>Tổng tiền</th>
+                        <th>Thanh toán</th>
+                        <th>Trạng thái</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr *ngFor="let order of orders">
+                        <td>{{ order.id }}</td>
+                        <td>{{ order.customer }}</td>
+                        <td>{{ order.date }}</td>
+                        <td>{{ order.total }}</td>
+
+                        <td>
+                            <span class="payment-status">
+                                <span class="dot"></span>
+                                {{ order.payment }}
+                            </span>
+                        </td>
+
+                        <td>
+                            <span class="delivery-status">
+                                {{ order.status }}
+                            </span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="table-footer">
+                <button class="detail-btn">Chi tiết</button>
+            </div>
+        </div>
+
+        <div class="notification-card">
+            <h3>Thông báo</h3>
+
+            <div class="notification-list">
+                <div class="notification-item" *ngFor="let notification of notifications">
+                    <div class="notification-content">
+                        <h4>{{ notification.title }}</h4>
+                        <p>{{ notification.description }}</p>
+                    </div>
+
+                    <i class="bi bi-chevron-right"></i>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="bottom-grid">
+
+        <div class="best-card">
+            <div class="section-header">
+                <h3>Sản phẩm bán chạy nhất</h3>
+
+                <button class="filter-btn">
+                    Filter
+                    <i class="bi bi-filter"></i>
+                </button>
+            </div>
+
+            <table class="best-table">
+                <thead>
+                    <tr>
+                        <th>Sản phẩm</th>
+                        <th>Giá bán</th>
+                        <th>Tổng đơn</th>
+                        <th>Trạng thái</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr *ngFor="let product of bestProducts">
+                        <td>
+                            <div class="product-info">
+                                <img [src]="product.image" [alt]="product.name">
+
+                                <div>
+                                    <h4>{{ product.name }}</h4>
+                                    <p>{{ product.id }}</p>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td>{{ product.price }}</td>
+                        <td>{{ product.totalOrders }}</td>
+                        <td>
+                            <span class="selling-status">{{ product.status }}</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="table-footer">
+                <button class="detail-btn">Chi tiết</button>
+            </div>
+        </div>
+
+        <div class="warning-card">
+            <h3>Cảnh báo</h3>
+
+            <table class="warning-table">
+                <thead>
+                    <tr>
+                        <th>Nguyên vật liệu</th>
+                        <th>Số lượng tồn</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr *ngFor="let item of warningMaterials">
+                        <td>
+                            <div class="product-info">
+                                <img [src]="item.image" [alt]="item.name">
+
+                                <div>
+                                    <h4>{{ item.name }}</h4>
+                                    <p>{{ item.id }}</p>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td>{{ item.quantity }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+</div>
