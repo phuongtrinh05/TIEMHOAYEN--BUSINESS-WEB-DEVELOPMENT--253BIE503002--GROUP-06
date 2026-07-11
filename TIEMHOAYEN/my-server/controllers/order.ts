@@ -1129,6 +1129,7 @@ export const getOrderDetail = async (req: Request, res: Response) => {
         dh.LY_DO_HUY,
         dh.NGAY_HUY,
         dh.LY_DO_HOAN_TIEN_TRA_HANG,
+        dh.LY_DO_TU_CHOI,
         dh.NGAY_YEU_CAU_HOAN_TIEN_TRA_HANG,
         kh.TEN AS TEN_KHACH_HANG,
         kh.SDT AS SDT_KHACH_HANG,

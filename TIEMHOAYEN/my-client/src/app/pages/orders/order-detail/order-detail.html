@@ -348,6 +348,11 @@
               <strong>Lý do hoàn tiền/trả hàng:</strong>
               <span>{{ order.returnRefundReason }}</span>
             </div>
+
+            <div class="order-reason-box reject-reason-box" *ngIf="shouldShowRejectReason()">
+              <strong>Lý do từ chối hoàn tiền/trả hàng:</strong>
+              <span>{{ order.rejectReason }}</span>
+            </div>
           </div>
         </div>
       </div>
