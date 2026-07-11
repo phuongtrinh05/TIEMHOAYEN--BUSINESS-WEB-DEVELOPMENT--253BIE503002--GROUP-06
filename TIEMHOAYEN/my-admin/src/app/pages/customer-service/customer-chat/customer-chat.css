@@ -447,6 +447,7 @@
 
 .order-link {
     border: none;
+    cursor: pointer;
     background: transparent;
     color: #7b8190;
     display: inline-flex;

@@ -6,6 +6,8 @@ import { AdminApiService, AdminChatMessage } from '../../../services/admin-api.s
 
 interface Product {
     id?: string;
+    sku?: string;
+    code?: string;
     name: string;
     price: number;
     image?: string | null;
@@ -111,11 +113,12 @@ export class CustomerChatComponent implements OnInit, AfterViewChecked {
     }
 
     openProductDetail(product: Product | null | undefined): void {
-        if (!product?.id) return;
+        const productId = String(product?.id || product?.sku || product?.code || '').trim();
+        if (!productId) return;
 
         localStorage.setItem('selectedProduct', JSON.stringify({
-            sku: product.id,
-            code: product.id,
+            sku: productId,
+            code: productId,
             name: product.name,
             image: product.image || '',
             price: `${Number(product.price || 0).toLocaleString('vi-VN')}đ`,
@@ -126,7 +129,7 @@ export class CustomerChatComponent implements OnInit, AfterViewChecked {
             status: ''
         }));
         this.router.navigate(['/products/product-detail'], {
-            queryParams: { id: product.id }
+            queryParams: { id: productId }
         });
     }
 

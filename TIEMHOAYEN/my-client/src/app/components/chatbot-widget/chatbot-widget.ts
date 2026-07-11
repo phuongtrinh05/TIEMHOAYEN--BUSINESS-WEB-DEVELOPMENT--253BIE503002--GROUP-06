@@ -269,7 +269,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
         next: (res) => {
           const newServerMessages = (res?.messages || []).filter(
             (msg) =>
-              (msg.type === 'human_request' || msg.type === 'staff_reply') &&
+              (msg.type === 'human_request' || msg.type === 'staff_reply' || msg.type === 'image_generation') &&
               !this.syncedServerMessageIds.has(msg.id)
           );
 
@@ -413,6 +413,20 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     let imageUrl = '';
     const visited = new Set<any>();
 
+    const extractImageUrl = (value: unknown): string => {
+      const text = String(value || '').trim();
+      if (!text) return '';
+
+      const markdownImage = text.match(/!\[[^\]]*]\(([^)\s]+)[^)]*\)/);
+      const candidate = markdownImage?.[1] || text;
+
+      if (/^data:image\/[^;]+;base64,/i.test(candidate)) return candidate;
+      if (/^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?$/i.test(candidate)) return candidate;
+
+      const imageUrlMatch = text.match(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?/i);
+      return imageUrlMatch?.[0] || '';
+    };
+
     const visit = (value: any): void => {
       if (value === null || value === undefined || visited.has(value)) return;
 
@@ -428,6 +442,9 @@ export class ChatbotWidget implements OnInit, OnDestroy {
             // This is a regular text reply, not serialized JSON.
           }
         }
+        if (!imageUrl) {
+          imageUrl = extractImageUrl(text);
+        }
         return;
       }
 
@@ -441,10 +458,19 @@ export class ChatbotWidget implements OnInit, OnDestroy {
 
       const textCandidate =
         value.output ?? value.reply ?? value.message ?? value.text ?? value.content?.parts?.[0]?.text;
-      const imageCandidate = value.image_url ?? value.imageUrl ?? value.image;
+      const imageCandidate =
+        value.image_url ??
+        value.imageUrl ??
+        value.image?.url ??
+        value.image?.src ??
+        value.image?.data ??
+        value.url ??
+        value.secure_url ??
+        value.fileUrl ??
+        value.data?.url;
 
       if (!reply && typeof textCandidate === 'string') reply = textCandidate.trim();
-      if (!imageUrl && typeof imageCandidate === 'string') imageUrl = imageCandidate.trim();
+      if (!imageUrl) imageUrl = extractImageUrl(imageCandidate);
 
       Object.values(value).forEach(visit);
     };

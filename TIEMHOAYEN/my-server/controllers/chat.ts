@@ -184,7 +184,7 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
       OUTER APPLY (
         SELECT TOP 1 URL
         FROM HINH_ANH_SAN_PHAM
-        WHERE SAN_PHAM_ID = sp.SAN_PHAM_ID
+        WHERE HINH_ANH_SAN_PHAM.SAN_PHAM_ID = sp.SAN_PHAM_ID
         ORDER BY LA_ANH_CHINH DESC, HINH_ANH_ID ASC
       ) img
       ORDER BY ISNULL(t.KHACH_HANG_ID, t.TIN_NHAN_ID), t.THOI_GIAN_GUI ASC, t.TIN_NHAN_ID ASC
@@ -366,6 +366,14 @@ export const getCustomerChatMessages = async (req: Request, res: Response) => {
       const question = toNullableString(getVisibleQuestion(row.NOI_DUNG_CAU_HOI));
       const answer = toNullableString(row.NOI_DUNG_TRA_LOI);
       const isStaffMessage = row.LOAI_TIN_NHAN === 'staff_reply';
+      const answerCanUseStoredImage =
+        isStaffMessage || row.LOAI_TIN_NHAN === 'image_generation' || row.LOAI_TIN_NHAN === 'bot_reply';
+      const answerImageUrl = getChatMessageImageUrl(answer) || (answerCanUseStoredImage ? row.HINH_ANH || null : null);
+      const answerContent = answer && answer !== answerImageUrl
+        ? answer
+        : row.LOAI_TIN_NHAN === 'image_generation'
+          ? 'ÄÃ¢y lÃ  bÃ³ hoa mÃ¬nh táº¡o cho báº¡n'
+          : '';
 
       if (!isStaffMessage && (question || row.HINH_ANH)) {
         messages.push({
@@ -381,12 +389,12 @@ export const getCustomerChatMessages = async (req: Request, res: Response) => {
         });
       }
 
-      if (answer || (isStaffMessage && row.HINH_ANH)) {
+      if (answer || (answerCanUseStoredImage && row.HINH_ANH)) {
         messages.push({
           id: `${row.TIN_NHAN_ID}-reply`,
           role: 'bot',
-          content: answer || '',
-          imageUrl: isStaffMessage ? row.HINH_ANH || null : null,
+          content: answerContent,
+          imageUrl: answerImageUrl,
           time,
           status: row.TRANG_THAI,
           type: row.LOAI_TIN_NHAN || 'staff_reply'
@@ -496,6 +504,14 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
       const question = toNullableString(getVisibleQuestion(row.NOI_DUNG_CAU_HOI));
       const answer = toNullableString(row.NOI_DUNG_TRA_LOI);
       const isStaffMessage = row.LOAI_TIN_NHAN === 'staff_reply';
+      const answerCanUseStoredImage =
+        isStaffMessage || row.LOAI_TIN_NHAN === 'image_generation' || row.LOAI_TIN_NHAN === 'bot_reply';
+      const answerImageUrl = getChatMessageImageUrl(answer) || (answerCanUseStoredImage ? row.HINH_ANH || null : null);
+      const answerContent = answer && answer !== answerImageUrl
+        ? answer
+        : row.LOAI_TIN_NHAN === 'image_generation'
+          ? 'ÄÃ¢y lÃ  bÃ³ hoa mÃ¬nh táº¡o cho báº¡n'
+          : '';
 
       if (!isStaffMessage && (question || row.HINH_ANH)) {
         messages.push({
@@ -511,12 +527,12 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
         });
       }
 
-      if (answer || (isStaffMessage && row.HINH_ANH)) {
+      if (answer || (answerCanUseStoredImage && row.HINH_ANH)) {
         messages.push({
           id: `${row.TIN_NHAN_ID}-reply`,
           role: 'bot',
-          content: answer || '',
-          imageUrl: isStaffMessage ? row.HINH_ANH || null : null,
+          content: answerContent,
+          imageUrl: answerImageUrl,
           imageName: isStaffMessage ? row.TEN_FILE_ANH || null : null,
           imageType: isStaffMessage ? row.LOAI_FILE_ANH || null : null,
           time,
@@ -848,6 +864,78 @@ const makeChatImageApiUrl = (chatId: unknown): string | null => {
   return id ? `${CHAT_PUBLIC_BASE_URL}/api/chats/image/${encodeURIComponent(id)}` : null;
 };
 
+const getChatMessageImageUrl = (value: unknown): string | null => {
+  const text = toNullableString(value);
+  if (!text) return null;
+
+  const markdownImage = text.match(/!\[[^\]]*]\(([^)\s]+)[^)]*\)/);
+  const candidate = markdownImage?.[1] || text;
+
+  if (/^data:image\/[^;]+;base64,/i.test(candidate)) return candidate;
+  if (/^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?$/i.test(candidate)) return candidate;
+
+  const imageUrlMatch = text.match(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?/i);
+  return imageUrlMatch?.[0] || null;
+};
+
+const parseN8nChatResponse = (response: unknown): { reply: string | null; imageUrl: string | null } => {
+  let reply: string | null = null;
+  let imageUrl: string | null = null;
+  const visited = new Set<unknown>();
+
+  const visit = (value: unknown): void => {
+    if (value === null || value === undefined || visited.has(value)) return;
+
+    if (typeof value === 'string') {
+      const text = value.trim();
+      if (!text) return;
+
+      if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+        try {
+          visit(JSON.parse(text));
+          return;
+        } catch {
+          // Keep scanning the plain text below.
+        }
+      }
+
+      if (!imageUrl) imageUrl = getChatMessageImageUrl(text);
+      return;
+    }
+
+    if (typeof value !== 'object') return;
+    visited.add(value);
+
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    const row = value as Record<string, any>;
+    const textCandidate = row.output ?? row.reply ?? row.message ?? row.text ?? row.content?.parts?.[0]?.text;
+    const imageCandidate =
+      row.image_url ??
+      row.imageUrl ??
+      row.image?.url ??
+      row.image?.src ??
+      row.image?.data ??
+      row.url ??
+      row.secure_url ??
+      row.fileUrl ??
+      row.data?.url;
+
+    if (!reply && typeof textCandidate === 'string' && !getChatMessageImageUrl(textCandidate)) {
+      reply = textCandidate.trim() || null;
+    }
+    if (!imageUrl) imageUrl = getChatMessageImageUrl(imageCandidate);
+
+    Object.values(row).forEach(visit);
+  };
+
+  visit(response);
+  return { reply, imageUrl };
+};
+
 const getCachedChatData = <T>(key: string): T | null => {
   const entry = chatCache.get(key) as CacheEntry<T> | undefined;
 
@@ -976,9 +1064,16 @@ export const sendChat = async (req: Request, res: Response) => {
             TEN_SAN_PHAM,
             GIA,
             GIA_KHUYEN_MAI,
-            MO_TA
-        FROM SAN_PHAM
-        WHERE SAN_PHAM_ID=@SAN_PHAM_ID
+            MO_TA,
+            img.URL AS HINH_ANH
+        FROM SAN_PHAM sp
+        OUTER APPLY (
+          SELECT TOP 1 URL
+          FROM HINH_ANH_SAN_PHAM
+          WHERE HINH_ANH_SAN_PHAM.SAN_PHAM_ID = sp.SAN_PHAM_ID
+          ORDER BY LA_ANH_CHINH DESC, HINH_ANH_ID ASC
+        ) img
+        WHERE sp.SAN_PHAM_ID=@SAN_PHAM_ID
         `);
       productInfo = productResult.recordset[0] ?? null;
     }
@@ -1005,6 +1100,86 @@ export const sendChat = async (req: Request, res: Response) => {
       // AI/image workflows can take longer than 30 seconds to finish.
       timeout: 120000
     });
+
+    const parsedResponse = parseN8nChatResponse(n8nRes.data);
+
+    if (customerId && (parsedResponse.reply || parsedResponse.imageUrl)) {
+      const answerText = parsedResponse.reply
+        || (parsedResponse.imageUrl ? 'Đây là bó hoa mình tạo cho bạn' : null);
+      const messageType = parsedResponse.imageUrl ? 'image_generation' : 'bot_reply';
+
+      const existingHistory = await pool.request()
+        .input('KHACH_HANG_ID', sql.NVarChar(20), customerId)
+        .input('NOI_DUNG_CAU_HOI', sql.NVarChar(sql.MAX), chatInput)
+        .input('NOI_DUNG_TRA_LOI', sql.NVarChar(sql.MAX), answerText)
+        .input('HINH_ANH', sql.NVarChar(sql.MAX), parsedResponse.imageUrl)
+        .query(`
+          SELECT TOP 1 TIN_NHAN_ID
+          FROM TIN_NHAN_CHAT
+          WHERE KHACH_HANG_ID = @KHACH_HANG_ID
+            AND ISNULL(NOI_DUNG_CAU_HOI, '') = ISNULL(@NOI_DUNG_CAU_HOI, '')
+            AND THOI_GIAN_GUI >= DATEADD(SECOND, -90, GETDATE())
+            AND (
+              ISNULL(NOI_DUNG_TRA_LOI, '') = ISNULL(@NOI_DUNG_TRA_LOI, '')
+              OR ISNULL(NOI_DUNG_TRA_LOI, '') = ISNULL(@HINH_ANH, '')
+              OR ISNULL(HINH_ANH, '') = ISNULL(@HINH_ANH, '')
+            )
+        `);
+
+      if (existingHistory.recordset.length === 0) {
+        const nextIdResult = await pool.request().query(`
+          SELECT ISNULL(MAX(TRY_CONVERT(int, SUBSTRING(TIN_NHAN_ID, 5, 20))), 0) + 1 AS NEXT_NUM
+          FROM TIN_NHAN_CHAT
+          WHERE TIN_NHAN_ID LIKE 'CHAT%'
+        `);
+        const chatHistoryId = makeChatId(Number(nextIdResult.recordset[0]?.NEXT_NUM || 1));
+
+        await pool.request()
+          .input('TIN_NHAN_ID', sql.NVarChar(20), chatHistoryId)
+          .input('KHACH_HANG_ID', sql.NVarChar(20), customerId)
+          .input('DON_HANG_ID', sql.NVarChar(20), toNullableString(targetOrderId))
+          .input('SAN_PHAM_ID', sql.NVarChar(20), toNullableString(productId))
+          .input('NOI_DUNG_CAU_HOI', sql.NVarChar(sql.MAX), chatInput)
+          .input('NOI_DUNG_TRA_LOI', sql.NVarChar(sql.MAX), answerText)
+          .input('LOAI_TIN_NHAN', sql.NVarChar(50), messageType)
+          .input('TRANG_THAI', sql.NVarChar(50), 'completed')
+          .input('HINH_ANH', sql.NVarChar(sql.MAX), parsedResponse.imageUrl)
+          .input('TEN_FILE_ANH', sql.NVarChar(255), parsedResponse.imageUrl ? 'chatbot-image' : null)
+          .input('LOAI_FILE_ANH', sql.NVarChar(100), parsedResponse.imageUrl ? 'image/web' : null)
+          .query(`
+            INSERT INTO TIN_NHAN_CHAT (
+              TIN_NHAN_ID,
+              KHACH_HANG_ID,
+              DON_HANG_ID,
+              SAN_PHAM_ID,
+              NOI_DUNG_CAU_HOI,
+              NOI_DUNG_TRA_LOI,
+              LOAI_TIN_NHAN,
+              THOI_GIAN_GUI,
+              TRANG_THAI,
+              HINH_ANH,
+              TEN_FILE_ANH,
+              LOAI_FILE_ANH
+            )
+            VALUES (
+              @TIN_NHAN_ID,
+              @KHACH_HANG_ID,
+              @DON_HANG_ID,
+              @SAN_PHAM_ID,
+              @NOI_DUNG_CAU_HOI,
+              @NOI_DUNG_TRA_LOI,
+              @LOAI_TIN_NHAN,
+              GETDATE(),
+              @TRANG_THAI,
+              @HINH_ANH,
+              @TEN_FILE_ANH,
+              @LOAI_FILE_ANH
+            )
+          `);
+
+        clearChatCache();
+      }
+    }
 
     return res.status(200).json(n8nRes.data);
 
