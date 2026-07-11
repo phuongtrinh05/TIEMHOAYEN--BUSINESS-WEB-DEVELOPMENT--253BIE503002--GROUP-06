@@ -16,3 +16,19 @@
     padding:24px;
     background:#F9FAFB;
 }
+
+/* Căn các popup trang sản phẩm theo vùng nội dung, không nằm dưới sidebar. */
+.admin-main .popup-overlay{
+    left:260px !important;
+}
+
+.admin-layout:has(app-admin-sidebar.sidebar-collapsed) .admin-main .popup-overlay{
+    left:70px !important;
+}
+
+@media (max-width: 768px){
+    .admin-main .popup-overlay,
+    .admin-layout:has(app-admin-sidebar.sidebar-collapsed) .admin-main .popup-overlay{
+        left:0 !important;
+    }
+}
