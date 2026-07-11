@@ -128,7 +128,6 @@ export class ArticleDetail implements OnInit {
 
   // TODO: thay bằng API key thật lấy từ https://www.tiny.cloud/auth/signup/
   // Nhớ vào dashboard > Approved Domains, thêm "localhost" và domain deploy (nếu có)
-  tinyMceApiKey = 'tnmscopp661zgr8581ytafirjrmngof4c1yknsleey6wxrvj'; 
 
 
   // Draft dùng riêng khi edit, không sửa bài gốc cho tới khi bấm Lưu
@@ -318,6 +317,9 @@ export class ArticleDetail implements OnInit {
 
   // ===== TINYMCE EDITOR =====
   tinyMceConfig = {
+    base_url: '/tinymce',
+    suffix: '.min',
+    license_key: 'gpl',
     height: 420,
     menubar: false,
     branding: false,

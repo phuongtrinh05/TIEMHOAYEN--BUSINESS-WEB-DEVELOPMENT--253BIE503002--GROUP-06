@@ -192,7 +192,6 @@
           <editor
             *ngIf="isEditorReady"
             [attr.data-editor-key]="editorKey"
-            [apiKey]="tinyMceApiKey"
             [(ngModel)]="editorContent"
             [init]="tinyMceConfig"
             [disabled]="!isEditing"
