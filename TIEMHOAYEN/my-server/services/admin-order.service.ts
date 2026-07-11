@@ -53,6 +53,7 @@ export interface AdminOrderDetailDto {
   adminReplyText: string;
   adminReplyTime: string;
   refundReason: string;
+  adminRejectReason: string;
   raw: {
     hiddenInfo: boolean;
     requireVat: boolean;
@@ -202,6 +203,8 @@ export const getAdminOrderDetailById = async (orderId: string): Promise<AdminOrd
         dh.LOI_NHAN_THIEP,
         dh.AN_THONG_TIN,
         dh.GHI_CHU,
+        dh.LY_DO_HOAN_TIEN_TRA_HANG,
+        dh.LY_DO_TU_CHOI,
         dh.TEN_NGUOI_NHAN,
         dh.SDT_NGUOI_NHAN,
         dh.DIA_CHI_GIAO_HANG,
@@ -353,7 +356,8 @@ export const getAdminOrderDetailById = async (orderId: string): Promise<AdminOrd
     reviewTime,
     adminReplyText: review?.PHAN_HOI_SHOP || '',
     adminReplyTime,
-    refundReason: '',
+    refundReason: row.LY_DO_HOAN_TIEN_TRA_HANG || '',
+    adminRejectReason: row.LY_DO_TU_CHOI || '',
     raw: {
       hiddenInfo: boolFromSql(row.AN_THONG_TIN),
       requireVat: boolFromSql(row.YEU_CAU_VAT),

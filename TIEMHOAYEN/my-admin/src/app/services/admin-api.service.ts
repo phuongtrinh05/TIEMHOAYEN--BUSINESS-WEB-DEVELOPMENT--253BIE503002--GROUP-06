@@ -120,6 +120,7 @@ export interface AdminOrderDetail {
   adminReplyText: string;
   adminReplyTime: string;
   refundReason: string;
+  adminRejectReason?: string;
 }
 
 export interface AdminOrderDetailResponse {

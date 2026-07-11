@@ -80,6 +80,7 @@ export interface IOrderDetail {
   adminReplyText: string;
   adminReplyTime: string;
   refundReason: string;
+  adminRejectReason?: string;
 }
 
 export interface TimelineStep {
@@ -248,6 +249,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       adminReplyText: '',
       adminReplyTime: '',
       refundReason: '',
+      adminRejectReason: '',
     };
   }
 
