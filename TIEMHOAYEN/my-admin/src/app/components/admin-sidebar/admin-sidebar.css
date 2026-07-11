@@ -1,6 +1,6 @@
 :host{
-    flex:0 0 300px;
-    width:300px;
+    flex:0 0 330px;
+    width:330px;
     transition:.3s ease;
 }
 
@@ -10,7 +10,7 @@
 }
 
 .admin-sidebar{
-    width:300px;
+    width:330px;
     height:100vh;
     position:fixed;
     left:0;
@@ -21,6 +21,7 @@
     border:1px solid #D9B382;
     display:flex;
     flex-direction:column;
+    box-sizing:border-box;
     padding:12px;
     font-family:var(--font-body);
     transition:.3s ease;
@@ -104,6 +105,7 @@
     display:flex;
     align-items:center;
     gap:12px;
+    min-width:0;
 
     padding:0 14px;
 
@@ -120,6 +122,14 @@
 
 .menu-item i{
     font-size:19px;
+    flex:0 0 22px;
+}
+
+.menu-item span{
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
 }
 
 /* Hover */
@@ -199,12 +209,17 @@
     display:flex;
     align-items:center;
     gap:10px;
+    min-width:0;
 
     padding:0 10px;
 
     margin-bottom:8px;
 
     background:#FFFFFF;
+}
+
+.admin-info div{
+    min-width:0;
 }
 
 .admin-info .bi-person-circle{
@@ -216,11 +231,18 @@
     font-size:14px;
     margin:0;
     color:#000000;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
 }
 
 .admin-info span{
     font-size:12px;
     color:#000000;
+    display:block;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
 }
 
 .admin-info .bi-box-arrow-right{
@@ -252,6 +274,7 @@
     font-size:14px;
     font-weight:600;
     cursor:pointer;
+    white-space:nowrap;
 }
 
 .store-btn:hover{
