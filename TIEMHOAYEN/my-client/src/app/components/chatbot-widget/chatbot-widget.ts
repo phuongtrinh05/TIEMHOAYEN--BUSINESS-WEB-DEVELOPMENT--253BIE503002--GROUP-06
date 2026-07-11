@@ -242,6 +242,40 @@ export class ChatbotWidget implements OnInit, OnDestroy {
       .trim();
   }
 
+  private isImageUrl(value: unknown): boolean {
+    const url = this.cleanImageUrl(value);
+
+    if (!url) {
+      return false;
+    }
+
+    return /^(https?:\/\/|data:image\/)/i.test(url) &&
+      (
+        /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(url) ||
+        /\/storage\/v1\/object\/public\//i.test(url) ||
+        /\/api\/chats\/image\//i.test(url) ||
+        /^data:image\/[^;]+;base64,/i.test(url)
+      );
+  }
+
+  private normalizeServerMessage(msg: ServerChatMessage): Message {
+    const content = String(msg.content || '').trim();
+    const explicitImageUrl = this.cleanImageUrl(msg.imageUrl);
+    const imageFromContent = !explicitImageUrl && this.isImageUrl(content)
+      ? this.cleanImageUrl(content)
+      : '';
+    const imageUrl = explicitImageUrl || imageFromContent;
+
+    return {
+      id: msg.id,
+      role: msg.role,
+      content: imageUrl && content === imageUrl ? '' : content,
+      imageUrl: imageUrl || undefined,
+      type: 'text',
+      time: msg.time || this.getTime()
+    };
+  }
+
   private normalizeVietnamese(value: string): string {
     return value
       .toLowerCase()
@@ -350,27 +384,32 @@ export class ChatbotWidget implements OnInit, OnDestroy {
       .subscribe({
         next: (res) => {
           const syncTypes = new Set(['human_request', 'staff_reply', 'image_generation', 'bot_reply']);
-          const newServerMessages = (res?.messages || []).filter(
-            (msg) => syncTypes.has(String(msg.type || '')) && !this.syncedServerMessageIds.has(msg.id)
+          const serverMessages = (res?.messages || []).filter((msg) =>
+            syncTypes.has(String(msg.type || ''))
           );
 
-          if (!newServerMessages.length) {
+          if (!serverMessages.length) {
             return;
           }
+
+          if (customerId) {
+            this.syncedServerMessageIds = new Set(serverMessages.map((msg) => msg.id));
+            this.messages = serverMessages.map((msg) => this.normalizeServerMessage(msg));
+
+            this.persistMessages();
+            this.cdr.detectChanges();
+            this.scrollToBottom();
+            return;
+          }
+
+          const newServerMessages = serverMessages.filter((msg) => !this.syncedServerMessageIds.has(msg.id));
 
           newServerMessages.forEach((msg) => {
             this.syncedServerMessageIds.add(msg.id);
             if (this.hasEquivalentMessage(msg)) {
               return;
             }
-            this.messages.push({
-              id: msg.id,
-              role: msg.role,
-              content: msg.content || '',
-              imageUrl: this.cleanImageUrl(msg.imageUrl) || undefined,
-              type: 'text',
-              time: msg.time || this.getTime()
-            });
+            this.messages.push(this.normalizeServerMessage(msg));
           });
 
           this.persistMessages();
@@ -432,13 +471,14 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   }
 
   private hasEquivalentMessage(msg: ServerChatMessage): boolean {
-    const content = String(msg.content || '').trim();
-    const imageUrl = String(msg.imageUrl || '').trim();
+    const normalized = this.normalizeServerMessage(msg);
+    const content = String(normalized.content || '').trim();
+    const imageUrl = this.cleanImageUrl(normalized.imageUrl);
 
     return this.messages.some((item) =>
       item.role === msg.role &&
       String(item.content || '').trim() === content &&
-      String(item.imageUrl || '').trim() === imageUrl
+      this.cleanImageUrl(item.imageUrl) === imageUrl
     );
   }
 
