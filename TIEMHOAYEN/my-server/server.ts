@@ -56,7 +56,20 @@ const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
   .map((origin) => origin.trim())
   .filter(Boolean);
 app.use(cors({
-  origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+  origin: (origin, callback) => {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    const isAllowedOrigin =
+      allowedOrigins.length === 0 ||
+      allowedOrigins.includes(origin) ||
+      /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin) ||
+      /^http:\/\/localhost:\d+$/i.test(origin);
+
+    callback(null, isAllowedOrigin);
+  },
   credentials: true
 }));
 app.use(express.json());
