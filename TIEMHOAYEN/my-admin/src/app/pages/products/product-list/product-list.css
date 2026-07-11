@@ -219,7 +219,9 @@ input[type="checkbox"] {
     display:flex;
     justify-content:center;
     align-items:center;
-    z-index:999;
+    z-index:2000;
+    padding:24px;
+    box-sizing:border-box;
 }
 
 .popup{
@@ -344,10 +346,10 @@ input[type="checkbox"] {
 }
 
 .create-product-popup{
-    width: 900px;
-    max-width: 95vw;
+    width:min(900px, 100%);
+    max-width:calc(100vw - 48px);
 
-    max-height: 90vh;
+    max-height:calc(100vh - 48px);
     overflow-y: auto;
     overflow-x: hidden;
 
@@ -387,6 +389,23 @@ input[type="checkbox"] {
     display:grid;
     grid-template-columns:1fr 1fr;
     gap:20px;
+}
+
+@media (max-width: 900px){
+    .popup-overlay{
+        padding:16px;
+    }
+
+    .create-product-popup{
+        max-width:calc(100vw - 32px);
+        max-height:calc(100vh - 32px);
+        padding:22px;
+    }
+
+    .form-grid,
+    .price-grid{
+        grid-template-columns:1fr;
+    }
 }
 
 .upload-wrapper{
