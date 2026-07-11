@@ -47,6 +47,7 @@ interface OrderDetailView {
   hasEditedShipping: boolean;
   cancelReason: string;
   returnRefundReason: string;
+  rejectReason: string;
 }
 
 interface OrderDetailProduct {
@@ -80,6 +81,8 @@ export class OrderDetail implements OnInit, OnDestroy {
   private readonly orderService = inject(OrderService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly ordersApiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/orders';
+  private readonly cartApiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/cart';
 
   isLoading = false;
   errorMessage = '';
@@ -121,7 +124,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     try {
       const lookupPhone = this.getLookupPhoneFromRoute();
       const phoneQuery = lookupPhone ? `?phone=${encodeURIComponent(lookupPhone)}` : '';
-      const apiUrl = `https://tiem-hoa-yen-api.onrender.com/api/orders/${encodeURIComponent(orderId)}/detail${phoneQuery}`;
+      const apiUrl = `${this.ordersApiUrl}/${encodeURIComponent(orderId)}/detail${phoneQuery}`;
       const response = await fetch(apiUrl);
 
       if (!response.ok) {
@@ -230,6 +233,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       hasEditedShipping: !!row.DA_CHINH_SUA_GIAO_HANG,
       cancelReason: String(row.LY_DO_HUY || ''),
       returnRefundReason: String(row.LY_DO_HOAN_TIEN_TRA_HANG || ''),
+      rejectReason: String(row.LY_DO_TU_CHOI || ''),
     };
   }
 
@@ -471,7 +475,11 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   private hasReturnRefundHistory(): boolean {
-    return !!String(this.order?.returnRefundReason || '').trim();
+    return !!String(this.order?.returnRefundReason || this.order?.rejectReason || '').trim();
+  }
+
+  shouldShowRejectReason(): boolean {
+    return !!String(this.order?.rejectReason || '').trim();
   }
 
   private normalizeStatus(status: string): string {
@@ -730,7 +738,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     this.cdr.detectChanges();
 
     try {
-      const response = await fetch(`https://tiem-hoa-yen-api.onrender.com/api/orders/${encodeURIComponent(this.order.id)}/cancel`, {
+      const response = await fetch(`${this.ordersApiUrl}/${encodeURIComponent(this.order.id)}/cancel`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -775,7 +783,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     this.cdr.detectChanges();
 
     try {
-      const response = await fetch(`https://tiem-hoa-yen-api.onrender.com/api/orders/${encodeURIComponent(this.order.id)}/return-refund`, {
+      const response = await fetch(`${this.ordersApiUrl}/${encodeURIComponent(this.order.id)}/return-refund`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -832,7 +840,7 @@ export class OrderDetail implements OnInit, OnDestroy {
           this.products
             .filter(product => String(product.id).startsWith('SP'))
             .map(product =>
-              fetch('https://tiem-hoa-yen-api.onrender.com/api/cart/add', {
+              fetch(`${this.cartApiUrl}/add`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -1063,6 +1071,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       hasEditedShipping: false,
       cancelReason: '',
       returnRefundReason: '',
+      rejectReason: '',
     };
   }
   isEditingShipping = false;
