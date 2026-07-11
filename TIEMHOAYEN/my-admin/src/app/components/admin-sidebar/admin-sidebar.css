@@ -1,6 +1,9 @@
 .admin-sidebar{
     width:260px;
-    min-height:100vh;
+    height:100vh;
+    position:sticky;
+    top:0;
+    flex-shrink:0;
     background:#FFFFFF;
     border:1px solid #D9B382;
     display:flex;
@@ -8,7 +11,8 @@
     padding:12px;
     font-family:var(--font-body);
     transition:.3s ease;
-    overflow:hidden;
+    overflow-y:auto;
+    overflow-x:hidden;
 }
 
 /* Thu gọn */
