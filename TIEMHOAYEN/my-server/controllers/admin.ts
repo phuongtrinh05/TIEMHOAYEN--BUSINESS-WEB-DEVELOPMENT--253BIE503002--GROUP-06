@@ -3288,6 +3288,8 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
         dh.TIEN_COC,
         dh.TONG_TIEN,
         dh.GHI_CHU,
+        dh.LY_DO_HOAN_TIEN_TRA_HANG,
+        dh.LY_DO_TU_CHOI,
         tt.TRANG_THAI_THANH_TOAN,
         tt.SO_TIEN,
         paid.PAID_AMOUNT
@@ -3338,14 +3340,13 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
       UPDATE DON_HANG
       SET
         TRANG_THAI = @TRANG_THAI,
-        GHI_CHU = CASE
-          WHEN @REJECT_REASON IS NULL OR LTRIM(RTRIM(@REJECT_REASON)) = '' THEN GHI_CHU
-          WHEN GHI_CHU IS NULL OR LTRIM(RTRIM(GHI_CHU)) = '' THEN N'Lý do từ chối hoàn tiền/trả hàng: ' + @REJECT_REASON
-          ELSE GHI_CHU + N' | Lý do từ chối hoàn tiền/trả hàng: ' + @REJECT_REASON
+        LY_DO_TU_CHOI = CASE
+          WHEN @REJECT_REASON IS NULL OR LTRIM(RTRIM(@REJECT_REASON)) = '' THEN LY_DO_TU_CHOI
+          ELSE @REJECT_REASON
         END
       WHERE DON_HANG_ID = @DON_HANG_ID;
 
-      SELECT DON_HANG_ID, TRANG_THAI, GHI_CHU
+      SELECT DON_HANG_ID, TRANG_THAI, GHI_CHU, LY_DO_HOAN_TIEN_TRA_HANG, LY_DO_TU_CHOI
       FROM DON_HANG
       WHERE DON_HANG_ID = @DON_HANG_ID;
     `);
