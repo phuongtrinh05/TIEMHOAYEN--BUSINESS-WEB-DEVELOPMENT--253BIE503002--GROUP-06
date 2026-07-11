@@ -12,8 +12,6 @@ export class AboutUs implements AfterViewInit, OnDestroy {
 
   private observer?: IntersectionObserver;
   private reviewIndex = 0;
-  private reviewTimer: ReturnType<typeof setInterval> | null = null;
-  private reviewPaused = false;
 
   constructor(private hostRef: ElementRef<HTMLElement>) {}
 
@@ -38,14 +36,10 @@ export class AboutUs implements AfterViewInit, OnDestroy {
     );
 
     elements.forEach(el => this.observer?.observe(el));
-    this.startReviewAutoSlide();
   }
 
   ngOnDestroy(): void {
     this.observer?.disconnect();
-    if (this.reviewTimer) {
-      clearInterval(this.reviewTimer);
-    }
   }
 
   teamMembers = [
@@ -131,35 +125,9 @@ export class AboutUs implements AfterViewInit, OnDestroy {
 
   previousReview(): void {
     this.reviewIndex = (this.reviewIndex - 1 + this.reviews.length) % this.reviews.length;
-    this.restartReviewAutoSlide();
   }
 
-  nextReview(manual = true): void {
+  nextReview(): void {
     this.reviewIndex = (this.reviewIndex + 1) % this.reviews.length;
-    if (manual) {
-      this.restartReviewAutoSlide();
-    }
-  }
-
-  pauseReviewSlider(): void { this.reviewPaused = true; }
-  resumeReviewSlider(): void { this.reviewPaused = false; }
-
-  private startReviewAutoSlide(): void {
-    if (typeof window === 'undefined' || this.reviewTimer || this.reviews.length < 2) {
-      return;
-    }
-    this.reviewTimer = setInterval(() => {
-      if (!this.reviewPaused && document.visibilityState === 'visible') {
-        this.nextReview(false);
-      }
-    }, 5000);
-  }
-
-  private restartReviewAutoSlide(): void {
-    if (this.reviewTimer) {
-      clearInterval(this.reviewTimer);
-      this.reviewTimer = null;
-    }
-    this.startReviewAutoSlide();
   }
 }
