@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { connectDB, sql } from '../db.js';
 import axios from 'axios';
 
-const N8N_WEBHOOK_URL = 'http://100.91.189.34:5678/webhook/2bb78087-b702-4dc2-91d4-12b65ef2dc79';
+const N8N_WEBHOOK_URL = 'https://thuongthu.app.n8n.cloud/webhook/2bb78087-b702-4dc2-91d4-12b65ef2dc79';
 
 // ================================================================
 // sendChat — POST /api/chat

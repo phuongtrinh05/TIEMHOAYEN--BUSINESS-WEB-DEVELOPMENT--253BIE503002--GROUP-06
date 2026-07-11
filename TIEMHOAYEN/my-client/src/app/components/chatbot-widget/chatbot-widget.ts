@@ -62,7 +62,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   loadingText = 'Dang xu ly...';
   private isSending = false;
 
-  private webhookUrl = 'http://localhost:5678/webhook/2bb78087-b702-4dc2-91d4-12b65ef2dc79';
+  private webhookUrl = 'https://thuongthu.app.n8n.cloud/webhook/2bb78087-b702-4dc2-91d4-12b65ef2dc79';
   private handoffUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chat/handoff';
   private customerMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chat/customer';
   private guestMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chat/guest';
