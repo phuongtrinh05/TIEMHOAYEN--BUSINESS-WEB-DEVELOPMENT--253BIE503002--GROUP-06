@@ -603,12 +603,13 @@ export interface AdminDashboardResponse {
   providedIn: 'root',
 })
 export class AdminApiService {
-  private readonly apiUrl = 'http://localhost:3000/api/admin';
-  private readonly employeeApiUrl = 'http://localhost:3000/api/employees';
-  private readonly chatApiUrl = 'http://localhost:3000/api/chats';
-  private readonly blogApiUrl = 'http://localhost:3000/api/blogs';
-  private readonly faqApiUrl = 'http://localhost:3000/api/faqs';
-  private readonly reviewApiUrl = 'http://localhost:3000/api/reviews';
+  private readonly apiBaseUrl = 'https://tiem-hoa-yen-api.onrender.com/api';
+  private readonly apiUrl = `${this.apiBaseUrl}/admin`;
+  private readonly employeeApiUrl = `${this.apiBaseUrl}/employees`;
+  private readonly chatApiUrl = `${this.apiBaseUrl}/chats`;
+  private readonly blogApiUrl = `${this.apiBaseUrl}/blogs`;
+  private readonly faqApiUrl = `${this.apiBaseUrl}/faqs`;
+  private readonly reviewApiUrl = `${this.apiBaseUrl}/reviews`;
   private readonly customerDetailCache = new Map<string, AdminCustomerDetailResponse>();
   private ordersCache: AdminOrdersResponse | null = null;
   private ordersCacheAt = 0;
