@@ -1053,6 +1053,14 @@
     box-shadow: 0 14px 30px rgba(115, 25, 25, 0.15);
 }
 
+/* Desktop/tablet use a complete five-card row; the sixth card is reserved
+   to complete the two-column grid on small screens. */
+@media (min-width: 641px) {
+    .related-card:nth-child(n + 6) {
+        display: none;
+    }
+}
+
 .related-media {
     position: relative;
     width: 100%;

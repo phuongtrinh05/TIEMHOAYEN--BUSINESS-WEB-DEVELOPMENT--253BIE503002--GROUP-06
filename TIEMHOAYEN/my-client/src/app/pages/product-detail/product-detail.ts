@@ -128,6 +128,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
 
   reviews: ProductReviewView[] = [];
   relatedProducts: RelatedProduct[] = [];
+  private readonly relatedProductsTargetCount = 6;
   activeImageViewer: ReviewImageViewer | null = null;
   breadcrumbGroupLabel = 'Chủ đề';
   breadcrumbReturnUrl = '/category';
@@ -342,7 +343,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
 
         const sameTopicProducts = this.getSameTopicRelatedProducts(products, currentProductId);
 
-        if (sameTopicProducts.length >= 5) {
+        if (sameTopicProducts.length >= this.relatedProductsTargetCount) {
           this.setRelatedProducts(sameTopicProducts, [], currentProductId);
           return;
         }
@@ -366,7 +367,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       next: (res) => {
         const bestSellerProducts = Array.isArray(res.products) ? res.products : [];
 
-        if (sameTopicProducts.length + bestSellerProducts.length >= 5) {
+        if (sameTopicProducts.length + bestSellerProducts.length >= this.relatedProductsTargetCount) {
           this.setRelatedProducts(sameTopicProducts, bestSellerProducts, currentProductId);
           return;
         }
@@ -393,7 +394,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       next: (res) => {
         const saleProducts = Array.isArray(res.products) ? res.products : [];
 
-        if (currentProducts.length + saleProducts.length >= 5) {
+        if (currentProducts.length + saleProducts.length >= this.relatedProductsTargetCount) {
           this.setRelatedProducts(currentProducts, saleProducts, currentProductId);
           return;
         }
@@ -481,7 +482,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       relatedMap.set(item.SAN_PHAM_ID, this.mapCategoryProductToRelatedProduct(item));
     });
 
-    this.relatedProducts = Array.from(relatedMap.values()).slice(0, 5);
+    this.relatedProducts = Array.from(relatedMap.values()).slice(0, this.relatedProductsTargetCount);
     this.syncRelatedWishlistState();
     this.cdr.detectChanges();
     this.scheduleRevealObserver();
