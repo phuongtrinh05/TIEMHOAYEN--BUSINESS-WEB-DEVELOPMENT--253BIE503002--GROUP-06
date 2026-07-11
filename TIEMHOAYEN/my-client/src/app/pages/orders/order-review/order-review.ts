@@ -149,7 +149,6 @@ export class OrderReview implements OnInit, OnDestroy {
     this.pickerError = '';
     this.selectedOrder = null;
     this.selectedProduct = null;
-    this.previousReviews = [];
     this.pickerStep = this.isLoggedIn ? 'order' : 'guest-lookup';
 
     if (this.isLoggedIn && this.orders.length === 0 && !this.loadingOrders) {
@@ -541,13 +540,52 @@ export class OrderReview implements OnInit, OnDestroy {
     this.selectedFiles = [];
   }
 
+  private get customerReviewsCacheKey(): string {
+    return `tiemHoaYen:review-history:${this.currentCustomerId}`;
+  }
+
+  private restoreCustomerReviewHistory(): boolean {
+    try {
+      const raw = localStorage.getItem(this.customerReviewsCacheKey);
+      if (!raw) return false;
+
+      const cache = JSON.parse(raw) as { expiresAt?: number; reviews?: ProductReview[] };
+      if (!cache.expiresAt || cache.expiresAt <= Date.now() || !Array.isArray(cache.reviews)) {
+        localStorage.removeItem(this.customerReviewsCacheKey);
+        return false;
+      }
+
+      this.previousReviews = cache.reviews;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private cacheCustomerReviewHistory(): void {
+    if (!this.currentCustomerId) return;
+
+    try {
+      localStorage.setItem(
+        this.customerReviewsCacheKey,
+        JSON.stringify({
+          expiresAt: Date.now() + this.orderCacheTtlMs,
+          reviews: this.previousReviews,
+        })
+      );
+    } catch {
+      // Cache is optional and must not block the review page.
+    }
+  }
+
   private loadCustomerReviewHistory(): void {
     if (!this.currentCustomerId) {
       this.previousReviews = [];
       return;
     }
 
-    this.loadingReviews = true;
+    const hasCachedReviews = this.restoreCustomerReviewHistory();
+    this.loadingReviews = !hasCachedReviews;
 
     this.fetchWithTimeout(
       `${this.apiUrl}/customer/${encodeURIComponent(this.currentCustomerId)}/history`
@@ -563,12 +601,13 @@ export class OrderReview implements OnInit, OnDestroy {
       })
       .then(data => {
         this.previousReviews = Array.isArray(data.reviews) ? data.reviews : [];
+        this.cacheCustomerReviewHistory();
         this.loadingReviews = false;
         this.refreshView();
       })
       .catch(error => {
         console.error('Lỗi load lịch sử đánh giá của khách hàng:', error);
-        this.previousReviews = [];
+        if (!hasCachedReviews) this.previousReviews = [];
         this.loadingReviews = false;
         this.refreshView();
       });
@@ -642,6 +681,8 @@ export class OrderReview implements OnInit, OnDestroy {
       review,
       ...this.previousReviews.filter(item => item.reviewId !== review.reviewId),
     ];
+
+    if (this.isLoggedIn) this.cacheCustomerReviewHistory();
   }
 
   private loadProductReviews(productId: string): void {
