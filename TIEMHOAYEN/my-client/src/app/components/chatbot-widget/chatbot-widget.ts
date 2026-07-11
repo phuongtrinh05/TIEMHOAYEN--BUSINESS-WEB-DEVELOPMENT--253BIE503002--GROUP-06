@@ -403,6 +403,51 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     this.scrollToBottom();
   }
 
+  private parseWebhookResponse(response: any): { reply: string; imageUrl?: string } {
+    let reply = '';
+    let imageUrl = '';
+    const visited = new Set<any>();
+
+    const visit = (value: any): void => {
+      if (value === null || value === undefined || visited.has(value)) return;
+
+      if (typeof value === 'string') {
+        const text = value.trim();
+        if (!text) return;
+
+        if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+          try {
+            visit(JSON.parse(text));
+            return;
+          } catch {
+            // This is a regular text reply, not serialized JSON.
+          }
+        }
+        return;
+      }
+
+      if (typeof value !== 'object') return;
+      visited.add(value);
+
+      if (Array.isArray(value)) {
+        value.forEach(visit);
+        return;
+      }
+
+      const textCandidate =
+        value.output ?? value.reply ?? value.message ?? value.text ?? value.content?.parts?.[0]?.text;
+      const imageCandidate = value.image_url ?? value.imageUrl ?? value.image;
+
+      if (!reply && typeof textCandidate === 'string') reply = textCandidate.trim();
+      if (!imageUrl && typeof imageCandidate === 'string') imageUrl = imageCandidate.trim();
+
+      Object.values(value).forEach(visit);
+    };
+
+    visit(response);
+    return { reply, imageUrl: imageUrl || undefined };
+  }
+
   sendMessage(): void {
     const imagePayload = this.getSelectedImagePayload();
 
@@ -460,23 +505,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
           this.isLoading = false;
           this.isSending = false;
           console.log('Response:', res);
-          const responseItems = Array.isArray(res) ? res : [res];
-          const responseData = responseItems.reduce(
-            (merged: Record<string, any>, item: any) => ({
-              ...merged,
-              ...(item && typeof item === 'object' ? item : {})
-            }),
-            {}
-          );
-          const reply = responseData?.output ||
-            responseData?.reply ||
-            responseData?.message ||
-            responseData?.text ||
-            responseData?.content?.parts?.[0]?.text ||
-            '';
-          const imageUrl = String(
-            responseData?.image_url || responseData?.imageUrl || ''
-          ).trim() || undefined;
+          const { reply, imageUrl } = this.parseWebhookResponse(res);
 
           this.messages.push({
             role: 'bot',
