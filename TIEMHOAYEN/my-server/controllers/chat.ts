@@ -389,7 +389,7 @@ export const getCustomerChatMessages = async (req: Request, res: Response) => {
       const answerCanUseStoredImage =
         isStaffMessage || row.LOAI_TIN_NHAN === 'image_generation' || row.LOAI_TIN_NHAN === 'bot_reply';
       const detectedAnswerImageUrl = getChatMessageImageUrl(answer) || (answerCanUseStoredImage ? row.HINH_ANH || null : null);
-      const answerImageUrl = detectedAnswerImageUrl ? makeChatImageApiUrl(row.TIN_NHAN_ID) || detectedAnswerImageUrl : null;
+      const answerImageUrl = getDisplayChatImageUrl(detectedAnswerImageUrl, row.TIN_NHAN_ID);
       const answerContent = answer && answer !== detectedAnswerImageUrl
         ? answer
         : row.LOAI_TIN_NHAN === 'image_generation'
@@ -530,7 +530,7 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
       const answerCanUseStoredImage =
         isStaffMessage || row.LOAI_TIN_NHAN === 'image_generation' || row.LOAI_TIN_NHAN === 'bot_reply';
       const detectedAnswerImageUrl = getChatMessageImageUrl(answer) || (answerCanUseStoredImage ? row.HINH_ANH || null : null);
-      const answerImageUrl = detectedAnswerImageUrl ? makeChatImageApiUrl(row.TIN_NHAN_ID) || detectedAnswerImageUrl : null;
+      const answerImageUrl = getDisplayChatImageUrl(detectedAnswerImageUrl, row.TIN_NHAN_ID);
       const answerContent = answer && answer !== detectedAnswerImageUrl
         ? answer
         : row.LOAI_TIN_NHAN === 'image_generation'
@@ -888,6 +888,16 @@ const makeChatImageApiUrl = (chatId: unknown): string | null => {
   return id ? `${CHAT_PUBLIC_BASE_URL}/api/chats/image/${encodeURIComponent(id)}` : null;
 };
 
+const getDisplayChatImageUrl = (imageValue: unknown, chatId: unknown): string | null => {
+  const imageUrl = getChatMessageImageUrl(imageValue);
+
+  if (!imageUrl) {
+    return null;
+  }
+
+  return /^https?:\/\//i.test(imageUrl) ? imageUrl : makeChatImageApiUrl(chatId);
+};
+
 const cleanImageUrl = (value: unknown): string | null => {
   const text = toNullableString(value);
   if (!text) return null;
@@ -901,6 +911,54 @@ const cleanImageUrl = (value: unknown): string | null => {
 const getChatMessageImageUrl = (value: unknown): string | null => {
   const text = toNullableString(value);
   if (!text) return null;
+
+  if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+    try {
+      const parsed = JSON.parse(text);
+      const visited = new Set<unknown>();
+
+      const scan = (item: unknown): string | null => {
+        if (item === null || item === undefined || visited.has(item)) return null;
+        if (typeof item === 'string') return item === text ? null : getChatMessageImageUrl(item);
+        if (typeof item !== 'object') return null;
+
+        visited.add(item);
+
+        if (Array.isArray(item)) {
+          for (const entry of item) {
+            const found = scan(entry);
+            if (found) return found;
+          }
+
+          return null;
+        }
+
+        const row = item as Record<string, unknown>;
+        const direct =
+          row.image_url ??
+          row.imageUrl ??
+          row.url ??
+          row.secure_url ??
+          row.fileUrl ??
+          (row.image as Record<string, unknown> | undefined)?.url ??
+          (row.data as Record<string, unknown> | undefined)?.url;
+        const foundDirect = scan(direct);
+        if (foundDirect) return foundDirect;
+
+        for (const entry of Object.values(row)) {
+          const found = scan(entry);
+          if (found) return found;
+        }
+
+        return null;
+      };
+
+      const parsedUrl = scan(parsed);
+      if (parsedUrl) return parsedUrl;
+    } catch {
+      // Keep scanning as plain text below.
+    }
+  }
 
   const markdownImage = text.match(/!\[[^\]]*]\(([^)\s]+)[^)]*\)/);
   const candidate = cleanImageUrl(markdownImage?.[1] || text);

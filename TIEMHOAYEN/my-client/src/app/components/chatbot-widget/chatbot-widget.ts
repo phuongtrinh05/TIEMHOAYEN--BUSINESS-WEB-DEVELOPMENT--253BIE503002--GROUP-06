@@ -242,6 +242,76 @@ export class ChatbotWidget implements OnInit, OnDestroy {
       .trim();
   }
 
+  private extractImageUrl(value: unknown): string {
+    const visited = new Set<unknown>();
+
+    const visit = (item: unknown): string => {
+      if (item === null || item === undefined || visited.has(item)) {
+        return '';
+      }
+
+      if (typeof item === 'string') {
+        const text = item.trim();
+        if (!text) return '';
+
+        if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+          try {
+            return visit(JSON.parse(text));
+          } catch {
+            // Continue parsing this value as plain text.
+          }
+        }
+
+        const markdownImage = text.match(/!\[[^\]]*]\(([^)\s]+)[^)]*\)/);
+        const candidate = this.cleanImageUrl(markdownImage?.[1] || text);
+
+        if (this.isImageUrl(candidate)) return candidate;
+
+        const imageUrlMatch = text.match(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?/i);
+        const storageUrlMatch = text.match(/https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*/i);
+        return this.cleanImageUrl(imageUrlMatch?.[0] || storageUrlMatch?.[0]);
+      }
+
+      if (typeof item !== 'object') {
+        return '';
+      }
+
+      visited.add(item);
+
+      if (Array.isArray(item)) {
+        for (const entry of item) {
+          const found = visit(entry);
+          if (found) return found;
+        }
+
+        return '';
+      }
+
+      const row = item as Record<string, any>;
+      const direct =
+        row.image_url ??
+        row.imageUrl ??
+        row.url ??
+        row.secure_url ??
+        row.fileUrl ??
+        row.image?.url ??
+        row.image?.src ??
+        row.image?.data ??
+        row.data?.url;
+      const foundDirect = visit(direct);
+      if (foundDirect) return foundDirect;
+
+      for (const entry of Object.values(row)) {
+        const found = visit(entry);
+        if (found) return found;
+      }
+
+      return '';
+    };
+
+    return visit(value);
+  }
+
   private isImageUrl(value: unknown): boolean {
     const url = this.cleanImageUrl(value);
 
@@ -260,16 +330,14 @@ export class ChatbotWidget implements OnInit, OnDestroy {
 
   private normalizeServerMessage(msg: ServerChatMessage): Message {
     const content = String(msg.content || '').trim();
-    const explicitImageUrl = this.cleanImageUrl(msg.imageUrl);
-    const imageFromContent = !explicitImageUrl && this.isImageUrl(content)
-      ? this.cleanImageUrl(content)
-      : '';
+    const explicitImageUrl = this.extractImageUrl(msg.imageUrl);
+    const imageFromContent = !explicitImageUrl ? this.extractImageUrl(content) : '';
     const imageUrl = explicitImageUrl || imageFromContent;
 
     return {
       id: msg.id,
       role: msg.role,
-      content: imageUrl && content === imageUrl ? '' : content,
+      content: imageUrl && (content === imageUrl || this.extractImageUrl(content) === imageUrl) ? '' : content,
       imageUrl: imageUrl || undefined,
       type: 'text',
       time: msg.time || this.getTime()
