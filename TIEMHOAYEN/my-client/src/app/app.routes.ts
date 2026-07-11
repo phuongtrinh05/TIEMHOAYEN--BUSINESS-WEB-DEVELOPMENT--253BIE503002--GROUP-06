@@ -44,8 +44,6 @@ import { ProductDetailComponent } from './pages/product-detail/product-detail';
 // =========================
 // POLICY
 // =========================
-// PolicyLayoutComponent đã import tất cả component chính sách con,
-// nên app.routes.ts chỉ cần import component này.
 import { PolicyLayoutComponent } from './pages/policy/policy-layout';
 
 export const routes: Routes = [
@@ -273,7 +271,6 @@ export const routes: Routes = [
   // =========================
   // POLICY
   // =========================
-  // Truy cập /policy sẽ mặc định mở chính sách đặt hàng.
   {
     path: 'policy',
     redirectTo: 'policy/order',
