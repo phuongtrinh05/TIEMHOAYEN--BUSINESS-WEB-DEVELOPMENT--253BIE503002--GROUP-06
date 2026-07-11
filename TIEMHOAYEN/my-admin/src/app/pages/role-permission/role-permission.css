@@ -46,41 +46,68 @@
 
 .role-sidebar table{
     width:100%;
-    border-collapse:collapse;
-}
-
-.role-sidebar thead{
-    background:#F9DADA;
+    border-collapse:separate;
+    border-spacing:0 10px;
 }
 
 .role-sidebar th{
-    padding:14px;
+    background:#F9DADA;
+    padding:14px 16px;
     text-align:left;
 }
 
+.role-sidebar th:first-child{
+    border-radius:8px 0 0 8px;
+}
+
+.role-sidebar th:last-child{
+    border-radius:0 8px 8px 0;
+    text-align:center;
+    width:120px;
+}
+
 .role-sidebar td{
-    padding:16px 14px;
-    border-bottom:1px solid #ECECEC;
+    background:#fff;
+    padding:15px 16px;
+    border-top:1px solid #F0E1E1;
+    border-bottom:1px solid #F0E1E1;
+}
+
+.role-sidebar td:first-child{
+    border-left:1px solid #F0E1E1;
+    border-radius:8px 0 0 8px;
+}
+
+.role-sidebar td:last-child{
+    border-right:1px solid #F0E1E1;
+    border-radius:0 8px 8px 0;
+    text-align:center;
 }
 
 .role-sidebar tbody tr{
     cursor:pointer;
-    transition:background-color .18s ease, color .18s ease;
+    transition:transform .18s ease;
+}
+
+.role-sidebar tbody tr td{
+    transition:background-color .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
 
 .role-sidebar tbody tr:hover td{
-    background:#FFF3F3;
+    background:#FFF7F7;
+    border-color:#F2CACA;
 }
 
 .role-sidebar tbody tr.active td{
-    background:#F9DADA;
+    background:#FFF0F0;
+    border-color:#E8B8B8;
     color:#731919;
     font-weight:700;
 }
 
 .role-sidebar tbody tr.active td:first-child{
-    border-left:4px solid #731919;
-    padding-left:10px;
+    box-shadow:inset 4px 0 0 #731919;
+    padding-left:18px;
 }
 
 /* RIGHT */
