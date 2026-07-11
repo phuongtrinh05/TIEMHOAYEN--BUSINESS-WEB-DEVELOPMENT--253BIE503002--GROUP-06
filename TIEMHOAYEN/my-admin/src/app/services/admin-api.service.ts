@@ -422,10 +422,13 @@ export interface AdminVoucher {
   code: string;
   voucherCode: string;
   campaignCode: string;
+  customerId: string;
+  customerName: string;
   discountType: string;
   discountValue: number;
   startDate: string;
   endDate: string;
+  used: boolean;
   selected: boolean;
 }
 
@@ -724,6 +727,7 @@ export class AdminApiService {
     orderStatus: string;
     shippingFee: number;
     tax: number;
+    voucher?: { id?: string; code?: string } | null;
     voucherDiscount: number;
     loyaltyDiscount: number;
   }): Observable<{ message: string; orderId: string }> {
@@ -1110,12 +1114,13 @@ export class AdminApiService {
   createVoucher(payload: {
     voucherCode: string;
     campaignCode: string;
+    customerIds?: string[];
     discountType: string;
     discountValue: number;
     startDate: string;
     endDate: string;
-  }): Observable<{ message: string; voucher: AdminVoucher }> {
-    return this.http.post<{ message: string; voucher: AdminVoucher }>(
+  }): Observable<{ message: string; voucher: AdminVoucher; vouchers?: AdminVoucher[] }> {
+    return this.http.post<{ message: string; voucher: AdminVoucher; vouchers?: AdminVoucher[] }>(
       `${this.apiUrl}/vouchers`,
       payload
     );
@@ -1326,4 +1331,3 @@ export class AdminApiService {
     );
   }
 }
-

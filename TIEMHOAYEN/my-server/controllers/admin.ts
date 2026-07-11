@@ -612,6 +612,7 @@ export const createAdminOrder = async (req: Request, res: Response) => {
       orderStatus,
       shippingFee,
       tax,
+      voucher,
       voucherDiscount,
       loyaltyDiscount,
     } = req.body;
@@ -727,6 +728,71 @@ export const createAdminOrder = async (req: Request, res: Response) => {
       `);
     }
 
+    const requestedVoucherId = String(voucher?.id || '').trim();
+    const requestedVoucherCode = String(voucher?.code || '').trim().toUpperCase();
+
+    if (requestedVoucherId || requestedVoucherCode) {
+      const voucherCheckRequest = new sql.Request(tx);
+      voucherCheckRequest.input('VOUCHER_ID', sql.NVarChar(10), requestedVoucherId);
+      voucherCheckRequest.input('MA_VOUCHER', sql.NVarChar(50), requestedVoucherCode);
+
+      if (customerId) {
+        voucherCheckRequest.input('KHACH_HANG_ID', sql.NVarChar(20), customerId);
+      }
+
+      const customerCondition = customerId
+        ? 'AND (v.KHACH_HANG_ID = @KHACH_HANG_ID OR v.KHACH_HANG_ID IS NULL)'
+        : 'AND v.KHACH_HANG_ID IS NULL';
+      const customerOrder = customerId
+        ? 'CASE WHEN v.KHACH_HANG_ID = @KHACH_HANG_ID THEN 0 ELSE 1 END,'
+        : '';
+
+      const voucherCheck = await voucherCheckRequest.query(`
+        SELECT TOP 1
+          v.VOUCHER_ID,
+          v.MA_VOUCHER
+        FROM VOUCHER v
+        WHERE ISNULL(v.DA_DUNG, 0) = 0
+          ${customerCondition}
+          AND (
+            v.NGAY_BAT_DAU IS NULL
+            OR CAST(GETDATE() AS date) >= CAST(v.NGAY_BAT_DAU AS date)
+          )
+          AND (
+            v.NGAY_KET_THUC IS NULL
+            OR CAST(GETDATE() AS date) <= CAST(v.NGAY_KET_THUC AS date)
+          )
+          AND (
+            (@VOUCHER_ID <> N'' AND v.VOUCHER_ID = @VOUCHER_ID)
+            OR (@VOUCHER_ID = N'' AND @MA_VOUCHER <> N'' AND UPPER(v.MA_VOUCHER) = @MA_VOUCHER)
+          )
+        ORDER BY ${customerOrder} v.VOUCHER_ID ASC
+      `);
+
+      if (voucherCheck.recordset.length === 0) {
+        const voucherError: any = new Error(customerId
+          ? 'Voucher không hợp lệ, đã hết hạn hoặc không thuộc khách hàng này.'
+          : 'Voucher không hợp lệ, đã hết hạn hoặc không dành cho khách vãng lai.');
+        voucherError.statusCode = 400;
+        throw voucherError;
+      }
+
+      const checkedVoucher = voucherCheck.recordset[0];
+      const orderVoucherRequest = new sql.Request(tx);
+      orderVoucherRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
+      orderVoucherRequest.input('VOUCHER_ID', sql.NVarChar(10), checkedVoucher.VOUCHER_ID);
+      orderVoucherRequest.input('MO_TA', sql.NVarChar(255), `Áp dụng voucher ${checkedVoucher.MA_VOUCHER}`);
+
+      await orderVoucherRequest.query(`
+        INSERT INTO DON_HANG_VOUCHER (DON_HANG_ID, VOUCHER_ID, MO_TA)
+        VALUES (@DON_HANG_ID, @VOUCHER_ID, @MO_TA);
+
+        UPDATE VOUCHER
+        SET DA_DUNG = 1
+        WHERE VOUCHER_ID = @VOUCHER_ID;
+      `);
+    }
+
     await tx.commit();
     return res.status(201).json({ message: 'Order created.', orderId });
   } catch (error: any) {
@@ -734,7 +800,8 @@ export const createAdminOrder = async (req: Request, res: Response) => {
       try { await tx.rollback(); } catch {}
     }
     console.error('Admin create order error:', error);
-    return res.status(500).json({ message: 'Cannot create order: ' + error.message });
+    const statusCode = Number(error?.statusCode || 500);
+    return res.status(statusCode).json({ message: 'Cannot create order: ' + error.message });
   }
 };
 
@@ -3567,10 +3634,13 @@ const mapAdminVoucher = (row: any, index: number) => ({
   code: row.VOUCHER_ID,
   voucherCode: row.MA_VOUCHER || '',
   campaignCode: row.CHIEN_DICH_ID || '',
+  customerId: row.KHACH_HANG_ID || '',
+  customerName: row.TEN_KHACH_HANG || '',
   discountType: row.LOAI_GIAM_GIA || '',
   discountValue: Number(row.GIA_TRI_GIAM || 0),
   startDate: row.NGAY_BAT_DAU ? new Date(row.NGAY_BAT_DAU).toISOString() : '',
   endDate: row.NGAY_KET_THUC ? new Date(row.NGAY_KET_THUC).toISOString() : '',
+  used: Boolean(row.DA_DUNG),
   selected: false,
 });
 
@@ -3594,6 +3664,26 @@ const normalizeAdminDiscountType = (value: unknown): string | null => {
   if (normalized === 'phan tram') return 'Phần trăm';
 
   return type;
+};
+
+const normalizeVoucherCustomerIds = (customerIds: unknown, customerId?: unknown): string[] => {
+  const rawValues = Array.isArray(customerIds)
+    ? customerIds
+    : customerIds
+      ? [customerIds]
+      : customerId
+        ? [customerId]
+        : [];
+
+  return Array.from(new Set(
+    rawValues
+      .map((value) => String(value || '').replace(/^#/, '').trim())
+      .filter(Boolean)
+  ));
+};
+
+const buildPrefixedId = (prefix: string, width: number, value: number): string => {
+  return `${prefix}${value.toString().padStart(width, '0')}`;
 };
 
 export const getAdminCampaigns = async (_req: Request, res: Response) => {
@@ -3752,15 +3842,19 @@ export const getAdminVouchers = async (_req: Request, res: Response) => {
   try {
     const result = await sql.query(`
       SELECT
-        VOUCHER_ID,
-        CHIEN_DICH_ID,
-        MA_VOUCHER,
-        LOAI_GIAM_GIA,
-        GIA_TRI_GIAM,
-        NGAY_BAT_DAU,
-        NGAY_KET_THUC
-      FROM VOUCHER
-      ORDER BY NGAY_BAT_DAU DESC, VOUCHER_ID DESC
+        v.VOUCHER_ID,
+        v.CHIEN_DICH_ID,
+        v.KHACH_HANG_ID,
+        kh.TEN AS TEN_KHACH_HANG,
+        v.MA_VOUCHER,
+        v.LOAI_GIAM_GIA,
+        v.GIA_TRI_GIAM,
+        v.NGAY_BAT_DAU,
+        v.NGAY_KET_THUC,
+        v.DA_DUNG
+      FROM VOUCHER v
+      LEFT JOIN KHACH_HANG kh ON kh.KHACH_HANG_ID = v.KHACH_HANG_ID
+      ORDER BY v.NGAY_BAT_DAU DESC, v.VOUCHER_ID DESC
     `);
 
     const vouchers = result.recordset.map(mapAdminVoucher);
@@ -3772,8 +3866,9 @@ export const getAdminVouchers = async (_req: Request, res: Response) => {
 };
 
 export const createAdminVoucher = async (req: Request, res: Response) => {
+  const tx = new sql.Transaction();
   try {
-    const { voucherCode, campaignCode, discountType, discountValue, startDate, endDate } = req.body;
+    const { voucherCode, campaignCode, customerIds, customerId, discountType, discountValue, startDate, endDate } = req.body;
 
     if (!String(voucherCode || '').trim()) {
       return res.status(400).json({ message: 'Voucher code is required.' });
@@ -3795,60 +3890,97 @@ export const createAdminVoucher = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Voucher discount value is invalid.' });
     }
 
-    const voucherId = await getNextPrefixedId('VOUCHER', 'VOUCHER_ID', 'VC', 5);
+    const selectedCustomerIds = normalizeVoucherCustomerIds(customerIds, customerId);
+    const voucherTargets: Array<string | null> = selectedCustomerIds.length > 0 ? selectedCustomerIds : [null];
+    const firstVoucherId = await getNextPrefixedId('VOUCHER', 'VOUCHER_ID', 'VC', 5);
+    const firstVoucherNumber = Number(firstVoucherId.replace(/^VC/i, '')) || 1;
     const employeeId = await getFirstEmployeeId();
-    const request = new sql.Request();
-    request.input('VOUCHER_ID', sql.NVarChar(10), voucherId);
-    request.input('NHAN_VIEN_ID', sql.NVarChar(10), employeeId);
-    request.input('CHIEN_DICH_ID', sql.NVarChar(10), campaignCode ? String(campaignCode).trim() : null);
-    request.input('MA_VOUCHER', sql.NVarChar(50), String(voucherCode).trim());
-    request.input('LOAI_GIAM_GIA', sql.NVarChar(50), normalizeAdminDiscountType(discountType));
-    request.input('GIA_TRI_GIAM', sql.Decimal(15, 2), parsedDiscountValue);
-    request.input('NGAY_BAT_DAU', sql.Date, parsedStartDate);
-    request.input('NGAY_KET_THUC', sql.Date, parsedEndDate);
-    request.input('DA_DUNG', sql.Bit, false);
+    const normalizedDiscountType = normalizeAdminDiscountType(discountType);
+    const createdVoucherIds: string[] = [];
 
-    const result = await request.query(`
-      INSERT INTO VOUCHER (
-        VOUCHER_ID,
-        NHAN_VIEN_ID,
-        CHIEN_DICH_ID,
-        MA_VOUCHER,
-        LOAI_GIAM_GIA,
-        GIA_TRI_GIAM,
-        NGAY_BAT_DAU,
-        NGAY_KET_THUC,
-        DA_DUNG
-      )
-      VALUES (
-        @VOUCHER_ID,
-        @NHAN_VIEN_ID,
-        @CHIEN_DICH_ID,
-        @MA_VOUCHER,
-        @LOAI_GIAM_GIA,
-        @GIA_TRI_GIAM,
-        @NGAY_BAT_DAU,
-        @NGAY_KET_THUC,
-        @DA_DUNG
-      );
+    await tx.begin();
 
+    for (const [index, targetCustomerId] of voucherTargets.entries()) {
+      const voucherId = buildPrefixedId('VC', 5, firstVoucherNumber + index);
+      createdVoucherIds.push(voucherId);
+
+      const request = new sql.Request(tx);
+      request.input('VOUCHER_ID', sql.NVarChar(10), voucherId);
+      request.input('NHAN_VIEN_ID', sql.NVarChar(10), employeeId);
+      request.input('CHIEN_DICH_ID', sql.NVarChar(10), campaignCode ? String(campaignCode).trim() : null);
+      request.input('KHACH_HANG_ID', sql.NVarChar(20), targetCustomerId);
+      request.input('MA_VOUCHER', sql.NVarChar(50), String(voucherCode).trim());
+      request.input('LOAI_GIAM_GIA', sql.NVarChar(50), normalizedDiscountType);
+      request.input('GIA_TRI_GIAM', sql.Decimal(15, 2), parsedDiscountValue);
+      request.input('NGAY_BAT_DAU', sql.Date, parsedStartDate);
+      request.input('NGAY_KET_THUC', sql.Date, parsedEndDate);
+      request.input('DA_DUNG', sql.Bit, false);
+
+      await request.query(`
+        INSERT INTO VOUCHER (
+          VOUCHER_ID,
+          NHAN_VIEN_ID,
+          CHIEN_DICH_ID,
+          KHACH_HANG_ID,
+          MA_VOUCHER,
+          LOAI_GIAM_GIA,
+          GIA_TRI_GIAM,
+          NGAY_BAT_DAU,
+          NGAY_KET_THUC,
+          DA_DUNG
+        )
+        VALUES (
+          @VOUCHER_ID,
+          @NHAN_VIEN_ID,
+          @CHIEN_DICH_ID,
+          @KHACH_HANG_ID,
+          @MA_VOUCHER,
+          @LOAI_GIAM_GIA,
+          @GIA_TRI_GIAM,
+          @NGAY_BAT_DAU,
+          @NGAY_KET_THUC,
+          @DA_DUNG
+        )
+      `);
+    }
+
+    const selectRequest = new sql.Request(tx);
+    const idParams = createdVoucherIds.map((id, index) => {
+      const paramName = `VOUCHER_ID_${index}`;
+      selectRequest.input(paramName, sql.NVarChar(10), id);
+      return `@${paramName}`;
+    });
+
+    const result = await selectRequest.query(`
       SELECT
-        VOUCHER_ID,
-        CHIEN_DICH_ID,
-        MA_VOUCHER,
-        LOAI_GIAM_GIA,
-        GIA_TRI_GIAM,
-        NGAY_BAT_DAU,
-        NGAY_KET_THUC
-      FROM VOUCHER
-      WHERE VOUCHER_ID = @VOUCHER_ID;
+        v.VOUCHER_ID,
+        v.CHIEN_DICH_ID,
+        v.KHACH_HANG_ID,
+        kh.TEN AS TEN_KHACH_HANG,
+        v.MA_VOUCHER,
+        v.LOAI_GIAM_GIA,
+        v.GIA_TRI_GIAM,
+        v.NGAY_BAT_DAU,
+        v.NGAY_KET_THUC,
+        v.DA_DUNG
+      FROM VOUCHER v
+      LEFT JOIN KHACH_HANG kh ON kh.KHACH_HANG_ID = v.KHACH_HANG_ID
+      WHERE v.VOUCHER_ID IN (${idParams.join(', ')})
+      ORDER BY v.VOUCHER_ID ASC
     `);
+
+    await tx.commit();
+    const vouchers = result.recordset.map(mapAdminVoucher);
 
     return res.status(201).json({
       message: 'Voucher created.',
-      voucher: mapAdminVoucher(result.recordset[0], 0),
+      voucher: vouchers[0],
+      vouchers,
     });
   } catch (error: any) {
+    if ((tx as any)._aborted !== true) {
+      try { await tx.rollback(); } catch {}
+    }
     console.error('Admin create voucher error:', error);
     return res.status(500).json({ message: 'Cannot create voucher: ' + error.message });
   }
@@ -3900,15 +4032,19 @@ export const updateAdminVoucher = async (req: Request, res: Response) => {
       WHERE VOUCHER_ID = @VOUCHER_ID;
 
       SELECT
-        VOUCHER_ID,
-        CHIEN_DICH_ID,
-        MA_VOUCHER,
-        LOAI_GIAM_GIA,
-        GIA_TRI_GIAM,
-        NGAY_BAT_DAU,
-        NGAY_KET_THUC
-      FROM VOUCHER
-      WHERE VOUCHER_ID = @VOUCHER_ID;
+        v.VOUCHER_ID,
+        v.CHIEN_DICH_ID,
+        v.KHACH_HANG_ID,
+        kh.TEN AS TEN_KHACH_HANG,
+        v.MA_VOUCHER,
+        v.LOAI_GIAM_GIA,
+        v.GIA_TRI_GIAM,
+        v.NGAY_BAT_DAU,
+        v.NGAY_KET_THUC,
+        v.DA_DUNG
+      FROM VOUCHER v
+      LEFT JOIN KHACH_HANG kh ON kh.KHACH_HANG_ID = v.KHACH_HANG_ID
+      WHERE v.VOUCHER_ID = @VOUCHER_ID;
     `);
 
     if (result.recordset.length === 0) {
@@ -3946,5 +4082,3 @@ export const deleteAdminVoucher = async (req: Request, res: Response) => {
     return res.status(500).json({ message: 'Cannot delete voucher: ' + error.message });
   }
 };
-
-

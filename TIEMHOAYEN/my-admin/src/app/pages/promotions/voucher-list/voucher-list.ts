@@ -2,23 +2,33 @@ import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { AdminApiService, AdminVoucher } from '../../../services/admin-api.service';
+import { AdminApiService, AdminCustomer, AdminVoucher } from '../../../services/admin-api.service';
 
 interface VoucherItem {
     id: number;
     code: string;
     voucherCode: string;
     campaignCode: string;
+    customerId: string;
+    customerName: string;
     discountType: string;
     discountValue: number;
     startDate: Date;
     endDate: Date;
+    used: boolean;
     selected: boolean;
 }
 
 interface CampaignOption {
     code: string;
     name: string;
+}
+
+interface CustomerOption {
+    code: string;
+    name: string;
+    phone: string;
+    email: string;
 }
 
 @Component({
@@ -55,6 +65,9 @@ export class VoucherListComponent implements OnInit {
     newEndDateText = '';
 
     campaignOptions: CampaignOption[] = [];
+    customerOptions: CustomerOption[] = [];
+    selectedCustomerIds: string[] = [];
+    customerSearchKeyword = '';
 
     discountTypes = [
         'Phần trăm',
@@ -63,6 +76,30 @@ export class VoucherListComponent implements OnInit {
 
     vouchers: VoucherItem[] = [];
     filteredVouchers: VoucherItem[] = [];
+
+    get filteredCustomerOptions(): CustomerOption[] {
+        const keyword = this.removeVietnameseTones(this.customerSearchKeyword.trim().toLowerCase());
+
+        if (!keyword) {
+            return this.customerOptions;
+        }
+
+        return this.customerOptions.filter((customer) => {
+            const haystack = this.removeVietnameseTones([
+                customer.code,
+                customer.name,
+                customer.phone,
+                customer.email
+            ].join(' ').toLowerCase());
+
+            return haystack.includes(keyword);
+        });
+    }
+
+    get selectedCustomers(): CustomerOption[] {
+        const selected = new Set(this.selectedCustomerIds);
+        return this.customerOptions.filter((customer) => selected.has(customer.code));
+    }
 
     constructor(
         private readonly adminApi: AdminApiService,
@@ -76,6 +113,7 @@ export class VoucherListComponent implements OnInit {
         }
 
         this.loadCampaignOptions();
+        this.loadCustomerOptions();
         this.loadVouchers();
     }
 
@@ -139,6 +177,25 @@ export class VoucherListComponent implements OnInit {
         });
     }
 
+    loadCustomerOptions(): void {
+        this.adminApi.getCustomers().subscribe({
+            next: (response) => {
+                this.customerOptions = (response.customers || []).map((customer: AdminCustomer) => ({
+                    code: customer.code,
+                    name: customer.name,
+                    phone: customer.phone,
+                    email: customer.email
+                }));
+                this.cdr.detectChanges();
+            },
+            error: (error) => {
+                console.error('Cannot load customer options:', error);
+                this.customerOptions = [];
+                this.cdr.detectChanges();
+            }
+        });
+    }
+
     applyFilters(): void {
         const keyword = this.removeVietnameseTones(this.searchKeyword.trim().toLowerCase());
 
@@ -146,12 +203,16 @@ export class VoucherListComponent implements OnInit {
             const voucherCode = this.removeVietnameseTones(item.voucherCode.toLowerCase());
             const code = this.removeVietnameseTones(item.code.toLowerCase());
             const campaignCode = this.removeVietnameseTones(item.campaignCode.toLowerCase());
+            const customerId = this.removeVietnameseTones(item.customerId.toLowerCase());
+            const customerName = this.removeVietnameseTones(item.customerName.toLowerCase());
             const discountType = this.removeVietnameseTones(item.discountType.toLowerCase());
 
             const matchesKeyword =
                 voucherCode.includes(keyword) ||
                 code.includes(keyword) ||
                 campaignCode.includes(keyword) ||
+                customerId.includes(keyword) ||
+                customerName.includes(keyword) ||
                 discountType.includes(keyword) ||
                 item.discountValue.toString().includes(keyword) ||
                 this.formatDate(item.startDate).includes(keyword) ||
@@ -171,6 +232,7 @@ export class VoucherListComponent implements OnInit {
         this.filteredVouchers.sort((a, b) => {
             if (field === 'voucherCode') return a.voucherCode.localeCompare(b.voucherCode, 'vi');
             if (field === 'campaignCode') return a.campaignCode.localeCompare(b.campaignCode, 'vi');
+            if (field === 'customer') return (a.customerName || a.customerId).localeCompare(b.customerName || b.customerId, 'vi');
             if (field === 'discountType') return a.discountType.localeCompare(b.discountType, 'vi');
             if (field === 'discountValue') return b.discountValue - a.discountValue;
             if (field === 'startDate') return b.startDate.getTime() - a.startDate.getTime();
@@ -283,15 +345,20 @@ export class VoucherListComponent implements OnInit {
             code: 'Tự tạo',
             voucherCode: '',
             campaignCode: this.campaignOptions[0]?.code || '',
+            customerId: '',
+            customerName: '',
             discountType: 'Phần trăm',
             discountValue: 0,
             startDate: today,
             endDate: endDate,
+            used: false,
             selected: false
         };
 
         this.newStartDateText = this.toPayloadDate(today);
         this.newEndDateText = this.toPayloadDate(endDate);
+        this.selectedCustomerIds = [];
+        this.customerSearchKeyword = '';
 
         this.isAddModalOpen = true;
     }
@@ -306,7 +373,10 @@ export class VoucherListComponent implements OnInit {
             return;
         }
 
-        this.adminApi.createVoucher(payload).subscribe({
+        this.adminApi.createVoucher({
+            ...payload,
+            customerIds: this.selectedCustomerIds
+        }).subscribe({
             next: () => {
                 this.searchKeyword = '';
                 this.selectedDiscountType = 'Tất cả';
@@ -325,6 +395,8 @@ export class VoucherListComponent implements OnInit {
         this.newVoucher = null;
         this.newStartDateText = '';
         this.newEndDateText = '';
+        this.selectedCustomerIds = [];
+        this.customerSearchKeyword = '';
     }
 
     closeEditModal(): void {
@@ -421,14 +493,61 @@ export class VoucherListComponent implements OnInit {
         return date;
     }
 
+    isCustomerSelected(customerCode: string): boolean {
+        return this.selectedCustomerIds.includes(customerCode);
+    }
+
+    toggleCustomerSelection(customerCode: string, event?: Event): void {
+        event?.stopPropagation();
+        const normalizedCode = String(customerCode || '').trim();
+
+        if (!normalizedCode) {
+            return;
+        }
+
+        if (this.isCustomerSelected(normalizedCode)) {
+            this.selectedCustomerIds = this.selectedCustomerIds.filter((code) => code !== normalizedCode);
+            return;
+        }
+
+        this.selectedCustomerIds = [...this.selectedCustomerIds, normalizedCode];
+    }
+
+    selectAllFilteredCustomers(): void {
+        const merged = new Set(this.selectedCustomerIds);
+        this.filteredCustomerOptions.forEach((customer) => merged.add(customer.code));
+        this.selectedCustomerIds = Array.from(merged);
+    }
+
+    clearSelectedCustomers(): void {
+        this.selectedCustomerIds = [];
+    }
+
+    removeSelectedCustomer(customerCode: string): void {
+        this.selectedCustomerIds = this.selectedCustomerIds.filter((code) => code !== customerCode);
+    }
+
+    customerDisplayName(voucher: VoucherItem): string {
+        if (voucher.customerId) {
+            return voucher.customerName
+                ? `${voucher.customerName} (${voucher.customerId})`
+                : voucher.customerId;
+        }
+
+        return 'Dùng chung';
+    }
+
     private mapVoucher(item: AdminVoucher): VoucherItem {
         this.ensureCampaignOption(item.campaignCode);
 
         return {
             ...item,
+            customerId: item.customerId || '',
+            customerName: item.customerName || '',
             discountType: this.toDisplayDiscountType(item.discountType),
             startDate: this.toDate(item.startDate),
             endDate: this.toDate(item.endDate),
+            used: Boolean(item.used),
             selected: false
         };
     }

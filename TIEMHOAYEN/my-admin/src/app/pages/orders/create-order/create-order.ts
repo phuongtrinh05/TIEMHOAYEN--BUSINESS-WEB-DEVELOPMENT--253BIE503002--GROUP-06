@@ -1,7 +1,7 @@
   import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AdminApiService, AdminCustomer, AdminProduct } from '../../../services/admin-api.service';
+import { AdminApiService, AdminCustomer, AdminProduct, AdminVoucher } from '../../../services/admin-api.service';
 
 // ===== TYPES =====
 export type OrderStatus =
@@ -27,6 +27,16 @@ export interface Shipper {
   avatar: string;
 }
 
+export interface CustomerVoucher {
+  id: string;
+  code: string;
+  customerId: string;
+  discountType: string;
+  discountValue: number;
+  startDate: string;
+  endDate: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -34,7 +44,7 @@ export interface Customer {
   email: string;
   loyaltyPoints: number;
   loyaltyDiscount: number;
-  vouchers: { code: string; discount: number }[];
+  vouchers: CustomerVoucher[];
 }
 
 export interface CreateOrderForm {
@@ -58,70 +68,6 @@ export interface CreateOrderForm {
   orderStatus: OrderStatus;
 }
 
-// ===== MOCK DATA =====
-const MOCK_CUSTOMERS: Customer[] = [
-  {
-    id: '#CUST001',
-    name: 'Hồ Thị Anh Thoa',
-    phone: '0795583254',
-    email: 'thoahta23406@st.uel.edu.vn',
-    loyaltyPoints: 200,
-    loyaltyDiscount: 70000,
-    vouchers: [
-      { code: 'YEN10', discount: 40000 },
-      { code: 'SALE50', discount: 50000 },
-    ],
-  },
-  {
-    id: '#CUST002',
-    name: 'Nguyễn Thị Diệu Hiền',
-    phone: '0553851470',
-    email: 'hien123@gmail.com',
-    loyaltyPoints: 0,
-    loyaltyDiscount: 0,
-    vouchers: [],
-  },
-  {
-    id: '#CUST003',
-    name: 'Trần Văn Minh',
-    phone: '0908123456',
-    email: 'minhvan@gmail.com',
-    loyaltyPoints: 150,
-    loyaltyDiscount: 50000,
-    vouchers: [
-      { code: 'YEN20', discount: 80000 },
-    ],
-  },
-  {
-    id: '#CUST004',
-    name: 'Lê Hoàng Phúc',
-    phone: '0934567890',
-    email: 'phuc.le@gmail.com',
-    loyaltyPoints: 500,
-    loyaltyDiscount: 100000,
-    vouchers: [
-      { code: 'YEN10', discount: 40000 },
-      { code: 'YEN20', discount: 80000 },
-      { code: 'SALE50', discount: 50000 },
-    ],
-  },
-];
-
-const MOCK_SHOP_PRODUCTS: CreateOrderProduct[] = [
-  { id: 'PRD000001', name: 'Hoa hồng 99', image: 'assets/images/product-list-chungthuy.png', qty: 1, price: 230000 },
-  { id: 'PRD000002', name: 'Thiệp hồng', image: 'assets/images/thiep_hong.png', qty: 1, price: 10000 },
-  { id: 'PRD000003', name: 'Hoa tulip trắng', image: 'assets/images/product-list-chungthuy.png', qty: 1, price: 180000 },
-  { id: 'PRD000004', name: 'Hoa cúc vàng', image: 'assets/images/product-list-chungthuy.png', qty: 1, price: 120000 },
-  { id: 'PRD000005', name: 'Hoa lan tím', image: 'assets/images/product-list-chungthuy.png', qty: 1, price: 350000 },
-  { id: 'PRD000006', name: 'Thiệp sinh nhật', image: 'assets/images/thiep_hong.png', qty: 1, price: 15000 },
-  { id: 'PRD000007', name: 'Bình hoa mix', image: 'assets/images/product-list-chungthuy.png', qty: 1, price: 450000 },
-];
-
-// Voucher dùng chung (không gắn khách hàng cụ thể)
-const PUBLIC_VOUCHERS: Record<string, number> = {
-  'SALE50': 50000,
-};
-
 @Component({
   selector: 'app-create-order',
   standalone: true,
@@ -138,6 +84,7 @@ export class CreateOrder implements OnInit {
 
   ngOnInit(): void {
     this.loadCustomers();
+    this.loadVouchers();
     this.loadProducts();
   }
 
@@ -167,6 +114,7 @@ export class CreateOrder implements OnInit {
 
   customers: Customer[] = [];
   shopProducts: CreateOrderProduct[] = [];
+  private allVouchers: CustomerVoucher[] = [];
 
   private loadCustomers(): void {
     this.adminApi.getCustomers().subscribe({
@@ -180,10 +128,35 @@ export class CreateOrder implements OnInit {
           loyaltyDiscount: Math.floor(Number(customer.point || 0) / 2) * 1000,
           vouchers: []
         }));
+        this.attachVouchersToCustomers();
       },
       error: (error) => {
         console.error('Cannot load customers for order form', error);
         this.customers = [];
+      }
+    });
+  }
+
+  private loadVouchers(): void {
+    this.adminApi.getVouchers().subscribe({
+      next: (data) => {
+        this.allVouchers = (data.vouchers || [])
+          .filter((voucher: AdminVoucher) => this.isVoucherAvailable(voucher))
+          .map((voucher: AdminVoucher) => ({
+            id: voucher.code,
+            code: voucher.voucherCode,
+            customerId: voucher.customerId || '',
+            discountType: voucher.discountType,
+            discountValue: Number(voucher.discountValue || 0),
+            startDate: voucher.startDate,
+            endDate: voucher.endDate
+          }));
+        this.attachVouchersToCustomers();
+      },
+      error: (error) => {
+        console.error('Cannot load vouchers for order form', error);
+        this.allVouchers = [];
+        this.attachVouchersToCustomers();
       }
     });
   }
@@ -270,7 +243,9 @@ export class CreateOrder implements OnInit {
   customerSearchFocused = false;
   selectedCustomerLoyalty = 0;
   loyaltyDiscount = 0;
-  customerVouchers: { code: string; discount: number }[] = [];
+  customerVouchers: CustomerVoucher[] = [];
+  selectedVoucherId = '';
+  private activeVoucher: CustomerVoucher | null = null;
 
   // ===== PRODUCT SEARCH =====
   productSearchQuery = '';
@@ -352,6 +327,8 @@ export class CreateOrder implements OnInit {
     this.customerVouchers = c.vouchers;
     // Reset voucher khi đổi khách
     this.form.voucher = null;
+    this.activeVoucher = null;
+    this.selectedVoucherId = '';
     this.voucherDiscount = 0;
     this.voucherInput = '';
     this.voucherError = '';
@@ -394,10 +371,12 @@ export class CreateOrder implements OnInit {
     this.productSearchQuery = '';
     this.productSearchResults = [];
     this.showProductSearch = false;
+    this.refreshVoucherDiscount();
   }
 
   removeProduct(index: number): void {
     this.form.products.splice(index, 1);
+    this.refreshVoucherDiscount();
   }
 
   updateQty(index: number, delta: number): void {
@@ -405,6 +384,7 @@ export class CreateOrder implements OnInit {
     const newQty = p.qty + delta;
     if (newQty < 1) return;
     p.qty = newQty;
+    this.refreshVoucherDiscount();
   }
 
   lineTotal(p: CreateOrderProduct): number {
@@ -416,33 +396,112 @@ export class CreateOrder implements OnInit {
     const code = this.voucherInput.trim().toUpperCase();
     if (!code) {
       this.form.voucher = null;
+      this.activeVoucher = null;
+      this.selectedVoucherId = '';
       this.voucherDiscount = 0;
       this.voucherError = '';
       return;
     }
-    // Kiểm tra voucher của khách đang chọn
-    const customerVoucher = this.customerVouchers.find(v => v.code === code);
-    if (customerVoucher) {
-      this.form.voucher = code;
-      this.voucherDiscount = customerVoucher.discount;
-      this.voucherError = '';
+
+    const matchedVoucher = this.findVoucherByCode(code);
+    if (matchedVoucher) {
+      this.applyVoucherRecord(matchedVoucher);
       return;
     }
-    // Kiểm tra voucher dùng chung
-    if (PUBLIC_VOUCHERS[code] !== undefined) {
-      this.form.voucher = code;
-      this.voucherDiscount = PUBLIC_VOUCHERS[code];
-      this.voucherError = '';
-      return;
-    }
+
     this.voucherError = 'Voucher không hợp lệ hoặc đã hết hạn';
   }
 
-  selectCustomerVoucher(v: { code: string; discount: number }): void {
-    this.form.voucher = v.code;
-    this.voucherDiscount = v.discount;
-    this.voucherInput = v.code;
+  selectCustomerVoucher(v: CustomerVoucher): void {
+    this.applyVoucherRecord(v);
+  }
+
+  formatVoucherValue(voucher: CustomerVoucher): string {
+    if (this.isPercentageDiscount(voucher.discountType)) {
+      return `${voucher.discountValue}%`;
+    }
+
+    return this.formatVND(voucher.discountValue);
+  }
+
+  private attachVouchersToCustomers(): void {
+    this.customers = this.customers.map((customer) => ({
+      ...customer,
+      vouchers: this.allVouchers.filter((voucher) => voucher.customerId === customer.id)
+    }));
+
+    if (this.form.senderCustomerId) {
+      const selectedCustomer = this.customers.find((customer) => customer.id === this.form.senderCustomerId);
+      this.customerVouchers = selectedCustomer?.vouchers || [];
+    }
+  }
+
+  private isVoucherAvailable(voucher: AdminVoucher): boolean {
+    if (voucher.used) {
+      return false;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startDate = voucher.startDate ? new Date(voucher.startDate) : null;
+    const endDate = voucher.endDate ? new Date(voucher.endDate) : null;
+
+    if (startDate) {
+      startDate.setHours(0, 0, 0, 0);
+    }
+
+    if (endDate) {
+      endDate.setHours(0, 0, 0, 0);
+    }
+
+    return (!startDate || today >= startDate) && (!endDate || today <= endDate);
+  }
+
+  private findVoucherByCode(code: string): CustomerVoucher | undefined {
+    const normalizedCode = code.toUpperCase();
+    const customerId = this.form.senderCustomerId;
+    const customerVoucher = customerId
+      ? this.allVouchers.find((voucher) =>
+          voucher.customerId === customerId &&
+          voucher.code.toUpperCase() === normalizedCode
+        )
+      : undefined;
+
+    return customerVoucher || this.allVouchers.find((voucher) =>
+      !voucher.customerId &&
+      voucher.code.toUpperCase() === normalizedCode
+    );
+  }
+
+  private applyVoucherRecord(voucher: CustomerVoucher): void {
+    this.activeVoucher = voucher;
+    this.selectedVoucherId = voucher.id;
+    this.form.voucher = voucher.code;
+    this.voucherInput = voucher.code;
+    this.voucherDiscount = this.calculateVoucherDiscount(voucher);
     this.voucherError = '';
+  }
+
+  private refreshVoucherDiscount(): void {
+    if (!this.activeVoucher || !this.form.voucher) {
+      return;
+    }
+
+    this.voucherDiscount = this.calculateVoucherDiscount(this.activeVoucher);
+  }
+
+  private calculateVoucherDiscount(voucher: CustomerVoucher): number {
+    const value = Math.max(0, Number(voucher.discountValue || 0));
+
+    if (this.isPercentageDiscount(voucher.discountType)) {
+      return Math.round(this.computedSubtotal * value / 100);
+    }
+
+    return value;
+  }
+
+  private isPercentageDiscount(discountType: string): boolean {
+    return this.removeVietnameseTones(discountType.toLowerCase()).includes('phan tram');
   }
 
   // ===== LOYALTY =====
@@ -650,6 +709,12 @@ export class CreateOrder implements OnInit {
       orderStatus: this.form.orderStatus,
       shippingFee: this.shippingFee,
       tax: this.tax,
+      voucher: this.form.voucher
+        ? {
+            id: this.selectedVoucherId,
+            code: this.form.voucher
+          }
+        : null,
       voucherDiscount: this.form.voucher ? this.voucherDiscount : 0,
       loyaltyDiscount: this.useLoyalty ? this.loyaltyDiscount : 0
     }).subscribe({
@@ -680,6 +745,14 @@ export class CreateOrder implements OnInit {
   // ===== HELPERS =====
   formatVND(value: number): string {
     return value.toLocaleString('vi-VN') + 'đ';
+  }
+
+  removeVietnameseTones(value: string): string {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D');
   }
 
 }

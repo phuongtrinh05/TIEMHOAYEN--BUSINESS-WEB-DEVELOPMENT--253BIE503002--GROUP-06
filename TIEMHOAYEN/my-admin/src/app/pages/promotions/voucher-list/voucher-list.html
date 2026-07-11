@@ -85,6 +85,10 @@
                             Theo mã chiến dịch
                         </button>
 
+                        <button type="button" (click)="sortVouchers('customer')">
+                            Theo khách hàng
+                        </button>
+
                         <button type="button" (click)="sortVouchers('discountType')">
                             Theo loại giảm giá
                         </button>
@@ -153,6 +157,7 @@
 
                         <th>Voucher</th>
                         <th>Mã chiến dịch</th>
+                        <th>Khách hàng</th>
                         <th>Loại giảm giá</th>
                         <th>Giá trị giảm</th>
                         <th>Ngày bắt đầu</th>
@@ -174,6 +179,10 @@
 
                         <td class="code-text">
                             {{ item.campaignCode }}
+                        </td>
+
+                        <td class="customer-cell">
+                            {{ customerDisplayName(item) }}
                         </td>
 
                         <td>{{ item.discountType }}</td>
@@ -249,7 +258,7 @@
 
         <div class="voucher-form-body">
             <div class="form-group full-width">
-                <label>Mã voucher</label>
+                <label>Voucher ID</label>
                 <input
                     type="text"
                     [(ngModel)]="editingVoucher.code"
@@ -259,7 +268,7 @@
             </div>
 
             <div class="form-group full-width">
-                <label>Tên voucher</label>
+                <label>Mã voucher</label>
                 <input
                     type="text"
                     [(ngModel)]="editingVoucher.voucherCode"
@@ -273,6 +282,16 @@
                         {{ campaign.name }}
                     </option>
                 </select>
+            </div>
+
+            <div class="form-group full-width">
+                <label>Khách hàng nhận voucher</label>
+                <input
+                    type="text"
+                    [value]="customerDisplayName(editingVoucher)"
+                    readonly
+                    class="readonly-input"
+                >
             </div>
 
             <div class="form-row">
@@ -350,7 +369,7 @@
 
         <div class="voucher-form-body">
             <div class="form-group full-width">
-                <label>Mã voucher</label>
+                <label>Voucher ID</label>
                 <input
                     type="text"
                     [(ngModel)]="newVoucher.code"
@@ -360,7 +379,7 @@
             </div>
 
             <div class="form-group full-width">
-                <label>Tên voucher</label>
+                <label>Mã voucher</label>
                 <input
                     type="text"
                     [(ngModel)]="newVoucher.voucherCode"
@@ -374,6 +393,58 @@
                         {{ campaign.name }}
                     </option>
                 </select>
+            </div>
+
+            <div class="form-group full-width">
+                <label>Khách hàng hưởng voucher</label>
+                <div class="customer-picker">
+                    <div class="customer-picker-toolbar">
+                        <input
+                            type="text"
+                            placeholder="Tìm khách hàng"
+                            [(ngModel)]="customerSearchKeyword"
+                        >
+                        <button type="button" (click)="selectAllFilteredCustomers()">
+                            Chọn tất cả
+                        </button>
+                        <button type="button" (click)="clearSelectedCustomers()" [disabled]="selectedCustomerIds.length === 0">
+                            Bỏ chọn
+                        </button>
+                    </div>
+
+                    <div class="selected-customer-chips" *ngIf="selectedCustomers.length > 0">
+                        <button
+                            type="button"
+                            class="selected-customer-chip"
+                            *ngFor="let customer of selectedCustomers"
+                            (click)="removeSelectedCustomer(customer.code)"
+                        >
+                            {{ customer.name }} · {{ customer.code }}
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+
+                    <div class="customer-picker-list">
+                        <label
+                            class="customer-picker-item"
+                            *ngFor="let customer of filteredCustomerOptions"
+                        >
+                            <input
+                                type="checkbox"
+                                [checked]="isCustomerSelected(customer.code)"
+                                (change)="toggleCustomerSelection(customer.code, $event)"
+                            >
+                            <span>
+                                <strong>{{ customer.name }}</strong>
+                                <small>{{ customer.code }} · {{ customer.phone || customer.email }}</small>
+                            </span>
+                        </label>
+
+                        <div class="customer-picker-empty" *ngIf="filteredCustomerOptions.length === 0">
+                            Không tìm thấy khách hàng
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="form-row">
