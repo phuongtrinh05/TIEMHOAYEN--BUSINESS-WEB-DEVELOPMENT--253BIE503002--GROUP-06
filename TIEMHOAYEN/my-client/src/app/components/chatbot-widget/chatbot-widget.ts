@@ -62,10 +62,10 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   loadingText = 'Dang xu ly...';
   private isSending = false;
 
-  private webhookUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chat';
-  private handoffUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chat/handoff';
-  private customerMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chat/customer';
-  private guestMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chat/guest';
+  private webhookUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats';
+  private handoffUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats/handoff';
+  private customerMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats/customer';
+  private guestMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats/guest';
   private readonly productContextKey = 'tiemHoaYenCurrentProductContext';
   private readonly guestConversationKey = 'tiemHoaYenGuestConversationId';
   private readonly maxImageSizeBytes = 5 * 1024 * 1024;
@@ -99,8 +99,8 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    this.syncCustomerReplies();
-    this.syncTimer = window.setInterval(() => this.syncCustomerReplies(), 5000);
+    // Staff-message polling will be enabled when the matching backend GET
+    // endpoints are available. Direct n8n replies are handled by sendMessage().
   }
 
   ngOnDestroy(): void {

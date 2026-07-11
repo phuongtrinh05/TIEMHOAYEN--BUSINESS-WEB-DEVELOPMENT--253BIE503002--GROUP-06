@@ -132,7 +132,8 @@ export const sendChat = async (req: Request, res: Response) => {
     console.log("===== PAYLOAD =====");
     console.log(JSON.stringify(n8nPayload, null, 2));
     const n8nRes = await axios.post(N8N_WEBHOOK_URL, n8nPayload, {
-      timeout: 30000
+      // AI/image workflows can take longer than 30 seconds to finish.
+      timeout: 120000
     });
 
     return res.status(200).json(n8nRes.data);
