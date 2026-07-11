@@ -385,15 +385,14 @@ export const getCustomerChatMessages = async (req: Request, res: Response) => {
       const time = formatTime(row.THOI_GIAN_GUI);
       const question = toNullableString(getVisibleQuestion(row.NOI_DUNG_CAU_HOI));
       const answer = toNullableString(row.NOI_DUNG_TRA_LOI);
-      const isStaffMessage = row.LOAI_TIN_NHAN === 'staff_reply';
-      const answerCanUseStoredImage =
-        isStaffMessage || row.LOAI_TIN_NHAN === 'image_generation' || row.LOAI_TIN_NHAN === 'bot_reply';
-      const detectedAnswerImageUrl = getChatMessageImageUrl(answer) || (answerCanUseStoredImage ? row.HINH_ANH || null : null);
+      const messageType = toNullableString(row.LOAI_TIN_NHAN) || 'human_request';
+      const isStaffMessage = messageType === 'staff_reply';
+      const detectedAnswerImageUrl = getChatMessageImageUrl(answer);
       const answerImageUrl = getDisplayChatImageUrl(detectedAnswerImageUrl, row.TIN_NHAN_ID);
-      const answerContent = answer && answer !== detectedAnswerImageUrl
+      const answerContent = answer && answer !== detectedAnswerImageUrl && answer !== answerImageUrl
         ? answer
-        : row.LOAI_TIN_NHAN === 'image_generation'
-          ? 'ÄÃ¢y lÃ  bÃ³ hoa mÃ¬nh táº¡o cho báº¡n'
+        : messageType === 'image_generation'
+          ? 'Day la bo hoa minh tao cho ban'
           : '';
 
       if (!isStaffMessage && (question || row.HINH_ANH)) {
@@ -406,11 +405,11 @@ export const getCustomerChatMessages = async (req: Request, res: Response) => {
           imageType: row.LOAI_FILE_ANH || null,
           time,
           status: row.TRANG_THAI,
-          type: row.LOAI_TIN_NHAN
+          type: messageType
         });
       }
 
-      if (answer || (answerCanUseStoredImage && row.HINH_ANH)) {
+      if (answer || answerImageUrl) {
         messages.push({
           id: `${row.TIN_NHAN_ID}-reply`,
           role: 'bot',
@@ -418,7 +417,7 @@ export const getCustomerChatMessages = async (req: Request, res: Response) => {
           imageUrl: answerImageUrl,
           time,
           status: row.TRANG_THAI,
-          type: row.LOAI_TIN_NHAN || 'staff_reply'
+          type: messageType === 'human_request' ? 'bot_reply' : messageType
         });
       }
     });
@@ -526,15 +525,14 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
       const time = formatTime(row.THOI_GIAN_GUI);
       const question = toNullableString(getVisibleQuestion(row.NOI_DUNG_CAU_HOI));
       const answer = toNullableString(row.NOI_DUNG_TRA_LOI);
-      const isStaffMessage = row.LOAI_TIN_NHAN === 'staff_reply';
-      const answerCanUseStoredImage =
-        isStaffMessage || row.LOAI_TIN_NHAN === 'image_generation' || row.LOAI_TIN_NHAN === 'bot_reply';
-      const detectedAnswerImageUrl = getChatMessageImageUrl(answer) || (answerCanUseStoredImage ? row.HINH_ANH || null : null);
+      const messageType = toNullableString(row.LOAI_TIN_NHAN) || 'human_request';
+      const isStaffMessage = messageType === 'staff_reply';
+      const detectedAnswerImageUrl = getChatMessageImageUrl(answer);
       const answerImageUrl = getDisplayChatImageUrl(detectedAnswerImageUrl, row.TIN_NHAN_ID);
-      const answerContent = answer && answer !== detectedAnswerImageUrl
+      const answerContent = answer && answer !== detectedAnswerImageUrl && answer !== answerImageUrl
         ? answer
-        : row.LOAI_TIN_NHAN === 'image_generation'
-          ? 'ÄÃ¢y lÃ  bÃ³ hoa mÃ¬nh táº¡o cho báº¡n'
+        : messageType === 'image_generation'
+          ? 'Day la bo hoa minh tao cho ban'
           : '';
 
       if (!isStaffMessage && (question || row.HINH_ANH)) {
@@ -547,11 +545,11 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
           imageType: row.LOAI_FILE_ANH || null,
           time,
           status: row.TRANG_THAI,
-          type: row.LOAI_TIN_NHAN
+          type: messageType
         });
       }
 
-      if (answer || (answerCanUseStoredImage && row.HINH_ANH)) {
+      if (answer || answerImageUrl) {
         messages.push({
           id: `${row.TIN_NHAN_ID}-reply`,
           role: 'bot',
@@ -561,7 +559,7 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
           imageType: isStaffMessage ? row.LOAI_FILE_ANH || null : null,
           time,
           status: row.TRANG_THAI,
-          type: row.LOAI_TIN_NHAN || 'staff_reply'
+          type: messageType === 'human_request' ? 'bot_reply' : messageType
         });
       }
     });
