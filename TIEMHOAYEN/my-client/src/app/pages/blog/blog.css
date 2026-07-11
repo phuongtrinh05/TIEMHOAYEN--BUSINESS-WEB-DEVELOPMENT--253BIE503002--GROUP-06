@@ -18,16 +18,18 @@
 }
 
 .blog-banner {
-    width: 100vw;
-    margin-left: calc(50% - 50vw);
+    width: min(1180px, calc(100% - 80px));
+    margin: 28px auto 0;
     overflow: hidden;
+    border-radius: 22px;
     background-color: #fff8f4;
+    box-shadow: 0 16px 36px rgba(115, 25, 25, 0.1);
     animation: bannerFadeDown 1s ease both;
 }
 
 .blog-video {
   width: 100%;
-  height: auto;
+  height: clamp(280px, 32vw, 400px);
   display: block;
   object-fit: cover;
 }
@@ -349,6 +351,16 @@
 
 /* ---------- Responsive ---------- */
 @media screen and (max-width: 980px) {
+    .blog-banner {
+        width: calc(100% - 32px);
+        margin-top: 20px;
+        border-radius: 18px;
+    }
+
+    .blog-video {
+        height: 300px;
+    }
+
     .blog-list-wrapper {
         width: min(100% - 32px, 1110px);
     }
@@ -366,12 +378,19 @@
         padding: 8px 4px 12px;
     }
 
-    .blog-banner img {
-        height: 280px;
-    }
 }
 
 @media screen and (max-width: 560px) {
+    .blog-banner {
+        width: calc(100% - 24px);
+        margin-top: 14px;
+        border-radius: 14px;
+    }
+
+    .blog-video {
+        height: 210px;
+    }
+
     .blog-list-wrapper {
         padding-top: 30px;
     }
@@ -408,7 +427,4 @@
         flex-wrap: wrap;
     }
 
-    .blog-banner img {
-        height: 200px;
-    }
 }
