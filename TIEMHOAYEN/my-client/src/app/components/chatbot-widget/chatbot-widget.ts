@@ -289,15 +289,15 @@ export class ChatbotWidget implements OnInit, OnDestroy {
 
       const row = item as Record<string, any>;
       const direct =
-        row.image_url ??
-        row.imageUrl ??
-        row.url ??
-        row.secure_url ??
-        row.fileUrl ??
-        row.image?.url ??
-        row.image?.src ??
-        row.image?.data ??
-        row.data?.url;
+        row['image_url'] ??
+        row['imageUrl'] ??
+        row['url'] ??
+        row['secure_url'] ??
+        row['fileUrl'] ??
+        row['image']?.['url'] ??
+        row['image']?.['src'] ??
+        row['image']?.['data'] ??
+        row['data']?.['url'];
       const foundDirect = visit(direct);
       if (foundDirect) return foundDirect;
 
