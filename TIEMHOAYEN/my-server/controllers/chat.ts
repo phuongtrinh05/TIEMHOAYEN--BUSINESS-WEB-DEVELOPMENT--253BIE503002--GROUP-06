@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+﻿import { Request, Response } from 'express';
 import { connectDB, sql } from '../db.js';
 import axios from 'axios';
 
@@ -345,7 +345,7 @@ export const getCustomerChatMessages = async (req: Request, res: Response) => {
       .input('REPLY_PARENT_START', sql.NVarChar(50), REPLY_PARENT_START)
       .input('REPLY_PARENT_END', sql.NVarChar(50), REPLY_PARENT_END)
       .query(`
-        SELECT TOP 100
+        SELECT TOP 300
           t.TIN_NHAN_ID,
           t.KHACH_HANG_ID,
           t.DON_HANG_ID,
@@ -498,7 +498,7 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
       .input('REPLY_PARENT_START', sql.NVarChar(50), REPLY_PARENT_START)
       .input('REPLY_PARENT_END', sql.NVarChar(50), REPLY_PARENT_END)
       .query(`
-        SELECT TOP 100
+        SELECT TOP 300
           TIN_NHAN_ID,
           NOI_DUNG_CAU_HOI,
           NOI_DUNG_TRA_LOI,
