@@ -1,4 +1,4 @@
-import { Component, HostBinding } from '@angular/core';
+import { Component, HostBinding, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive, Router } from '@angular/router';
 import { AdminRolePermissionSet } from '../../services/admin-api.service';
@@ -22,7 +22,7 @@ interface SidebarItem {
   templateUrl: './admin-sidebar.html',
   styleUrl: './admin-sidebar.css'
 })
-export class AdminSidebar {
+export class AdminSidebar implements OnInit, OnDestroy {
   isCollapsed = false;
 
   @HostBinding('class.sidebar-collapsed')
@@ -49,8 +49,24 @@ export class AdminSidebar {
 
   constructor(private router: Router) {}
 
+  ngOnInit(): void {
+    this.updateSidebarWidth();
+  }
+
+  ngOnDestroy(): void {
+    document.documentElement.style.removeProperty('--admin-sidebar-width');
+  }
+
   toggleSidebar(): void {
     this.isCollapsed = !this.isCollapsed;
+    this.updateSidebarWidth();
+  }
+
+  private updateSidebarWidth(): void {
+    document.documentElement.style.setProperty(
+      '--admin-sidebar-width',
+      this.isCollapsed ? '70px' : '360px'
+    );
   }
 
   get adminEmail(): string {
