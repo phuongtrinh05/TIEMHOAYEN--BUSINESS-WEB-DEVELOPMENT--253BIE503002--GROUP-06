@@ -1,9 +1,22 @@
+:host{
+    flex:0 0 260px;
+    width:260px;
+    transition:.3s ease;
+}
+
+:host(.sidebar-collapsed){
+    flex-basis:70px;
+    width:70px;
+}
+
 .admin-sidebar{
     width:260px;
     height:100vh;
-    position:sticky;
+    position:fixed;
+    left:0;
     top:0;
-    flex-shrink:0;
+    bottom:0;
+    z-index:1000;
     background:#FFFFFF;
     border:1px solid #D9B382;
     display:flex;

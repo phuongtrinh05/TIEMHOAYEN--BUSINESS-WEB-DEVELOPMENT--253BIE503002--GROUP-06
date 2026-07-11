@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, HostBinding } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive, Router } from '@angular/router';
 import { AdminRolePermissionSet } from '../../services/admin-api.service';
@@ -24,6 +24,11 @@ interface SidebarItem {
 })
 export class AdminSidebar {
   isCollapsed = false;
+
+  @HostBinding('class.sidebar-collapsed')
+  get sidebarCollapsed(): boolean {
+    return this.isCollapsed;
+  }
 
   mainMenuItems: SidebarItem[] = [
     { label: 'Dashboard', icon: 'bi-house', route: '/dashboard', module: 'dashboard', exact: true },
