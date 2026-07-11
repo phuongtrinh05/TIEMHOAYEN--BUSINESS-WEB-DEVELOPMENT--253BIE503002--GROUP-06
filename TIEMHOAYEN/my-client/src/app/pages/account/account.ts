@@ -237,7 +237,7 @@ export class AccountComponent implements OnInit, OnDestroy {
       email: '',
       birthDate: '',
       phone: '',
-      avatar: '',
+      avatar: 'assets/images/account/default-avatar.png',
     };
 
   // ===== TODO: replace with API call GET /api/orders =====
