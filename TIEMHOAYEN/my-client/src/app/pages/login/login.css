@@ -1353,3 +1353,15 @@ input[type="password"]::-ms-clear {
   -webkit-text-fill-color: var(--text-color);
   caret-color: var(--text-color);
 }
+
+@media (max-width: 768px) {
+  .login-page { width:100%; box-sizing:border-box; overflow:hidden; }
+  .login-card { width:100%; min-width:0; }
+}
+
+@media (max-width: 480px) {
+  .login-page { padding:18px 12px; gap:18px; }
+  .login-card { padding:22px 14px; border-radius:16px; }
+  .login-options { gap:10px; }
+  .register-redirect { font-size:.9rem; }
+}

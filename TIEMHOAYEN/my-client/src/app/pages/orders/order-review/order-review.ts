@@ -333,7 +333,9 @@ export class OrderReview implements OnInit, OnDestroy {
 
     if (hasCachedOrders) {
       this.refreshView();
-      if (preferredOrderId) this.focusOrderFromRoute(preferredOrderId);
+      if (preferredOrderId && this.orders.some(item => this.isSameOrder(item.orderId, preferredOrderId))) {
+        this.focusOrderFromRoute(preferredOrderId);
+      }
     }
 
     this.fetchWithTimeout(
@@ -352,7 +354,7 @@ export class OrderReview implements OnInit, OnDestroy {
         this.orders = Array.isArray(data.orders) ? data.orders : [];
         this.cacheReviewableOrders();
 
-        if (preferredOrderId && !this.selectedOrder) {
+        if (preferredOrderId) {
           this.focusOrderFromRoute(preferredOrderId);
           return;
         }

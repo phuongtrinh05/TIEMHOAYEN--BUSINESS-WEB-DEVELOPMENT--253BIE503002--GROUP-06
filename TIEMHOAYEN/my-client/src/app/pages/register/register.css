@@ -1103,3 +1103,15 @@ body {
   -webkit-text-fill-color: var(--text-color);
   caret-color: var(--text-color);
 }
+
+@media (max-width: 768px) {
+  .register-page { width:100%; box-sizing:border-box; overflow:hidden; }
+  .register-card { width:100%; min-width:0; }
+}
+
+@media (max-width: 480px) {
+  .register-page { padding:18px 12px; gap:18px; }
+  .register-card { padding:22px 14px; border-radius:16px; }
+  .btn-register { width:100%; }
+  .login-redirect { font-size:.9rem; }
+}

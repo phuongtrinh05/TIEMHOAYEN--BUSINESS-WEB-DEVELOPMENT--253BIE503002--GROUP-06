@@ -26,6 +26,7 @@ app-root{
 .auth-content{
     position:relative;
     z-index:1;
+    overflow-x:clip;
 }
 
 app-page-footer{

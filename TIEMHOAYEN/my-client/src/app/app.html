@@ -12,7 +12,9 @@
   [class.auth-content]="useAuthLayout()"
 >
   <router-outlet></router-outlet>
-  <app-chatbot-widget></app-chatbot-widget>
+  @if (!useAuthLayout()) {
+    <app-chatbot-widget></app-chatbot-widget>
+  }
 </div>
 
 @if (useLayoutOne()) {
