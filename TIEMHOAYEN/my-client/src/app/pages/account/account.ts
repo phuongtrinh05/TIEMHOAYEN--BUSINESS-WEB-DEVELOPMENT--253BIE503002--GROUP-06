@@ -102,15 +102,6 @@ export class AccountComponent implements OnInit, OnDestroy {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly cartStorageKey = 'tiemHoaYenCart';
   private sectionSubscription: Subscription | null = null;
-  private accountRefreshIntervalId: number | null = null;
-  private readonly refreshAccountData = (): void => {
-    this.loadAccountData();
-  };
-  private readonly refreshAccountDataWhenVisible = (): void => {
-    if (document.visibilityState === 'visible') {
-      this.loadAccountData();
-    }
-  };
 
   constructor(
     private customerService: CustomerService,
@@ -413,13 +404,10 @@ export class AccountComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
       if (isPlatformBrowser(this.platformId)) {
+        this.restoreAccountSnapshot();
         this.loadVietnamAddressData();
         this.loadAccountData();
         this.listenAccountSectionFromRoute();
-        window.addEventListener('focus', this.refreshAccountData);
-        window.addEventListener('cart-changed', this.refreshAccountData);
-        document.addEventListener('visibilitychange', this.refreshAccountDataWhenVisible);
-        this.accountRefreshIntervalId = window.setInterval(this.refreshAccountData, 30000);
       }
     }
 
@@ -429,15 +417,27 @@ export class AccountComponent implements OnInit, OnDestroy {
       this.sectionSubscription = null;
     }
 
-    if (isPlatformBrowser(this.platformId)) {
-      window.removeEventListener('focus', this.refreshAccountData);
-      window.removeEventListener('cart-changed', this.refreshAccountData);
-      document.removeEventListener('visibilitychange', this.refreshAccountDataWhenVisible);
+  }
 
-      if (this.accountRefreshIntervalId !== null) {
-        window.clearInterval(this.accountRefreshIntervalId);
-        this.accountRefreshIntervalId = null;
-      }
+  private restoreAccountSnapshot(): void {
+    const saved = localStorage.getItem('khachHang');
+    if (!saved || saved === 'null' || saved === 'undefined') return;
+
+    try {
+      const customer = JSON.parse(saved);
+      this.userInfo = {
+        fullName: customer.TEN || '',
+        gender: customer.GIOI_TINH || '',
+        email: customer.EMAIL || '',
+        birthDate: customer.DOB ? this.toDisplayDate(String(customer.DOB).split('T')[0]) : '',
+        phone: customer.SDT || '',
+        avatar: customer.AVATAR || 'assets/images/account/default-avatar.png',
+      };
+      this.membershipTier = customer.LOAI_THANH_VIEN || '';
+      this.rewardPoints = Number(customer.DIEM_TICH_LUY || 0);
+      this.rewardValue = this.calculateRewardValue(this.rewardPoints);
+    } catch {
+      // Dữ liệu cũ không hợp lệ sẽ được API cập nhật lại.
     }
   }
 
@@ -502,6 +502,8 @@ export class AccountComponent implements OnInit, OnDestroy {
           this.membershipTier = data.LOAI_THANH_VIEN || '';
           this.rewardPoints = data.DIEM_TICH_LUY || 0;
           this.rewardValue = this.calculateRewardValue(this.rewardPoints);
+
+          localStorage.setItem('khachHang', JSON.stringify({ ...khachHang, ...data }));
 
           this.cdr.detectChanges();
         },
