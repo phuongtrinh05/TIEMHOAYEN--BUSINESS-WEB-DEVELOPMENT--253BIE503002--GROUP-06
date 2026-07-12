@@ -4,6 +4,11 @@ Tiệm Hoa Yên là hệ thống thương mại điện tử chuyên kinh doanh 
 
 Website hỗ trợ toàn bộ quy trình từ xem sản phẩm, tìm kiếm, thiết kế bó hoa 3D, đặt hàng, thanh toán, theo dõi đơn, đánh giá sản phẩm đến quản lý sản phẩm, khách hàng, kho, khuyến mãi và nội dung ở phía quản trị.
 
+## Liên kết website
+
+- Website Tiệm Hoa Yên: [https://tiemhoayen.vercel.app/](https://tiemhoayen.vercel.app/)
+- Trang quản trị: [https://tiemhoayen-admin.vercel.app/](https://tiemhoayen-admin.vercel.app/)
+
 ## Thành phần hệ thống
 
 | Thành phần | Thư mục | Công nghệ chính | Cổng mặc định |
