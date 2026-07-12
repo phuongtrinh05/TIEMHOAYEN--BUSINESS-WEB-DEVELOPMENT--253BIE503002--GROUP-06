@@ -6,8 +6,8 @@ Website hỗ trợ toàn bộ quy trình từ xem sản phẩm, tìm kiếm, thi
 
 ## Liên kết website
 
-- Website Tiệm Hoa Yên: [https://tiemhoayen.vercel.app/](https://tiemhoayen.vercel.app/)
-- Trang quản trị: [https://tiemhoayen-admin.vercel.app/](https://tiemhoayen-admin.vercel.app/)
+- Website Tiệm Hoa Yên: <a href="https://tiemhoayen.vercel.app/" target="_blank" rel="noopener noreferrer">https://tiemhoayen.vercel.app/</a>
+- Trang quản trị: <a href="https://tiemhoayen-admin.vercel.app/" target="_blank" rel="noopener noreferrer">https://tiemhoayen-admin.vercel.app/</a>
 
 ## Thành phần hệ thống
 
