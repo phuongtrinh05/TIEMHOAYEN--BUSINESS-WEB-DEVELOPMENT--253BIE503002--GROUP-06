@@ -163,11 +163,18 @@
       </button>
 
       <div class="suggestions-list">
-        <div class="suggestion-card" *ngFor="let product of getSuggestedProducts()">
+        <div
+          class="suggestion-card"
+          *ngFor="let product of getSuggestedProducts()"
+          role="link"
+          tabindex="0"
+          (click)="goToSuggestedProduct(product)"
+          (keydown.enter)="goToSuggestedProduct(product)"
+          (keydown.space)="goToSuggestedProduct(product); $event.preventDefault()">
           <img [src]="product.image" [alt]="product.name" class="suggestion-image">
           <p class="suggestion-name">{{ product.name }}</p>
           <p class="suggestion-price">{{ formatPrice(product.price) }}</p>
-          <button type="button" class="btn-add-cart" (click)="addToCart(product)">
+          <button type="button" class="btn-add-cart" (click)="$event.stopPropagation(); addToCart(product)">
             <i class="bi bi-cart-plus"></i>
             Thêm giỏ hàng
           </button>

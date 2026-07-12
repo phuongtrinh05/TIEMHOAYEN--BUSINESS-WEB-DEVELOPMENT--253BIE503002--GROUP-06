@@ -690,6 +690,24 @@ export class CartComponent implements OnInit {
     return this.suggestedProducts;
   }
 
+  goToSuggestedProduct(product: SuggestedProduct): void {
+    if (!product?.id || !product.id.startsWith('SP')) {
+      return;
+    }
+
+    this.router.navigate(['/product-detail', product.id], {
+      state: {
+        productPreview: {
+          id: product.id,
+          name: product.name,
+          image: product.image,
+          price: product.price,
+          originalPrice: product.originalPrice ?? null,
+        },
+      },
+    });
+  }
+
   addToCart(product: SuggestedProduct): void {
     if (!product.id || !product.id.startsWith('SP')) {
       console.warn('Sản phẩm mua kèm phải là sản phẩm trong bảng SAN_PHAM.');

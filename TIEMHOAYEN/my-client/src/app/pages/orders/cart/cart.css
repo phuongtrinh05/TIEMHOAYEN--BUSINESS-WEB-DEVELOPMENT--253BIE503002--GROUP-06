@@ -386,6 +386,7 @@
 }
 
 .suggestion-card {
+  cursor: pointer;
   background: #fffaf7;
   padding: 12px 14px 10px;
   border: 1px solid #dfd3ce;

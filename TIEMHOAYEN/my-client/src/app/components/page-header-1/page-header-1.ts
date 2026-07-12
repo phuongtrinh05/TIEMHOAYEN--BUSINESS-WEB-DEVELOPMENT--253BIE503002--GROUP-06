@@ -545,7 +545,9 @@ export class PageHeader1 implements OnInit, OnDestroy {
         'Sản phẩm'
       ).trim(),
 
-      image: this.normalizeImageUrl(
+      image: this.getHeaderProductImage(
+        item?.TEN_SAN_PHAM ?? item?.TEN_SP ?? item?.tenSanPham ?? item?.productName ?? item?.name ??
+        product?.TEN_SAN_PHAM ?? product?.TEN_SP ?? product?.tenSanPham ?? product?.productName ?? product?.name,
         item?.HINH_ANH ??
         item?.hinhAnh ??
         item?.image ??
