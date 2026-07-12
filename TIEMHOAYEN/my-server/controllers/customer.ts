@@ -1,9 +1,19 @@
 import { Request, Response } from 'express';
 import { connectDB, sql } from '../db.js';
+import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordHash.js';
 const otpStore = new Map<string, string>();
 
 const normalizeAddressText = (value: unknown): string => {
   return String(value ?? '').trim().replace(/\s+/g, ' ');
+};
+
+const sanitizeCustomer = (customer: any) => {
+  if (!customer) {
+    return customer;
+  }
+
+  const { MAT_KHAU, ...safeCustomer } = customer;
+  return safeCustomer;
 };
 
 export const getAllCustomers = async (req: Request, res: Response) => {
@@ -11,7 +21,7 @@ export const getAllCustomers = async (req: Request, res: Response) => {
     const pool = await connectDB();
     const result = await pool.request()
       .query('SELECT * FROM KHACH_HANG');
-    res.status(200).json(result.recordset);
+    res.status(200).json(result.recordset.map(sanitizeCustomer));
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi Controller: ' + error.message });
   }
@@ -21,7 +31,6 @@ export const registerCustomer = async (req: Request, res: Response) => {
   try {
     const { TEN, GIOI_TINH, SDT, EMAIL, MAT_KHAU } = req.body;
 
-    console.log('BODY nhận được:', req.body);
 
     if (!TEN || !SDT || !MAT_KHAU || !GIOI_TINH) {
       return res.status(400).json({ message: 'Thiếu thông tin bắt buộc.' });
@@ -69,12 +78,14 @@ export const registerCustomer = async (req: Request, res: Response) => {
       newId = 'CUST' + nextNum.toString().padStart(4, '0');
     }
 
+    const hashedPassword = await hashPassword(String(MAT_KHAU));
+
     await pool.request()
       .input('KHACH_HANG_ID', sql.NVarChar, newId)
       .input('TEN', sql.NVarChar, TEN)
       .input('EMAIL', sql.NVarChar, emailValue)
       .input('SDT', sql.NVarChar, SDT)
-      .input('MAT_KHAU', sql.NVarChar, MAT_KHAU)
+      .input('MAT_KHAU', sql.NVarChar, hashedPassword)
       .input('GIOI_TINH', sql.NVarChar, GIOI_TINH)
       .query(`
                 INSERT INTO KHACH_HANG (
@@ -101,7 +112,7 @@ export const registerCustomer = async (req: Request, res: Response) => {
 
     return res.status(201).json({
       message: 'Đăng ký thành công',
-      customer: customerResult.recordset[0]
+      customer: sanitizeCustomer(customerResult.recordset[0])
     });
 
   } catch (error: any) {
@@ -138,15 +149,28 @@ export const loginCustomer = async (req: Request, res: Response) => {
 
     const customer = phoneResult.recordset[0];
 
-    if (customer.MAT_KHAU !== MAT_KHAU) {
+    const isValidPassword = await verifyPassword(String(MAT_KHAU), customer.MAT_KHAU);
+
+    if (!isValidPassword) {
       return res.status(401).json({
         message: 'Mật khẩu không chính xác.'
       });
     }
 
+    if (!isPasswordHash(customer.MAT_KHAU)) {
+      await pool.request()
+        .input('SDT', sql.NVarChar, SDT)
+        .input('MAT_KHAU', sql.NVarChar, await hashPassword(String(MAT_KHAU)))
+        .query(`
+                UPDATE KHACH_HANG
+                SET MAT_KHAU = @MAT_KHAU
+                WHERE SDT = @SDT
+            `);
+    }
+
     return res.status(200).json({
       message: 'Đăng nhập thành công.',
-      customer
+      customer: sanitizeCustomer(customer)
     });
 
   } catch (error: any) {
@@ -182,9 +206,11 @@ export const forgotPassword = async (req: Request, res: Response) => {
       });
     }
 
+    const hashedPassword = await hashPassword(String(NEW_PASSWORD));
+
     await pool.request()
       .input('SDT', sql.NVarChar, SDT)
-      .input('MAT_KHAU', sql.NVarChar, NEW_PASSWORD)
+      .input('MAT_KHAU', sql.NVarChar, hashedPassword)
       .query(`
                 UPDATE KHACH_HANG
                 SET MAT_KHAU = @MAT_KHAU
@@ -271,7 +297,7 @@ export const getCustomerById = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
     }
 
-    return res.status(200).json(result.recordset[0]);
+    return res.status(200).json(sanitizeCustomer(result.recordset[0]));
   } catch (error: any) {
     return res.status(500).json({ message: 'Lỗi server: ' + error.message });
   }
@@ -308,7 +334,7 @@ export const updateCustomerById = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       message: 'Cập nhật thông tin thành công.',
-      customer: result.recordset[0]
+      customer: sanitizeCustomer(result.recordset[0])
     });
 
   } catch (error: any) {
@@ -854,7 +880,7 @@ export const updateCustomerAvatar = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       message: 'Cập nhật avatar thành công.',
-      customer: result.recordset[0]
+      customer: sanitizeCustomer(result.recordset[0])
     });
 
   } catch (error: any) {
@@ -882,7 +908,7 @@ export const removeCustomerAvatar = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       message: 'Đã gỡ ảnh đại diện.',
-      customer: result.recordset[0]
+      customer: sanitizeCustomer(result.recordset[0])
     });
 
   } catch (error: any) {

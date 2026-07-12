@@ -7,6 +7,7 @@ import {
   permissionModules,
   resolveRoleName,
 } from '../services/role-permission.service.js';
+import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordHash.js';
 
 export const getAdminRolePermissions = async (_req: Request, res: Response) => {
   try {
@@ -58,23 +59,33 @@ export const loginAdminEmployee = async (req: Request, res: Response) => {
 
     const request = new sql.Request();
     request.input('EMAIL', sql.NVarChar(255), email);
-    request.input('MAT_KHAU', sql.NVarChar(255), password);
 
     const result = await request.query(`
       SELECT TOP 1
         NHAN_VIEN_ID,
         HO_TEN,
         EMAIL,
+        MAT_KHAU,
         VAI_TRO,
         TRANG_THAI
       FROM NHAN_VIEN
       WHERE EMAIL = @EMAIL
-        AND MAT_KHAU = @MAT_KHAU
     `);
 
     const employee = result.recordset[0];
-    if (!employee) {
+    if (!employee || !(await verifyPassword(password, employee.MAT_KHAU))) {
       return res.status(401).json({ message: 'Email hoặc mật khẩu không đúng.' });
+    }
+
+    if (!isPasswordHash(employee.MAT_KHAU)) {
+      const updateRequest = new sql.Request();
+      updateRequest.input('NHAN_VIEN_ID', sql.NVarChar(20), employee.NHAN_VIEN_ID);
+      updateRequest.input('MAT_KHAU', sql.NVarChar(255), await hashPassword(password));
+      await updateRequest.query(`
+        UPDATE NHAN_VIEN
+        SET MAT_KHAU = @MAT_KHAU
+        WHERE NHAN_VIEN_ID = @NHAN_VIEN_ID
+      `);
     }
 
     const status = String(employee.TRANG_THAI || '').trim().toLowerCase();
