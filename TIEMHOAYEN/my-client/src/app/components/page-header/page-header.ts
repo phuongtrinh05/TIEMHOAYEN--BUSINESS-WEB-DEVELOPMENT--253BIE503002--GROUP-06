@@ -1423,7 +1423,7 @@ export class PageHeader implements OnInit, OnDestroy {
     return {
       id: String(item?.SAN_PHAM_ID || item?.id || ''),
       name: String(item?.TEN_SAN_PHAM || item?.name || 'Sản phẩm'),
-      image: this.normalizeImageUrl(item?.HINH_ANH || item?.image),
+      image: this.getHeaderProductImage(item?.TEN_SAN_PHAM || item?.name, item?.HINH_ANH || item?.image),
       originalPrice,
       salePrice,
       finalPrice,
@@ -1446,6 +1446,12 @@ export class PageHeader implements OnInit, OnDestroy {
 
     this.allSearchProductsCache = Array.from(map.values());
     this.hasLoadedSearchCache = this.allSearchProductsCache.length > 0;
+  }
+
+  private getHeaderProductImage(name: unknown, image: unknown): string {
+    return String(name || '').trim().toLocaleLowerCase('vi-VN') === 'túi quà cao cấp'
+      ? 'assets/images/tui-qua-cao-cap.png'
+      : this.normalizeImageUrl(String(image || ''));
   }
 
   formatSearchPrice(value: number | string | null | undefined): string {

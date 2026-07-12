@@ -278,7 +278,7 @@ export class CartComponent implements OnInit {
       price: Number(item.GIA_KHUYEN_MAI || item.GIA || 0),
       originalPrice: item.GIA_KHUYEN_MAI ? Number(item.GIA || 0) : null,
       quantity: Math.max(1, Number(item.SO_LUONG || 1)),
-      image: String(item.HINH_ANH || this.defaultImage),
+      image: this.getCartProductImage(item.TEN_SAN_PHAM, item.HINH_ANH),
       selected: true,
       maxQuantity:
         item.SO_LUONG_TON === null || item.SO_LUONG_TON === undefined
@@ -833,10 +833,16 @@ export class CartComponent implements OnInit {
       name: String(item.TEN_SAN_PHAM || item.TEN_NGUYEN_VAT_LIEU || 'Sản phẩm mua kèm'),
       price,
       originalPrice: salePrice > 0 && salePrice < originalPrice ? originalPrice : null,
-      image: String(item.HINH_ANH || this.defaultImage),
+      image: this.getCartProductImage(item.TEN_SAN_PHAM, item.HINH_ANH),
       style: String(item.KIEU_DANG || 'Sản phẩm mua kèm'),
       status: this.getCartTopicName(item.TEN_CHU_DE || item.TRANG_THAI),
       maxQuantity: Number(item.SO_LUONG ?? item.SO_LUONG_TON ?? 0),
     };
+  }
+
+  private getCartProductImage(name: unknown, image: unknown): string {
+    return String(name || '').trim().toLocaleLowerCase('vi-VN') === 'túi quà cao cấp'
+      ? 'assets/images/tui-qua-cao-cap.png'
+      : String(image || this.defaultImage);
   }
 }

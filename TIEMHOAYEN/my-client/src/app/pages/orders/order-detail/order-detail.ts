@@ -240,7 +240,9 @@ export class OrderDetail implements OnInit, OnDestroy {
   private mapProducts(items: OrderDetailProductResponse[]): OrderDetailProduct[] {
     return items.map((item: OrderDetailProductResponse) => ({
       id: String(item.SAN_PHAM_ID || ''),
-      image: String(item.HINH_ANH || 'assets/images/hoa.jpg'),
+      image: String(item.TEN_SAN_PHAM || '').trim().toLocaleLowerCase('vi-VN') === 'túi quà cao cấp'
+        ? 'assets/images/tui-qua-cao-cap.png'
+        : String(item.HINH_ANH || 'assets/images/hoa.jpg'),
       name: String(item.TEN_SAN_PHAM || item.SAN_PHAM_ID || 'Sản phẩm'),
       price: Number(item.GIA || 0),
       quantity: Math.max(1, Number(item.SO_LUONG || 1)),

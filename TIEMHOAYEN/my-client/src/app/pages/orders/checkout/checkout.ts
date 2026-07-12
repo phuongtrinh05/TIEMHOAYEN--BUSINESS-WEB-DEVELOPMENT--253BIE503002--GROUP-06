@@ -414,7 +414,9 @@ export class CheckoutComponent implements OnInit, OnDestroy {
       name: String(item.name || item.TEN_SAN_PHAM || ''),
       qty: Math.max(1, Number(item.qty ?? item.quantity ?? item.SO_LUONG ?? 1)),
       price: Number(item.price ?? item.GIA_KHUYEN_MAI ?? item.GIA ?? 0),
-      image: String(item.image || item.HINH_ANH || 'assets/images/hoa.jpg'),
+      image: String(item.name || item.TEN_SAN_PHAM || '').trim().toLocaleLowerCase('vi-VN') === 'túi quà cao cấp'
+        ? 'assets/images/tui-qua-cao-cap.png'
+        : String(item.image || item.HINH_ANH || 'assets/images/hoa.jpg'),
     }));
   }
 

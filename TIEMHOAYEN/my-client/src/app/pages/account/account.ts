@@ -639,7 +639,9 @@ export class AccountComponent implements OnInit, OnDestroy {
             price: finalPrice,
             oldPrice: hasSalePrice ? originalPrice : null,
             discountPercent,
-            image: item.HINH_ANH || 'assets/images/product-default.png',
+            image: String(item.TEN_SAN_PHAM || '').trim().toLocaleLowerCase('vi-VN') === 'túi quà cao cấp'
+              ? 'assets/images/tui-qua-cao-cap.png'
+              : item.HINH_ANH || 'assets/images/product-default.png',
             isFavorite: true,
           };
         });

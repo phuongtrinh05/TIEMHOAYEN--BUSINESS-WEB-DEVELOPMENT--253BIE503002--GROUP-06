@@ -621,7 +621,9 @@ export class OrderRegistrantComponent implements OnInit {
   private mapCartItemToOrderItem(item: CartStorageItem): OrderItem {
     const id = String(item.id || item.SAN_PHAM_ID || '');
     const name = String(item.name || item.TEN_SAN_PHAM || '');
-    const image = String(item.image || item.HINH_ANH || this.defaultImage);
+    const image = name.trim().toLocaleLowerCase('vi-VN') === 'túi quà cao cấp'
+      ? 'assets/images/tui-qua-cao-cap.png'
+      : String(item.image || item.HINH_ANH || this.defaultImage);
 
     const qty = Math.max(
       1,
