@@ -74,6 +74,9 @@ export class ProductList implements OnInit {
       next: (response) => {
         this.products = response.products.map((product) => ({
           ...product,
+          image: String(product.name || '').trim().toLocaleLowerCase('vi-VN') === 'túi quà cao cấp'
+            ? 'assets/images/tui-qua-cao-cap.png'
+            : product.image,
           selected: false
         }));
         this.rebuildProductCaches();
