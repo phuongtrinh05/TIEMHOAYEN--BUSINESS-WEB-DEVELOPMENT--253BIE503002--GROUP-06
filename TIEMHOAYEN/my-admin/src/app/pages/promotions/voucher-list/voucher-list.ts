@@ -63,6 +63,7 @@ export class VoucherListComponent implements OnInit {
     editingEndDateText = '';
     newStartDateText = '';
     newEndDateText = '';
+    newVoucherQuantity = 1;
 
     campaignOptions: CampaignOption[] = [];
     customerOptions: CustomerOption[] = [];
@@ -357,6 +358,7 @@ export class VoucherListComponent implements OnInit {
 
         this.newStartDateText = this.toPayloadDate(today);
         this.newEndDateText = this.toPayloadDate(endDate);
+        this.newVoucherQuantity = 1;
         this.selectedCustomerIds = [];
         this.customerSearchKeyword = '';
 
@@ -373,9 +375,15 @@ export class VoucherListComponent implements OnInit {
             return;
         }
 
+        const quantity = this.normalizeNewVoucherQuantity();
+        if (quantity === null) {
+            return;
+        }
+
         this.adminApi.createVoucher({
             ...payload,
-            customerIds: this.selectedCustomerIds
+            customerIds: this.selectedCustomerIds,
+            quantity
         }).subscribe({
             next: () => {
                 this.searchKeyword = '';
@@ -395,6 +403,7 @@ export class VoucherListComponent implements OnInit {
         this.newVoucher = null;
         this.newStartDateText = '';
         this.newEndDateText = '';
+        this.newVoucherQuantity = 1;
         this.selectedCustomerIds = [];
         this.customerSearchKeyword = '';
     }
@@ -579,6 +588,24 @@ export class VoucherListComponent implements OnInit {
             startDate: this.toPayloadDate(startDate),
             endDate: this.toPayloadDate(endDate)
         };
+    }
+
+    private normalizeNewVoucherQuantity(): number | null {
+        const quantity = Number(this.newVoucherQuantity);
+
+        if (!Number.isInteger(quantity) || quantity < 1) {
+            alert('Vui lòng nhập số lượng voucher hợp lệ.');
+            return null;
+        }
+
+        const totalVoucherCount = quantity * Math.max(1, this.selectedCustomerIds.length);
+
+        if (totalVoucherCount > 500) {
+            alert('Số lượng voucher tạo mới không được vượt quá 500.');
+            return null;
+        }
+
+        return quantity;
     }
 
     private toDate(value: string): Date {

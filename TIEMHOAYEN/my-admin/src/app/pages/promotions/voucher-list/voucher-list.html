@@ -387,6 +387,17 @@
             </div>
 
             <div class="form-group full-width">
+                <label>{{ selectedCustomerIds.length > 0 ? 'Số lượng voucher mỗi khách' : 'Số lượng voucher' }}</label>
+                <input
+                    type="number"
+                    min="1"
+                    max="500"
+                    step="1"
+                    [(ngModel)]="newVoucherQuantity"
+                >
+            </div>
+
+            <div class="form-group full-width">
                 <label>Mã chiến dịch</label>
                 <select [(ngModel)]="newVoucher.campaignCode">
                     <option *ngFor="let campaign of campaignOptions" [value]="campaign.code">

@@ -3868,7 +3868,7 @@ export const getAdminVouchers = async (_req: Request, res: Response) => {
 export const createAdminVoucher = async (req: Request, res: Response) => {
   const tx = new sql.Transaction();
   try {
-    const { voucherCode, campaignCode, customerIds, customerId, discountType, discountValue, startDate, endDate } = req.body;
+    const { voucherCode, campaignCode, customerIds, customerId, quantity, discountType, discountValue, startDate, endDate } = req.body;
 
     if (!String(voucherCode || '').trim()) {
       return res.status(400).json({ message: 'Voucher code is required.' });
@@ -3890,8 +3890,20 @@ export const createAdminVoucher = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Voucher discount value is invalid.' });
     }
 
+    const parsedQuantity = Number(quantity ?? 1);
+
+    if (!Number.isInteger(parsedQuantity) || parsedQuantity < 1) {
+      return res.status(400).json({ message: 'Voucher quantity is invalid.' });
+    }
+
     const selectedCustomerIds = normalizeVoucherCustomerIds(customerIds, customerId);
     const voucherTargets: Array<string | null> = selectedCustomerIds.length > 0 ? selectedCustomerIds : [null];
+    const totalVoucherCount = parsedQuantity * voucherTargets.length;
+
+    if (totalVoucherCount > 500) {
+      return res.status(400).json({ message: 'Cannot create more than 500 vouchers at once.' });
+    }
+
     const firstVoucherId = await getNextPrefixedId('VOUCHER', 'VOUCHER_ID', 'VC', 5);
     const firstVoucherNumber = Number(firstVoucherId.replace(/^VC/i, '')) || 1;
     const employeeId = await getFirstEmployeeId();
@@ -3900,48 +3912,53 @@ export const createAdminVoucher = async (req: Request, res: Response) => {
 
     await tx.begin();
 
-    for (const [index, targetCustomerId] of voucherTargets.entries()) {
-      const voucherId = buildPrefixedId('VC', 5, firstVoucherNumber + index);
-      createdVoucherIds.push(voucherId);
+    let voucherIndex = 0;
 
-      const request = new sql.Request(tx);
-      request.input('VOUCHER_ID', sql.NVarChar(10), voucherId);
-      request.input('NHAN_VIEN_ID', sql.NVarChar(10), employeeId);
-      request.input('CHIEN_DICH_ID', sql.NVarChar(10), campaignCode ? String(campaignCode).trim() : null);
-      request.input('KHACH_HANG_ID', sql.NVarChar(20), targetCustomerId);
-      request.input('MA_VOUCHER', sql.NVarChar(50), String(voucherCode).trim());
-      request.input('LOAI_GIAM_GIA', sql.NVarChar(50), normalizedDiscountType);
-      request.input('GIA_TRI_GIAM', sql.Decimal(15, 2), parsedDiscountValue);
-      request.input('NGAY_BAT_DAU', sql.Date, parsedStartDate);
-      request.input('NGAY_KET_THUC', sql.Date, parsedEndDate);
-      request.input('DA_DUNG', sql.Bit, false);
+    for (const targetCustomerId of voucherTargets) {
+      for (let copyIndex = 0; copyIndex < parsedQuantity; copyIndex++) {
+        const voucherId = buildPrefixedId('VC', 5, firstVoucherNumber + voucherIndex);
+        voucherIndex++;
+        createdVoucherIds.push(voucherId);
 
-      await request.query(`
-        INSERT INTO VOUCHER (
-          VOUCHER_ID,
-          NHAN_VIEN_ID,
-          CHIEN_DICH_ID,
-          KHACH_HANG_ID,
-          MA_VOUCHER,
-          LOAI_GIAM_GIA,
-          GIA_TRI_GIAM,
-          NGAY_BAT_DAU,
-          NGAY_KET_THUC,
-          DA_DUNG
-        )
-        VALUES (
-          @VOUCHER_ID,
-          @NHAN_VIEN_ID,
-          @CHIEN_DICH_ID,
-          @KHACH_HANG_ID,
-          @MA_VOUCHER,
-          @LOAI_GIAM_GIA,
-          @GIA_TRI_GIAM,
-          @NGAY_BAT_DAU,
-          @NGAY_KET_THUC,
-          @DA_DUNG
-        )
-      `);
+        const request = new sql.Request(tx);
+        request.input('VOUCHER_ID', sql.NVarChar(10), voucherId);
+        request.input('NHAN_VIEN_ID', sql.NVarChar(10), employeeId);
+        request.input('CHIEN_DICH_ID', sql.NVarChar(10), campaignCode ? String(campaignCode).trim() : null);
+        request.input('KHACH_HANG_ID', sql.NVarChar(20), targetCustomerId);
+        request.input('MA_VOUCHER', sql.NVarChar(50), String(voucherCode).trim());
+        request.input('LOAI_GIAM_GIA', sql.NVarChar(50), normalizedDiscountType);
+        request.input('GIA_TRI_GIAM', sql.Decimal(15, 2), parsedDiscountValue);
+        request.input('NGAY_BAT_DAU', sql.Date, parsedStartDate);
+        request.input('NGAY_KET_THUC', sql.Date, parsedEndDate);
+        request.input('DA_DUNG', sql.Bit, false);
+
+        await request.query(`
+          INSERT INTO VOUCHER (
+            VOUCHER_ID,
+            NHAN_VIEN_ID,
+            CHIEN_DICH_ID,
+            KHACH_HANG_ID,
+            MA_VOUCHER,
+            LOAI_GIAM_GIA,
+            GIA_TRI_GIAM,
+            NGAY_BAT_DAU,
+            NGAY_KET_THUC,
+            DA_DUNG
+          )
+          VALUES (
+            @VOUCHER_ID,
+            @NHAN_VIEN_ID,
+            @CHIEN_DICH_ID,
+            @KHACH_HANG_ID,
+            @MA_VOUCHER,
+            @LOAI_GIAM_GIA,
+            @GIA_TRI_GIAM,
+            @NGAY_BAT_DAU,
+            @NGAY_KET_THUC,
+            @DA_DUNG
+          )
+        `);
+      }
     }
 
     const selectRequest = new sql.Request(tx);

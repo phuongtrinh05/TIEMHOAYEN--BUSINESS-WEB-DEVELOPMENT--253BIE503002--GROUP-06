@@ -1123,6 +1123,7 @@ export class AdminApiService {
     voucherCode: string;
     campaignCode: string;
     customerIds?: string[];
+    quantity?: number;
     discountType: string;
     discountValue: number;
     startDate: string;
