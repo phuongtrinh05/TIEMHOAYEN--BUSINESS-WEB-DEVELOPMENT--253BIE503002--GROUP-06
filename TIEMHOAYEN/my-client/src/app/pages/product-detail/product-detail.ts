@@ -517,8 +517,13 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       .map((image) => this.normalizeImageUrl(image.URL))
       .filter((url) => !!url);
 
+    const customImage = this.getCustomProductImage(item.TEN_SAN_PHAM);
     const fallbackImage = this.normalizeImageUrl(item.HINH_ANH);
-    const finalImages = imageList.length > 0 ? imageList : [fallbackImage];
+    const finalImages = customImage
+      ? [customImage]
+      : imageList.length > 0
+        ? imageList
+        : [fallbackImage];
 
     const reviewCount = Math.max(0, Number(stats?.reviewCount ?? 0));
     const averageRating = reviewCount > 0
@@ -584,7 +589,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       name: item.TEN_SAN_PHAM,
       price: hasSalePrice ? salePrice : originalPrice,
       originalPrice: hasSalePrice ? originalPrice : null,
-      image: this.normalizeImageUrl(item.HINH_ANH),
+      image: this.getCustomProductImage(item.TEN_SAN_PHAM) || this.normalizeImageUrl(item.HINH_ANH),
       maxQuantity: Math.max(1, Number(item.SO_LUONG ?? 1)),
       status: item.TRANG_THAI || 'Sản phẩm',
       topicName: item.TEN_CHU_DE || this.product.topicName || 'Sản phẩm liên quan',
@@ -1364,5 +1369,11 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     }
 
     return `assets/images/products/${value}`;
+  }
+
+  private getCustomProductImage(name: string | null | undefined): string {
+    return String(name || '').trim().toLocaleLowerCase('vi-VN') === 'túi quà cao cấp'
+      ? 'assets/images/tui-qua-cao-cap.png'
+      : '';
   }
 }

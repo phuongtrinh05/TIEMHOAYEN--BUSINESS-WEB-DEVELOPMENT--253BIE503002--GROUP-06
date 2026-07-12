@@ -114,7 +114,8 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
   private customerReviewIndex = 0;
 
   get visibleCustomerReviews() {
-    const visibleCount = isPlatformBrowser(this.platformId) && window.innerWidth <= 640 ? 1 : 2;
+    const width = isPlatformBrowser(this.platformId) ? window.innerWidth : 1280;
+    const visibleCount = width <= 640 ? 1 : width <= 1024 ? 2 : 3;
     return Array.from({ length: Math.min(visibleCount, this.customerReviews.length) }, (_, offset) =>
       this.customerReviews[(this.customerReviewIndex + offset) % this.customerReviews.length]
     );
@@ -728,7 +729,7 @@ private startBestSellerProductAutoSlide(): void {
       name: item.TEN_SAN_PHAM,
       oldPrice: hasSalePrice ? this.formatPrice(originalPrice) : undefined,
       price: this.formatPrice(finalPrice),
-      image: this.normalizeImageUrl(item.HINH_ANH),
+      image: this.getProductImage(item.TEN_SAN_PHAM, item.HINH_ANH),
       link: `/product-detail/${item.SAN_PHAM_ID}`,
       priceValue: finalPrice,
       originalPriceValue: originalPrice,
@@ -1143,6 +1144,14 @@ private startBestSellerProductAutoSlide(): void {
     }
 
     return `assets/images/products/${value}`;
+  }
+
+  private getProductImage(name: string | null | undefined, url: string | null | undefined): string {
+    if (String(name || '').trim().toLocaleLowerCase('vi-VN') === 'túi quà cao cấp') {
+      return 'assets/images/tui-qua-cao-cap.png';
+    }
+
+    return this.normalizeImageUrl(url);
   }
 
   

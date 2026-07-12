@@ -629,7 +629,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       price: finalPrice,
       originalPrice: originalPrice,
       salePrice: hasSalePrice && salePriceNumber !== null ? salePriceNumber : null,
-      image: this.normalizeImageUrl(item.HINH_ANH),
+      image: this.getProductImage(item.TEN_SAN_PHAM, item.HINH_ANH),
       icon: '🌸',
       filters: {
         chuDe: item.TEN_CHU_DE ? [item.TEN_CHU_DE] : [],
@@ -980,6 +980,14 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     );
 
     cards.forEach((card) => this.revealObserver?.observe(card));
+  }
+
+  private getProductImage(name: string | null | undefined, url: string | null | undefined): string {
+    if (String(name || '').trim().toLocaleLowerCase('vi-VN') === 'túi quà cao cấp') {
+      return 'assets/images/tui-qua-cao-cap.png';
+    }
+
+    return this.normalizeImageUrl(url);
   }
 
   private syncWishlistButtons(): void {

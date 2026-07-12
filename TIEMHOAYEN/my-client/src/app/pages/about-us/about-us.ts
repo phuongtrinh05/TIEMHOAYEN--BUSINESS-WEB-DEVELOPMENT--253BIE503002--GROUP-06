@@ -114,7 +114,7 @@ export class AboutUs implements AfterViewInit, OnDestroy {
 
   get visibleReviews() {
     const width = typeof window === 'undefined' ? 1280 : window.innerWidth;
-    const visibleCount = width <= 640 ? 1 : width <= 1024 ? 2 : 3;
+    const visibleCount = width <= 768 ? 2 : width <= 1024 ? 3 : 4;
     return Array.from({ length: Math.min(visibleCount, this.reviews.length) }, (_, offset) =>
       this.reviews[(this.reviewIndex + offset) % this.reviews.length]
     );

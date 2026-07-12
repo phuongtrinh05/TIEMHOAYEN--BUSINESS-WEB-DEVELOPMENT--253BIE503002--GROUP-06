@@ -366,7 +366,7 @@
 .review-list{
     flex:1;
     display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
+    grid-template-columns:repeat(4,minmax(0,1fr));
     gap:16px;
     min-width:0;
 }
@@ -470,11 +470,17 @@
     }
 
     .review-list{
-        grid-template-columns:repeat(2,1fr);
+        grid-template-columns:repeat(3,minmax(0,1fr));
     }
 
     .feature-grid{
         grid-template-columns:repeat(2,1fr);
+    }
+}
+
+@media(min-width:1025px) and (max-width:1200px){
+    .review-list{
+        grid-template-columns:repeat(4,minmax(0,1fr));
     }
 }
 
@@ -507,7 +513,7 @@
     }
 
     .review-list{
-        grid-template-columns:1fr;
+        grid-template-columns:repeat(2,minmax(0,1fr));
     }
 
     .story-content h2,
