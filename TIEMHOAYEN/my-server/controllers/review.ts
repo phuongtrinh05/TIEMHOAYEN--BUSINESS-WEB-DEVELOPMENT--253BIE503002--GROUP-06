@@ -17,12 +17,30 @@ interface ReviewableOrderRow {
 
 const normalizePhone = (phone: string) => String(phone || '').replace(/\D/g, '');
 
+const getPublicBaseUrl = (req: Request): string => {
+  const configuredUrl = String(process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || '').trim();
+  if (configuredUrl) return configuredUrl.replace(/\/$/, '');
+
+  const forwardedProtocol = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  return `${forwardedProtocol || req.protocol}://${req.get('host')}`;
+};
+
+const normalizeReviewImageUrl = (value: unknown): string => {
+  const url = String(value || '').trim();
+  return url.replace(/^http:\/\/(tiem-hoa-yen-api\.onrender\.com)(?=\/)/i, 'https://$1');
+};
+
 const isDeliveredStatusSql = `
   (
-    dh.TRANG_THAI = N'Giao hàng thành công'
-    OR dh.TRANG_THAI = N'Hoàn thành'
+    (
+      dh.TRANG_THAI COLLATE Vietnamese_CI_AI = N'Giao hang thanh cong'
+      AND NULLIF(LTRIM(RTRIM(ISNULL(dh.LY_DO_HOAN_TIEN_TRA_HANG, N''))), N'') IS NULL
+    )
+    OR
+    (
+      dh.TRANG_THAI COLLATE Vietnamese_CI_AI = N'Hoan thanh'
+    )
   )
-  AND NULLIF(LTRIM(RTRIM(ISNULL(dh.LY_DO_HOAN_TIEN_TRA_HANG, N''))), N'') IS NULL
 `;
 
 const mapOrderRows = (rows: ReviewableOrderRow[]) => {
@@ -64,7 +82,9 @@ const mapReviewRows = (rows: any[]) => rows.map((item: any) => ({
   rating: Number(item.SO_SAO || 0),
   content: item.NOI_DUNG || '',
   createdAt: item.NGAY_DANH_GIA,
-  images: item.HINH_ANH_LIST ? String(item.HINH_ANH_LIST).split('|').filter(Boolean) : [],
+  images: item.HINH_ANH_LIST
+    ? String(item.HINH_ANH_LIST).split('|').filter(Boolean).map(normalizeReviewImageUrl)
+    : [],
   shopReply: item.PHAN_HOI_SHOP || null,
   shopReplyDate: item.NGAY_PHAN_HOI_SHOP || null,
   shopReplyStaffId: item.NHAN_VIEN_PHAN_HOI_ID || null,
@@ -449,7 +469,7 @@ export const createReview = async (req: Request, res: Response) => {
     const imageUrls: string[] = [];
 
     for (const file of files) {
-      const imageUrl = `${req.protocol}://${req.get('host')}/uploads/reviews/${file.filename}`;
+      const imageUrl = `${getPublicBaseUrl(req)}/uploads/reviews/${file.filename}`;
 
       await pool.request()
         .input('DANH_GIA_ID', sql.NVarChar, reviewId)
@@ -477,8 +497,8 @@ export const createReview = async (req: Request, res: Response) => {
         SET TRANG_THAI = N'Hoàn thành'
         WHERE DON_HANG_ID = @DON_HANG_ID
           AND (
-            TRANG_THAI = N'Giao hàng thành công'
-            OR TRANG_THAI = N'Hoàn thành'
+            TRANG_THAI COLLATE Vietnamese_CI_AI = N'Giao hang thanh cong'
+            OR TRANG_THAI COLLATE Vietnamese_CI_AI = N'Hoan thanh'
           )
           AND NULLIF(LTRIM(RTRIM(ISNULL(LY_DO_HOAN_TIEN_TRA_HANG, N''))), N'') IS NULL
       `);
@@ -539,7 +559,9 @@ export const getProductReviews = async (req: Request, res: Response) => {
         rating: Number(item.SO_SAO || 0),
         content: item.NOI_DUNG || '',
         createdAt: item.NGAY_DANH_GIA,
-        images: item.HINH_ANH_LIST ? String(item.HINH_ANH_LIST).split('|').filter(Boolean) : [],
+        images: item.HINH_ANH_LIST
+          ? String(item.HINH_ANH_LIST).split('|').filter(Boolean).map(normalizeReviewImageUrl)
+          : [],
         shopReply: item.PHAN_HOI_SHOP || null,
         shopReplyDate: item.NGAY_PHAN_HOI_SHOP || null,
         shopReplyStaffId: item.NHAN_VIEN_PHAN_HOI_ID || null,
