@@ -752,7 +752,7 @@ export class OrderReview implements OnInit, OnDestroy {
           throw new Error(data?.message || 'Không thể lưu đánh giá.');
         }
 
-        return data as { reviewId?: string; imageUrls?: string[] };
+        return data as { reviewId?: string; imageUrls?: string[]; orderStatus?: string };
       })
       .then((data) => {
         const submittedReview = this.buildLocalSubmittedReview(
@@ -761,10 +761,11 @@ export class OrderReview implements OnInit, OnDestroy {
         );
 
         this.submitting = false;
-        this.submitMessage = 'Đánh giá đã được gửi thành công.';
+        this.submitMessage = 'Đánh giá đã được gửi thành công. Đơn hàng đã chuyển sang Hoàn thành.';
 
-        if (this.selectedProduct) {
-          this.selectedProduct.reviewed = true;
+        if (this.selectedOrder) {
+          this.selectedOrder.status = data.orderStatus || 'Hoàn thành';
+          this.selectedOrder.items.forEach(item => item.reviewed = true);
           if (this.isLoggedIn) this.cacheReviewableOrders();
         }
 

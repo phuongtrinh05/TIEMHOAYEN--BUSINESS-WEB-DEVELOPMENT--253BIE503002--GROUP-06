@@ -48,6 +48,7 @@ interface OrderDetailView {
   cancelReason: string;
   returnRefundReason: string;
   rejectReason: string;
+  hasReviewed: boolean;
 }
 
 interface OrderDetailProduct {
@@ -234,6 +235,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       cancelReason: String(row.LY_DO_HUY || ''),
       returnRefundReason: String(row.LY_DO_HOAN_TIEN_TRA_HANG || ''),
       rejectReason: String(row.LY_DO_TU_CHOI || ''),
+      hasReviewed: Number(row.DA_DANH_GIA || 0) > 0,
     };
   }
 
@@ -907,7 +909,10 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   canReview(): boolean {
-    return this.normalizeStatus(this.order.status) === 'completed';
+    const status = this.normalizeStatus(this.order.status);
+    return !this.order.hasReviewed &&
+      !this.order.returnRefundReason &&
+      (status === 'delivered' || status === 'completed');
   }
 
   canCancel(): boolean {
@@ -1074,6 +1079,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       cancelReason: '',
       returnRefundReason: '',
       rejectReason: '',
+      hasReviewed: false,
     };
   }
   isEditingShipping = false;

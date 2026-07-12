@@ -43,6 +43,7 @@ export class App {
   ]);
 
   constructor(private router: Router) {
+    this.restoreLoginPersistence();
     this.currentRoute.set(this.getRoutePath(this.router.url));
 
     this.router.events
@@ -50,6 +51,18 @@ export class App {
       .subscribe((event) => {
         this.currentRoute.set(this.getRoutePath(event.urlAfterRedirects));
       });
+  }
+
+  private restoreLoginPersistence(): void {
+    if (typeof window === 'undefined') return;
+
+    const remembered = localStorage.getItem('tiemHoaYenRememberLogin') === 'true';
+    const activeSession = sessionStorage.getItem('tiemHoaYenSessionAuth') === 'true';
+
+    if (!remembered && !activeSession) {
+      localStorage.removeItem('khachHang');
+      localStorage.removeItem('token');
+    }
   }
 
   protected useLayoutOne(): boolean {

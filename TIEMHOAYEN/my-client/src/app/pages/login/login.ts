@@ -18,7 +18,9 @@ constructor(
   private loginService: LoginService,
   private router: Router,
   private cdr: ChangeDetectorRef 
-) {}
+) {
+  this.restoreRememberedLogin();
+}
   loginError = '';
   loginPhoneError = '';
   showPassword = false;
@@ -34,6 +36,16 @@ constructor(
     password: '',
     rememberMe: false,
   };
+
+  private restoreRememberedLogin(): void {
+    const rememberedPhone = localStorage.getItem('tiemHoaYenRememberedPhone');
+    const rememberLogin = localStorage.getItem('tiemHoaYenRememberLogin') === 'true';
+
+    if (rememberLogin && rememberedPhone) {
+      this.formData.phone = rememberedPhone;
+      this.formData.rememberMe = true;
+    }
+  }
 
   togglePassword(): void {
     this.showPassword = !this.showPassword;
@@ -257,9 +269,23 @@ this.loginService.login({
 .subscribe({
   next: (res) => {
     console.log('SUCCESS:', res);
-    this.router.navigate(['/']);
-    // Lưu thông tin khách hàng vào localStorage
     localStorage.setItem('khachHang', JSON.stringify(res.customer));
+
+    if (res?.token) {
+      localStorage.setItem('token', String(res.token));
+    }
+
+    if (this.formData.rememberMe) {
+      localStorage.setItem('tiemHoaYenRememberLogin', 'true');
+      localStorage.setItem('tiemHoaYenRememberedPhone', this.formData.phone);
+      sessionStorage.removeItem('tiemHoaYenSessionAuth');
+    } else {
+      localStorage.removeItem('tiemHoaYenRememberLogin');
+      localStorage.removeItem('tiemHoaYenRememberedPhone');
+      sessionStorage.setItem('tiemHoaYenSessionAuth', 'true');
+    }
+
+    window.dispatchEvent(new Event('auth-changed'));
 
     this.router.navigate(['/']);
   },

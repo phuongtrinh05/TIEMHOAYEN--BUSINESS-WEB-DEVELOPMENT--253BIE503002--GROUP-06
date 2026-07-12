@@ -1527,6 +1527,8 @@ export class PageHeader1 implements OnInit, OnDestroy {
     if (this.isBrowser()) {
       localStorage.removeItem('khachHang');
       localStorage.removeItem('token');
+      localStorage.removeItem('tiemHoaYenRememberLogin');
+      sessionStorage.removeItem('tiemHoaYenSessionAuth');
       window.dispatchEvent(new Event('auth-changed'));
     }
 
