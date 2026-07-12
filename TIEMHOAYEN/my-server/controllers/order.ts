@@ -89,7 +89,9 @@ const isRejectedReturnRefundOrderStatus = (status: string): boolean => {
 };
 
 const isAutoCompletableOrderStatus = (status: string): boolean => {
-  return isDeliveredOrderStatus(status) || isRejectedReturnRefundOrderStatus(status);
+  // Đơn vừa giao phải chờ khách chọn đánh giá hoặc yêu cầu hoàn tiền/trả hàng.
+  // Chỉ nhánh yêu cầu bị từ chối mới tiếp tục dùng bộ đếm hoàn thành cũ.
+  return isRejectedReturnRefundOrderStatus(status);
 };
 
 const isReturnOrFinalOrderStatus = (status: string): boolean => {
@@ -186,9 +188,7 @@ const completeDeliveredOrderById = async (orderId: string): Promise<boolean> => 
     SET TRANG_THAI = N'Hoàn thành'
     WHERE DON_HANG_ID = @DON_HANG_ID
       AND (
-        LOWER(ISNULL(TRANG_THAI, N'')) LIKE N'%giao hàng thành công%'
-        OR LOWER(ISNULL(TRANG_THAI, N'')) LIKE N'%giao thành công%'
-        OR LOWER(ISNULL(TRANG_THAI, N'')) LIKE N'%từ chối hoàn tiền%'
+        LOWER(ISNULL(TRANG_THAI, N'')) LIKE N'%từ chối hoàn tiền%'
         OR LOWER(ISNULL(TRANG_THAI, N'')) LIKE N'%từ chối trả hàng%'
       )
   `);
@@ -1135,6 +1135,9 @@ export const getOrderDetail = async (req: Request, res: Response) => {
         dh.LY_DO_HOAN_TIEN_TRA_HANG,
         dh.LY_DO_TU_CHOI,
         dh.NGAY_YEU_CAU_HOAN_TIEN_TRA_HANG,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM DANH_GIA dg WHERE dg.DON_HANG_ID = dh.DON_HANG_ID
+        ) THEN 1 ELSE 0 END AS DA_DANH_GIA,
         kh.TEN AS TEN_KHACH_HANG,
         kh.SDT AS SDT_KHACH_HANG,
         kh.EMAIL,
@@ -1351,6 +1354,21 @@ export const requestReturnRefund = async (req: Request, res: Response) => {
     if (!isDeliveredOrderStatus(currentStatus)) {
       return res.status(400).json({
         message: 'Chỉ có thể yêu cầu hoàn tiền/trả hàng khi đơn hàng ở trạng thái Giao hàng thành công.',
+      });
+    }
+
+    const reviewCheckRequest = new sql.Request();
+    reviewCheckRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
+
+    const reviewCheckResult = await reviewCheckRequest.query(`
+      SELECT TOP 1 DANH_GIA_ID
+      FROM DANH_GIA
+      WHERE DON_HANG_ID = @DON_HANG_ID
+    `);
+
+    if (reviewCheckResult.recordset.length > 0) {
+      return res.status(409).json({
+        message: 'Đơn hàng đã được đánh giá nên không thể yêu cầu hoàn tiền/trả hàng.',
       });
     }
 

@@ -3418,9 +3418,7 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
       WHERE DON_HANG_ID = @DON_HANG_ID;
     `);
 
-    if (normalizeOrderStatus(status) === 'Giao th\u00e0nh c\u00f4ng') {
-      scheduleOrderCompletion(orderId);
-    }
+    // Đơn giao thành công chờ khách chọn đánh giá hoặc yêu cầu hoàn tiền/trả hàng.
 
     return res.status(200).json({
       message: 'Cáº­p nháº­t tráº¡ng thÃ¡i Ä‘Æ¡n hÃ ng thÃ nh cÃ´ng.',

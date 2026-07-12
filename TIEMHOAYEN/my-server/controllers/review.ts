@@ -22,6 +22,7 @@ const isDeliveredStatusSql = `
     dh.TRANG_THAI = N'Giao hàng thành công'
     OR dh.TRANG_THAI = N'Hoàn thành'
   )
+  AND NULLIF(LTRIM(RTRIM(ISNULL(dh.LY_DO_HOAN_TIEN_TRA_HANG, N''))), N'') IS NULL
 `;
 
 const mapOrderRows = (rows: ReviewableOrderRow[]) => {
@@ -111,7 +112,6 @@ export const getReviewableOrdersForCustomer = async (req: Request, res: Response
               SELECT 1
               FROM DANH_GIA dg
               WHERE dg.DON_HANG_ID = dh.DON_HANG_ID
-                AND dg.SAN_PHAM_ID = dct.SAN_PHAM_ID
             ) THEN 1
             ELSE 0
           END AS DA_DANH_GIA
@@ -172,7 +172,6 @@ export const lookupGuestOrderForReview = async (req: Request, res: Response) => 
               SELECT 1
               FROM DANH_GIA dg
               WHERE dg.DON_HANG_ID = dh.DON_HANG_ID
-                AND dg.SAN_PHAM_ID = dct.SAN_PHAM_ID
             ) THEN 1
             ELSE 0
           END AS DA_DANH_GIA
@@ -407,11 +406,10 @@ export const createReview = async (req: Request, res: Response) => {
         SELECT TOP 1 DANH_GIA_ID
         FROM DANH_GIA
         WHERE DON_HANG_ID = @DON_HANG_ID
-          AND SAN_PHAM_ID = @SAN_PHAM_ID
       `);
 
     if (duplicateResult.recordset.length > 0) {
-      return res.status(409).json({ message: 'Sản phẩm này trong đơn đã được đánh giá rồi.' });
+      return res.status(409).json({ message: 'Đơn hàng này đã được đánh giá rồi.' });
     }
 
     const reviewId = await createNextReviewId(pool);
@@ -472,10 +470,24 @@ export const createReview = async (req: Request, res: Response) => {
       imageUrls.push(imageUrl);
     }
 
+    await pool.request()
+      .input('DON_HANG_ID', sql.NVarChar, String(orderId).trim().toUpperCase())
+      .query(`
+        UPDATE DON_HANG
+        SET TRANG_THAI = N'Hoàn thành'
+        WHERE DON_HANG_ID = @DON_HANG_ID
+          AND (
+            TRANG_THAI = N'Giao hàng thành công'
+            OR TRANG_THAI = N'Hoàn thành'
+          )
+          AND NULLIF(LTRIM(RTRIM(ISNULL(LY_DO_HOAN_TIEN_TRA_HANG, N''))), N'') IS NULL
+      `);
+
     return res.status(201).json({
       message: 'Đã lưu đánh giá.',
       reviewId,
       imageUrls,
+      orderStatus: 'Hoàn thành',
     });
   } catch (error: any) {
     return res.status(500).json({
