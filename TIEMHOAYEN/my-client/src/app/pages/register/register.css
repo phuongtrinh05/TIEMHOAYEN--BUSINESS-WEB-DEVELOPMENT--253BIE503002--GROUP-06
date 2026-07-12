@@ -11,7 +11,7 @@
   align-items: center;
   overflow: hidden;
   box-sizing: border-box;
-  min-height: calc(100vh - 72px);
+  min-height: calc(100dvh - 100px);
   padding: clamp(24px, 3.6vw, 42px) clamp(40px, 5vw, 88px);
   background-color: var(--color-blush-white);
 }
@@ -951,6 +951,7 @@ input[type="password"]::-ms-clear {
     display: flex;
     gap: 22px;
     overflow: visible;
+    min-height: calc(100dvh - 96px);
   }
 }
 :host {
