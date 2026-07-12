@@ -739,6 +739,35 @@ export const getCustomerVouchers = async (req: Request, res: Response) => {
     const result = await pool.request()
       .input('KHACH_HANG_ID', sql.NVarChar, id)
       .query(`
+        WITH AvailableVouchers AS (
+          SELECT
+            VOUCHER_ID,
+            KHACH_HANG_ID,
+            MA_VOUCHER,
+            LOAI_GIAM_GIA,
+            GIA_TRI_GIAM,
+            NGAY_BAT_DAU,
+            NGAY_KET_THUC,
+            DA_DUNG,
+            ROW_NUMBER() OVER (
+              PARTITION BY UPPER(LTRIM(RTRIM(MA_VOUCHER)))
+              ORDER BY
+                CASE WHEN KHACH_HANG_ID = @KHACH_HANG_ID THEN 0 ELSE 1 END,
+                NGAY_KET_THUC ASC,
+                VOUCHER_ID ASC
+            ) AS RN
+          FROM VOUCHER
+          WHERE (KHACH_HANG_ID = @KHACH_HANG_ID OR KHACH_HANG_ID IS NULL)
+            AND ISNULL(DA_DUNG, 0) = 0
+            AND (
+              NGAY_BAT_DAU IS NULL
+              OR CAST(GETDATE() AS date) >= NGAY_BAT_DAU
+            )
+            AND (
+              NGAY_KET_THUC IS NULL
+              OR CAST(GETDATE() AS date) <= NGAY_KET_THUC
+            )
+        )
         SELECT
           VOUCHER_ID,
           KHACH_HANG_ID,
@@ -748,17 +777,8 @@ export const getCustomerVouchers = async (req: Request, res: Response) => {
           NGAY_BAT_DAU,
           NGAY_KET_THUC,
           DA_DUNG
-        FROM VOUCHER
-        WHERE (KHACH_HANG_ID = @KHACH_HANG_ID OR KHACH_HANG_ID IS NULL)
-          AND ISNULL(DA_DUNG, 0) = 0
-          AND (
-            NGAY_BAT_DAU IS NULL
-            OR CAST(GETDATE() AS date) >= NGAY_BAT_DAU
-          )
-          AND (
-            NGAY_KET_THUC IS NULL
-            OR CAST(GETDATE() AS date) <= NGAY_KET_THUC
-          )
+        FROM AvailableVouchers
+        WHERE RN = 1
         ORDER BY
           CASE WHEN KHACH_HANG_ID = @KHACH_HANG_ID THEN 0 ELSE 1 END,
           NGAY_KET_THUC ASC,
