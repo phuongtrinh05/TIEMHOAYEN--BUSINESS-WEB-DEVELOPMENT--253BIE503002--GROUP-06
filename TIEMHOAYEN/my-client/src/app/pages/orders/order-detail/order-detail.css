@@ -963,7 +963,21 @@ h3{
 
 @media(max-width:640px){
   .order-page{
+    overflow-x:hidden;
     padding:12px;
+  }
+
+  .order-layout,
+  .order-layout > div,
+  .shipping-card,
+  .card-message,
+  .delivery-map-card,
+  .product-card,
+  .payment-summary,
+  .action-card{
+    width:100%;
+    min-width:0;
+    max-width:100%;
   }
 
   .breadcrumb{
@@ -977,30 +991,37 @@ h3{
   }
 
   .status-box{
+    justify-content:space-between;
+    overflow-x:hidden;
     padding:16px 10px 14px;
   }
 
   .status-item{
-    min-width:76px;
+    flex:1 1 0;
+    min-width:0;
   }
 
   .status-icon{
-    width:40px;
-    height:40px;
+    width:32px;
+    height:32px;
   }
 
   .status-icon i{
-    font-size:17px;
+    font-size:14px;
   }
 
   .status-item:not(:first-child)::before{
-    top:20px;
-    left:calc(-50% + 20px);
-    width:calc(100% - 40px);
+    top:16px;
+    left:calc(-50% + 16px);
+    width:calc(100% - 32px);
   }
 
   .status-text{
-    font-size:10px;
+    margin-top:7px;
+    padding:0 2px;
+    font-size:8.5px;
+    line-height:1.25;
+    overflow-wrap:anywhere;
   }
 
   .shipping-card,
@@ -1013,12 +1034,90 @@ h3{
   }
 
   .product-table{
-    min-width:500px;
+    min-width:0;
+    border-spacing:0;
+  }
+
+  .product-table thead{
+    display:none;
+  }
+
+  .product-table,
+  .product-table tbody,
+  .product-table tr,
+  .product-table td{
+    display:block;
+    width:100%;
+  }
+
+  .product-table tr{
+    margin-bottom:12px;
+    padding:10px;
+    border:1px solid #f0e1cf;
+    border-radius:10px;
+    background:#fffdfb;
+  }
+
+  .product-table tr:last-child{
+    margin-bottom:0;
+  }
+
+  .product-table td{
+    display:grid;
+    grid-template-columns:88px minmax(0,1fr);
+    align-items:center;
+    gap:10px;
+    padding:7px 0;
+    border-bottom:1px dashed #eee1d8;
+    text-align:right;
+  }
+
+  .product-table td:last-child{
+    border-bottom:0;
+  }
+
+  .product-table td::before{
+    content:attr(data-label);
+    color:#731919;
+    font-size:11px;
+    font-weight:700;
+    text-align:left;
+  }
+
+  .product-table td.product-info{
+    grid-template-columns:1fr;
+    padding-top:0;
+    text-align:left;
+  }
+
+  .product-table td.product-info::before{
+    display:none;
+  }
+
+  .product-info{
+    align-items:flex-start;
   }
 
   .product-info img{
-    width:34px;
-    height:34px;
+    width:58px;
+    height:58px;
+  }
+
+  .shipping-header{
+    align-items:flex-start;
+    flex-wrap:wrap;
+  }
+
+  .delivery-map-footer{
+    min-width:0;
+  }
+
+  .delivery-map-footer div,
+  .shipping-value,
+  .card-message p,
+  .payment-summary span{
+    min-width:0;
+    overflow-wrap:anywhere;
   }
 
   .delivery-map-card{
@@ -1048,5 +1147,31 @@ h3{
 
   .customer-marker{
     left:82%;
+  }
+}
+
+@media(max-width:380px){
+  .order-page{
+    padding:9px;
+  }
+
+  .status-box{
+    padding-left:6px;
+    padding-right:6px;
+  }
+
+  .status-icon{
+    width:28px;
+    height:28px;
+  }
+
+  .status-item:not(:first-child)::before{
+    top:14px;
+    left:calc(-50% + 14px);
+    width:calc(100% - 28px);
+  }
+
+  .status-text{
+    font-size:7.5px;
   }
 }

@@ -251,7 +251,7 @@
             <tbody>
               @for(product of products; track product.id){
               <tr>
-                <td class="product-info">
+                <td class="product-info" data-label="Sản phẩm">
                   <img [src]="product.image" [alt]="product.name">
                   <div>
                     <span>{{ product.name }}</span>
@@ -259,9 +259,9 @@
                   </div>
                 </td>
 
-                <td>{{ product.price | number:'1.0-0' }}đ</td>
-                <td>{{ product.quantity }}</td>
-                <td>{{ product.price * product.quantity | number:'1.0-0' }}đ</td>
+                <td data-label="Đơn giá">{{ product.price | number:'1.0-0' }}đ</td>
+                <td data-label="Số lượng">{{ product.quantity }}</td>
+                <td data-label="Thành tiền">{{ product.price * product.quantity | number:'1.0-0' }}đ</td>
               </tr>
               }
             </tbody>
