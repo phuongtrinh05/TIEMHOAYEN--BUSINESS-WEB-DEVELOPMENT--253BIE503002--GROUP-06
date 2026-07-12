@@ -771,8 +771,11 @@ export const createOrder = async (req: Request, res: Response) => {
       }
 
       const customerCondition = normalizedCustomerId
-        ? 'AND KHACH_HANG_ID = @KHACH_HANG_ID'
+        ? 'AND (KHACH_HANG_ID = @KHACH_HANG_ID OR KHACH_HANG_ID IS NULL)'
         : 'AND KHACH_HANG_ID IS NULL';
+      const customerOrder = normalizedCustomerId
+        ? 'CASE WHEN KHACH_HANG_ID = @KHACH_HANG_ID THEN 0 ELSE 1 END,'
+        : '';
 
       const voucherCheck = await voucherCheckRequest.query(`
         SELECT TOP 1 VOUCHER_ID, MA_VOUCHER
@@ -785,6 +788,7 @@ export const createOrder = async (req: Request, res: Response) => {
             (@VOUCHER_ID <> N'' AND VOUCHER_ID = @VOUCHER_ID)
             OR (@MA_VOUCHER <> N'' AND UPPER(MA_VOUCHER) = @MA_VOUCHER)
           )
+        ORDER BY ${customerOrder} NGAY_KET_THUC ASC, VOUCHER_ID ASC
       `);
 
       if (voucherCheck.recordset.length === 0) {

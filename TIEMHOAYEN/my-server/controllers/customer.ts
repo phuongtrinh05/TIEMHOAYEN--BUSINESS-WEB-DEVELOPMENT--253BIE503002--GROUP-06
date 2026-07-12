@@ -749,8 +749,8 @@ export const getCustomerVouchers = async (req: Request, res: Response) => {
           NGAY_KET_THUC,
           DA_DUNG
         FROM VOUCHER
-        WHERE KHACH_HANG_ID = @KHACH_HANG_ID
-          AND DA_DUNG = 0
+        WHERE (KHACH_HANG_ID = @KHACH_HANG_ID OR KHACH_HANG_ID IS NULL)
+          AND ISNULL(DA_DUNG, 0) = 0
           AND (
             NGAY_BAT_DAU IS NULL
             OR CAST(GETDATE() AS date) >= NGAY_BAT_DAU
@@ -759,7 +759,10 @@ export const getCustomerVouchers = async (req: Request, res: Response) => {
             NGAY_KET_THUC IS NULL
             OR CAST(GETDATE() AS date) <= NGAY_KET_THUC
           )
-        ORDER BY NGAY_KET_THUC ASC
+        ORDER BY
+          CASE WHEN KHACH_HANG_ID = @KHACH_HANG_ID THEN 0 ELSE 1 END,
+          NGAY_KET_THUC ASC,
+          MA_VOUCHER ASC
       `);
 
     return res.status(200).json(result.recordset);
