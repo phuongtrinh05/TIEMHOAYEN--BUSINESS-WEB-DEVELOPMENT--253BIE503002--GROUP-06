@@ -202,8 +202,6 @@ PASSWORD_HASH_ROUNDS=12
 | `PUBLIC_BASE_URL` | URL public của backend, dùng cho file upload |
 | `PASSWORD_HASH_ROUNDS` | Số vòng băm mật khẩu bằng bcrypt |
 
-> Không commit file `.env`, mật khẩu database, token hoặc khóa bí mật lên Git.
-
 ## Chạy dự án ở môi trường phát triển
 
 Mở ba terminal riêng.
