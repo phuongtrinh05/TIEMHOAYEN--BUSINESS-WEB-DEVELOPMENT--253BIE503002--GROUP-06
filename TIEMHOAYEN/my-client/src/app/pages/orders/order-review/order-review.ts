@@ -321,6 +321,11 @@ export class OrderReview implements OnInit, OnDestroy {
     }
   }
 
+  onReviewImageError(event: Event): void {
+    const image = event.target as HTMLImageElement;
+    image.src = this.defaultImage;
+  }
+
   private loadReviewableOrdersForCustomer(preferredOrderId = ''): void {
     const hasCachedOrders = this.restoreReviewableOrders();
     this.loadingOrders = !hasCachedOrders;
