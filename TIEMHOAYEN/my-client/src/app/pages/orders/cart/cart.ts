@@ -111,6 +111,7 @@ export class CartComponent implements OnInit {
 
   private readonly defaultImage = 'assets/images/hoa.jpg';
   private readonly estimatedShippingFee = 30000;
+  private readonly cartCacheTtlMs = 10 * 60 * 1000;
 
   cartItems: CartItem[] = [];
   suggestedProducts: SuggestedProduct[] = [];
@@ -131,9 +132,15 @@ export class CartComponent implements OnInit {
 
   ngOnInit(): void {
     this.cachedCustomerId = this.resolveCustomerId();
+    this.restoreCustomerCartCache();
     this.loadCartByLoginState();
-    this.loadCustomerVouchers();
-    this.loadSuggestedMaterials();
+
+    if (this.isBrowser) {
+      window.setTimeout(() => {
+        this.loadCustomerVouchers();
+        this.loadSuggestedMaterials();
+      }, 0);
+    }
   }
 
   private get isBrowser(): boolean {
@@ -254,16 +261,52 @@ export class CartComponent implements OnInit {
           this.mapApiItemToCartItem(item)
         );
 
-        this.hydrateMissingTopicNames();
+        this.saveCustomerCartCache();
         this.cdr.detectChanges();
         this.dispatchCartChanged();
       },
       error: (err: unknown) => {
         console.error('Lỗi lấy giỏ hàng từ database:', err);
-        this.cartItems = [];
+        if (this.cartItems.length === 0) this.cartItems = [];
         this.cdr.detectChanges();
       },
     });
+  }
+
+  private get customerCartCacheKey(): string {
+    return `tiemHoaYen:cart:${this.cachedCustomerId}`;
+  }
+
+  private restoreCustomerCartCache(): void {
+    if (!this.isBrowser || !this.isLoggedIn) return;
+
+    try {
+      const raw = localStorage.getItem(this.customerCartCacheKey);
+      if (!raw) return;
+
+      const cache = JSON.parse(raw) as { expiresAt?: number; items?: CartItem[] };
+      if (!cache.expiresAt || cache.expiresAt <= Date.now() || !Array.isArray(cache.items)) {
+        localStorage.removeItem(this.customerCartCacheKey);
+        return;
+      }
+
+      this.cartItems = cache.items;
+    } catch {
+      localStorage.removeItem(this.customerCartCacheKey);
+    }
+  }
+
+  private saveCustomerCartCache(): void {
+    if (!this.isBrowser || !this.isLoggedIn) return;
+
+    try {
+      localStorage.setItem(this.customerCartCacheKey, JSON.stringify({
+        expiresAt: Date.now() + this.cartCacheTtlMs,
+        items: this.cartItems,
+      }));
+    } catch {
+      // Cache chỉ dùng để tăng tốc, không làm gián đoạn giỏ hàng.
+    }
   }
 
   private mapApiItemToCartItem(item: CartApiItem): CartItem {
@@ -504,6 +547,7 @@ export class CartComponent implements OnInit {
     }
 
     item.quantity++;
+    this.saveCustomerCartCache();
     this.cdr.detectChanges();
 
     if (this.isLoggedIn && this.isProductItem(item)) {
@@ -520,6 +564,7 @@ export class CartComponent implements OnInit {
     }
 
     item.quantity--;
+    this.saveCustomerCartCache();
     this.cdr.detectChanges();
 
     if (this.isLoggedIn && this.isProductItem(item)) {
@@ -566,6 +611,7 @@ export class CartComponent implements OnInit {
     this.cartItems = this.cartItems.filter(
       (cartItem: CartItem) => cartItem.id !== item.id
     );
+    this.saveCustomerCartCache();
     this.cdr.detectChanges();
 
     if (this.isLoggedIn && this.isProductItem(item)) {
@@ -605,6 +651,7 @@ export class CartComponent implements OnInit {
 
       // Xóa giao diện tức thì, không chờ server.
       this.cartItems = [];
+      this.saveCustomerCartCache();
       this.cdr.detectChanges();
 
       if (productItems.length === 0) {
@@ -750,6 +797,7 @@ export class CartComponent implements OnInit {
       });
     }
 
+    this.saveCustomerCartCache();
     this.cdr.detectChanges();
     console.warn(`Đã thêm "${product.name}" vào giỏ hàng!`);
 
