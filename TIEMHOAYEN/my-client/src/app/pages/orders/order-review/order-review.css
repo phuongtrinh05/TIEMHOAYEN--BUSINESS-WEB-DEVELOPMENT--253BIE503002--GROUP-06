@@ -477,7 +477,7 @@ textarea {
   margin: 4px 0;
 }
 
-@media(max-width: 992px) {
+@media(max-width: 1024px) {
   .review-layout {
     grid-template-columns: 1fr;
   }
