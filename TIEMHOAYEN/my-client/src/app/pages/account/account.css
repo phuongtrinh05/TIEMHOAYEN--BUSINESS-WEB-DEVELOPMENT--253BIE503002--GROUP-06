@@ -1909,11 +1909,23 @@ textarea.address-modal-input.address-detail-textarea {
   }
 
   .wishlist-grid {
-    grid-template-columns: repeat(3, minmax(0, 190px));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
   }
 
   .address-grid {
-    grid-template-columns: repeat(2, 1fr);
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+    padding-bottom: 6px;
+  }
+
+  .address-card {
+    flex: 0 0 min(280px, 42vw);
+    min-height: 150px;
+    scroll-snap-align: start;
   }
 }
 
@@ -2019,10 +2031,23 @@ textarea.address-modal-input.address-detail-textarea {
 
   .wishlist-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
   }
 
   .address-grid {
-    grid-template-columns: 1fr;
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+    padding-bottom: 6px;
+  }
+
+  .address-card {
+    flex: 0 0 min(250px, calc(100vw - 100px));
+    min-height: 145px;
+    padding: 12px;
+    scroll-snap-align: start;
   }
 
   .address-slider {
@@ -2044,6 +2069,33 @@ textarea.address-modal-input.address-detail-textarea {
     width: 100%;
     min-width: 0;
     padding: 16px;
+  }
+
+  .wishlist-item .product-card-body {
+    padding: 9px 7px 10px;
+  }
+
+  .wishlist-item .product-card-body h3 {
+    font-size: 13px;
+  }
+
+  .wishlist-item .price {
+    font-size: 13px;
+  }
+
+  .wishlist-item .old-price {
+    font-size: 10px;
+  }
+
+  .wishlist-item .btn-buy {
+    height: 29px;
+    padding: 0 7px;
+    font-size: 10px;
+  }
+
+  .wishlist-item .btn-cart {
+    width: 29px;
+    height: 29px;
   }
 
   .modal-overlay {
@@ -2114,7 +2166,31 @@ textarea.address-modal-input.address-detail-textarea {
 
 @media (max-width: 480px) {
   .wishlist-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .wishlist-item .badge-sale {
+    top: 5px;
+    left: 5px;
+    padding: 2px 5px;
+    font-size: 8px;
+  }
+
+  .wishlist-item .btn-wishlist {
+    top: 5px;
+    right: 5px;
+    width: 23px;
+    height: 23px;
+  }
+
+  .wishlist-item .product-action {
+    gap: 4px;
+  }
+
+  .wishlist-item .btn-buy {
+    padding: 0 4px;
+    font-size: 9px;
   }
 
   .voucher-item {

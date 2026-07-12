@@ -560,6 +560,12 @@ h3{
 
 @media(max-width:1024px){
 
+    .order-page{
+        width:100%;
+        max-width:100%;
+        padding:18px 20px 28px;
+    }
+
     .delivery-map-footer{
         grid-template-columns:1fr;
     }
@@ -575,10 +581,62 @@ h3{
     .status-box{
         overflow-x:auto;
         gap:0;
+        padding:20px 14px 18px;
+        border-radius:16px;
     }
 
     .status-item{
-        min-width:96px;
+        min-width:86px;
+    }
+
+    .status-icon{
+        width:46px;
+        height:46px;
+    }
+
+    .status-icon i{
+        font-size:20px;
+    }
+
+    .status-item:not(:first-child)::before{
+        top:23px;
+        left:calc(-50% + 23px);
+        width:calc(100% - 46px);
+    }
+
+    .status-text{
+        margin-top:9px;
+        font-size:11px;
+    }
+
+    .shipping-card,
+    .card-message,
+    .delivery-map-card,
+    .product-card,
+    .payment-summary,
+    .action-card{
+        padding:14px;
+        border-radius:15px;
+    }
+
+    .product-card{
+        overflow-x:auto;
+        -webkit-overflow-scrolling:touch;
+    }
+
+    .product-table{
+        min-width:560px;
+    }
+
+    .product-table th,
+    .product-table td{
+        padding:8px;
+        font-size:12px;
+    }
+
+    .product-info img{
+        width:38px;
+        height:38px;
     }
 }
 
@@ -905,7 +963,62 @@ h3{
 
 @media(max-width:640px){
   .order-page{
-    padding:14px;
+    padding:12px;
+  }
+
+  .breadcrumb{
+    gap:6px;
+    margin-bottom:14px;
+    font-size:12px;
+  }
+
+  h2{
+    font-size:20px;
+  }
+
+  .status-box{
+    padding:16px 10px 14px;
+  }
+
+  .status-item{
+    min-width:76px;
+  }
+
+  .status-icon{
+    width:40px;
+    height:40px;
+  }
+
+  .status-icon i{
+    font-size:17px;
+  }
+
+  .status-item:not(:first-child)::before{
+    top:20px;
+    left:calc(-50% + 20px);
+    width:calc(100% - 40px);
+  }
+
+  .status-text{
+    font-size:10px;
+  }
+
+  .shipping-card,
+  .card-message,
+  .product-card,
+  .payment-summary,
+  .action-card{
+    padding:12px;
+    border-radius:13px;
+  }
+
+  .product-table{
+    min-width:500px;
+  }
+
+  .product-info img{
+    width:34px;
+    height:34px;
   }
 
   .delivery-map-card{
