@@ -910,8 +910,11 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   canReview(): boolean {
     const status = this.normalizeStatus(this.order.status);
+    const hasRejectedReturnRefund = !!String(this.order.rejectReason || '').trim();
+    const returnRefundAllowsReview = !this.order.returnRefundReason || hasRejectedReturnRefund;
+
     return !this.order.hasReviewed &&
-      !this.order.returnRefundReason &&
+      returnRefundAllowsReview &&
       (status === 'delivered' || status === 'completed');
   }
 
