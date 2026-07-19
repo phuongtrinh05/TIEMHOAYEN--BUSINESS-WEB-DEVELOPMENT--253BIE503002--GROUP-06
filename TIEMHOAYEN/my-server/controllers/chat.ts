@@ -796,13 +796,19 @@ const formatTime = (value: unknown): string => {
   if (!value) return '';
   const date = new Date(value as string);
   if (Number.isNaN(date.getTime())) return '';
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  return date.toLocaleTimeString('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
 };
 
 const formatDateLabel = (value: unknown): string => {
   const date = value ? new Date(value as string) : new Date();
   const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
   return safeDate.toLocaleDateString('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
     weekday: 'long',
     day: '2-digit',
     month: '2-digit',
