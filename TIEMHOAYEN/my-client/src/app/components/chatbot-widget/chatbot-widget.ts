@@ -461,8 +461,17 @@ export class ChatbotWidget implements OnInit, OnDestroy {
           }
 
           if (customerId) {
-            this.syncedServerMessageIds = new Set(serverMessages.map((msg) => msg.id));
-            this.messages = serverMessages.map((msg) => this.normalizeServerMessage(msg));
+            const newServerMessages = serverMessages.filter(
+              (msg) => !this.syncedServerMessageIds.has(msg.id)
+            );
+
+            newServerMessages.forEach((msg) => {
+              this.syncedServerMessageIds.add(msg.id);
+
+              if (!this.hasEquivalentMessage(msg)) {
+                this.messages.push(this.normalizeServerMessage(msg));
+              }
+            });
 
             this.persistMessages();
             this.cdr.detectChanges();
