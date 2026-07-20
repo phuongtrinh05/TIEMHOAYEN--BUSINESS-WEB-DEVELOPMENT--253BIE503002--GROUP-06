@@ -333,7 +333,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   }
 
   private loadProductsByTopic(topicId: string): void {
-    const topicNameFromId = this.topicNameById[topicId] || 'Sản phẩm';
+    const topicNameFromId = this.topicNameById[topicId] || 'Chủ đề';
 
     this.clearSelectedFilters();
     this.uncheckAllCheckboxes();
@@ -351,7 +351,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.clearSelectedFilters();
         this.uncheckAllCheckboxes();
 
-        this.pageTitle = 'Sản phẩm';
+        this.pageTitle = topicName;
         this.setBreadcrumb('Chủ đề');
 
         this.products = res.products.map((item) =>
@@ -478,7 +478,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
     this.currentPage = 1;
     this.products = [];
-    this.pageTitle = 'Sản phẩm';
+    this.pageTitle = 'Đối tượng';
     this.setBreadcrumb('Đối tượng');
     this.productRequestSubscription = this.categoryProductService.getProductsByTarget(targetId).subscribe({
       next: (res) => {
@@ -488,7 +488,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.clearSelectedFilters();
         this.uncheckAllCheckboxes();
 
-        this.pageTitle = 'Sản phẩm';
+        this.pageTitle = targetName;
         this.setBreadcrumb('Đối tượng');
         
         this.products = res.products.map((item) =>

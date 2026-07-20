@@ -1154,15 +1154,18 @@
   }
 
   .suggestions-list {
-    grid-template-columns: repeat(auto-fit, minmax(132px, 156px));
-    max-width: 340px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    max-width: none;
     margin: 0 auto;
     justify-content: center;
+    gap: 10px;
   }
 
   .suggestion-card {
+    min-width: 0;
     min-height: 196px;
-    padding: 9px 10px;
+    padding: 9px 7px;
   }
 
   .suggestion-image {
@@ -1179,6 +1182,17 @@
     height: 26px;
     font-size: 0.68rem;
     width: min(120px, 100%);
+  }
+
+  .suggestions-wrapper {
+    width: 100%;
+    gap: 6px;
+  }
+
+  .btn-nav {
+    flex: 0 0 28px;
+    width: 28px;
+    height: 28px;
   }
 
   .cart-item {

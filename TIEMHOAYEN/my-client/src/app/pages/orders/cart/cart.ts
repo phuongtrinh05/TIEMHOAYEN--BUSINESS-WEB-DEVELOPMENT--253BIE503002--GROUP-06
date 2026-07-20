@@ -119,6 +119,7 @@ export class CartComponent implements OnInit {
   selectedProductVoucher: CartVoucher | null = null;
   selectedShippingVoucher: CartVoucher | null = null;
   private cachedCustomerId = '';
+  private suggestedMobileStartIndex = 0;
 
   constructor(
     @Inject(PLATFORM_ID) private platformId: object,
@@ -734,7 +735,14 @@ export class CartComponent implements OnInit {
   }
 
   getSuggestedProducts(): SuggestedProduct[] {
-    return this.suggestedProducts;
+    if (!this.isBrowser || window.innerWidth > 768 || this.suggestedProducts.length <= 2) {
+      return this.suggestedProducts;
+    }
+
+    return [
+      this.suggestedProducts[this.suggestedMobileStartIndex],
+      this.suggestedProducts[(this.suggestedMobileStartIndex + 1) % this.suggestedProducts.length],
+    ];
   }
 
   goToSuggestedProduct(product: SuggestedProduct): void {
@@ -845,11 +853,19 @@ export class CartComponent implements OnInit {
   }
 
   prevSlide(): void {
-    // Hiện đang cố định 4 sản phẩm mua kèm nên chưa cần slide
+    if (!this.isBrowser || window.innerWidth > 768 || this.suggestedProducts.length <= 2) return;
+
+    const lastGroupStart = Math.floor((this.suggestedProducts.length - 1) / 2) * 2;
+    this.suggestedMobileStartIndex = this.suggestedMobileStartIndex <= 0
+      ? lastGroupStart
+      : Math.max(0, this.suggestedMobileStartIndex - 2);
   }
 
   nextSlide(): void {
-    // Hiện đang cố định 4 sản phẩm mua kèm nên chưa cần slide
+    if (!this.isBrowser || window.innerWidth > 768 || this.suggestedProducts.length <= 2) return;
+
+    const nextIndex = this.suggestedMobileStartIndex + 2;
+    this.suggestedMobileStartIndex = nextIndex >= this.suggestedProducts.length ? 0 : nextIndex;
   }
 
   formatPrice(price: number | null | undefined): string {
@@ -875,6 +891,7 @@ export class CartComponent implements OnInit {
         this.suggestedProducts = products.map((item: SuggestedProductResponse) =>
           this.mapSuggestedProductResponse(item)
         );
+        this.suggestedMobileStartIndex = 0;
 
         this.cdr.detectChanges();
       },
