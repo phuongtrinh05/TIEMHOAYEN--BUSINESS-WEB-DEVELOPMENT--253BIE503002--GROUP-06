@@ -1,6 +1,7 @@
 ﻿import { Request, Response } from 'express';
 import { sql } from '../db.js';
 import { getAdminOrderDetailById } from '../services/admin-order.service.js';
+import { createOrderNotification } from './notification.js';
 
 const formatDate = (value: Date | string | null | undefined): string => {
   if (!value) return '';
@@ -3986,6 +3987,24 @@ export const createAdminVoucher = async (req: Request, res: Response) => {
 
     await tx.commit();
     const vouchers = result.recordset.map(mapAdminVoucher);
+
+    const voucherCodeText = String(voucherCode).trim();
+    const uniqueTargets = Array.from(new Set(voucherTargets));
+
+    for (const targetCustomerId of uniqueTargets) {
+      try {
+        await createOrderNotification(
+          targetCustomerId,
+          '',
+          'Bạn nhận được voucher mới',
+          `Bạn nhận được voucher "${voucherCodeText}".`,
+          'promotion',
+          '/account?section=voucher'
+        );
+      } catch (notificationError) {
+        console.error('Cannot create voucher notification:', notificationError);
+      }
+    }
 
     return res.status(201).json({
       message: 'Voucher created.',
