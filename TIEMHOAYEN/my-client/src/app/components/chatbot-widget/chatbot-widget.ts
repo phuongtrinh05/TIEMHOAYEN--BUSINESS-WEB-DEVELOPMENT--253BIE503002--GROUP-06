@@ -552,11 +552,20 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     const content = String(normalized.content || '').trim();
     const imageUrl = this.cleanImageUrl(normalized.imageUrl);
 
-    return this.messages.some((item) =>
-      item.role === msg.role &&
-      String(item.content || '').trim() === content &&
-      this.cleanImageUrl(item.imageUrl) === imageUrl
-    );
+    return this.messages.slice(-8).some((item) => {
+      if (item.role !== msg.role) return false;
+
+      const itemContent = String(item.content || '').trim();
+      const itemImageUrl = this.cleanImageUrl(item.imageUrl);
+
+      // The immediate n8n response and the database-synced message can use
+      // slightly different captions for the same generated image.
+      if (imageUrl && itemImageUrl) {
+        return itemImageUrl === imageUrl;
+      }
+
+      return !imageUrl && !itemImageUrl && !!content && itemContent === content;
+    });
   }
 
   private openGuestContactForm(text: string, imagePayload: ChatImagePayload | null = null): void {
