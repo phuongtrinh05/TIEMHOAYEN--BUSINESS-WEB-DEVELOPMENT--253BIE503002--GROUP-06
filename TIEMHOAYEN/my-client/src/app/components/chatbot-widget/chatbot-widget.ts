@@ -786,6 +786,15 @@ export class ChatbotWidget implements OnInit, OnDestroy {
           this.isLoading = false;
           this.isSending = false;
           console.log('Response:', res);
+
+          // The backend has already persisted responses for signed-in
+          // customers. Let the database sync add the canonical message once,
+          // instead of also rendering the raw n8n response optimistically.
+          if (this.getCustomerId()) {
+            this.syncCustomerReplies();
+            return;
+          }
+
           const { reply, imageUrl } = this.parseWebhookResponse(res);
 
           this.messages.push({
