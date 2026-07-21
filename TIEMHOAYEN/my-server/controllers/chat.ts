@@ -8,6 +8,7 @@ const CHAT_PUBLIC_BASE_URL = String(
 ).replace(/\/$/, '');
 const CHAT_CACHE_TTL_MS = 10_000;
 const CHAT_POLL_CACHE_TTL_MS = 2_000;
+const GENERATED_IMAGE_REPLY = 'Đây là bó hoa mình tạo cho bạn';
 
 type CacheEntry<T> = {
   expiresAt: number;
@@ -286,7 +287,7 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
           text: row.NOI_DUNG_TRA_LOI && row.NOI_DUNG_TRA_LOI !== answerImageUrl
             ? row.NOI_DUNG_TRA_LOI
             : row.LOAI_TIN_NHAN === 'image_generation'
-              ? 'Đây là bó hoa mình tạo cho bạn'
+              ? GENERATED_IMAGE_REPLY
               : '',
           isCustomer: false,
           time,
@@ -392,7 +393,7 @@ export const getCustomerChatMessages = async (req: Request, res: Response) => {
       const answerContent = answer && answer !== detectedAnswerImageUrl && answer !== answerImageUrl
         ? answer
         : messageType === 'image_generation'
-          ? 'Day la bo hoa minh tao cho ban'
+          ? GENERATED_IMAGE_REPLY
           : '';
 
       if (!isStaffMessage && (question || row.HINH_ANH)) {
@@ -532,7 +533,7 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
       const answerContent = answer && answer !== detectedAnswerImageUrl && answer !== answerImageUrl
         ? answer
         : messageType === 'image_generation'
-          ? 'Day la bo hoa minh tao cho ban'
+          ? GENERATED_IMAGE_REPLY
           : '';
 
       if (!isStaffMessage && (question || row.HINH_ANH)) {
@@ -1206,7 +1207,7 @@ export const sendChat = async (req: Request, res: Response) => {
 
     if (customerId && (parsedResponse.reply || parsedResponse.imageUrl)) {
       const answerText = parsedResponse.reply
-        || (parsedResponse.imageUrl ? 'Đây là bó hoa mình tạo cho bạn' : null);
+        || (parsedResponse.imageUrl ? GENERATED_IMAGE_REPLY : null);
       const messageType = parsedResponse.imageUrl ? 'image_generation' : 'bot_reply';
 
       const existingHistory = await pool.request()
