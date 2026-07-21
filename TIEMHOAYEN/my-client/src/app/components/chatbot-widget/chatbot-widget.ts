@@ -551,21 +551,41 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     const normalized = this.normalizeServerMessage(msg);
     const content = String(normalized.content || '').trim();
     const imageUrl = this.cleanImageUrl(normalized.imageUrl);
+    const comparableContent = this.normalizeComparableChatText(content);
 
     return this.messages.slice(-8).some((item) => {
       if (item.role !== msg.role) return false;
 
       const itemContent = String(item.content || '').trim();
       const itemImageUrl = this.cleanImageUrl(item.imageUrl);
+      const sameImage = !!imageUrl && !!itemImageUrl && itemImageUrl === imageUrl;
+      const sameCaptionInSameMinute =
+        !!comparableContent &&
+        item.time === normalized.time &&
+        this.normalizeComparableChatText(itemContent) === comparableContent;
 
-      // The immediate n8n response and the database-synced message can use
-      // slightly different captions for the same generated image.
-      if (imageUrl && itemImageUrl) {
-        return itemImageUrl === imageUrl;
+      if (!sameImage && !sameCaptionInSameMinute) {
+        return false;
       }
 
-      return !imageUrl && !itemImageUrl && !!content && itemContent === content;
+      // Merge the richer database version into the optimistic n8n message
+      // instead of rendering a second bubble.
+      if (imageUrl) item.imageUrl = imageUrl;
+      if (content) item.content = content;
+      if (normalized.id) item.id = normalized.id;
+      return true;
     });
+  }
+
+  private normalizeComparableChatText(value: unknown): string {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
   }
 
   private openGuestContactForm(text: string, imagePayload: ChatImagePayload | null = null): void {
