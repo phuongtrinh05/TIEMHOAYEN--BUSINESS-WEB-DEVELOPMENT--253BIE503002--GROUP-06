@@ -1,29 +1,30 @@
 import { Request, Response } from 'express';
-import { sql } from '../db.js';
+import { getCollection, getNextPrefixedId } from '../mongo.js';
 
 const DEFAULT_BLOG_STATUS = 'Hiển thị';
 const DEFAULT_STAFF_ID = 'NV001';
 
-const getBlogSelectQuery = (whereClause = '') => `
-  SELECT
-    bv.BAI_VIET_ID,
-    bv.NHAN_VIEN_ID,
-    nv.HO_TEN AS TEN_NHAN_VIEN,
-    nv.EMAIL AS EMAIL_NHAN_VIEN,
-    bv.TIEU_DE,
-    bv.NOI_DUNG,
-    bv.ANH_BIA,
-    bv.DANH_MUC_BLOG,
-    bv.NGAY_DANG,
-    bv.TRANG_THAI,
-    bv.LUOT_XEM
-  FROM BAI_VIET bv
-  LEFT JOIN NHAN_VIEN nv
-    ON bv.NHAN_VIEN_ID = nv.NHAN_VIEN_ID
-  ${whereClause}
-`;
+const getBlogCollection = () => getCollection('BAI_VIET');
+
+const enrichBlog = async (blog: any) => {
+  if (!blog) {
+    return blog;
+  }
+
+  const employeeCollection = await getCollection('NHAN_VIEN');
+  const employee = blog.NHAN_VIEN_ID
+    ? await employeeCollection.findOne({ NHAN_VIEN_ID: blog.NHAN_VIEN_ID })
+    : null;
+
+  return {
+    ...blog,
+    TEN_NHAN_VIEN: employee?.HO_TEN || null,
+    EMAIL_NHAN_VIEN: employee?.EMAIL || null,
+  };
+};
 
 const resolveStaffId = async (staffId: unknown, author: unknown, email?: unknown): Promise<string> => {
+  const employeeCollection = await getCollection('NHAN_VIEN');
   const normalizedStaffId = String(staffId || '').trim();
 
   if (normalizedStaffId) {
@@ -31,63 +32,44 @@ const resolveStaffId = async (staffId: unknown, author: unknown, email?: unknown
   }
 
   const normalizedEmail = String(email || '').trim();
-
   if (normalizedEmail) {
-    const result = await sql.query`
-      SELECT TOP 1 NHAN_VIEN_ID
-      FROM NHAN_VIEN
-      WHERE EMAIL = ${normalizedEmail}
-      ORDER BY NHAN_VIEN_ID ASC
-    `;
+    const employee = await employeeCollection.findOne(
+      { EMAIL: normalizedEmail },
+      { sort: { NHAN_VIEN_ID: 1 }, projection: { NHAN_VIEN_ID: 1 } },
+    );
 
-    if (result.recordset.length > 0) {
-      return result.recordset[0].NHAN_VIEN_ID;
+    if (employee?.NHAN_VIEN_ID) {
+      return employee.NHAN_VIEN_ID;
     }
   }
 
   const authorName = String(author || '').trim();
-
   if (authorName) {
-    const result = await sql.query`
-      SELECT TOP 1 NHAN_VIEN_ID
-      FROM NHAN_VIEN
-      WHERE HO_TEN = ${authorName}
-      ORDER BY NHAN_VIEN_ID ASC
-    `;
+    const employee = await employeeCollection.findOne(
+      { HO_TEN: authorName },
+      { sort: { NHAN_VIEN_ID: 1 }, projection: { NHAN_VIEN_ID: 1 } },
+    );
 
-    if (result.recordset.length > 0) {
-      return result.recordset[0].NHAN_VIEN_ID;
+    if (employee?.NHAN_VIEN_ID) {
+      return employee.NHAN_VIEN_ID;
     }
   }
 
-  const fallback = await sql.query`
-    SELECT TOP 1 NHAN_VIEN_ID
-    FROM NHAN_VIEN
-    ORDER BY NHAN_VIEN_ID ASC
-  `;
+  const fallback = await employeeCollection.findOne(
+    {},
+    { sort: { NHAN_VIEN_ID: 1 }, projection: { NHAN_VIEN_ID: 1 } },
+  );
 
-  return fallback.recordset[0]?.NHAN_VIEN_ID || DEFAULT_STAFF_ID;
-};
-
-const getNextBlogId = async (): Promise<string> => {
-  const result = await sql.query`
-    SELECT ISNULL(MAX(TRY_CONVERT(INT, REPLACE(BAI_VIET_ID, 'BV', ''))), 0) + 1 AS NEXT_NUM
-    FROM BAI_VIET
-    WHERE BAI_VIET_ID LIKE 'BV%'
-  `;
-
-  const nextNum = Number(result.recordset[0]?.NEXT_NUM || 1);
-  return 'BV' + String(nextNum).padStart(3, '0');
+  return fallback?.NHAN_VIEN_ID || DEFAULT_STAFF_ID;
 };
 
 export const getAllBlogs = async (_req: Request, res: Response) => {
   try {
-    const result = await sql.query(`
-      ${getBlogSelectQuery()}
-      ORDER BY bv.NGAY_DANG DESC, bv.BAI_VIET_ID DESC
-    `);
+    const collection = await getBlogCollection();
+    const blogs = await collection.find({}).sort({ NGAY_DANG: -1, BAI_VIET_ID: -1 }).toArray();
+    const enriched = await Promise.all(blogs.map(enrichBlog));
 
-    return res.status(200).json(result.recordset);
+    return res.status(200).json(enriched);
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot load blogs: ' + error.message });
   }
@@ -96,17 +78,14 @@ export const getAllBlogs = async (_req: Request, res: Response) => {
 export const getBlogById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const request = new sql.Request();
-    request.input('BAI_VIET_ID', sql.NVarChar(10), id);
-    const result = await request.query(`
-      ${getBlogSelectQuery('WHERE bv.BAI_VIET_ID = @BAI_VIET_ID')}
-    `);
+    const collection = await getBlogCollection();
+    const blog = await collection.findOne({ BAI_VIET_ID: id });
 
-    if (result.recordset.length === 0) {
+    if (!blog) {
       return res.status(404).json({ message: 'Không tìm thấy bài viết.' });
     }
 
-    return res.status(200).json(result.recordset[0]);
+    return res.status(200).json(await enrichBlog(blog));
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot load blog: ' + error.message });
   }
@@ -120,49 +99,26 @@ export const createBlog = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Thiếu tiêu đề, nội dung hoặc danh mục bài viết.' });
     }
 
-    const blogId = await getNextBlogId();
+    const collection = await getBlogCollection();
+    const blogId = await getNextPrefixedId('BAI_VIET', 'BAI_VIET_ID', 'BV', 3);
     const resolvedStaffId = await resolveStaffId(staffId, author, email);
-    const request = new sql.Request();
-    request.input('BAI_VIET_ID', sql.NVarChar(10), blogId);
-    request.input('NHAN_VIEN_ID', sql.NVarChar(10), resolvedStaffId);
-    request.input('TIEU_DE', sql.NVarChar(500), String(title).trim());
-    request.input('NOI_DUNG', sql.NVarChar(sql.MAX), String(content || '').trim());
-    request.input('ANH_BIA', sql.NVarChar(500), String(coverImage || '').trim() || null);
-    request.input('DANH_MUC_BLOG', sql.NVarChar(100), String(category).trim());
-    request.input('TRANG_THAI', sql.NVarChar(50), String(status || DEFAULT_BLOG_STATUS).trim());
+    const blog = {
+      BAI_VIET_ID: blogId,
+      NHAN_VIEN_ID: resolvedStaffId,
+      TIEU_DE: String(title).trim(),
+      NOI_DUNG: String(content || '').trim(),
+      ANH_BIA: String(coverImage || '').trim() || null,
+      DANH_MUC_BLOG: String(category).trim(),
+      NGAY_DANG: new Date(),
+      TRANG_THAI: String(status || DEFAULT_BLOG_STATUS).trim(),
+      LUOT_XEM: 0,
+    };
 
-    await request.query(`
-      INSERT INTO BAI_VIET (
-        BAI_VIET_ID,
-        NHAN_VIEN_ID,
-        TIEU_DE,
-        NOI_DUNG,
-        ANH_BIA,
-        DANH_MUC_BLOG,
-        NGAY_DANG,
-        TRANG_THAI,
-        LUOT_XEM
-      )
-      VALUES (
-        @BAI_VIET_ID,
-        @NHAN_VIEN_ID,
-        @TIEU_DE,
-        @NOI_DUNG,
-        @ANH_BIA,
-        @DANH_MUC_BLOG,
-        GETDATE(),
-        @TRANG_THAI,
-        0
-      )
-    `);
-
-    const created = await request.query(`
-      ${getBlogSelectQuery('WHERE bv.BAI_VIET_ID = @BAI_VIET_ID')}
-    `);
+    await collection.insertOne(blog);
 
     return res.status(201).json({
       message: 'Blog created.',
-      blog: created.recordset[0],
+      blog: await enrichBlog(blog),
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot create blog: ' + error.message });
@@ -178,37 +134,30 @@ export const updateBlog = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Thiếu thông tin bài viết.' });
     }
 
+    const collection = await getBlogCollection();
     const resolvedStaffId = await resolveStaffId(staffId, author, email);
-    const request = new sql.Request();
-    request.input('BAI_VIET_ID', sql.NVarChar(10), id);
-    request.input('NHAN_VIEN_ID', sql.NVarChar(10), resolvedStaffId);
-    request.input('TIEU_DE', sql.NVarChar(500), String(title).trim());
-    request.input('NOI_DUNG', sql.NVarChar(sql.MAX), String(content || '').trim());
-    request.input('ANH_BIA', sql.NVarChar(500), String(coverImage || '').trim() || null);
-    request.input('DANH_MUC_BLOG', sql.NVarChar(100), String(category).trim());
-    request.input('TRANG_THAI', sql.NVarChar(50), String(status || DEFAULT_BLOG_STATUS).trim());
+    const result = await collection.findOneAndUpdate(
+      { BAI_VIET_ID: id },
+      {
+        $set: {
+          NHAN_VIEN_ID: resolvedStaffId,
+          TIEU_DE: String(title).trim(),
+          NOI_DUNG: String(content || '').trim(),
+          ANH_BIA: String(coverImage || '').trim() || null,
+          DANH_MUC_BLOG: String(category).trim(),
+          TRANG_THAI: String(status || DEFAULT_BLOG_STATUS).trim(),
+        },
+      },
+      { returnDocument: 'after' },
+    );
 
-    const result = await request.query(`
-      UPDATE BAI_VIET
-      SET
-        NHAN_VIEN_ID = @NHAN_VIEN_ID,
-        TIEU_DE = @TIEU_DE,
-        NOI_DUNG = @NOI_DUNG,
-        ANH_BIA = @ANH_BIA,
-        DANH_MUC_BLOG = @DANH_MUC_BLOG,
-        TRANG_THAI = @TRANG_THAI
-      WHERE BAI_VIET_ID = @BAI_VIET_ID;
-
-      ${getBlogSelectQuery('WHERE bv.BAI_VIET_ID = @BAI_VIET_ID')}
-    `);
-
-    if (result.recordset.length === 0) {
+    if (!result) {
       return res.status(404).json({ message: 'Không tìm thấy bài viết.' });
     }
 
     return res.status(200).json({
       message: 'Blog updated.',
-      blog: result.recordset[0],
+      blog: await enrichBlog(result),
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot update blog: ' + error.message });
@@ -223,14 +172,10 @@ export const deleteBlog = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Missing blog id.' });
     }
 
-    const request = new sql.Request();
-    request.input('BAI_VIET_ID', sql.NVarChar(10), id);
-    const result = await request.query(`
-      DELETE FROM BAI_VIET
-      WHERE BAI_VIET_ID = @BAI_VIET_ID
-    `);
+    const collection = await getBlogCollection();
+    const result = await collection.deleteOne({ BAI_VIET_ID: id });
 
-    if (result.rowsAffected[0] === 0) {
+    if (result.deletedCount === 0) {
       return res.status(404).json({ message: 'Không tìm thấy bài viết.' });
     }
 

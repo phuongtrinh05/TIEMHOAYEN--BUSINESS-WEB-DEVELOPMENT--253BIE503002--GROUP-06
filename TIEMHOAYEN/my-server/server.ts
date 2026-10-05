@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import { connectDB } from './db.js';
+import { connectMongo } from './mongo.js';
 
 import customerRoutes from './routes/customer.js';
 import employeeRoutes from './routes/employee.js';
@@ -149,7 +149,7 @@ const PORT = Number(process.env.PORT ?? 3000);
 
 (async () => {
   try {
-    await connectDB();
+    await connectMongo();
 
     app.listen(PORT, () => {
       console.log(`\nServer: http://localhost:${PORT}`);

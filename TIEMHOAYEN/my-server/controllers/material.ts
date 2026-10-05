@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { sql } from '../db.js';
+import { getCollection } from '../mongo.js';
 
 interface SuggestedProduct {
   SAN_PHAM_ID: string;
@@ -26,44 +26,54 @@ interface SuggestedProductsResponse {
 // Lấy sản phẩm mua kèm từ bảng SAN_PHAM, không lấy từ bảng NGUYEN_VAT_LIEU nữa.
 export const getSuggestedMaterials = async (req: Request, res: Response) => {
   try {
-    const result = await sql.query<SuggestedProduct>`
-      SELECT TOP 4
-        sp.SAN_PHAM_ID,
-        sp.TEN_SAN_PHAM,
-        sp.GIA,
-        sp.GIA_KHUYEN_MAI,
-        sp.TRANG_THAI,
-        sp.KIEU_DANG,
-        sp.SO_LUONG,
-        img.URL AS HINH_ANH
-      FROM SAN_PHAM sp
-      OUTER APPLY (
-        SELECT TOP 1 URL
-        FROM HINH_ANH_SAN_PHAM
-        WHERE SAN_PHAM_ID = sp.SAN_PHAM_ID
-        ORDER BY LA_ANH_CHINH DESC, HINH_ANH_ID ASC
-      ) img
-      WHERE
-        sp.TRANG_THAI = N'Đang bán'
-        AND (
-          sp.KIEU_DANG = N'Sản phẩm mua kèm'
-          OR sp.KIEU_DANG = N'Phụ kiện'
-          OR sp.TEN_SAN_PHAM IN (N'Gấu bông', N'Nến thơm', N'Thiệp', N'Túi quà cao cấp')
-          OR sp.MO_TA LIKE N'%SẢN PHẨM MUA KÈM%'
-          OR sp.MO_TA LIKE N'%SAN PHAM MUA KEM%'
-        )
-      ORDER BY
-        CASE
-          WHEN sp.TEN_SAN_PHAM = N'Gấu bông' THEN 1
-          WHEN sp.TEN_SAN_PHAM = N'Nến thơm' THEN 2
-          WHEN sp.TEN_SAN_PHAM = N'Thiệp' THEN 3
-          WHEN sp.TEN_SAN_PHAM = N'Túi quà cao cấp' THEN 4
-          ELSE 5
-        END,
-        sp.TEN_SAN_PHAM ASC
-    `;
+    const productCollection = await getCollection('SAN_PHAM');
+    const imageCollection = await getCollection('HINH_ANH_SAN_PHAM');
+    const candidates = await productCollection.find({
+      TRANG_THAI: 'Đang bán',
+      $or: [
+        { KIEU_DANG: 'Sản phẩm mua kèm' },
+        { KIEU_DANG: 'Phụ kiện' },
+        { TEN_SAN_PHAM: { $in: ['Gấu bông', 'Nến thơm', 'Thiệp', 'Túi quà cao cấp'] } },
+        { MO_TA: /SẢN PHẨM MUA KÈM/i },
+        { MO_TA: /SAN PHAM MUA KEM/i },
+      ],
+    }).toArray();
 
-    const products = result.recordset;
+    const order = new Map([
+      ['Gấu bông', 1],
+      ['Nến thơm', 2],
+      ['Thiệp', 3],
+      ['Túi quà cao cấp', 4],
+    ]);
+    const sorted = candidates
+      .sort((a: any, b: any) => {
+        const rankDiff = (order.get(String(a.TEN_SAN_PHAM)) ?? 5) - (order.get(String(b.TEN_SAN_PHAM)) ?? 5);
+        if (rankDiff !== 0) return rankDiff;
+        return String(a.TEN_SAN_PHAM || '').localeCompare(String(b.TEN_SAN_PHAM || ''), 'vi');
+      })
+      .slice(0, 4);
+    const images = await imageCollection
+      .find({ SAN_PHAM_ID: { $in: sorted.map((product: any) => product.SAN_PHAM_ID) } })
+      .toArray();
+    const imageMap = new Map<string, string | null>();
+    images
+      .sort((a: any, b: any) => Number(Boolean(b.LA_ANH_CHINH)) - Number(Boolean(a.LA_ANH_CHINH)) || String(a.HINH_ANH_ID || '').localeCompare(String(b.HINH_ANH_ID || ''), 'vi'))
+      .forEach((image: any) => {
+        const productId = String(image.SAN_PHAM_ID || '');
+        if (!imageMap.has(productId)) {
+          imageMap.set(productId, image.URL || null);
+        }
+      });
+    const products = sorted.map((product: any) => ({
+      SAN_PHAM_ID: product.SAN_PHAM_ID,
+      TEN_SAN_PHAM: product.TEN_SAN_PHAM,
+      GIA: product.GIA ?? null,
+      GIA_KHUYEN_MAI: product.GIA_KHUYEN_MAI ?? null,
+      TRANG_THAI: product.TRANG_THAI ?? null,
+      KIEU_DANG: product.KIEU_DANG ?? null,
+      SO_LUONG: product.SO_LUONG ?? null,
+      HINH_ANH: imageMap.get(String(product.SAN_PHAM_ID || '')) || null,
+    })) as SuggestedProduct[];
 
     const response: SuggestedProductsResponse = {
       total: products.length,

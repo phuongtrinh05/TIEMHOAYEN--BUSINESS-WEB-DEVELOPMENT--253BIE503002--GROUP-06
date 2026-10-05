@@ -1,45 +1,99 @@
 import { Request, Response } from 'express';
-import { sql } from '../db.js';
+import { getCollection } from '../mongo.js';
 
-export const getAllCarts = async (req: Request, res: Response) => {
-  try {
-    const result = await sql.query('SELECT * FROM GIO_HANG');
-    res.status(200).json(result.recordset);
-  } catch (error: any) {
-    res.status(500).json({ message: 'Lỗi Controller: ' + error.message });
+const createCartId = (): string => `GH${Date.now().toString().slice(-8)}`;
+
+const sortPrimaryImages = (left: any, right: any): number => {
+  if (Boolean(left.LA_ANH_CHINH) !== Boolean(right.LA_ANH_CHINH)) {
+    return Boolean(left.LA_ANH_CHINH) ? -1 : 1;
   }
+  return String(left.HINH_ANH_ID || '').localeCompare(String(right.HINH_ANH_ID || ''), 'vi');
 };
 
-const createCartId = (): string => {
-  return `GH${Date.now().toString().slice(-8)}`;
+export const getAllCarts = async (_req: Request, res: Response) => {
+  try {
+    const cartCollection = await getCollection<any>('GIO_HANG');
+    const carts = await cartCollection.find({}).sort({ NGAY_TAO: -1 }).toArray();
+    return res.status(200).json(carts);
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Lỗi Controller: ' + error.message });
+  }
 };
 
 const getOrCreateCart = async (customerId: string): Promise<string> => {
-  const existingRequest = new sql.Request();
-  existingRequest.input('KHACH_HANG_ID', sql.NVarChar, customerId);
+  const cartCollection = await getCollection<any>('GIO_HANG');
+  const existing = await cartCollection.findOne(
+    { KHACH_HANG_ID: customerId },
+    { sort: { NGAY_TAO: -1 } },
+  );
 
-  const existing = await existingRequest.query(`
-    SELECT TOP 1 GIO_HANG_ID
-    FROM GIO_HANG
-    WHERE KHACH_HANG_ID = @KHACH_HANG_ID
-    ORDER BY NGAY_TAO DESC
-  `);
-
-  if (existing.recordset.length > 0) {
-    return existing.recordset[0].GIO_HANG_ID;
+  if (existing?.GIO_HANG_ID) {
+    return existing.GIO_HANG_ID;
   }
 
-  const cartId = createCartId();
-  const insertRequest = new sql.Request();
-  insertRequest.input('GIO_HANG_ID', sql.NVarChar, cartId);
-  insertRequest.input('KHACH_HANG_ID', sql.NVarChar, customerId);
+  let cartId = createCartId();
+  while (await cartCollection.findOne({ GIO_HANG_ID: cartId })) {
+    cartId = createCartId();
+  }
 
-  await insertRequest.query(`
-    INSERT INTO GIO_HANG (GIO_HANG_ID, KHACH_HANG_ID, NGAY_TAO)
-    VALUES (@GIO_HANG_ID, @KHACH_HANG_ID, GETDATE())
-  `);
+  await cartCollection.insertOne({
+    _id: cartId,
+    GIO_HANG_ID: cartId,
+    KHACH_HANG_ID: customerId,
+    NGAY_TAO: new Date(),
+  });
 
   return cartId;
+};
+
+const buildCartItems = async (cartId: string) => {
+  const detailCollection = await getCollection<any>('GIO_HANG_CHI_TIET');
+  const productCollection = await getCollection<any>('SAN_PHAM');
+  const topicCollection = await getCollection<any>('CHU_DE');
+  const imageCollection = await getCollection<any>('HINH_ANH_SAN_PHAM');
+
+  const details = await detailCollection.find({ GIO_HANG_ID: cartId }).toArray();
+  const productIds = details.map((item) => item.SAN_PHAM_ID).filter(Boolean);
+
+  if (productIds.length === 0) {
+    return [];
+  }
+
+  const [products, topics, images] = await Promise.all([
+    productCollection.find({ SAN_PHAM_ID: { $in: productIds } }).toArray(),
+    topicCollection.find({}).toArray(),
+    imageCollection.find({ SAN_PHAM_ID: { $in: productIds } }).toArray(),
+  ]);
+
+  const detailMap = new Map(details.map((item) => [item.SAN_PHAM_ID, item]));
+  const topicMap = new Map(topics.map((topic) => [topic.CHU_DE_ID, topic]));
+  const imageMap = new Map<string, any>();
+
+  for (const image of images.sort(sortPrimaryImages)) {
+    if (!imageMap.has(image.SAN_PHAM_ID)) {
+      imageMap.set(image.SAN_PHAM_ID, image);
+    }
+  }
+
+  return products
+    .map((product) => {
+      const detail = detailMap.get(product.SAN_PHAM_ID);
+      const topic = topicMap.get(product.CHU_DE_ID);
+      const image = imageMap.get(product.SAN_PHAM_ID);
+      return {
+        SAN_PHAM_ID: product.SAN_PHAM_ID,
+        TEN_SAN_PHAM: product.TEN_SAN_PHAM,
+        GIA: product.GIA,
+        GIA_KHUYEN_MAI: product.GIA_KHUYEN_MAI,
+        SO_LUONG_TON: product.SO_LUONG,
+        KIEU_DANG: product.KIEU_DANG,
+        CHU_DE_ID: product.CHU_DE_ID,
+        TEN_CHU_DE: topic?.TEN_CHU_DE || null,
+        SO_LUONG: detail?.SO_LUONG || 1,
+        HINH_ANH: image?.URL || null,
+      };
+    })
+    .sort((left, right) => String(left.TEN_SAN_PHAM || '').localeCompare(String(right.TEN_SAN_PHAM || ''), 'vi'));
 };
 
 export const getCartByCustomer = async (req: Request, res: Response) => {
@@ -51,40 +105,9 @@ export const getCartByCustomer = async (req: Request, res: Response) => {
     }
 
     const cartId = await getOrCreateCart(customerId);
-    const request = new sql.Request();
-    request.input('GIO_HANG_ID', sql.NVarChar, cartId);
+    const items = await buildCartItems(cartId);
 
-    const result = await request.query(`
-      SELECT
-        sp.SAN_PHAM_ID,
-        sp.TEN_SAN_PHAM,
-        sp.GIA,
-        sp.GIA_KHUYEN_MAI,
-        sp.SO_LUONG AS SO_LUONG_TON,
-        sp.KIEU_DANG,
-        sp.CHU_DE_ID,
-        cd.TEN_CHU_DE,
-        ct.SO_LUONG,
-        img.URL AS HINH_ANH
-      FROM GIO_HANG_CHI_TIET ct
-      INNER JOIN SAN_PHAM sp
-        ON ct.SAN_PHAM_ID = sp.SAN_PHAM_ID
-      LEFT JOIN CHU_DE cd
-        ON sp.CHU_DE_ID = cd.CHU_DE_ID
-      OUTER APPLY (
-        SELECT TOP 1 URL
-        FROM HINH_ANH_SAN_PHAM
-        WHERE SAN_PHAM_ID = sp.SAN_PHAM_ID
-        ORDER BY LA_ANH_CHINH DESC, HINH_ANH_ID ASC
-      ) img
-      WHERE ct.GIO_HANG_ID = @GIO_HANG_ID
-      ORDER BY sp.TEN_SAN_PHAM ASC
-    `);
-
-    return res.status(200).json({
-      cartId,
-      items: result.recordset,
-    });
+    return res.status(200).json({ cartId, items });
   } catch (error: any) {
     console.error('Lỗi lấy giỏ hàng theo khách hàng:', error);
     return res.status(500).json({ message: 'Không thể lấy giỏ hàng.' });
@@ -105,57 +128,23 @@ export const addCartItem = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'GIO_HANG_CHI_TIET chỉ nhận SAN_PHAM_ID.' });
     }
 
-    const cartId = await getOrCreateCart(customerId);
+    const productCollection = await getCollection<any>('SAN_PHAM');
+    const product = await productCollection.findOne({ SAN_PHAM_ID: productId }, { projection: { SAN_PHAM_ID: 1 } });
 
-    const productRequest = new sql.Request();
-    productRequest.input('SAN_PHAM_ID', sql.NVarChar, productId);
-
-    const product = await productRequest.query(`
-      SELECT TOP 1 SAN_PHAM_ID
-      FROM SAN_PHAM
-      WHERE SAN_PHAM_ID = @SAN_PHAM_ID
-    `);
-
-    if (product.recordset.length === 0) {
+    if (!product) {
       return res.status(404).json({ message: 'Không tìm thấy sản phẩm.' });
     }
 
-    const existingRequest = new sql.Request();
-    existingRequest.input('GIO_HANG_ID', sql.NVarChar, cartId);
-    existingRequest.input('SAN_PHAM_ID', sql.NVarChar, productId);
-
-    const existing = await existingRequest.query(`
-      SELECT SO_LUONG
-      FROM GIO_HANG_CHI_TIET
-      WHERE GIO_HANG_ID = @GIO_HANG_ID
-        AND SAN_PHAM_ID = @SAN_PHAM_ID
-    `);
-
-    if (existing.recordset.length > 0) {
-      const currentQuantity = Math.max(1, Number(existing.recordset[0]?.SO_LUONG || 1));
-      const nextQuantity = currentQuantity + quantity;
-      const updateRequest = new sql.Request();
-      updateRequest.input('GIO_HANG_ID', sql.NVarChar, cartId);
-      updateRequest.input('SAN_PHAM_ID', sql.NVarChar, productId);
-      updateRequest.input('SO_LUONG', sql.Int, nextQuantity);
-
-      await updateRequest.query(`
-        UPDATE GIO_HANG_CHI_TIET
-        SET SO_LUONG = @SO_LUONG
-        WHERE GIO_HANG_ID = @GIO_HANG_ID
-          AND SAN_PHAM_ID = @SAN_PHAM_ID
-      `);
-    } else {
-      const insertRequest = new sql.Request();
-      insertRequest.input('GIO_HANG_ID', sql.NVarChar, cartId);
-      insertRequest.input('SAN_PHAM_ID', sql.NVarChar, productId);
-      insertRequest.input('SO_LUONG', sql.Int, quantity);
-
-      await insertRequest.query(`
-        INSERT INTO GIO_HANG_CHI_TIET (GIO_HANG_ID, SAN_PHAM_ID, SO_LUONG)
-        VALUES (@GIO_HANG_ID, @SAN_PHAM_ID, @SO_LUONG)
-      `);
-    }
+    const cartId = await getOrCreateCart(customerId);
+    const detailCollection = await getCollection<any>('GIO_HANG_CHI_TIET');
+    await detailCollection.updateOne(
+      { GIO_HANG_ID: cartId, SAN_PHAM_ID: productId },
+      {
+        $setOnInsert: { _id: { GIO_HANG_ID: cartId, SAN_PHAM_ID: productId } },
+        $inc: { SO_LUONG: quantity },
+      },
+      { upsert: true },
+    );
 
     return res.status(200).json({
       message: 'Đã lưu sản phẩm vào giỏ hàng.',
@@ -178,17 +167,15 @@ export const updateCartItem = async (req: Request, res: Response) => {
     }
 
     const cartId = await getOrCreateCart(customerId);
-    const request = new sql.Request();
-    request.input('GIO_HANG_ID', sql.NVarChar, cartId);
-    request.input('SAN_PHAM_ID', sql.NVarChar, productId);
-    request.input('SO_LUONG', sql.Int, quantity);
-
-    await request.query(`
-      UPDATE GIO_HANG_CHI_TIET
-      SET SO_LUONG = @SO_LUONG
-      WHERE GIO_HANG_ID = @GIO_HANG_ID
-        AND SAN_PHAM_ID = @SAN_PHAM_ID
-    `);
+    const detailCollection = await getCollection<any>('GIO_HANG_CHI_TIET');
+    await detailCollection.updateOne(
+      { GIO_HANG_ID: cartId, SAN_PHAM_ID: productId },
+      {
+        $set: { SO_LUONG: quantity },
+        $setOnInsert: { _id: { GIO_HANG_ID: cartId, SAN_PHAM_ID: productId } },
+      },
+      { upsert: true },
+    );
 
     return res.status(200).json({ message: 'Đã cập nhật số lượng.' });
   } catch (error: any) {
@@ -207,15 +194,8 @@ export const removeCartItem = async (req: Request, res: Response) => {
     }
 
     const cartId = await getOrCreateCart(customerId);
-    const request = new sql.Request();
-    request.input('GIO_HANG_ID', sql.NVarChar, cartId);
-    request.input('SAN_PHAM_ID', sql.NVarChar, productId);
-
-    await request.query(`
-      DELETE FROM GIO_HANG_CHI_TIET
-      WHERE GIO_HANG_ID = @GIO_HANG_ID
-        AND SAN_PHAM_ID = @SAN_PHAM_ID
-    `);
+    const detailCollection = await getCollection<any>('GIO_HANG_CHI_TIET');
+    await detailCollection.deleteOne({ GIO_HANG_ID: cartId, SAN_PHAM_ID: productId });
 
     return res.status(200).json({ message: 'Đã xóa sản phẩm khỏi giỏ hàng.' });
   } catch (error: any) {

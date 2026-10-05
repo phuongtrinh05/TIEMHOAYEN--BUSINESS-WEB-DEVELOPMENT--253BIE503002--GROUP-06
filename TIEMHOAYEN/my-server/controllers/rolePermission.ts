@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { sql } from '../db.js';
+import { getCollection } from '../mongo.js';
 import {
   defaultRolePermissions,
   getRolePermissions,
@@ -11,18 +11,15 @@ import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordH
 
 export const getAdminRolePermissions = async (_req: Request, res: Response) => {
   try {
-    const result = await sql.query(`
-      SELECT VAI_TRO, COUNT(*) AS TOTAL
-      FROM NHAN_VIEN
-      GROUP BY VAI_TRO
-      ORDER BY
-        CASE WHEN VAI_TRO = N'Admin' THEN 0 ELSE 1 END,
-        VAI_TRO ASC
-    `);
+    const employeeCollection = await getCollection('NHAN_VIEN');
+    const result = await employeeCollection.aggregate([
+      { $group: { _id: '$VAI_TRO', TOTAL: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+    ]).toArray();
 
     const roleCounts = new Map<string, number>();
-    for (const row of result.recordset) {
-      const roleName = resolveRoleName(row.VAI_TRO);
+    for (const row of result) {
+      const roleName = resolveRoleName(row._id);
       roleCounts.set(roleName, (roleCounts.get(roleName) || 0) + Number(row.TOTAL || 0));
     }
 
@@ -57,35 +54,17 @@ export const loginAdminEmployee = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Vui lòng nhập email và mật khẩu.' });
     }
 
-    const request = new sql.Request();
-    request.input('EMAIL', sql.NVarChar(255), email);
-
-    const result = await request.query(`
-      SELECT TOP 1
-        NHAN_VIEN_ID,
-        HO_TEN,
-        EMAIL,
-        MAT_KHAU,
-        VAI_TRO,
-        TRANG_THAI
-      FROM NHAN_VIEN
-      WHERE EMAIL = @EMAIL
-    `);
-
-    const employee = result.recordset[0];
+    const employeeCollection = await getCollection('NHAN_VIEN');
+    const employee = await employeeCollection.findOne({ EMAIL: email });
     if (!employee || !(await verifyPassword(password, employee.MAT_KHAU))) {
       return res.status(401).json({ message: 'Email hoặc mật khẩu không đúng.' });
     }
 
     if (!isPasswordHash(employee.MAT_KHAU)) {
-      const updateRequest = new sql.Request();
-      updateRequest.input('NHAN_VIEN_ID', sql.NVarChar(20), employee.NHAN_VIEN_ID);
-      updateRequest.input('MAT_KHAU', sql.NVarChar(255), await hashPassword(password));
-      await updateRequest.query(`
-        UPDATE NHAN_VIEN
-        SET MAT_KHAU = @MAT_KHAU
-        WHERE NHAN_VIEN_ID = @NHAN_VIEN_ID
-      `);
+      await employeeCollection.updateOne(
+        { NHAN_VIEN_ID: employee.NHAN_VIEN_ID },
+        { $set: { MAT_KHAU: await hashPassword(password) } },
+      );
     }
 
     const status = String(employee.TRANG_THAI || '').trim().toLowerCase();

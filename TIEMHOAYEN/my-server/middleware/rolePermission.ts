@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { sql } from '../db.js';
+import { getCollection } from '../mongo.js';
 import { hasPermission, PermissionAction } from '../services/role-permission.service.js';
 
 const actionByMethod: Record<string, PermissionAction> = {
@@ -16,15 +16,13 @@ const getHeaderValue = (value: string | string[] | undefined): string => {
 };
 
 const getEmployeeRoleById = async (employeeId: string): Promise<string> => {
-  const request = new sql.Request();
-  request.input('NHAN_VIEN_ID', sql.NVarChar(20), employeeId);
-  const result = await request.query(`
-    SELECT TOP 1 VAI_TRO
-    FROM NHAN_VIEN
-    WHERE NHAN_VIEN_ID = @NHAN_VIEN_ID
-  `);
+  const employeeCollection = await getCollection('NHAN_VIEN');
+  const employee = await employeeCollection.findOne(
+    { NHAN_VIEN_ID: employeeId },
+    { projection: { VAI_TRO: 1 } },
+  );
 
-  return result.recordset[0]?.VAI_TRO || '';
+  return employee?.VAI_TRO || '';
 };
 
 const resolveRequestRole = async (req: Request): Promise<string> => {

@@ -178,11 +178,8 @@ Nội dung `.env`:
 
 ```env
 PORT=3000
-SQL_USER=
-SQL_PASSWORD=
-SQL_SERVER=tiemhoayenadmin.database.windows.net
-SQL_PORT=1433
-SQL_DATABASE=TIEM_HOA_YEN
+MONGO_URI=mongodb+srv://USER:PASSWORD@CLUSTER.mongodb.net/?appName=TIEMHOAYEN
+MONGO_DATABASE=TIEM_HOA_YEN
 CORS_ORIGINS=http://localhost:4200,http://localhost:4300
 PUBLIC_BASE_URL=http://localhost:3000
 PASSWORD_HASH_ROUNDS=12
@@ -193,11 +190,8 @@ PASSWORD_HASH_ROUNDS=12
 | Biến | Mô tả |
 | --- | --- |
 | `PORT` | Cổng chạy backend |
-| `SQL_USER` | Tài khoản SQL Server |
-| `SQL_PASSWORD` | Mật khẩu SQL Server |
-| `SQL_SERVER` | Host của SQL Server/Azure SQL |
-| `SQL_PORT` | Cổng SQL Server, mặc định `1433` |
-| `SQL_DATABASE` | Tên cơ sở dữ liệu |
+| `MONGO_URI` | Connection string MongoDB Atlas hoặc MongoDB riêng |
+| `MONGO_DATABASE` | Tên database MongoDB |
 | `CORS_ORIGINS` | Danh sách origin được phép, phân cách bằng dấu phẩy |
 | `PUBLIC_BASE_URL` | URL public của backend, dùng cho file upload |
 | `PASSWORD_HASH_ROUNDS` | Số vòng băm mật khẩu bằng bcrypt |
@@ -337,7 +331,17 @@ Repository đã có `render.yaml` tại thư mục gốc:
 - Start command: `npm start`.
 - Health check: `/health`.
 
-Khai báo các biến môi trường SQL, CORS và public URL trong Render Dashboard. Không đưa giá trị bí mật trực tiếp vào `render.yaml`.
+Khai báo các biến môi trường MongoDB, CORS và public URL trong Render Dashboard. Không đưa giá trị bí mật trực tiếp vào `render.yaml`.
+
+Ví dụ cho production hiện tại:
+
+```env
+MONGO_URI=mongodb+srv://USER:PASSWORD@CLUSTER.mongodb.net/?appName=TIEMHOAYEN
+MONGO_DATABASE=TIEM_HOA_YEN
+CORS_ORIGINS=https://tiemhoayen.vercel.app,https://tiemhoayen-admin.vercel.app
+PUBLIC_BASE_URL=https://tiem-hoa-yen-api.onrender.com
+PASSWORD_HASH_ROUNDS=12
+```
 
 ### Frontend trên Vercel
 
@@ -378,9 +382,10 @@ Khuyến nghị:
 
 ### Backend không kết nối được database
 
-- Kiểm tra các biến `SQL_USER`, `SQL_PASSWORD`, `SQL_SERVER` và `SQL_DATABASE`.
-- Kiểm tra firewall của Azure SQL đã cho phép địa chỉ IP hiện tại.
-- Kiểm tra cổng `1433` và kết nối mạng.
+- Kiểm tra các biến `MONGO_URI` và `MONGO_DATABASE` trên Render.
+- Kiểm tra user/password trong MongoDB Atlas còn đúng.
+- Kiểm tra Atlas Network Access đã cho phép Render truy cập. Khi Render không có IP tĩnh, có thể dùng `0.0.0.0/0` cho đồ án/demo.
+- Kiểm tra lại bằng lệnh `npm run mongodb:check -- --env-file=.env.atlas` trên máy local.
 
 ### Client gọi API bị lỗi CORS
 

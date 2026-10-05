@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { sql } from '../db.js';
+import { getCollection } from '../mongo.js';
 
 interface CreateOrderItem {
   id: string;
@@ -22,51 +22,24 @@ const RETURN_REFUND_REASONS = [
   'Giao hàng trễ so với thời gian yêu cầu',
 ];
 
-const normalizeReason = (value: unknown): string => {
-  return String(value || '').trim();
-};
-
-const isCompletedOrderStatus = (status: string): boolean => {
-  return normalizeOrderStatusText(status).includes('hoàn thành');
-};
-
 const PAYMENT_WINDOW_MINUTES = 5;
 const REWARD_POINTS_PER_UNIT = 2;
 const REWARD_UNIT_VALUE = 1000;
 
-// TEST: 1 phút. Khi làm thật đổi thành: 4 * 60 * 60 * 1000
-const AUTO_COMPLETE_AFTER_MS = 60 * 1000;
+const normalizeReason = (value: unknown): string => String(value || '').trim();
 
-// Backend tự quét DB mỗi 5 giây để phát hiện đơn "Giao hàng thành công".
-// Khi làm thật có thể đổi thành: 60 * 1000
-const AUTO_COMPLETE_CHECK_INTERVAL_MS = 5 * 1000;
-
-// Không đổi database: lưu tạm thời điểm đơn được nhìn thấy ở trạng thái giao thành công.
-// Lưu ý: dữ liệu này nằm trong RAM, nếu restart server thì bộ đếm sẽ bắt đầu lại.
-const deliveredOrderSeenAt = new Map<string, number>();
-
-const normalizeOrderStatusText = (status: string): string => {
-  return String(status || '').trim().toLowerCase();
-};
+const normalizeOrderStatusText = (status: unknown): string => String(status || '').trim().toLowerCase();
 
 const normalizeRewardPoints = (value: unknown): number => {
   const rawPoints = Number(value || 0);
-
-  if (!Number.isFinite(rawPoints)) {
-    return 0;
-  }
-
+  if (!Number.isFinite(rawPoints)) return 0;
   const points = Math.floor(Math.max(0, rawPoints));
   return Math.floor(points / REWARD_POINTS_PER_UNIT) * REWARD_POINTS_PER_UNIT;
 };
 
 const normalizeMoney = (value: unknown): number => {
   const amount = Number(value || 0);
-
-  if (!Number.isFinite(amount)) {
-    return 0;
-  }
-
+  if (!Number.isFinite(amount)) return 0;
   return Math.max(0, Math.floor(amount));
 };
 
@@ -78,264 +51,44 @@ const convertRewardMoneyToPoints = (amount: number): number => {
   return normalizeRewardPoints(Math.floor(normalizeMoney(amount) / REWARD_UNIT_VALUE) * REWARD_POINTS_PER_UNIT);
 };
 
-const isDeliveredOrderStatus = (status: string): boolean => {
+const isCompletedOrderStatus = (status: unknown): boolean => normalizeOrderStatusText(status).includes('hoàn thành');
+
+const isDeliveredOrderStatus = (status: unknown): boolean => {
   const value = normalizeOrderStatusText(status);
   return value.includes('giao hàng thành công') || value.includes('giao thành công');
 };
 
-const isRejectedReturnRefundOrderStatus = (status: string): boolean => {
-  const value = normalizeOrderStatusText(status);
-  return value.includes('từ chối hoàn tiền') || value.includes('từ chối trả hàng');
+const toBit = (value: unknown): boolean => {
+  return value === true || value === 1 || value === '1' || value === 'true';
 };
 
-const isAutoCompletableOrderStatus = (status: string): boolean => {
-  // Đơn vừa giao phải chờ khách chọn đánh giá hoặc yêu cầu hoàn tiền/trả hàng.
-  // Chỉ nhánh yêu cầu bị từ chối mới tiếp tục dùng bộ đếm hoàn thành cũ.
-  return isRejectedReturnRefundOrderStatus(status);
+const toDate = (value: unknown): Date | null => {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const isReturnOrFinalOrderStatus = (status: string): boolean => {
-  const value = normalizeOrderStatusText(status);
-
-  return (
-    value.includes('hoàn thành') ||
-    value.includes('đã hủy') ||
-    value.includes('hủy') ||
-    value.includes('giao hàng không thành công') ||
-    value.includes('giao thất bại') ||
-    value.includes('yêu cầu hoàn tiền') ||
-    value.includes('yêu cầu trả hàng') ||
-    value.includes('trả hàng') ||
-    value.includes('hoàn tiền') ||
-    value.includes('từ chối hoàn tiền') ||
-    value.includes('từ chối trả hàng')
-  );
+const toSqlDate = (value: string | null | undefined): Date | null => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return new Date(`${raw}T00:00:00.000Z`);
+  const match = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return null;
+  const [, day, month, year] = match;
+  return new Date(`${year}-${month}-${day}T00:00:00.000Z`);
 };
 
-const deductRewardPointsForCompletedOrder = async (orderId: string): Promise<void> => {
-  const request = new sql.Request();
-  request.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-
-  await request.query(`
-    SET XACT_ABORT ON;
-
-    BEGIN TRY
-      BEGIN TRANSACTION;
-
-      DECLARE @KHACH_HANG_ID NVARCHAR(10);
-      DECLARE @DIEM_THUONG_SU_DUNG INT;
-
-      SELECT
-        @KHACH_HANG_ID = KHACH_HANG_ID,
-        @DIEM_THUONG_SU_DUNG = ISNULL(DIEM_THUONG_SU_DUNG, 0)
-      FROM DON_HANG WITH (UPDLOCK, HOLDLOCK)
-      WHERE DON_HANG_ID = @DON_HANG_ID
-        AND ISNULL(DA_TRU_DIEM_THUONG, 0) = 0;
-
-      IF @KHACH_HANG_ID IS NOT NULL AND @DIEM_THUONG_SU_DUNG > 0
-      BEGIN
-        UPDATE KHACH_HANG
-        SET DIEM_TICH_LUY =
-          CASE
-            WHEN ISNULL(DIEM_TICH_LUY, 0) > @DIEM_THUONG_SU_DUNG
-              THEN ISNULL(DIEM_TICH_LUY, 0) - @DIEM_THUONG_SU_DUNG
-            ELSE 0
-          END
-        WHERE KHACH_HANG_ID = @KHACH_HANG_ID;
-
-        UPDATE DON_HANG
-        SET DA_TRU_DIEM_THUONG = 1
-        WHERE DON_HANG_ID = @DON_HANG_ID;
-      END
-
-      COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-      IF @@TRANCOUNT > 0
-        ROLLBACK TRANSACTION;
-
-      THROW;
-    END CATCH
-  `);
+const isSuccessStatus = (status: string): boolean => {
+  const normalized = status.trim().toLowerCase();
+  return ['thành công', 'thanh toán thành công', 'đã thanh toán', 'da thanh toan', 'success', 'paid']
+    .includes(normalized);
 };
 
-const deductRewardPointsForCompletedOrders = async (): Promise<void> => {
-  const request = new sql.Request();
-
-  const result = await request.query(`
-    SELECT DON_HANG_ID
-    FROM DON_HANG
-    WHERE LOWER(ISNULL(TRANG_THAI, N'')) LIKE N'%hoàn thành%'
-      AND ISNULL(DIEM_THUONG_SU_DUNG, 0) > 0
-      AND ISNULL(DA_TRU_DIEM_THUONG, 0) = 0
-  `);
-
-  for (const row of result.recordset || []) {
-    const orderId = String(row.DON_HANG_ID || '');
-
-    if (orderId) {
-      await deductRewardPointsForCompletedOrder(orderId);
-    }
-  }
-};
-
-const completeDeliveredOrderById = async (orderId: string): Promise<boolean> => {
-  const request = new sql.Request();
-  request.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-
-  const result = await request.query(`
-    UPDATE DON_HANG
-    SET TRANG_THAI = N'Hoàn thành'
-    WHERE DON_HANG_ID = @DON_HANG_ID
-      AND (
-        LOWER(ISNULL(TRANG_THAI, N'')) LIKE N'%từ chối hoàn tiền%'
-        OR LOWER(ISNULL(TRANG_THAI, N'')) LIKE N'%từ chối trả hàng%'
-      )
-  `);
-
-  const completed = Number(result.rowsAffected?.[0] || 0) > 0;
-
-  if (completed) {
-    await deductRewardPointsForCompletedOrder(orderId);
-  }
-
-  return completed;
-};
-
-const autoCompleteDeliveredOrderIfNeeded = async (order: any): Promise<any> => {
-  const orderId = String(order?.DON_HANG_ID || '');
-  const currentStatus = String(order?.TRANG_THAI || '');
-
-  if (!orderId) {
-    return order;
-  }
-
-  if (!isAutoCompletableOrderStatus(currentStatus)) {
-    if (isReturnOrFinalOrderStatus(currentStatus)) {
-      deliveredOrderSeenAt.delete(orderId);
-    }
-
-    return order;
-  }
-
-  const now = Date.now();
-  const firstSeenAt = deliveredOrderSeenAt.get(orderId) ?? now;
-
-  if (!deliveredOrderSeenAt.has(orderId)) {
-    deliveredOrderSeenAt.set(orderId, firstSeenAt);
-  }
-
-  if (now - firstSeenAt < AUTO_COMPLETE_AFTER_MS) {
-    return order;
-  }
-
-  const completed = await completeDeliveredOrderById(orderId);
-  deliveredOrderSeenAt.delete(orderId);
-
-  if (completed) {
-    return {
-      ...order,
-      TRANG_THAI: 'Hoàn thành',
-    };
-  }
-
-  return order;
-};
-
-// Quan trọng: hàm này chạy nền ở backend.
-// Nhờ vậy khách không cần mở trang order-detail, hệ thống vẫn tự chuyển trạng thái.
-const scanDeliveredOrdersForAutoComplete = async (): Promise<void> => {
-  try {
-    const request = new sql.Request();
-
-    const result = await request.query(`
-      SELECT DON_HANG_ID, TRANG_THAI
-      FROM DON_HANG
-      WHERE
-        LOWER(ISNULL(TRANG_THAI, N'')) LIKE N'%giao hàng thành công%'
-        OR LOWER(ISNULL(TRANG_THAI, N'')) LIKE N'%giao thành công%'
-        OR LOWER(ISNULL(TRANG_THAI, N'')) LIKE N'%từ chối hoàn tiền%'
-        OR LOWER(ISNULL(TRANG_THAI, N'')) LIKE N'%từ chối trả hàng%'
-    `);
-
-    const now = Date.now();
-    const autoCompletableIds = new Set<string>();
-
-    for (const row of result.recordset || []) {
-      const orderId = String(row.DON_HANG_ID || '');
-      const status = String(row.TRANG_THAI || '');
-
-      if (!orderId || !isAutoCompletableOrderStatus(status)) {
-        continue;
-      }
-
-      autoCompletableIds.add(orderId);
-
-      const firstSeenAt = deliveredOrderSeenAt.get(orderId) ?? now;
-
-      if (!deliveredOrderSeenAt.has(orderId)) {
-        deliveredOrderSeenAt.set(orderId, firstSeenAt);
-        console.log(`Bắt đầu đếm tự động hoàn thành đơn ${orderId}.`);
-        continue;
-      }
-
-      if (now - firstSeenAt >= AUTO_COMPLETE_AFTER_MS) {
-        const completed = await completeDeliveredOrderById(orderId);
-        deliveredOrderSeenAt.delete(orderId);
-
-        if (completed) {
-          console.log(`Đơn ${orderId} đã tự động chuyển sang Hoàn thành.`);
-        }
-      }
-    }
-
-    // Nếu đơn đã rời trạng thái tự hoàn thành, bỏ khỏi bộ đếm RAM.
-    for (const orderId of Array.from(deliveredOrderSeenAt.keys())) {
-      if (!autoCompletableIds.has(orderId)) {
-        deliveredOrderSeenAt.delete(orderId);
-      }
-    }
-
-    await deductRewardPointsForCompletedOrders();
-  } catch (error) {
-    console.error('Lỗi quét tự động hoàn thành đơn hàng:', error);
-  }
-};
-
-let autoCompleteWatcherStarted = false;
-
-const startAutoCompleteDeliveredOrderWatcher = (): void => {
-  if (autoCompleteWatcherStarted) {
-    return;
-  }
-
-  autoCompleteWatcherStarted = true;
-
-  setTimeout(() => {
-    scanDeliveredOrdersForAutoComplete();
-  }, 1000);
-
-  setInterval(() => {
-    scanDeliveredOrdersForAutoComplete();
-  }, AUTO_COMPLETE_CHECK_INTERVAL_MS);
-
-  console.log('Đã bật watcher tự động chuyển Giao hàng thành công/Từ chối hoàn tiền -> Hoàn thành.');
-};
-
-startAutoCompleteDeliveredOrderWatcher();
-
-
-const createNextOrderId = async (): Promise<string> => {
-  const result = await sql.query(`
-    SELECT MAX(TRY_CONVERT(INT, SUBSTRING(DON_HANG_ID, 4, 20))) AS MAX_NUM
-    FROM DON_HANG
-    WHERE DON_HANG_ID LIKE N'YEN%'
-  `);
-
-  const maxNumber = Number(result.recordset?.[0]?.MAX_NUM || 16000);
-  const nextNumber = maxNumber + 1;
-
-  return `YEN${nextNumber.toString().padStart(5, '0')}`;
+const isFailedStatus = (status: string): boolean => {
+  const normalized = status.trim().toLowerCase();
+  return ['thất bại', 'thanh toán thất bại', 'that bai', 'failed', 'expired', 'hết hạn', 'het han']
+    .includes(normalized);
 };
 
 const getOrderNumericPart = (orderId: string): string => {
@@ -344,240 +97,193 @@ const getOrderNumericPart = (orderId: string): string => {
 
 const createPaymentId = (orderId: string, attempt = 1): string => {
   const numericPart = getOrderNumericPart(orderId);
-
-  if (attempt <= 1) {
-    return `TT${numericPart}`.slice(0, 20);
-  }
-
+  if (attempt <= 1) return `TT${numericPart}`.slice(0, 20);
   return `TT${numericPart}${attempt.toString().padStart(2, '0')}`.slice(0, 20);
 };
 
 const createTransactionCode = (orderId: string, attempt = 1): string => {
   const numericPart = getOrderNumericPart(orderId);
-
-  if (attempt <= 1) {
-    return `GD${numericPart}`.slice(0, 100);
-  }
-
+  if (attempt <= 1) return `GD${numericPart}`.slice(0, 100);
   return `GD${numericPart}${attempt.toString().padStart(2, '0')}`.slice(0, 100);
-};
-
-const getNextPaymentAttempt = async (orderId: string): Promise<number> => {
-  const request = new sql.Request();
-  request.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-
-  const result = await request.query(`
-    SELECT COUNT(*) AS PAYMENT_COUNT
-    FROM THANH_TOAN
-    WHERE DON_HANG_ID = @DON_HANG_ID
-  `);
-
-  return Number(result.recordset?.[0]?.PAYMENT_COUNT || 0) + 1;
 };
 
 const createPaymentDeadline = (): string => {
   return new Date(Date.now() + PAYMENT_WINDOW_MINUTES * 60 * 1000).toISOString();
 };
 
-const toSqlDate = (value: string | null | undefined): string | null => {
-  if (!value) {
+const createNextOrderId = async (): Promise<string> => {
+  const orderCollection = await getCollection<any>('DON_HANG');
+  const orders = await orderCollection
+    .find({ DON_HANG_ID: { $regex: '^YEN\\d+$' } })
+    .project({ DON_HANG_ID: 1 })
+    .toArray();
+  const maxNumber = orders.reduce((max, order) => {
+    const value = Number(String(order.DON_HANG_ID || '').replace('YEN', ''));
+    return Number.isFinite(value) ? Math.max(max, value) : max;
+  }, 16000);
+
+  return `YEN${String(maxNumber + 1).padStart(5, '0')}`;
+};
+
+const getNextPaymentAttempt = async (orderId: string): Promise<number> => {
+  const paymentCollection = await getCollection<any>('THANH_TOAN');
+  return await paymentCollection.countDocuments({ DON_HANG_ID: orderId }) + 1;
+};
+
+const getLatestPayment = async (orderId: string) => {
+  const paymentCollection = await getCollection<any>('THANH_TOAN');
+  const payments = await paymentCollection.find({ DON_HANG_ID: orderId }).toArray();
+  return payments.sort((left, right) => {
+    const leftPending = String(left.TRANG_THAI_THANH_TOAN || '') === 'Chờ thanh toán' ? 0 : 1;
+    const rightPending = String(right.TRANG_THAI_THANH_TOAN || '') === 'Chờ thanh toán' ? 0 : 1;
+    if (leftPending !== rightPending) return leftPending - rightPending;
+    const dateDiff = (toDate(right.NGAY_THANH_TOAN)?.getTime() || 0) - (toDate(left.NGAY_THANH_TOAN)?.getTime() || 0);
+    if (dateDiff !== 0) return dateDiff;
+    return String(right.THANH_TOAN_ID || '').localeCompare(String(left.THANH_TOAN_ID || ''), 'vi');
+  })[0] || null;
+};
+
+const getRemainingSeconds = (order: any, payment: any): number => {
+  const start = toDate(payment?.NGAY_THANH_TOAN) || toDate(order?.NGAY_TAO) || new Date();
+  const deadline = start.getTime() + PAYMENT_WINDOW_MINUTES * 60 * 1000;
+  return Math.max(0, Math.floor((deadline - Date.now()) / 1000));
+};
+
+const isVoucherDateActive = (voucher: any): boolean => {
+  const today = new Date();
+  const start = toDate(voucher.NGAY_BAT_DAU);
+  const end = toDate(voucher.NGAY_KET_THUC);
+  return (!start || today >= start) && (!end || today <= end);
+};
+
+const resolveVoucherForOrder = async (voucher: any, customerId: string | null) => {
+  if (!voucher?.id && !voucher?.code) {
     return null;
   }
 
-  const raw = String(value).trim();
+  const voucherCollection = await getCollection<any>('VOUCHER');
+  const voucherId = String(voucher?.id || '').trim();
+  const voucherCode = String(voucher?.code || '').trim().toUpperCase();
+  const candidates = await voucherCollection.find({
+    DA_DUNG: { $ne: true },
+    $or: [
+      ...(voucherId ? [{ VOUCHER_ID: voucherId }] : []),
+      ...(voucherCode ? [{ MA_VOUCHER: { $regex: `^${voucherCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } }] : []),
+    ],
+  }).toArray();
 
-  if (!raw) {
-    return null;
-  }
+  const available = candidates
+    .filter((item) => {
+      const belongsToCustomer = customerId
+        ? item.KHACH_HANG_ID === customerId || item.KHACH_HANG_ID == null
+        : item.KHACH_HANG_ID == null;
+      return belongsToCustomer && isVoucherDateActive(item);
+    })
+    .sort((left, right) => {
+      const leftSpecific = customerId && left.KHACH_HANG_ID === customerId ? 0 : 1;
+      const rightSpecific = customerId && right.KHACH_HANG_ID === customerId ? 0 : 1;
+      if (leftSpecific !== rightSpecific) return leftSpecific - rightSpecific;
+      return (toDate(left.NGAY_KET_THUC)?.getTime() || 0) - (toDate(right.NGAY_KET_THUC)?.getTime() || 0);
+    });
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    return raw;
-  }
-
-  const match = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-
-  if (!match) {
-    return null;
-  }
-
-  const [, day, month, year] = match;
-  return `${year}-${month}-${day}`;
-};
-
-const toBit = (value: unknown): boolean => {
-  return value === true || value === 1 || value === '1' || value === 'true';
-};
-
-const isSuccessStatus = (status: string): boolean => {
-  const normalized = status.trim().toLowerCase();
-
-  return [
-    'thành công',
-    'thanh toán thành công',
-    'đã thanh toán',
-    'da thanh toan',
-    'success',
-    'paid',
-  ].includes(normalized);
-};
-
-const isFailedStatus = (status: string): boolean => {
-  const normalized = status.trim().toLowerCase();
-
-  return [
-    'thất bại',
-    'thanh toán thất bại',
-    'that bai',
-    'failed',
-    'expired',
-    'hết hạn',
-    'het han',
-  ].includes(normalized);
+  return available[0] || null;
 };
 
 const markVoucherUsed = async (orderId: string): Promise<void> => {
-  const request = new sql.Request();
-  request.input('DON_HANG_ID', sql.NVarChar(20), orderId);
+  const orderVoucherCollection = await getCollection<any>('DON_HANG_VOUCHER');
+  const voucherCollection = await getCollection<any>('VOUCHER');
+  const orderVouchers = await orderVoucherCollection.find({ DON_HANG_ID: orderId }).toArray();
+  const voucherIds = orderVouchers.map((item) => item.VOUCHER_ID).filter(Boolean);
 
-  await request.query(`
-    UPDATE VOUCHER
-    SET DA_DUNG = 1
-    WHERE VOUCHER_ID IN (
-      SELECT VOUCHER_ID
-      FROM DON_HANG_VOUCHER
-      WHERE DON_HANG_ID = @DON_HANG_ID
-    )
-  `);
+  if (voucherIds.length > 0) {
+    await voucherCollection.updateMany({ VOUCHER_ID: { $in: voucherIds } }, { $set: { DA_DUNG: true } });
+  }
 };
 
 const removePaidItemsFromCart = async (orderId: string, customerId: string): Promise<void> => {
-  if (!customerId) {
-    return;
+  if (!customerId) return;
+
+  const [cartCollection, cartDetailCollection, orderDetailCollection] = await Promise.all([
+    getCollection<any>('GIO_HANG'),
+    getCollection<any>('GIO_HANG_CHI_TIET'),
+    getCollection<any>('DON_HANG_CHI_TIET'),
+  ]);
+  const carts = await cartCollection.find({ KHACH_HANG_ID: customerId }).toArray();
+  const cartIds = carts.map((cart) => cart.GIO_HANG_ID).filter(Boolean);
+  const orderDetails = await orderDetailCollection.find({ DON_HANG_ID: orderId }).toArray();
+  const productIds = orderDetails.map((item) => item.SAN_PHAM_ID).filter(Boolean);
+
+  if (cartIds.length > 0 && productIds.length > 0) {
+    await cartDetailCollection.deleteMany({ GIO_HANG_ID: { $in: cartIds }, SAN_PHAM_ID: { $in: productIds } });
   }
-
-  const request = new sql.Request();
-  request.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-  request.input('KHACH_HANG_ID', sql.NVarChar(10), customerId);
-
-  await request.query(`
-    DELETE ct
-    FROM GIO_HANG_CHI_TIET ct
-    INNER JOIN GIO_HANG gh
-      ON gh.GIO_HANG_ID = ct.GIO_HANG_ID
-    INNER JOIN DON_HANG_CHI_TIET dhct
-      ON dhct.SAN_PHAM_ID = ct.SAN_PHAM_ID
-    WHERE gh.KHACH_HANG_ID = @KHACH_HANG_ID
-      AND dhct.DON_HANG_ID = @DON_HANG_ID
-  `);
 };
 
 const finalizeSuccessfulPayment = async (orderId: string): Promise<void> => {
-  const orderRequest = new sql.Request();
-  orderRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
+  const orderCollection = await getCollection<any>('DON_HANG');
+  const order = await orderCollection.findOneAndUpdate(
+    { DON_HANG_ID: orderId },
+    { $set: { TRANG_THAI: 'Chờ xử lý' } },
+    { returnDocument: 'after' },
+  );
 
-  const orderResult = await orderRequest.query(`
-    SELECT TOP 1 KHACH_HANG_ID
-    FROM DON_HANG
-    WHERE DON_HANG_ID = @DON_HANG_ID
-  `);
-
-  if (orderResult.recordset.length === 0) {
-    return;
+  if (order) {
+    await markVoucherUsed(orderId);
+    await removePaidItemsFromCart(orderId, String(order.KHACH_HANG_ID || ''));
   }
-
-  const customerId = String(orderResult.recordset[0].KHACH_HANG_ID || '');
-
-  const updateRequest = new sql.Request();
-  updateRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-
-  await updateRequest.query(`
-    UPDATE DON_HANG
-    SET TRANG_THAI = N'Chờ xử lý'
-    WHERE DON_HANG_ID = @DON_HANG_ID
-      AND ISNULL(TRANG_THAI, N'') <> N'Chờ xử lý';
-
-    UPDATE THANH_TOAN
-    SET
-      TRANG_THAI_THANH_TOAN = N'Thành công',
-      NGAY_THANH_TOAN = GETDATE()
-    WHERE DON_HANG_ID = @DON_HANG_ID;
-  `);
-
-  await markVoucherUsed(orderId);
-  await removePaidItemsFromCart(orderId, customerId);
 };
 
 const markPaymentFailed = async (orderId: string): Promise<void> => {
-  const request = new sql.Request();
-  request.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-
-  await request.query(`
-    UPDATE THANH_TOAN
-    SET TRANG_THAI_THANH_TOAN = N'Thất bại'
-    WHERE DON_HANG_ID = @DON_HANG_ID
-      AND ISNULL(TRANG_THAI_THANH_TOAN, N'Chờ thanh toán') NOT IN (N'Thành công', N'Thanh toán thành công', N'Đã thanh toán');
-
-    UPDATE DON_HANG
-    SET TRANG_THAI = N'Thanh toán thất bại'
-    WHERE DON_HANG_ID = @DON_HANG_ID
-      AND ISNULL(TRANG_THAI, N'') <> N'Chờ xử lý';
-  `);
+  const [orderCollection, paymentCollection] = await Promise.all([
+    getCollection<any>('DON_HANG'),
+    getCollection<any>('THANH_TOAN'),
+  ]);
+  await paymentCollection.updateMany(
+    {
+      DON_HANG_ID: orderId,
+      TRANG_THAI_THANH_TOAN: { $nin: ['Thành công', 'Thanh toán thành công', 'Đã thanh toán'] },
+    },
+    { $set: { TRANG_THAI_THANH_TOAN: 'Thất bại' } },
+  );
+  await orderCollection.updateOne(
+    { DON_HANG_ID: orderId, TRANG_THAI: { $ne: 'Chờ xử lý' } },
+    { $set: { TRANG_THAI: 'Thanh toán thất bại' } },
+  );
 };
 
-export const getAllOrders = async (req: Request, res: Response) => {
+export const getAllOrders = async (_req: Request, res: Response) => {
   try {
-    const result = await sql.query('SELECT * FROM DON_HANG ORDER BY NGAY_TAO DESC');
-    res.status(200).json(result.recordset);
+    const orderCollection = await getCollection<any>('DON_HANG');
+    const orders = await orderCollection.find({}).toArray();
+    orders.sort((left, right) => (toDate(right.NGAY_TAO)?.getTime() || 0) - (toDate(left.NGAY_TAO)?.getTime() || 0));
+    return res.status(200).json(orders);
   } catch (error: any) {
-    res.status(500).json({ message: 'Lỗi Controller: ' + error.message });
+    return res.status(500).json({ message: 'Lỗi Controller: ' + error.message });
   }
 };
 
 export const getPublicVouchers = async (_req: Request, res: Response) => {
   try {
-    const result = await sql.query(`
-      SELECT
-        VOUCHER_ID,
-        MA_VOUCHER,
-        LOAI_GIAM_GIA,
-        GIA_TRI_GIAM,
-        NGAY_BAT_DAU,
-        NGAY_KET_THUC,
-        DA_DUNG
-      FROM VOUCHER
-      WHERE KHACH_HANG_ID IS NULL
-        AND ISNULL(DA_DUNG, 0) = 0
-        AND CAST(GETDATE() AS DATE) >= CAST(NGAY_BAT_DAU AS DATE)
-        AND CAST(GETDATE() AS DATE) <= CAST(NGAY_KET_THUC AS DATE)
-      ORDER BY MA_VOUCHER
-    `);
+    const voucherCollection = await getCollection<any>('VOUCHER');
+    const vouchers = (await voucherCollection.find({
+      $or: [{ KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }],
+      DA_DUNG: { $ne: true },
+    }).toArray())
+      .filter(isVoucherDateActive)
+      .sort((left, right) => String(left.MA_VOUCHER || '').localeCompare(String(right.MA_VOUCHER || ''), 'vi'));
 
     return res.status(200).json({
-      total: result.recordset.length,
-      vouchers: result.recordset,
+      total: vouchers.length,
+      vouchers,
     });
   } catch (error: any) {
     console.error('Lỗi lấy voucher công khai:', error);
-    return res.status(500).json({
-      message: 'Không thể lấy voucher công khai: ' + error.message,
-    });
+    return res.status(500).json({ message: 'Không thể lấy voucher công khai: ' + error.message });
   }
 };
 
 export const createOrder = async (req: Request, res: Response) => {
   try {
-    const {
-      customerId,
-      receiver,
-      sender,
-      delivery,
-      items,
-      voucher,
-      summary,
-      payment,
-      flags,
-    } = req.body;
-
+    const { customerId, receiver, delivery, items, voucher, summary, payment, flags } = req.body;
     const normalizedCustomerId = customerId ? String(customerId) : null;
 
     if (!receiver?.name || !receiver?.phone || !receiver?.address) {
@@ -589,20 +295,25 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     const paymentMethod = String(payment?.method || '').trim();
-
     if (paymentMethod === 'card') {
       return res.status(400).json({
         message: 'Hiện tại shop chưa hỗ trợ hình thức thanh toán thẻ ngân hàng.',
       });
     }
 
-    const productItems: CreateOrderItem[] = items
-      .map((item: any) => ({
-        id: String(item.id || item.SAN_PHAM_ID || ''),
-        qty: Math.max(1, Number(item.qty || item.quantity || item.SO_LUONG || 1)),
-        price: Math.max(0, Number(item.price || item.GIA || 0)),
-      }))
-      .filter((item: CreateOrderItem) => item.id.startsWith('SP'));
+    const productItemsById = new Map<string, CreateOrderItem>();
+    for (const rawItem of items) {
+      const item = {
+        id: String(rawItem.id || rawItem.SAN_PHAM_ID || ''),
+        qty: Math.max(1, Number(rawItem.qty || rawItem.quantity || rawItem.SO_LUONG || 1)),
+        price: Math.max(0, Number(rawItem.price || rawItem.GIA || 0)),
+      };
+      if (!item.id.startsWith('SP')) continue;
+
+      const current = productItemsById.get(item.id);
+      productItemsById.set(item.id, current ? { ...current, qty: current.qty + item.qty, price: item.price } : item);
+    }
+    const productItems = Array.from(productItemsById.values());
 
     if (productItems.length === 0) {
       return res.status(400).json({
@@ -628,35 +339,32 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     if (loyaltyPointsToUse > 0) {
-      const customerPointRequest = new sql.Request();
-      customerPointRequest.input('KHACH_HANG_ID', sql.NVarChar(10), normalizedCustomerId);
+      const customerCollection = await getCollection<any>('KHACH_HANG');
+      const customer = await customerCollection.findOne({ KHACH_HANG_ID: normalizedCustomerId });
 
-      const customerPointResult = await customerPointRequest.query(`
-        SELECT TOP 1 DIEM_TICH_LUY
-        FROM KHACH_HANG
-        WHERE KHACH_HANG_ID = @KHACH_HANG_ID
-      `);
-
-      if (customerPointResult.recordset.length === 0) {
-        return res.status(400).json({
-          message: 'Không tìm thấy khách hàng để sử dụng điểm thưởng.',
-        });
+      if (!customer) {
+        return res.status(400).json({ message: 'Không tìm thấy khách hàng để sử dụng điểm thưởng.' });
       }
 
-      const availablePoints = normalizeRewardPoints(customerPointResult.recordset[0].DIEM_TICH_LUY);
-
+      const availablePoints = normalizeRewardPoints(customer.DIEM_TICH_LUY);
       if (loyaltyPointsToUse > availablePoints) {
-        return res.status(400).json({
-          message: 'Số điểm thưởng sử dụng vượt quá điểm hiện có.',
-        });
+        return res.status(400).json({ message: 'Số điểm thưởng sử dụng vượt quá điểm hiện có.' });
       }
+    }
+
+    const checkedVoucher = await resolveVoucherForOrder(voucher, normalizedCustomerId);
+    if ((voucher?.id || voucher?.code) && !checkedVoucher) {
+      return res.status(400).json({
+        message: normalizedCustomerId
+          ? 'Voucher không hợp lệ, đã hết hạn hoặc không thuộc tài khoản này.'
+          : 'Voucher không hợp lệ, đã hết hạn, đã được sử dụng hoặc không dành cho khách vãng lai.',
+      });
     }
 
     const orderId = await createNextOrderId();
     const paymentId = createPaymentId(orderId, 1);
     const transactionCode = createTransactionCode(orderId, 1);
     const paymentDeadline = createPaymentDeadline();
-
     const subtotal = Math.max(0, Number(summary?.subtotal || 0));
     const shippingFee = Math.max(0, Number(summary?.shippingFee || 0));
     const clientDepositAmount = Math.max(0, Number(summary?.depositAmount || 0));
@@ -665,181 +373,74 @@ export const createOrder = async (req: Request, res: Response) => {
     const paymentAmount = paymentMethod === 'cod' ? depositAmount : total;
     const initialPaymentStatus = paymentAmount <= 0 ? 'Thành công' : 'Chờ thanh toán';
     const initialOrderStatus = paymentAmount <= 0 ? 'Chờ xử lý' : 'Chờ thanh toán';
-
-    const deliveryDate = toSqlDate(delivery?.date);
-    const deliveryTime = String(delivery?.time || '');
-    const receiverMessage = String(delivery?.message || '');
-    const shopNote = String(delivery?.noteShop || '');
     const paymentMethodName = String(payment?.methodName || paymentMethod || '');
 
-    const insertOrderRequest = new sql.Request();
-    insertOrderRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-    insertOrderRequest.input('KHACH_HANG_ID', sql.NVarChar(10), normalizedCustomerId);
-    insertOrderRequest.input('TRANG_THAI', sql.NVarChar(50), initialOrderStatus);
-    insertOrderRequest.input('TAM_TINH', sql.BigInt, subtotal);
-    insertOrderRequest.input('PHI_VAN_CHUYEN', sql.BigInt, shippingFee);
-    insertOrderRequest.input('TIEN_COC', sql.BigInt, depositAmount);
-    insertOrderRequest.input('TONG_TIEN', sql.BigInt, total);
-    insertOrderRequest.input('PHUONG_THUC_THANH_TOAN', sql.NVarChar(100), paymentMethodName);
-    insertOrderRequest.input('VAT', sql.Decimal(5, 2), 0);
-    insertOrderRequest.input('NGAY_MUON_GIAO', sql.Date, deliveryDate);
-    insertOrderRequest.input('KHUNG_GIO_MUON_GIAO', sql.NVarChar(50), deliveryTime);
-    insertOrderRequest.input('LOI_NHAN_THIEP', sql.NVarChar(500), receiverMessage);
-    insertOrderRequest.input('AN_THONG_TIN', sql.Bit, toBit(flags?.hideSender));
-    insertOrderRequest.input('GHI_CHU', sql.NVarChar(500), shopNote);
-    insertOrderRequest.input('TEN_NGUOI_NHAN', sql.NVarChar(100), receiver.name);
-    insertOrderRequest.input('SDT_NGUOI_NHAN', sql.VarChar(20), receiver.phone);
-    insertOrderRequest.input('DIA_CHI_GIAO_HANG', sql.NVarChar(500), receiver.address);
-    insertOrderRequest.input('YEU_CAU_VAT', sql.Bit, toBit(flags?.requestVAT));
-    insertOrderRequest.input('GUI_ANH_QUA_ZALO', sql.Bit, toBit(flags?.sendZaloPhoto));
-    insertOrderRequest.input('DIEM_THUONG_SU_DUNG', sql.Int, loyaltyPointsToUse > 0 ? loyaltyPointsToUse : null);
-    insertOrderRequest.input('DA_TRU_DIEM_THUONG', sql.Bit, false);
+    const [orderCollection, detailCollection, paymentCollection, orderVoucherCollection] = await Promise.all([
+      getCollection<any>('DON_HANG'),
+      getCollection<any>('DON_HANG_CHI_TIET'),
+      getCollection<any>('THANH_TOAN'),
+      getCollection<any>('DON_HANG_VOUCHER'),
+    ]);
 
-    await insertOrderRequest.query(`
-      INSERT INTO DON_HANG (
-        DON_HANG_ID,
-        KHACH_HANG_ID,
-        NGAY_TAO,
-        TRANG_THAI,
-        TAM_TINH,
-        PHI_VAN_CHUYEN,
-        TIEN_COC,
-        TONG_TIEN,
-        PHUONG_THUC_THANH_TOAN,
-        VAT,
-        NGAY_MUON_GIAO,
-        KHUNG_GIO_MUON_GIAO,
-        LOI_NHAN_THIEP,
-        AN_THONG_TIN,
-        GHI_CHU,
-        TEN_NGUOI_NHAN,
-        SDT_NGUOI_NHAN,
-        DIA_CHI_GIAO_HANG,
-        YEU_CAU_VAT,
-        GUI_ANH_QUA_ZALO,
-        DIEM_THUONG_SU_DUNG,
-        DA_TRU_DIEM_THUONG
-      )
-      VALUES (
-        @DON_HANG_ID,
-        @KHACH_HANG_ID,
-        GETDATE(),
-        @TRANG_THAI,
-        @TAM_TINH,
-        @PHI_VAN_CHUYEN,
-        @TIEN_COC,
-        @TONG_TIEN,
-        @PHUONG_THUC_THANH_TOAN,
-        @VAT,
-        @NGAY_MUON_GIAO,
-        @KHUNG_GIO_MUON_GIAO,
-        @LOI_NHAN_THIEP,
-        @AN_THONG_TIN,
-        @GHI_CHU,
-        @TEN_NGUOI_NHAN,
-        @SDT_NGUOI_NHAN,
-        @DIA_CHI_GIAO_HANG,
-        @YEU_CAU_VAT,
-        @GUI_ANH_QUA_ZALO,
-        @DIEM_THUONG_SU_DUNG,
-        @DA_TRU_DIEM_THUONG
-      )
-    `);
+    await orderCollection.insertOne({
+      _id: orderId,
+      DON_HANG_ID: orderId,
+      KHACH_HANG_ID: normalizedCustomerId,
+      NGAY_TAO: new Date(),
+      TRANG_THAI: initialOrderStatus,
+      TAM_TINH: subtotal,
+      PHI_VAN_CHUYEN: shippingFee,
+      TIEN_COC: depositAmount,
+      TONG_TIEN: total,
+      PHUONG_THUC_THANH_TOAN: paymentMethodName,
+      VAT: 0,
+      NGAY_MUON_GIAO: toSqlDate(delivery?.date),
+      KHUNG_GIO_MUON_GIAO: String(delivery?.time || ''),
+      LOI_NHAN_THIEP: String(delivery?.message || ''),
+      AN_THONG_TIN: toBit(flags?.hideSender),
+      GHI_CHU: String(delivery?.noteShop || ''),
+      TEN_NGUOI_NHAN: receiver.name,
+      SDT_NGUOI_NHAN: receiver.phone,
+      DIA_CHI_GIAO_HANG: receiver.address,
+      YEU_CAU_VAT: toBit(flags?.requestVAT),
+      GUI_ANH_QUA_ZALO: toBit(flags?.sendZaloPhoto),
+      DA_CHINH_SUA_GIAO_HANG: false,
+      LY_DO_HUY: null,
+      NGAY_HUY: null,
+      LY_DO_HOAN_TIEN_TRA_HANG: null,
+      NGAY_YEU_CAU_HOAN_TIEN_TRA_HANG: null,
+      DIEM_THUONG_SU_DUNG: loyaltyPointsToUse > 0 ? loyaltyPointsToUse : null,
+      DA_TRU_DIEM_THUONG: false,
+      LY_DO_TU_CHOI: null,
+    });
 
-    for (const item of productItems) {
-      const detailRequest = new sql.Request();
-      detailRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-      detailRequest.input('SAN_PHAM_ID', sql.NVarChar(10), item.id);
-      detailRequest.input('SO_LUONG', sql.Int, item.qty);
-      detailRequest.input('GIA', sql.BigInt, item.price);
+    await detailCollection.insertMany(productItems.map((item) => ({
+      _id: { DON_HANG_ID: orderId, SAN_PHAM_ID: item.id },
+      DON_HANG_ID: orderId,
+      SAN_PHAM_ID: item.id,
+      SO_LUONG: item.qty,
+      GIA: item.price,
+    })));
 
-      await detailRequest.query(`
-        INSERT INTO DON_HANG_CHI_TIET (DON_HANG_ID, SAN_PHAM_ID, SO_LUONG, GIA)
-        VALUES (@DON_HANG_ID, @SAN_PHAM_ID, @SO_LUONG, @GIA)
-      `);
+    if (checkedVoucher) {
+      await orderVoucherCollection.insertOne({
+        _id: { DON_HANG_ID: orderId, VOUCHER_ID: checkedVoucher.VOUCHER_ID },
+        DON_HANG_ID: orderId,
+        VOUCHER_ID: checkedVoucher.VOUCHER_ID,
+        MO_TA: `Áp dụng voucher ${checkedVoucher.MA_VOUCHER}`,
+      });
     }
 
-    if (voucher?.id || voucher?.code) {
-      const voucherId = String(voucher?.id || '').trim();
-      const voucherCode = String(voucher?.code || '').trim().toUpperCase();
-      const voucherCheckRequest = new sql.Request();
-      voucherCheckRequest.input('VOUCHER_ID', sql.NVarChar(10), voucherId);
-      voucherCheckRequest.input('MA_VOUCHER', sql.NVarChar(50), voucherCode);
-
-      if (normalizedCustomerId) {
-        voucherCheckRequest.input('KHACH_HANG_ID', sql.NVarChar(10), normalizedCustomerId);
-      }
-
-      const customerCondition = normalizedCustomerId
-        ? 'AND (KHACH_HANG_ID = @KHACH_HANG_ID OR KHACH_HANG_ID IS NULL)'
-        : 'AND KHACH_HANG_ID IS NULL';
-      const customerOrder = normalizedCustomerId
-        ? 'CASE WHEN KHACH_HANG_ID = @KHACH_HANG_ID THEN 0 ELSE 1 END,'
-        : '';
-
-      const voucherCheck = await voucherCheckRequest.query(`
-        SELECT TOP 1 VOUCHER_ID, MA_VOUCHER
-        FROM VOUCHER
-        WHERE ISNULL(DA_DUNG, 0) = 0
-          ${customerCondition}
-          AND CAST(GETDATE() AS DATE) >= CAST(NGAY_BAT_DAU AS DATE)
-          AND CAST(GETDATE() AS DATE) <= CAST(NGAY_KET_THUC AS DATE)
-          AND (
-            (@VOUCHER_ID <> N'' AND VOUCHER_ID = @VOUCHER_ID)
-            OR (@MA_VOUCHER <> N'' AND UPPER(MA_VOUCHER) = @MA_VOUCHER)
-          )
-        ORDER BY ${customerOrder} NGAY_KET_THUC ASC, VOUCHER_ID ASC
-      `);
-
-      if (voucherCheck.recordset.length === 0) {
-        return res.status(400).json({
-          message: normalizedCustomerId
-            ? 'Voucher không hợp lệ, đã hết hạn hoặc không thuộc tài khoản này.'
-            : 'Voucher không hợp lệ, đã hết hạn, đã được sử dụng hoặc không dành cho khách vãng lai.',
-        });
-      }
-
-      const checkedVoucher = voucherCheck.recordset[0];
-      const orderVoucherRequest = new sql.Request();
-      orderVoucherRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-      orderVoucherRequest.input('VOUCHER_ID', sql.NVarChar(10), checkedVoucher.VOUCHER_ID);
-      orderVoucherRequest.input('MO_TA', sql.NVarChar(255), `Áp dụng voucher ${checkedVoucher.MA_VOUCHER}`);
-
-      await orderVoucherRequest.query(`
-        INSERT INTO DON_HANG_VOUCHER (DON_HANG_ID, VOUCHER_ID, MO_TA)
-        VALUES (@DON_HANG_ID, @VOUCHER_ID, @MO_TA)
-      `);
-    }
-
-    const paymentRequest = new sql.Request();
-    paymentRequest.input('THANH_TOAN_ID', sql.NVarChar(20), paymentId);
-    paymentRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-    paymentRequest.input('CONG_THANH_TOAN', sql.NVarChar(100), paymentMethodName);
-    paymentRequest.input('MA_GIAO_DICH', sql.NVarChar(100), transactionCode);
-    paymentRequest.input('SO_TIEN', sql.BigInt, paymentAmount);
-    paymentRequest.input('TRANG_THAI_THANH_TOAN', sql.NVarChar(50), initialPaymentStatus);
-    paymentRequest.input('NGAY_THANH_TOAN', sql.DateTime, new Date());
-
-    await paymentRequest.query(`
-      INSERT INTO THANH_TOAN (
-        THANH_TOAN_ID,
-        DON_HANG_ID,
-        CONG_THANH_TOAN,
-        MA_GIAO_DICH,
-        SO_TIEN,
-        TRANG_THAI_THANH_TOAN,
-        NGAY_THANH_TOAN
-      )
-      VALUES (
-        @THANH_TOAN_ID,
-        @DON_HANG_ID,
-        @CONG_THANH_TOAN,
-        @MA_GIAO_DICH,
-        @SO_TIEN,
-        @TRANG_THAI_THANH_TOAN,
-        @NGAY_THANH_TOAN
-      )
-    `);
+    await paymentCollection.insertOne({
+      _id: paymentId,
+      THANH_TOAN_ID: paymentId,
+      DON_HANG_ID: orderId,
+      CONG_THANH_TOAN: paymentMethodName,
+      MA_GIAO_DICH: transactionCode,
+      SO_TIEN: paymentAmount,
+      TRANG_THAI_THANH_TOAN: initialPaymentStatus,
+      NGAY_THANH_TOAN: new Date(),
+    });
 
     if (paymentAmount <= 0) {
       await finalizeSuccessfulPayment(orderId);
@@ -858,46 +459,24 @@ export const createOrder = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Lỗi tạo đơn hàng:', error);
-    return res.status(500).json({
-      message: 'Không thể tạo đơn hàng: ' + error.message,
-    });
+    return res.status(500).json({ message: 'Không thể tạo đơn hàng: ' + error.message });
   }
 };
 
 export const getOrderPaymentStatus = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
+    const orderCollection = await getCollection<any>('DON_HANG');
+    const order = await orderCollection.findOne({ DON_HANG_ID: orderId });
 
-    const request = new sql.Request();
-    request.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-
-    const result = await request.query(`
-      SELECT TOP 1
-        dh.DON_HANG_ID,
-        dh.KHACH_HANG_ID,
-        dh.NGAY_TAO,
-        dh.TRANG_THAI,
-        tt.THANH_TOAN_ID,
-        tt.MA_GIAO_DICH,
-        tt.SO_TIEN,
-        tt.TRANG_THAI_THANH_TOAN,
-        tt.NGAY_THANH_TOAN,
-        DATEDIFF(SECOND, GETDATE(), DATEADD(MINUTE, ${PAYMENT_WINDOW_MINUTES}, ISNULL(tt.NGAY_THANH_TOAN, dh.NGAY_TAO))) AS REMAINING_SECONDS
-      FROM DON_HANG dh
-      LEFT JOIN THANH_TOAN tt
-        ON tt.DON_HANG_ID = dh.DON_HANG_ID
-      WHERE dh.DON_HANG_ID = @DON_HANG_ID
-      ORDER BY tt.NGAY_THANH_TOAN DESC, tt.THANH_TOAN_ID DESC
-    `);
-
-    if (result.recordset.length === 0) {
+    if (!order) {
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng.' });
     }
 
-    const row = result.recordset[0];
-    const paymentStatus = String(row.TRANG_THAI_THANH_TOAN || 'Chờ thanh toán');
-    let orderStatus = String(row.TRANG_THAI || 'Chờ thanh toán');
-    let remainingSeconds = Math.max(0, Number(row.REMAINING_SECONDS || 0));
+    const payment = await getLatestPayment(orderId);
+    const paymentStatus = String(payment?.TRANG_THAI_THANH_TOAN || 'Chờ thanh toán');
+    let orderStatus = String(order.TRANG_THAI || 'Chờ thanh toán');
+    let remainingSeconds = getRemainingSeconds(order, payment);
 
     if (isSuccessStatus(paymentStatus)) {
       await finalizeSuccessfulPayment(orderId);
@@ -911,9 +490,9 @@ export const getOrderPaymentStatus = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       orderId,
-      paymentId: row.THANH_TOAN_ID,
-      transactionCode: row.MA_GIAO_DICH,
-      paymentAmount: Number(row.SO_TIEN || 0),
+      paymentId: payment?.THANH_TOAN_ID,
+      transactionCode: payment?.MA_GIAO_DICH,
+      paymentAmount: Number(payment?.SO_TIEN || 0),
       paymentStatus: isSuccessStatus(paymentStatus)
         ? 'Thành công'
         : orderStatus === 'Thanh toán thất bại'
@@ -946,33 +525,20 @@ export const expireOrderPayment = async (req: Request, res: Response) => {
   }
 };
 
-
 export const retryOrderPayment = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
+    const [orderCollection, paymentCollection] = await Promise.all([
+      getCollection<any>('DON_HANG'),
+      getCollection<any>('THANH_TOAN'),
+    ]);
+    const order = await orderCollection.findOne({ DON_HANG_ID: orderId });
 
-    const orderRequest = new sql.Request();
-    orderRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-
-    const orderResult = await orderRequest.query(`
-      SELECT TOP 1
-        DON_HANG_ID,
-        KHACH_HANG_ID,
-        TRANG_THAI,
-        TIEN_COC,
-        TONG_TIEN,
-        PHUONG_THUC_THANH_TOAN
-      FROM DON_HANG
-      WHERE DON_HANG_ID = @DON_HANG_ID
-    `);
-
-    if (orderResult.recordset.length === 0) {
+    if (!order) {
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng để thanh toán lại.' });
     }
 
-    const order = orderResult.recordset[0];
     const currentOrderStatus = String(order.TRANG_THAI || '');
-
     if (currentOrderStatus === 'Chờ xử lý' || currentOrderStatus === 'Hoàn thành') {
       return res.status(400).json({ message: 'Đơn hàng đã thanh toán hoặc đã xử lý, không thể thanh toán lại.' });
     }
@@ -980,65 +546,34 @@ export const retryOrderPayment = async (req: Request, res: Response) => {
     const paymentMethodName = String(order.PHUONG_THUC_THANH_TOAN || '');
     const normalizedMethod = paymentMethodName.trim().toLowerCase();
     const isCod = normalizedMethod.includes('cod') || normalizedMethod.includes('nhận hàng') || normalizedMethod.includes('nhan hang');
-
     const depositAmount = Math.max(0, Number(order.TIEN_COC || 0));
     const total = Math.max(0, Number(order.TONG_TIEN || 0));
     const paymentAmount = isCod ? depositAmount : total;
-
     const attempt = await getNextPaymentAttempt(orderId);
     const paymentId = createPaymentId(orderId, attempt);
     const transactionCode = createTransactionCode(orderId, attempt);
     const paymentDeadline = createPaymentDeadline();
+    const nextPaymentStatus = paymentAmount <= 0 ? 'Thành công' : 'Chờ thanh toán';
+    const nextOrderStatus = paymentAmount <= 0 ? 'Chờ xử lý' : 'Chờ thanh toán';
 
-    const failOldRequest = new sql.Request();
-    failOldRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-
-    await failOldRequest.query(`
-      UPDATE THANH_TOAN
-      SET TRANG_THAI_THANH_TOAN = N'Thất bại'
-      WHERE DON_HANG_ID = @DON_HANG_ID
-        AND ISNULL(TRANG_THAI_THANH_TOAN, N'Chờ thanh toán') NOT IN (N'Thành công', N'Thanh toán thành công', N'Đã thanh toán');
-    `);
-
-    const insertPaymentRequest = new sql.Request();
-    insertPaymentRequest.input('THANH_TOAN_ID', sql.NVarChar(20), paymentId);
-    insertPaymentRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-    insertPaymentRequest.input('CONG_THANH_TOAN', sql.NVarChar(100), paymentMethodName);
-    insertPaymentRequest.input('MA_GIAO_DICH', sql.NVarChar(100), transactionCode);
-    insertPaymentRequest.input('SO_TIEN', sql.BigInt, paymentAmount);
-    insertPaymentRequest.input('TRANG_THAI_THANH_TOAN', sql.NVarChar(50), paymentAmount <= 0 ? 'Thành công' : 'Chờ thanh toán');
-    insertPaymentRequest.input('NGAY_THANH_TOAN', sql.DateTime, new Date());
-
-    await insertPaymentRequest.query(`
-      INSERT INTO THANH_TOAN (
-        THANH_TOAN_ID,
-        DON_HANG_ID,
-        CONG_THANH_TOAN,
-        MA_GIAO_DICH,
-        SO_TIEN,
-        TRANG_THAI_THANH_TOAN,
-        NGAY_THANH_TOAN
-      )
-      VALUES (
-        @THANH_TOAN_ID,
-        @DON_HANG_ID,
-        @CONG_THANH_TOAN,
-        @MA_GIAO_DICH,
-        @SO_TIEN,
-        @TRANG_THAI_THANH_TOAN,
-        @NGAY_THANH_TOAN
-      )
-    `);
-
-    const updateOrderRequest = new sql.Request();
-    updateOrderRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-    updateOrderRequest.input('TRANG_THAI', sql.NVarChar(50), paymentAmount <= 0 ? 'Chờ xử lý' : 'Chờ thanh toán');
-
-    await updateOrderRequest.query(`
-      UPDATE DON_HANG
-      SET TRANG_THAI = @TRANG_THAI
-      WHERE DON_HANG_ID = @DON_HANG_ID;
-    `);
+    await paymentCollection.updateMany(
+      {
+        DON_HANG_ID: orderId,
+        TRANG_THAI_THANH_TOAN: { $nin: ['Thành công', 'Thanh toán thành công', 'Đã thanh toán'] },
+      },
+      { $set: { TRANG_THAI_THANH_TOAN: 'Thất bại' } },
+    );
+    await paymentCollection.insertOne({
+      _id: paymentId,
+      THANH_TOAN_ID: paymentId,
+      DON_HANG_ID: orderId,
+      CONG_THANH_TOAN: paymentMethodName,
+      MA_GIAO_DICH: transactionCode,
+      SO_TIEN: paymentAmount,
+      TRANG_THAI_THANH_TOAN: nextPaymentStatus,
+      NGAY_THANH_TOAN: new Date(),
+    });
+    await orderCollection.updateOne({ DON_HANG_ID: orderId }, { $set: { TRANG_THAI: nextOrderStatus } });
 
     if (paymentAmount <= 0) {
       await finalizeSuccessfulPayment(orderId);
@@ -1051,8 +586,8 @@ export const retryOrderPayment = async (req: Request, res: Response) => {
       transactionCode,
       paymentAmount,
       paymentDeadline,
-      orderStatus: paymentAmount <= 0 ? 'Chờ xử lý' : 'Chờ thanh toán',
-      paymentStatus: paymentAmount <= 0 ? 'Thành công' : 'Chờ thanh toán',
+      orderStatus: nextOrderStatus,
+      paymentStatus: nextPaymentStatus,
       paymentWindowSeconds: PAYMENT_WINDOW_MINUTES * 60,
     });
   } catch (error: any) {
@@ -1064,18 +599,17 @@ export const retryOrderPayment = async (req: Request, res: Response) => {
 export const markOrderPaymentSuccess = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
+    const paymentCollection = await getCollection<any>('THANH_TOAN');
+    const payment = await getLatestPayment(orderId);
 
-    const request = new sql.Request();
-    request.input('DON_HANG_ID', sql.NVarChar(20), orderId);
+    if (!payment) {
+      return res.status(404).json({ message: 'Không tìm thấy thanh toán.' });
+    }
 
-    await request.query(`
-      UPDATE THANH_TOAN
-      SET
-        TRANG_THAI_THANH_TOAN = N'Thành công',
-        NGAY_THANH_TOAN = GETDATE()
-      WHERE DON_HANG_ID = @DON_HANG_ID
-    `);
-
+    await paymentCollection.updateOne(
+      { THANH_TOAN_ID: payment.THANH_TOAN_ID },
+      { $set: { TRANG_THAI_THANH_TOAN: 'Thành công', NGAY_THANH_TOAN: new Date() } },
+    );
     await finalizeSuccessfulPayment(orderId);
 
     return res.status(200).json({
@@ -1091,7 +625,6 @@ export const markOrderPaymentSuccess = async (req: Request, res: Response) => {
   }
 };
 
-
 export const getOrderDetail = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
@@ -1101,139 +634,116 @@ export const getOrderDetail = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Thiếu mã đơn hàng.' });
     }
 
-    const orderRequest = new sql.Request();
-    orderRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-    orderRequest.input('PHONE', sql.NVarChar(20), phone);
+    const [orderCollection, customerCollection, detailCollection, productCollection, imageCollection, reviewCollection] = await Promise.all([
+      getCollection<any>('DON_HANG'),
+      getCollection<any>('KHACH_HANG'),
+      getCollection<any>('DON_HANG_CHI_TIET'),
+      getCollection<any>('SAN_PHAM'),
+      getCollection<any>('HINH_ANH_SAN_PHAM'),
+      getCollection<any>('DANH_GIA'),
+    ]);
+    const order = await orderCollection.findOne({ DON_HANG_ID: orderId });
 
-    const orderResult = await orderRequest.query(`
-      SELECT TOP 1
-        dh.DON_HANG_ID,
-        dh.KHACH_HANG_ID,
-        dh.NGAY_TAO,
-        dh.TRANG_THAI,
-        dh.TAM_TINH,
-        dh.PHI_VAN_CHUYEN,
-        dh.TIEN_COC,
-        dh.TONG_TIEN,
-        dh.PHUONG_THUC_THANH_TOAN,
-        dh.VAT,
-        dh.NGAY_MUON_GIAO,
-        dh.KHUNG_GIO_MUON_GIAO,
-        dh.LOI_NHAN_THIEP,
-        dh.AN_THONG_TIN,
-        dh.GHI_CHU,
-        dh.TEN_NGUOI_NHAN,
-        dh.SDT_NGUOI_NHAN,
-        dh.DIA_CHI_GIAO_HANG,
-        dh.YEU_CAU_VAT,
-        dh.GUI_ANH_QUA_ZALO,
-        dh.DIEM_THUONG_SU_DUNG,
-        dh.DA_TRU_DIEM_THUONG,
-        dh.DA_CHINH_SUA_GIAO_HANG,
-        dh.LY_DO_HUY,
-        dh.NGAY_HUY,
-        dh.LY_DO_HOAN_TIEN_TRA_HANG,
-        dh.LY_DO_TU_CHOI,
-        dh.NGAY_YEU_CAU_HOAN_TIEN_TRA_HANG,
-        CASE WHEN EXISTS (
-          SELECT 1 FROM DANH_GIA dg WHERE dg.DON_HANG_ID = dh.DON_HANG_ID
-        ) THEN 1 ELSE 0 END AS DA_DANH_GIA,
-        kh.TEN AS TEN_KHACH_HANG,
-        kh.SDT AS SDT_KHACH_HANG,
-        kh.EMAIL,
-        tt.THANH_TOAN_ID,
-        tt.CONG_THANH_TOAN,
-        tt.MA_GIAO_DICH,
-        tt.SO_TIEN AS SO_TIEN_THANH_TOAN,
-        tt.TRANG_THAI_THANH_TOAN,
-        tt.NGAY_THANH_TOAN
-      FROM DON_HANG dh
-      LEFT JOIN KHACH_HANG kh
-        ON kh.KHACH_HANG_ID = dh.KHACH_HANG_ID
-      OUTER APPLY (
-        SELECT TOP 1 *
-        FROM THANH_TOAN t
-        WHERE t.DON_HANG_ID = dh.DON_HANG_ID
-        ORDER BY
-          CASE WHEN t.TRANG_THAI_THANH_TOAN = N'Chờ thanh toán' THEN 0 ELSE 1 END,
-          t.NGAY_THANH_TOAN DESC,
-          t.THANH_TOAN_ID DESC
-      ) tt
-      WHERE dh.DON_HANG_ID = @DON_HANG_ID
-        AND (
-          @PHONE = N''
-          OR REPLACE(ISNULL(dh.SDT_NGUOI_NHAN, ''), ' ', '') = @PHONE
-          OR REPLACE(ISNULL(kh.SDT, ''), ' ', '') = @PHONE
-        )
-    `);
-
-    if (orderResult.recordset.length === 0) {
+    if (!order) {
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng hoặc số điện thoại không khớp.' });
     }
 
-    const order = await autoCompleteDeliveredOrderIfNeeded(orderResult.recordset[0]);
+    const customer = order.KHACH_HANG_ID ? await customerCollection.findOne({ KHACH_HANG_ID: order.KHACH_HANG_ID }) : null;
+    const receiverPhone = String(order.SDT_NGUOI_NHAN || '').replace(/\D/g, '');
+    const customerPhone = String(customer?.SDT || '').replace(/\D/g, '');
 
-    const detailRequest = new sql.Request();
-    detailRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
+    if (phone && phone !== receiverPhone && phone !== customerPhone) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng hoặc số điện thoại không khớp.' });
+    }
 
-    const detailResult = await detailRequest.query(`
-      SELECT
-        ct.SAN_PHAM_ID,
-        ct.SO_LUONG,
-        ct.GIA,
-        sp.TEN_SAN_PHAM,
-        sp.KIEU_DANG,
-        sp.TRANG_THAI AS TRANG_THAI_SAN_PHAM,
-        img.URL AS HINH_ANH
-      FROM DON_HANG_CHI_TIET ct
-      LEFT JOIN SAN_PHAM sp
-        ON sp.SAN_PHAM_ID = ct.SAN_PHAM_ID
-      OUTER APPLY (
-        SELECT TOP 1 URL
-        FROM HINH_ANH_SAN_PHAM
-        WHERE SAN_PHAM_ID = ct.SAN_PHAM_ID
-        ORDER BY LA_ANH_CHINH DESC, HINH_ANH_ID ASC
-      ) img
-      WHERE ct.DON_HANG_ID = @DON_HANG_ID
-      ORDER BY ct.SAN_PHAM_ID
-    `);
+    const payment = await getLatestPayment(orderId);
+    const hasReview = await reviewCollection.findOne({ DON_HANG_ID: orderId }, { projection: { DANH_GIA_ID: 1 } });
+    const enrichedOrder = {
+      ...order,
+      DA_DANH_GIA: hasReview ? 1 : 0,
+      TEN_KHACH_HANG: customer?.TEN || null,
+      SDT_KHACH_HANG: customer?.SDT || null,
+      EMAIL: customer?.EMAIL || null,
+      THANH_TOAN_ID: payment?.THANH_TOAN_ID || null,
+      CONG_THANH_TOAN: payment?.CONG_THANH_TOAN || null,
+      MA_GIAO_DICH: payment?.MA_GIAO_DICH || null,
+      SO_TIEN_THANH_TOAN: payment?.SO_TIEN || null,
+      TRANG_THAI_THANH_TOAN: payment?.TRANG_THAI_THANH_TOAN || null,
+      NGAY_THANH_TOAN: payment?.NGAY_THANH_TOAN || null,
+    };
+    const details = await detailCollection.find({ DON_HANG_ID: orderId }).sort({ SAN_PHAM_ID: 1 }).toArray();
+    const productIds = details.map((item) => item.SAN_PHAM_ID).filter(Boolean);
+    const [products, images] = await Promise.all([
+      productCollection.find({ SAN_PHAM_ID: { $in: productIds } }).toArray(),
+      imageCollection.find({ SAN_PHAM_ID: { $in: productIds } }).toArray(),
+    ]);
+    const productMap = new Map(products.map((product) => [product.SAN_PHAM_ID, product]));
+    const imageMap = new Map<string, any>();
 
-    const voucherRequest = new sql.Request();
-    voucherRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
+    for (const image of images.sort((left, right) => {
+      if (Boolean(left.LA_ANH_CHINH) !== Boolean(right.LA_ANH_CHINH)) {
+        return Boolean(left.LA_ANH_CHINH) ? -1 : 1;
+      }
+      return String(left.HINH_ANH_ID || '').localeCompare(String(right.HINH_ANH_ID || ''), 'vi');
+    })) {
+      if (!imageMap.has(image.SAN_PHAM_ID)) {
+        imageMap.set(image.SAN_PHAM_ID, image);
+      }
+    }
 
-    const voucherResult = await voucherRequest.query(`
-      SELECT
-        dhv.VOUCHER_ID,
-        dhv.MO_TA,
-        v.MA_VOUCHER,
-        v.LOAI_GIAM_GIA,
-        v.GIA_TRI_GIAM
-      FROM DON_HANG_VOUCHER dhv
-      LEFT JOIN VOUCHER v
-        ON v.VOUCHER_ID = dhv.VOUCHER_ID
-      WHERE dhv.DON_HANG_ID = @DON_HANG_ID
-    `);
+    const productsResponse = details.map((detail) => {
+      const product = productMap.get(detail.SAN_PHAM_ID);
+      const image = imageMap.get(detail.SAN_PHAM_ID);
+      return {
+        SAN_PHAM_ID: detail.SAN_PHAM_ID,
+        SO_LUONG: detail.SO_LUONG,
+        GIA: detail.GIA,
+        TEN_SAN_PHAM: product?.TEN_SAN_PHAM || null,
+        KIEU_DANG: product?.KIEU_DANG || null,
+        TRANG_THAI_SAN_PHAM: product?.TRANG_THAI || null,
+        HINH_ANH: image?.URL || null,
+      };
+    });
+
+    const [orderVoucherCollection, voucherCollection] = await Promise.all([
+      getCollection<any>('DON_HANG_VOUCHER'),
+      getCollection<any>('VOUCHER'),
+    ]);
+    const orderVouchers = await orderVoucherCollection.find({ DON_HANG_ID: orderId }).toArray();
+    const voucherIds = orderVouchers.map((item) => item.VOUCHER_ID).filter(Boolean);
+    const vouchers = await voucherCollection.find({ VOUCHER_ID: { $in: voucherIds } }).toArray();
+    const voucherMap = new Map(vouchers.map((item) => [item.VOUCHER_ID, item]));
+    const vouchersResponse = orderVouchers.map((item) => {
+      const voucherItem = voucherMap.get(item.VOUCHER_ID);
+      return {
+        VOUCHER_ID: item.VOUCHER_ID,
+        MO_TA: item.MO_TA,
+        MA_VOUCHER: voucherItem?.MA_VOUCHER || null,
+        LOAI_GIAM_GIA: voucherItem?.LOAI_GIAM_GIA || null,
+        GIA_TRI_GIAM: voucherItem?.GIA_TRI_GIAM || null,
+      };
+    });
 
     return res.status(200).json({
-      order,
-      products: detailResult.recordset,
-      vouchers: voucherResult.recordset,
+      order: enrichedOrder,
+      products: productsResponse,
+      vouchers: vouchersResponse,
       payment: {
-        THANH_TOAN_ID: order.THANH_TOAN_ID,
-        CONG_THANH_TOAN: order.CONG_THANH_TOAN,
-        MA_GIAO_DICH: order.MA_GIAO_DICH,
-        SO_TIEN: order.SO_TIEN_THANH_TOAN,
-        TRANG_THAI_THANH_TOAN: order.TRANG_THAI_THANH_TOAN,
-        NGAY_THANH_TOAN: order.NGAY_THANH_TOAN,
+        THANH_TOAN_ID: enrichedOrder.THANH_TOAN_ID,
+        CONG_THANH_TOAN: enrichedOrder.CONG_THANH_TOAN,
+        MA_GIAO_DICH: enrichedOrder.MA_GIAO_DICH,
+        SO_TIEN: enrichedOrder.SO_TIEN_THANH_TOAN,
+        TRANG_THAI_THANH_TOAN: enrichedOrder.TRANG_THAI_THANH_TOAN,
+        NGAY_THANH_TOAN: enrichedOrder.NGAY_THANH_TOAN,
       },
       summary: {
-        TAM_TINH: order.TAM_TINH,
-        PHI_VAN_CHUYEN: order.PHI_VAN_CHUYEN,
-        TIEN_COC: order.TIEN_COC,
-        TONG_TIEN: order.TONG_TIEN,
+        TAM_TINH: enrichedOrder.TAM_TINH,
+        PHI_VAN_CHUYEN: enrichedOrder.PHI_VAN_CHUYEN,
+        TIEN_COC: enrichedOrder.TIEN_COC,
+        TONG_TIEN: enrichedOrder.TONG_TIEN,
         GIAM_GIA: Math.max(
           0,
-          Number(order.TAM_TINH || 0) + Number(order.PHI_VAN_CHUYEN || 0) - Number(order.TONG_TIEN || 0)
+          Number(enrichedOrder.TAM_TINH || 0) + Number(enrichedOrder.PHI_VAN_CHUYEN || 0) - Number(enrichedOrder.TONG_TIEN || 0),
         ),
       },
     });
@@ -1243,59 +753,34 @@ export const getOrderDetail = async (req: Request, res: Response) => {
   }
 };
 
-
 export const cancelOrder = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
     const reason = normalizeReason(req.body?.reason);
 
     if (!reason) {
-      return res.status(400).json({
-        message: 'Vui lòng chọn lý do hủy đơn hàng.',
-      });
+      return res.status(400).json({ message: 'Vui lòng chọn lý do hủy đơn hàng.' });
     }
 
     if (!CANCEL_REASONS.includes(reason)) {
-      return res.status(400).json({
-        message: 'Lý do hủy đơn hàng không hợp lệ.',
-      });
+      return res.status(400).json({ message: 'Lý do hủy đơn hàng không hợp lệ.' });
     }
 
-    const checkRequest = new sql.Request();
-    checkRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
+    const orderCollection = await getCollection<any>('DON_HANG');
+    const order = await orderCollection.findOne({ DON_HANG_ID: orderId });
 
-    const checkResult = await checkRequest.query(`
-      SELECT TOP 1 DON_HANG_ID, TRANG_THAI
-      FROM DON_HANG
-      WHERE DON_HANG_ID = @DON_HANG_ID
-    `);
-
-    if (checkResult.recordset.length === 0) {
-      return res.status(404).json({
-        message: 'Không tìm thấy đơn hàng.',
-      });
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng.' });
     }
 
-    const currentStatus = String(checkResult.recordset[0].TRANG_THAI || '');
-
-    if (currentStatus !== 'Chờ xử lý') {
-      return res.status(400).json({
-        message: 'Chỉ có đơn hàng ở trạng thái Chờ xử lý mới được hủy.',
-      });
+    if (String(order.TRANG_THAI || '') !== 'Chờ xử lý') {
+      return res.status(400).json({ message: 'Chỉ có đơn hàng ở trạng thái Chờ xử lý mới được hủy.' });
     }
 
-    const updateRequest = new sql.Request();
-    updateRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-    updateRequest.input('LY_DO_HUY', sql.NVarChar(255), reason);
-
-    await updateRequest.query(`
-      UPDATE DON_HANG
-      SET
-        TRANG_THAI = N'Đã hủy',
-        LY_DO_HUY = @LY_DO_HUY,
-        NGAY_HUY = GETDATE()
-      WHERE DON_HANG_ID = @DON_HANG_ID
-    `);
+    await orderCollection.updateOne(
+      { DON_HANG_ID: orderId },
+      { $set: { TRANG_THAI: 'Đã hủy', LY_DO_HUY: reason, NGAY_HUY: new Date() } },
+    );
 
     return res.status(200).json({
       message: 'Hủy đơn hàng thành công.',
@@ -1304,10 +789,7 @@ export const cancelOrder = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Lỗi hủy đơn hàng:', error);
-
-    return res.status(500).json({
-      message: 'Không thể hủy đơn hàng: ' + error.message,
-    });
+    return res.status(500).json({ message: 'Không thể hủy đơn hàng: ' + error.message });
   }
 };
 
@@ -1317,38 +799,26 @@ export const requestReturnRefund = async (req: Request, res: Response) => {
     const reason = normalizeReason(req.body?.reason);
 
     if (!reason) {
-      return res.status(400).json({
-        message: 'Vui lòng chọn lý do hoàn tiền/trả hàng.',
-      });
+      return res.status(400).json({ message: 'Vui lòng chọn lý do hoàn tiền/trả hàng.' });
     }
 
     if (!RETURN_REFUND_REASONS.includes(reason)) {
-      return res.status(400).json({
-        message: 'Lý do hoàn tiền/trả hàng không hợp lệ.',
-      });
+      return res.status(400).json({ message: 'Lý do hoàn tiền/trả hàng không hợp lệ.' });
     }
 
-    const checkRequest = new sql.Request();
-    checkRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
+    const [orderCollection, reviewCollection] = await Promise.all([
+      getCollection<any>('DON_HANG'),
+      getCollection<any>('DANH_GIA'),
+    ]);
+    const order = await orderCollection.findOne({ DON_HANG_ID: orderId });
 
-    const checkResult = await checkRequest.query(`
-      SELECT TOP 1 DON_HANG_ID, TRANG_THAI
-      FROM DON_HANG
-      WHERE DON_HANG_ID = @DON_HANG_ID
-    `);
-
-    if (checkResult.recordset.length === 0) {
-      return res.status(404).json({
-        message: 'Không tìm thấy đơn hàng.',
-      });
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng.' });
     }
 
-    const currentStatus = String(checkResult.recordset[0].TRANG_THAI || '');
-
+    const currentStatus = String(order.TRANG_THAI || '');
     if (isCompletedOrderStatus(currentStatus)) {
-      return res.status(400).json({
-        message: 'Đơn hàng đã Hoàn thành nên không thể yêu cầu hoàn tiền/trả hàng.',
-      });
+      return res.status(400).json({ message: 'Đơn hàng đã Hoàn thành nên không thể yêu cầu hoàn tiền/trả hàng.' });
     }
 
     if (!isDeliveredOrderStatus(currentStatus)) {
@@ -1357,35 +827,22 @@ export const requestReturnRefund = async (req: Request, res: Response) => {
       });
     }
 
-    const reviewCheckRequest = new sql.Request();
-    reviewCheckRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-
-    const reviewCheckResult = await reviewCheckRequest.query(`
-      SELECT TOP 1 DANH_GIA_ID
-      FROM DANH_GIA
-      WHERE DON_HANG_ID = @DON_HANG_ID
-    `);
-
-    if (reviewCheckResult.recordset.length > 0) {
+    if (await reviewCollection.findOne({ DON_HANG_ID: orderId }, { projection: { DANH_GIA_ID: 1 } })) {
       return res.status(409).json({
         message: 'Đơn hàng đã được đánh giá nên không thể yêu cầu hoàn tiền/trả hàng.',
       });
     }
 
-    const updateRequest = new sql.Request();
-    updateRequest.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-    updateRequest.input('LY_DO_HOAN_TIEN_TRA_HANG', sql.NVarChar(255), reason);
-
-    await updateRequest.query(`
-      UPDATE DON_HANG
-      SET
-        TRANG_THAI = N'Yêu cầu hoàn tiền/trả hàng',
-        LY_DO_HOAN_TIEN_TRA_HANG = @LY_DO_HOAN_TIEN_TRA_HANG,
-        NGAY_YEU_CAU_HOAN_TIEN_TRA_HANG = GETDATE()
-      WHERE DON_HANG_ID = @DON_HANG_ID
-    `);
-
-    deliveredOrderSeenAt.delete(String(orderId || ''));
+    await orderCollection.updateOne(
+      { DON_HANG_ID: orderId },
+      {
+        $set: {
+          TRANG_THAI: 'Yêu cầu hoàn tiền/trả hàng',
+          LY_DO_HOAN_TIEN_TRA_HANG: reason,
+          NGAY_YEU_CAU_HOAN_TIEN_TRA_HANG: new Date(),
+        },
+      },
+    );
 
     return res.status(200).json({
       message: 'Đã gửi yêu cầu hoàn tiền/trả hàng.',
@@ -1394,12 +851,10 @@ export const requestReturnRefund = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Lỗi yêu cầu hoàn tiền/trả hàng:', error);
-
-    return res.status(500).json({
-      message: 'Không thể gửi yêu cầu hoàn tiền/trả hàng: ' + error.message,
-    });
+    return res.status(500).json({ message: 'Không thể gửi yêu cầu hoàn tiền/trả hàng: ' + error.message });
   }
 };
+
 export const updateShippingInfo = async (req: Request, res: Response) => {
   const { orderId } = req.params;
   const { receiver, phone, address, deliveryDate, deliveryTime } = req.body;
@@ -1409,22 +864,16 @@ export const updateShippingInfo = async (req: Request, res: Response) => {
   }
 
   try {
-    const checkRequest = new sql.Request();
-    checkRequest.input('orderId', sql.NVarChar(20), orderId);
+    const orderCollection = await getCollection<any>('DON_HANG');
+    const order = await orderCollection.findOne({ DON_HANG_ID: orderId });
 
-    const checkResult = await checkRequest.query(
-      `SELECT TRANG_THAI, DA_CHINH_SUA_GIAO_HANG FROM DON_HANG WHERE DON_HANG_ID = @orderId`
-    );
-
-    if (checkResult.recordset.length === 0) {
+    if (!order) {
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng.' });
     }
 
-    const status: string = checkResult.recordset[0].TRANG_THAI || '';
+    const status = String(order.TRANG_THAI || '');
     const allowedStatuses = ['Chờ xử lý', 'Đang chuẩn bị'];
-    const isAllowed = allowedStatuses.some(s =>
-      status.toLowerCase().includes(s.toLowerCase())
-    );
+    const isAllowed = allowedStatuses.some((allowedStatus) => status.toLowerCase().includes(allowedStatus.toLowerCase()));
 
     if (!isAllowed) {
       return res.status(403).json({
@@ -1432,33 +881,25 @@ export const updateShippingInfo = async (req: Request, res: Response) => {
       });
     }
 
-    const alreadyEdited = toBit(checkResult.recordset[0].DA_CHINH_SUA_GIAO_HANG);
-
-    if (alreadyEdited) {
+    if (toBit(order.DA_CHINH_SUA_GIAO_HANG)) {
       return res.status(403).json({
         message: 'Đơn hàng này đã được chỉnh sửa thông tin giao hàng trước đó, không thể sửa thêm.',
       });
     }
 
-    const request = new sql.Request();
-    request.input('receiver', sql.NVarChar(100), receiver || null);
-    request.input('phone', sql.VarChar(20), phone || null);
-    request.input('address', sql.NVarChar(500), address || null);
-    request.input('deliveryDate', sql.Date, deliveryDate || null);
-    request.input('deliveryTime', sql.NVarChar(50), deliveryTime || null);
-    request.input('orderId', sql.NVarChar(20), orderId);
-
-    await request.query(`
-      UPDATE DON_HANG
-      SET
-        TEN_NGUOI_NHAN         = @receiver,
-        SDT_NGUOI_NHAN         = @phone,
-        DIA_CHI_GIAO_HANG      = @address,
-        NGAY_MUON_GIAO         = @deliveryDate,
-        KHUNG_GIO_MUON_GIAO    = @deliveryTime,
-        DA_CHINH_SUA_GIAO_HANG = 1
-      WHERE DON_HANG_ID = @orderId
-    `);
+    await orderCollection.updateOne(
+      { DON_HANG_ID: orderId },
+      {
+        $set: {
+          TEN_NGUOI_NHAN: receiver || null,
+          SDT_NGUOI_NHAN: phone || null,
+          DIA_CHI_GIAO_HANG: address || null,
+          NGAY_MUON_GIAO: toSqlDate(deliveryDate) || deliveryDate || null,
+          KHUNG_GIO_MUON_GIAO: deliveryTime || null,
+          DA_CHINH_SUA_GIAO_HANG: true,
+        },
+      },
+    );
 
     return res.status(200).json({ message: 'Cập nhật thông tin giao hàng thành công.' });
   } catch (error: any) {

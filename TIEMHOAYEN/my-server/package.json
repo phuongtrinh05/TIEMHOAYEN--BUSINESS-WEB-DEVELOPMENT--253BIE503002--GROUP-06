@@ -4,20 +4,25 @@
   "description": "",
   "main": "server.ts",
   "scripts": {
-    "start": "tsx server.ts"
+    "start": "tsx server.ts",
+    "bacpac:export": "tsx scripts/bacpac-to-mongodb.ts --export",
+    "bacpac:seed": "tsx scripts/bacpac-to-mongodb.ts --seed --drop",
+    "mongodb:check": "tsx scripts/check-mongodb.ts"
   },
   "dependencies": {
+    "adm-zip": "^0.6.1",
     "axios": "^1.18.1",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "express": "^4.19.2",
-    "mssql": "^11.0.1",
+    "fast-xml-parser": "^5.11.2",
+    "mongodb": "^6.20.0",
     "multer": "^2.2.0"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
-    "@types/mssql": "^9.1.5",
     "@types/multer": "^2.2.0",
     "@types/node": "^22.19.21",
     "tsx": "^4.19.1",

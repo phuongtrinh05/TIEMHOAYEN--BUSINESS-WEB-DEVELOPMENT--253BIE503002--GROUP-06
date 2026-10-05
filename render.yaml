@@ -10,17 +10,13 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22
-      - key: SQL_USER
+      - key: MONGO_URI
         sync: false
-      - key: SQL_PASSWORD
-        sync: false
-      - key: SQL_SERVER
-        sync: false
-      - key: SQL_PORT
-        value: 1433
-      - key: SQL_DATABASE
-        sync: false
+      - key: MONGO_DATABASE
+        value: TIEM_HOA_YEN
       - key: CORS_ORIGINS
         sync: false
       - key: PUBLIC_BASE_URL
         sync: false
+      - key: PASSWORD_HASH_ROUNDS
+        value: 12

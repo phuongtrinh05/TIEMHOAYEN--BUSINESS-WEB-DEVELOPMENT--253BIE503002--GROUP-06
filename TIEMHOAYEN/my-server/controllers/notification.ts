@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { sql } from '../db.js';
+import { getCollection, getNextPrefixedId } from '../mongo.js';
 
 interface NotificationPayload {
   customerId?: string | null;
@@ -12,25 +12,12 @@ interface NotificationPayload {
 }
 
 const createNextNotificationId = async (): Promise<string> => {
-  const result = await sql.query(`
-    SELECT MAX(TRY_CONVERT(INT, SUBSTRING(THONG_BAO_ID, 3, 20))) AS MAX_NUM
-    FROM THONG_BAO
-    WHERE THONG_BAO_ID LIKE N'TB%'
-  `);
-
-  const maxNumber = Number(result.recordset?.[0]?.MAX_NUM || 0);
-  const nextNumber = maxNumber + 1;
-
-  return `TB${nextNumber.toString().padStart(5, '0')}`;
+  return getNextPrefixedId('THONG_BAO', 'THONG_BAO_ID', 'TB', 5);
 };
 
 const normalizeLimit = (value: unknown): number => {
   const limit = Number(value || 10);
-
-  if (!Number.isFinite(limit)) {
-    return 10;
-  }
-
+  if (!Number.isFinite(limit)) return 10;
   return Math.min(50, Math.max(1, Math.floor(limit)));
 };
 
@@ -79,99 +66,56 @@ const mapNotificationRow = (row: any) => ({
   orderCode: row.DON_HANG_ID,
 });
 
+const getNotificationCollection = () => getCollection<any>('THONG_BAO');
+
+const sortNotifications = (left: any, right: any): number => {
+  const leftDate = left.NGAY_TAO ? new Date(left.NGAY_TAO).getTime() : 0;
+  const rightDate = right.NGAY_TAO ? new Date(right.NGAY_TAO).getTime() : 0;
+  if (leftDate !== rightDate) return rightDate - leftDate;
+  return String(right.THONG_BAO_ID || '').localeCompare(String(left.THONG_BAO_ID || ''), 'vi');
+};
+
 export const getNotifications = async (req: Request, res: Response) => {
   try {
     const customerId = String(req.query.customerId || '').trim();
     const limit = normalizeLimit(req.query.limit);
-
-    const request = new sql.Request();
-    request.input('LIMIT', sql.Int, limit);
-
-    let query = `
-      SELECT TOP (@LIMIT)
-        THONG_BAO_ID,
-        KHACH_HANG_ID,
-        DON_HANG_ID,
-        LOAI_THONG_BAO,
-        TIEU_DE,
-        NOI_DUNG,
-        HINH_ANH,
-        DUONG_DAN,
-        DA_DOC,
-        NGAY_TAO
-      FROM THONG_BAO
-    `;
-
-    if (customerId) {
-      request.input('KHACH_HANG_ID', sql.NVarChar(10), customerId);
-      query += `
-        WHERE KHACH_HANG_ID = @KHACH_HANG_ID
-           OR KHACH_HANG_ID IS NULL
-      `;
-    } else {
-      query += `
-        WHERE KHACH_HANG_ID IS NULL
-      `;
-    }
-
-    query += `
-      ORDER BY NGAY_TAO DESC, THONG_BAO_ID DESC
-    `;
-
-    const result = await request.query(query);
+    const collection = await getNotificationCollection();
+    const query = customerId
+      ? { $or: [{ KHACH_HANG_ID: customerId }, { KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }] }
+      : { $or: [{ KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }] };
+    const notifications = (await collection.find(query).toArray()).sort(sortNotifications).slice(0, limit);
 
     return res.status(200).json({
-      total: result.recordset.length,
-      notifications: result.recordset.map(mapNotificationRow),
+      total: notifications.length,
+      notifications: notifications.map(mapNotificationRow),
     });
   } catch (error: any) {
     console.error('Lỗi lấy thông báo:', error);
-    return res.status(500).json({
-      message: 'Không thể lấy thông báo: ' + error.message,
-    });
+    return res.status(500).json({ message: 'Không thể lấy thông báo: ' + error.message });
   }
 };
 
 export const getPublicNotifications = async (req: Request, res: Response) => {
   try {
     const limit = normalizeLimit(req.query.limit);
-
-    const request = new sql.Request();
-    request.input('LIMIT', sql.Int, limit);
-
-    const result = await request.query(`
-      SELECT TOP (@LIMIT)
-        THONG_BAO_ID,
-        KHACH_HANG_ID,
-        DON_HANG_ID,
-        LOAI_THONG_BAO,
-        TIEU_DE,
-        NOI_DUNG,
-        HINH_ANH,
-        DUONG_DAN,
-        DA_DOC,
-        NGAY_TAO
-      FROM THONG_BAO
-      WHERE KHACH_HANG_ID IS NULL
-      ORDER BY NGAY_TAO DESC, THONG_BAO_ID DESC
-    `);
+    const collection = await getNotificationCollection();
+    const notifications = (await collection.find({
+      $or: [{ KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }],
+    }).toArray()).sort(sortNotifications).slice(0, limit);
 
     return res.status(200).json({
-      total: result.recordset.length,
-      notifications: result.recordset.map(mapNotificationRow),
+      total: notifications.length,
+      notifications: notifications.map(mapNotificationRow),
     });
   } catch (error: any) {
     console.error('Lỗi lấy thông báo công khai:', error);
-    return res.status(500).json({
-      message: 'Không thể lấy thông báo công khai: ' + error.message,
-    });
+    return res.status(500).json({ message: 'Không thể lấy thông báo công khai: ' + error.message });
   }
 };
 
 export const createNotification = async (req: Request, res: Response) => {
   try {
     const body: NotificationPayload = req.body || {};
-
     const notificationId = await createNextNotificationId();
     const customerId = body.customerId ? String(body.customerId).trim() : null;
     const orderId = body.orderId ? String(body.orderId).trim() : null;
@@ -193,42 +137,20 @@ export const createNotification = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Thiếu nội dung thông báo.' });
     }
 
-    const request = new sql.Request();
-    request.input('THONG_BAO_ID', sql.NVarChar(20), notificationId);
-    request.input('KHACH_HANG_ID', sql.NVarChar(10), customerId);
-    request.input('DON_HANG_ID', sql.NVarChar(20), orderId);
-    request.input('LOAI_THONG_BAO', sql.NVarChar(50), type);
-    request.input('TIEU_DE', sql.NVarChar(255), title);
-    request.input('NOI_DUNG', sql.NVarChar(500), message);
-    request.input('HINH_ANH', sql.NVarChar(500), image);
-    request.input('DUONG_DAN', sql.NVarChar(255), link);
-
-    await request.query(`
-      INSERT INTO THONG_BAO (
-        THONG_BAO_ID,
-        KHACH_HANG_ID,
-        DON_HANG_ID,
-        LOAI_THONG_BAO,
-        TIEU_DE,
-        NOI_DUNG,
-        HINH_ANH,
-        DUONG_DAN,
-        DA_DOC,
-        NGAY_TAO
-      )
-      VALUES (
-        @THONG_BAO_ID,
-        @KHACH_HANG_ID,
-        @DON_HANG_ID,
-        @LOAI_THONG_BAO,
-        @TIEU_DE,
-        @NOI_DUNG,
-        @HINH_ANH,
-        @DUONG_DAN,
-        0,
-        GETDATE()
-      )
-    `);
+    const collection = await getNotificationCollection();
+    await collection.insertOne({
+      _id: notificationId,
+      THONG_BAO_ID: notificationId,
+      KHACH_HANG_ID: customerId,
+      DON_HANG_ID: orderId,
+      LOAI_THONG_BAO: type,
+      TIEU_DE: title,
+      NOI_DUNG: message,
+      HINH_ANH: image,
+      DUONG_DAN: link,
+      DA_DOC: false,
+      NGAY_TAO: new Date(),
+    });
 
     return res.status(201).json({
       message: 'Tạo thông báo thành công.',
@@ -244,9 +166,7 @@ export const createNotification = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Lỗi tạo thông báo:', error);
-    return res.status(500).json({
-      message: 'Không thể tạo thông báo: ' + error.message,
-    });
+    return res.status(500).json({ message: 'Không thể tạo thông báo: ' + error.message });
   }
 };
 
@@ -258,16 +178,13 @@ export const markNotificationAsRead = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Thiếu mã thông báo.' });
     }
 
-    const request = new sql.Request();
-    request.input('THONG_BAO_ID', sql.NVarChar(20), notificationId);
+    const collection = await getNotificationCollection();
+    const result = await collection.updateOne(
+      { THONG_BAO_ID: notificationId },
+      { $set: { DA_DOC: true } },
+    );
 
-    const result = await request.query(`
-      UPDATE THONG_BAO
-      SET DA_DOC = 1
-      WHERE THONG_BAO_ID = @THONG_BAO_ID
-    `);
-
-    if (result.rowsAffected?.[0] === 0) {
+    if (result.matchedCount === 0) {
       return res.status(404).json({ message: 'Không tìm thấy thông báo.' });
     }
 
@@ -277,9 +194,7 @@ export const markNotificationAsRead = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Lỗi cập nhật trạng thái thông báo:', error);
-    return res.status(500).json({
-      message: 'Không thể cập nhật trạng thái thông báo: ' + error.message,
-    });
+    return res.status(500).json({ message: 'Không thể cập nhật trạng thái thông báo: ' + error.message });
   }
 };
 
@@ -291,24 +206,19 @@ export const markAllNotificationsAsRead = async (req: Request, res: Response) =>
       return res.status(400).json({ message: 'Thiếu mã khách hàng.' });
     }
 
-    const request = new sql.Request();
-    request.input('KHACH_HANG_ID', sql.NVarChar(10), customerId);
-
-    const result = await request.query(`
-      UPDATE THONG_BAO
-      SET DA_DOC = 1
-      WHERE KHACH_HANG_ID = @KHACH_HANG_ID
-    `);
+    const collection = await getNotificationCollection();
+    const result = await collection.updateMany(
+      { KHACH_HANG_ID: customerId },
+      { $set: { DA_DOC: true } },
+    );
 
     return res.status(200).json({
       message: 'Đã đánh dấu tất cả thông báo là đã đọc.',
-      affectedRows: result.rowsAffected?.[0] || 0,
+      affectedRows: result.modifiedCount,
     });
   } catch (error: any) {
     console.error('Lỗi cập nhật tất cả thông báo:', error);
-    return res.status(500).json({
-      message: 'Không thể cập nhật tất cả thông báo: ' + error.message,
-    });
+    return res.status(500).json({ message: 'Không thể cập nhật tất cả thông báo: ' + error.message });
   }
 };
 
@@ -318,44 +228,22 @@ export const createOrderNotification = async (
   title: string,
   message: string,
   type: string = 'order',
-  link?: string
+  link?: string,
 ): Promise<void> => {
   const notificationId = await createNextNotificationId();
+  const collection = await getNotificationCollection();
 
-  const request = new sql.Request();
-  request.input('THONG_BAO_ID', sql.NVarChar(20), notificationId);
-  request.input('KHACH_HANG_ID', sql.NVarChar(10), customerId || null);
-  request.input('DON_HANG_ID', sql.NVarChar(20), orderId || null);
-  request.input('LOAI_THONG_BAO', sql.NVarChar(50), normalizeType(type));
-  request.input('TIEU_DE', sql.NVarChar(255), title);
-  request.input('NOI_DUNG', sql.NVarChar(500), message);
-  request.input('HINH_ANH', sql.NVarChar(500), null);
-  request.input('DUONG_DAN', sql.NVarChar(255), link || `/order-detail/${orderId}`);
-
-  await request.query(`
-    INSERT INTO THONG_BAO (
-      THONG_BAO_ID,
-      KHACH_HANG_ID,
-      DON_HANG_ID,
-      LOAI_THONG_BAO,
-      TIEU_DE,
-      NOI_DUNG,
-      HINH_ANH,
-      DUONG_DAN,
-      DA_DOC,
-      NGAY_TAO
-    )
-    VALUES (
-      @THONG_BAO_ID,
-      @KHACH_HANG_ID,
-      @DON_HANG_ID,
-      @LOAI_THONG_BAO,
-      @TIEU_DE,
-      @NOI_DUNG,
-      @HINH_ANH,
-      @DUONG_DAN,
-      0,
-      GETDATE()
-    )
-  `);
+  await collection.insertOne({
+    _id: notificationId,
+    THONG_BAO_ID: notificationId,
+    KHACH_HANG_ID: customerId || null,
+    DON_HANG_ID: orderId || null,
+    LOAI_THONG_BAO: normalizeType(type),
+    TIEU_DE: title,
+    NOI_DUNG: message,
+    HINH_ANH: null,
+    DUONG_DAN: link || `/order-detail/${orderId}`,
+    DA_DOC: false,
+    NGAY_TAO: new Date(),
+  });
 };

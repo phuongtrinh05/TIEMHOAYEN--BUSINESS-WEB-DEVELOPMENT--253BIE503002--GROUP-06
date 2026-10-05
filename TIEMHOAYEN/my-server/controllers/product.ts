@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { sql } from '../db.js';
+import { getCollection } from '../mongo.js';
 
 type SearchProductRow = {
   SAN_PHAM_ID: string;
@@ -162,6 +162,47 @@ const getFinalPrice = (item: SearchProductRow): number => {
   return originalPrice;
 };
 
+const sortPrimaryImages = (a: any, b: any): number => {
+  const primaryDiff = Number(Boolean(b.LA_ANH_CHINH)) - Number(Boolean(a.LA_ANH_CHINH));
+  if (primaryDiff !== 0) return primaryDiff;
+  return String(a.HINH_ANH_ID || '').localeCompare(String(b.HINH_ANH_ID || ''), 'vi');
+};
+
+const getPrimaryImageMap = async (): Promise<Map<string, string | null>> => {
+  const imageCollection = await getCollection('HINH_ANH_SAN_PHAM');
+  const images = await imageCollection.find({}).toArray();
+  const grouped = new Map<string, any[]>();
+
+  images.forEach((image: any) => {
+    const productId = String(image.SAN_PHAM_ID || '');
+    grouped.set(productId, [...(grouped.get(productId) || []), image]);
+  });
+
+  return new Map(
+    Array.from(grouped.entries()).map(([productId, productImages]) => {
+      const [primaryImage] = productImages.sort(sortPrimaryImages);
+      return [productId, primaryImage?.URL || null];
+    }),
+  );
+};
+
+const enrichProducts = async (products: any[], includeTopic = false): Promise<SearchProductRow[]> => {
+  const imageMap = await getPrimaryImageMap();
+  let topicMap = new Map<string, string>();
+
+  if (includeTopic) {
+    const topicCollection = await getCollection('CHU_DE');
+    const topics = await topicCollection.find({}).toArray();
+    topicMap = new Map(topics.map((topic: any) => [String(topic.CHU_DE_ID || ''), String(topic.TEN_CHU_DE || '')]));
+  }
+
+  return products.map((product: any) => ({
+    ...product,
+    TEN_CHU_DE: includeTopic ? topicMap.get(String(product.CHU_DE_ID || '')) : undefined,
+    HINH_ANH: imageMap.get(String(product.SAN_PHAM_ID || '')) || null,
+  }));
+};
+
 const calculateSearchScore = (
   item: SearchProductRow,
   rawKeyword: string,
@@ -250,30 +291,11 @@ const calculateSearchScore = (
 
 export const getAllProducts = async (req: Request, res: Response) => {
   try {
-    const result = await sql.query`
-      SELECT
-        sp.SAN_PHAM_ID,
-        sp.CHU_DE_ID,
-        sp.TEN_SAN_PHAM,
-        sp.MO_TA,
-        sp.GIA,
-        sp.GIA_KHUYEN_MAI,
-        sp.TRANG_THAI,
-        sp.KIEU_DANG,
-        sp.SO_LUONG,
-        sp.DA_BAN,
-        ha.URL AS HINH_ANH
-      FROM SAN_PHAM sp
-      OUTER APPLY (
-        SELECT TOP 1 URL
-        FROM HINH_ANH_SAN_PHAM
-        WHERE SAN_PHAM_ID = sp.SAN_PHAM_ID
-        ORDER BY LA_ANH_CHINH DESC, HINH_ANH_ID ASC
-      ) ha
-      ORDER BY sp.TEN_SAN_PHAM ASC
-    `;
+    const productCollection = await getCollection('SAN_PHAM');
+    const products = await productCollection.find({}).sort({ TEN_SAN_PHAM: 1 }).toArray();
+    const rows = await enrichProducts(products);
 
-    res.status(200).json(result.recordset);
+    res.status(200).json(rows);
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi Controller: ' + error.message });
   }
@@ -301,33 +323,9 @@ export const searchProducts = async (req: Request, res: Response) => {
     const tokens = getSearchTokens(keyword);
     const budget = parseBudgetFromKeyword(keyword);
 
-    const result = await sql.query`
-      SELECT
-        sp.SAN_PHAM_ID,
-        sp.CHU_DE_ID,
-        cd.TEN_CHU_DE,
-        sp.TEN_SAN_PHAM,
-        sp.MO_TA,
-        sp.GIA,
-        sp.GIA_KHUYEN_MAI,
-        sp.TRANG_THAI,
-        sp.KIEU_DANG,
-        sp.SO_LUONG,
-        sp.DA_BAN,
-        ha.URL AS HINH_ANH
-      FROM SAN_PHAM sp
-      LEFT JOIN CHU_DE cd
-        ON sp.CHU_DE_ID = cd.CHU_DE_ID
-      OUTER APPLY (
-        SELECT TOP 1 URL
-        FROM HINH_ANH_SAN_PHAM
-        WHERE SAN_PHAM_ID = sp.SAN_PHAM_ID
-        ORDER BY LA_ANH_CHINH DESC, HINH_ANH_ID ASC
-      ) ha
-      WHERE ISNULL(sp.TRANG_THAI, N'') <> N'Ngừng bán'
-    `;
-
-    const rows = result.recordset as SearchProductRow[];
+    const productCollection = await getCollection('SAN_PHAM');
+    const products = await productCollection.find({ TRANG_THAI: { $ne: 'Ngừng bán' } }).toArray();
+    const rows = await enrichProducts(products, true);
 
     const rankedProducts = rows
       .map((item) => ({
@@ -366,95 +364,38 @@ export const searchProducts = async (req: Request, res: Response) => {
 export const getProductById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const productCollection = await getCollection('SAN_PHAM');
+    const imageCollection = await getCollection('HINH_ANH_SAN_PHAM');
+    const reviewCollection = await getCollection('DANH_GIA');
+    const reviewImageCollection = await getCollection('DANH_GIA_HINH_ANH');
+    const customerCollection = await getCollection('KHACH_HANG');
 
-    const productResult = await sql.query`
-      SELECT
-        sp.SAN_PHAM_ID,
-        sp.CHU_DE_ID,
-        cd.TEN_CHU_DE,
-        sp.TEN_SAN_PHAM,
-        sp.MO_TA,
-        sp.GIA,
-        sp.GIA_KHUYEN_MAI,
-        sp.TRANG_THAI,
-        sp.KIEU_DANG,
-        sp.SO_LUONG,
-        sp.DA_BAN,
-        ha.URL AS HINH_ANH
-      FROM SAN_PHAM sp
-      LEFT JOIN CHU_DE cd
-        ON sp.CHU_DE_ID = cd.CHU_DE_ID
+    const product = await productCollection.findOne({ SAN_PHAM_ID: id });
 
-      OUTER APPLY (
-        SELECT TOP 1 URL
-        FROM HINH_ANH_SAN_PHAM
-        WHERE SAN_PHAM_ID = sp.SAN_PHAM_ID
-        ORDER BY LA_ANH_CHINH DESC, HINH_ANH_ID ASC
-      ) ha
-
-      WHERE sp.SAN_PHAM_ID = ${id}
-    `;
-
-    if (productResult.recordset.length === 0) {
+    if (!product) {
       return res.status(404).json({
         message: 'Không tìm thấy sản phẩm'
       });
     }
 
-    const imageResult = await sql.query`
-      SELECT
-        HINH_ANH_ID,
-        SAN_PHAM_ID,
-        URL,
-        LA_ANH_CHINH
-      FROM HINH_ANH_SAN_PHAM
-      WHERE SAN_PHAM_ID = ${id}
-      ORDER BY LA_ANH_CHINH DESC, HINH_ANH_ID ASC
-    `;
+    const [images, reviews] = await Promise.all([
+      imageCollection.find({ SAN_PHAM_ID: id }).toArray(),
+      reviewCollection.find({ SAN_PHAM_ID: id }).sort({ NGAY_DANH_GIA: -1, DANH_GIA_ID: -1 }).toArray(),
+    ]);
 
-    const reviewStatsResult = await sql.query`
-      SELECT
-        COUNT(1) AS REVIEW_COUNT,
-        ISNULL(AVG(CAST(SO_SAO AS FLOAT)), 0) AS AVG_RATING
-      FROM DANH_GIA
-      WHERE SAN_PHAM_ID = ${id}
-    `;
-
-    const reviewResult = await sql.query`
-      SELECT
-        dg.DANH_GIA_ID,
-        dg.DON_HANG_ID,
-        dg.SAN_PHAM_ID,
-        dg.KHACH_HANG_ID,
-        kh.TEN AS TEN_KHACH_HANG,
-        kh.AVATAR,
-        dg.SO_SAO,
-        dg.NOI_DUNG,
-        dg.NGAY_DANH_GIA,
-        dg.PHAN_HOI_SHOP,
-        dg.NGAY_PHAN_HOI_SHOP,
-        dg.NHAN_VIEN_PHAN_HOI_ID
-      FROM DANH_GIA dg
-      LEFT JOIN KHACH_HANG kh
-        ON dg.KHACH_HANG_ID = kh.KHACH_HANG_ID
-      WHERE dg.SAN_PHAM_ID = ${id}
-      ORDER BY dg.NGAY_DANH_GIA DESC, dg.DANH_GIA_ID DESC
-    `;
-
-    const reviewImageResult = await sql.query`
-      SELECT
-        dgha.DANH_GIA_ID,
-        dgha.URL
-      FROM DANH_GIA_HINH_ANH dgha
-      INNER JOIN DANH_GIA dg
-        ON dgha.DANH_GIA_ID = dg.DANH_GIA_ID
-      WHERE dg.SAN_PHAM_ID = ${id}
-      ORDER BY dgha.NGAY_TAO ASC, dgha.URL ASC
-    `;
+    const customers = await customerCollection
+      .find({ KHACH_HANG_ID: { $in: reviews.map((review: any) => review.KHACH_HANG_ID).filter(Boolean) } })
+      .toArray();
+    const customerMap = new Map(customers.map((customer: any) => [String(customer.KHACH_HANG_ID), customer]));
+    const reviewIds = reviews.map((review: any) => review.DANH_GIA_ID);
+    const reviewImages = await reviewImageCollection
+      .find({ DANH_GIA_ID: { $in: reviewIds } })
+      .sort({ NGAY_TAO: 1, URL: 1 })
+      .toArray();
 
     const imageMap = new Map<string, string[]>();
 
-    reviewImageResult.recordset.forEach((row: any) => {
+    reviewImages.forEach((row: any) => {
       const reviewId = String(row.DANH_GIA_ID || '');
 
       if (!imageMap.has(reviewId)) {
@@ -464,21 +405,23 @@ export const getProductById = async (req: Request, res: Response) => {
       imageMap.get(reviewId)?.push(String(row.URL || ''));
     });
 
-    const rawStats = reviewStatsResult.recordset[0] || {};
-    const reviewCount = Number(rawStats.REVIEW_COUNT || 0);
+    const reviewCount = reviews.length;
     const averageRating = reviewCount > 0
-      ? Math.round(Number(rawStats.AVG_RATING || 0) * 10) / 10
+      ? Math.round((reviews.reduce((sum: number, item: any) => sum + Number(item.SO_SAO || 0), 0) / reviewCount) * 10) / 10
       : 0;
 
-    const reviews = reviewResult.recordset.map((item: any) => ({
+    const mappedReviews = reviews.map((item: any) => {
+      const customer = customerMap.get(String(item.KHACH_HANG_ID || ''));
+
+      return ({
       reviewId: item.DANH_GIA_ID,
       orderId: item.DON_HANG_ID,
       productId: item.SAN_PHAM_ID,
       customerId: item.KHACH_HANG_ID || null,
       customerName: item.KHACH_HANG_ID
-        ? (item.TEN_KHACH_HANG || 'Khách hàng')
+        ? (customer?.TEN || 'Khách hàng')
         : 'Khách hàng ẩn danh',
-      avatar: item.AVATAR || null,
+      avatar: customer?.AVATAR || null,
       rating: Number(item.SO_SAO || 0),
       content: item.NOI_DUNG || '',
       createdAt: item.NGAY_DANH_GIA,
@@ -486,16 +429,19 @@ export const getProductById = async (req: Request, res: Response) => {
       shopReply: item.PHAN_HOI_SHOP || null,
       shopReplyDate: item.NGAY_PHAN_HOI_SHOP || null,
       shopReplyStaffId: item.NHAN_VIEN_PHAN_HOI_ID || null
-    }));
+    });
+    });
+
+    const [enrichedProduct] = await enrichProducts([product], true);
 
     return res.status(200).json({
-      product: productResult.recordset[0],
-      images: imageResult.recordset,
+      product: enrichedProduct,
+      images: images.sort(sortPrimaryImages),
       reviewStats: {
         reviewCount,
         averageRating
       },
-      reviews
+      reviews: mappedReviews
     });
   } catch (error: any) {
     res.status(500).json({
