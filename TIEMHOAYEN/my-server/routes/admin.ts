@@ -6,22 +6,14 @@ import {
   createAdminCategory,
   createAdminCampaign,
   createAdminCustomerAddress,
-  createAdminExport,
-  createAdminImport,
-  createAdminMaterial,
   createAdminOrder,
   createAdminProduct,
-  createAdminSupplier,
   createAdminTransaction,
   createAdminVoucher,
   deleteAdminCategory,
   deleteAdminCampaign,
   deleteAdminCustomerAddress,
-  deleteAdminExport,
-  deleteAdminImport,
-  deleteAdminMaterial,
   deleteAdminProduct,
-  deleteAdminSupplier,
   deleteAdminVoucher,
   getAdminCategories,
   getAdminCampaigns,
@@ -29,29 +21,21 @@ import {
   getAdminCustomerDetail,
   getAdminCustomers,
   getAdminDashboard,
-  getAdminExports,
-  getAdminImports,
-  getAdminMaterials,
   getAdminOrders,
   getAdminOrderDetail,
   getAdminProductDetail,
   getAdminProducts,
   getAdminStaffAccounts,
-  getAdminSuppliers,
   getAdminTransactions,
   getAdminVouchers,
   updateAdminCampaign,
   updateAdminCustomer,
   updateAdminCustomerAddress,
-  updateAdminExport,
-  updateAdminImport,
-  updateAdminMaterial,
   uploadAdminMaterialImage,
   updateAdminOrderStatus,
   updateAdminOrderPaymentStatus,
   updateAdminProductDetail,
   updateAdminProductStatus,
-  updateAdminSupplier,
   updateAdminTransaction,
   updateAdminVoucher,
   setDefaultAdminCustomerAddress,
@@ -128,22 +112,6 @@ router.get('/vouchers', requireAdminPermission('promotions'), getAdminVouchers);
 router.post('/vouchers', requireAdminPermission('promotions'), createAdminVoucher);
 router.put('/vouchers/:voucherId', requireAdminPermission('promotions'), updateAdminVoucher);
 router.delete('/vouchers/:voucherId', requireAdminPermission('promotions'), deleteAdminVoucher);
-router.get('/materials', requireAdminPermission('materials'), getAdminMaterials);
 router.post('/materials/upload-image', requireAdminPermission('materials', 'create'), materialImageUpload.single('image'), uploadAdminMaterialImage);
-router.post('/materials', requireAdminPermission('materials'), createAdminMaterial);
-router.put('/materials/:materialId', requireAdminPermission('materials'), updateAdminMaterial);
-router.delete('/materials/:materialId', requireAdminPermission('materials'), deleteAdminMaterial);
-router.get('/suppliers', requireAdminPermission('materials'), getAdminSuppliers);
-router.post('/suppliers', requireAdminPermission('materials'), createAdminSupplier);
-router.put('/suppliers/:supplierId', requireAdminPermission('materials'), updateAdminSupplier);
-router.delete('/suppliers/:supplierId', requireAdminPermission('materials'), deleteAdminSupplier);
-router.get('/imports', requireAdminPermission('materials'), getAdminImports);
-router.post('/imports', requireAdminPermission('materials'), createAdminImport);
-router.put('/imports/:receiptId', requireAdminPermission('materials'), updateAdminImport);
-router.delete('/imports/:receiptId', requireAdminPermission('materials'), deleteAdminImport);
-router.get('/exports', requireAdminPermission('materials'), getAdminExports);
-router.post('/exports', requireAdminPermission('materials'), createAdminExport);
-router.put('/exports/:receiptId', requireAdminPermission('materials'), updateAdminExport);
-router.delete('/exports/:receiptId', requireAdminPermission('materials'), deleteAdminExport);
 
 export default router;

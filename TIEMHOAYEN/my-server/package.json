@@ -7,7 +7,12 @@
     "start": "tsx server.ts",
     "bacpac:export": "tsx scripts/bacpac-to-mongodb.ts --export",
     "bacpac:seed": "tsx scripts/bacpac-to-mongodb.ts --seed --drop",
-    "mongodb:check": "tsx scripts/check-mongodb.ts"
+    "mongodb:check": "tsx scripts/check-mongodb.ts",
+    "inventory:migrate": "tsx scripts/inventory-setup.ts --migrate",
+    "inventory:seed-demo": "tsx scripts/inventory-setup.ts --seed-demo",
+    "inventory:reset-demo": "tsx scripts/inventory-setup.ts --reset-demo",
+    "inventory:reconcile": "tsx scripts/inventory-setup.ts --reconcile",
+    "test:inventory": "tsx --test tests/inventory.test.ts"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",

@@ -1,479 +1,203 @@
-import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
+import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
 import {
-    AdminApiService,
-    AdminExportDetail,
-    AdminExportReceipt,
-    AdminMaterial
-} from '../../../services/admin-api.service';
+  InvBomProduct,
+  InvDocument,
+  InvMaterial,
+  InventoryApiService,
+  inventoryErrorMessage,
+} from '../../../services/inventory-api.service';
 
-interface ExportDetail extends AdminExportDetail {}
-
-interface ExportReceipt extends Omit<AdminExportReceipt, 'exportDate' | 'details'> {
-    exportDate: Date;
-    details: ExportDetail[];
+interface ExportLine {
+  materialId: string;
+  bomQty: number | null;
+  quantity: number;
+  sourceId: string;
+  note: string;
 }
 
-interface MaterialOption {
-    code: string;
-    name: string;
-    image: string;
-}
+const TYPE_HELP: Record<string, string> = {
+  'Làm hoa theo đơn': 'Nhân viên lấy NVL cho MỘT đơn MỘT lần khi bắt đầu cắm. Phần đang giữ của đơn được giải phóng; nếu lấy ít hơn phần giữ thì nhả phần dư. Không xuất lần 2 khi giao.',
+  'Cắm bó sẵn': 'Xuất NVL theo BOM để cắm bó trưng bày; tồn thành phẩm của sản phẩm tăng đúng số bó. Khi bán bó này không trừ NVL lần nữa.',
+  'Hao hụt/hỏng khi bảo quản': 'Hoa/NVL hỏng trong kho (chưa đánh dấu không đạt). Không phân bổ vào giá vốn từng bó.',
+  'Xuất hủy NVL cách ly': 'Hủy phần đã đánh dấu "Không đạt" trước đó: giảm tồn thực và giải tỏa lượng không đạt.',
+  'Điều chỉnh kiểm kê': 'Giảm tồn khi kiểm kê thấy thiếu so với sổ.',
+  'Khác': 'Bắt buộc ghi chú lý do.',
+};
 
+/**
+ * AD27–AD29 — Phiếu xuất kho: Nháp → Đã ghi nhận một lần, phân bổ FIFO nguồn nhập (hoa tươi), lưu giá vốn tại lúc xuất.
+ */
 @Component({
-    selector: 'app-export-list',
-    standalone: true,
-    imports: [
-        CommonModule,
-        FormsModule,
-        RouterLink,
-        RouterLinkActive
-    ],
-    templateUrl: './export-list.html',
-    styleUrls: ['./export-list.css']
+  selector: 'app-export-list',
+  standalone: true,
+  imports: [CommonModule, FormsModule, InventoryTabsComponent],
+  templateUrl: './export-list.html',
+  styleUrls: ['../inventory.css', './export-list.css'],
 })
 export class ExportListComponent implements OnInit {
-    searchKeyword = '';
-    selectedStaff = 'Tất cả';
+  private readonly api = inject(InventoryApiService);
+  private readonly route = inject(ActivatedRoute);
 
-    isFilterMenuOpen = false;
-    isSortMenuOpen = false;
-    isExportMenuOpen = false;
-    isEditModalOpen = false;
-    isAddModalOpen = false;
+  readonly docs = signal<InvDocument[]>([]);
+  readonly materials = signal<InvMaterial[]>([]);
+  readonly products = signal<InvBomProduct[]>([]);
+  readonly exportTypes = signal<string[]>(Object.keys(TYPE_HELP));
+  readonly loading = signal(false);
+  readonly error = signal('');
+  readonly toast = signal<{ text: string; error?: boolean } | null>(null);
+  readonly help = TYPE_HELP;
 
-    currentPage = 1;
-    pageSize = 10;
+  statusFilter = '';
+  typeFilter = '';
+  search = '';
+  private readonly tick = signal(0);
+  readonly filtered = computed(() => {
+    this.tick();
+    const q = this.search.trim().toLowerCase();
+    return this.docs().filter((d) => !q || `${d.PHIEU_XUAT_ID} ${d.DON_HANG_ID || ''} ${d.SAN_PHAM_ID || ''} ${d.GHI_CHU || ''}`.toLowerCase().includes(q));
+  });
 
-    editingExport: ExportReceipt | null = null;
-    newExport: ExportReceipt | null = null;
+  readonly formOpen = signal(false);
+  readonly saving = signal(false);
+  readonly suggesting = signal(false);
+  readonly formError = signal('');
+  editingId: string | null = null;
+  header = { type: 'Làm hoa theo đơn', orderId: '', productId: '', bundles: 1, exportedAt: '', note: '' };
+  lines: ExportLine[] = [];
+  readonly viewing = signal<InvDocument | null>(null);
 
-    editingExportDateText = '';
-    newExportDateText = '';
-
-    editingMaterialSearch = '';
-    newMaterialSearch = '';
-
-    isEditingMaterialDropdownOpen = false;
-    isNewMaterialDropdownOpen = false;
-
-    materialOptions: MaterialOption[] = [];
-    exportReceipts: ExportReceipt[] = [];
-    filteredExports: ExportReceipt[] = [];
-
-    constructor(
-        private readonly adminApi: AdminApiService,
-        private readonly cdr: ChangeDetectorRef,
-        @Inject(PLATFORM_ID) private readonly platformId: object
-    ) {}
-
-    ngOnInit(): void {
-        if (isPlatformBrowser(this.platformId)) {
-            this.loadMaterials();
-            this.loadExports();
-        }
+  ngOnInit(): void {
+    this.api.meta().subscribe({ next: (m) => this.exportTypes.set(m.exportTypes), error: () => {} });
+    this.api.materials().subscribe({ next: (r) => this.materials.set(r.materials), error: () => {} });
+    this.api.bomProducts().subscribe({ next: (r) => this.products.set(r.items), error: () => {} });
+    this.load();
+    const q = this.route.snapshot.queryParamMap;
+    if (q.get('new')) {
+      this.openCreate();
+      if (q.get('type')) this.header.type = q.get('type')!;
+      if (q.get('orderId')) { this.header.orderId = q.get('orderId')!; this.suggest(); }
     }
+  }
 
-    loadMaterials(): void {
-        this.adminApi.getMaterials().subscribe({
-            next: (data) => {
-                this.materialOptions = (data.materials || []).map((material: AdminMaterial) => ({
-                    code: material.code,
-                    name: material.name,
-                    image: material.image || 'assets/images/hoahong.png'
-                }));
-                this.cdr.detectChanges();
-            },
-            error: (error) => {
-                console.error('Cannot load material options', error);
-                this.materialOptions = [];
-                this.cdr.detectChanges();
-            }
-        });
+  load(): void {
+    this.loading.set(true);
+    this.api.documents('exports', { status: this.statusFilter, type: this.typeFilter }).subscribe({
+      next: (r) => { this.docs.set(r.items); this.loading.set(false); this.error.set(''); },
+      error: (e) => { this.error.set(inventoryErrorMessage(e)); this.loading.set(false); },
+    });
+  }
+  refilter(): void { this.tick.update((x) => x + 1); }
+
+  newLine(materialId = ''): ExportLine { return { materialId, bomQty: null, quantity: 0, sourceId: '', note: '' }; }
+
+  openCreate(): void {
+    this.editingId = null;
+    this.header = { type: 'Làm hoa theo đơn', orderId: '', productId: '', bundles: 1, exportedAt: '', note: '' };
+    this.lines = [];
+    this.formError.set('');
+    this.formOpen.set(true);
+  }
+
+  openEdit(doc: InvDocument): void {
+    this.editingId = doc.PHIEU_XUAT_ID!;
+    this.header = { type: doc.LOAI_XUAT || 'Khác', orderId: doc.DON_HANG_ID || '', productId: doc.SAN_PHAM_ID || '', bundles: doc.SO_BO || 1, exportedAt: '', note: doc.GHI_CHU || '' };
+    this.lines = doc.details.map((d) => ({ materialId: d.NGUYEN_VAT_LIEU_ID, bomQty: d.SL_THEO_BOM ?? null, quantity: d.SO_LUONG_XUAT || 0, sourceId: (d as any).PHIEU_NHAP_CHI_DINH || '', note: d.GHI_CHU || '' }));
+    this.viewing.set(null);
+    this.formError.set('');
+    this.formOpen.set(true);
+  }
+
+  onTypeChange(): void {
+    this.lines = [];
+    if (this.header.type === 'Xuất hủy NVL cách ly') {
+      this.lines = this.materials().filter((m) => m.damaged > 0).map((m) => ({ ...this.newLine(m.code), quantity: m.damaged }));
     }
-
-    loadExports(): void {
-        this.adminApi.getExports().subscribe({
-            next: (data) => {
-                this.exportReceipts = (data.exports || []).map((item) => ({
-                    ...item,
-                    exportDate: item.exportDate ? new Date(item.exportDate) : new Date(),
-                    details: (item.details || []).map((detail) => ({ ...detail }))
-                }));
-                this.applyFilters();
-                this.cdr.detectChanges();
-            },
-            error: (error) => {
-                console.error('Cannot load export receipts', error);
-                this.exportReceipts = [];
-                this.filteredExports = [];
-                this.cdr.detectChanges();
-            }
-        });
-    }
-
-    get totalPages(): number {
-        return Math.ceil(this.filteredExports.length / this.pageSize) || 1;
-    }
-
-    get pages(): (number | string)[] {
-        const total = this.totalPages;
-        const current = this.currentPage;
-
-        if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
-        if (current <= 4) return [1, 2, 3, 4, 5, '...', total];
-        if (current >= total - 3) return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
-        return [1, '...', current - 1, current, current + 1, '...', total];
-    }
-
-    get pagedExports(): ExportReceipt[] {
-        const start = (this.currentPage - 1) * this.pageSize;
-        return this.filteredExports.slice(start, start + this.pageSize);
-    }
-
-    get filteredEditingMaterials(): MaterialOption[] {
-        return this.getFilteredMaterials(this.editingMaterialSearch);
-    }
-
-    get filteredNewMaterials(): MaterialOption[] {
-        return this.getFilteredMaterials(this.newMaterialSearch);
-    }
-
-    private isAllValue(value: string): boolean {
-        const normalized = this.removeVietnameseTones(value || '').toLowerCase();
-        return normalized.includes('tat') ||
-            normalized.includes('taº') ||
-            (normalized.includes('ta') && normalized.includes('ca')) ||
-            normalized.includes('all');
-    }
-
-    applyFilters(): void {
-        const keyword = this.removeVietnameseTones(this.searchKeyword.trim().toLowerCase());
-
-        this.filteredExports = this.exportReceipts.filter((item) => {
-            const haystack = this.removeVietnameseTones([
-                item.code,
-                item.staff,
-                item.staffName || '',
-                this.formatDate(item.exportDate),
-                item.reason,
-                item.note
-            ].join(' ').toLowerCase());
-
-            const matchesKeyword = !keyword || haystack.includes(keyword);
-            const matchesStaff = this.isAllValue(this.selectedStaff) || item.staff === this.selectedStaff;
-
-            return matchesKeyword && matchesStaff;
-        });
-
-        this.currentPage = 1;
-    }
-
-    sortExports(field: string): void {
-        this.filteredExports.sort((a, b) => {
-            if (field === 'code') return a.code.localeCompare(b.code, 'vi');
-            if (field === 'staff') return a.staff.localeCompare(b.staff, 'vi');
-            if (field === 'exportDate') return b.exportDate.getTime() - a.exportDate.getTime();
-            return 0;
-        });
-
-        this.isSortMenuOpen = false;
-    }
-
-    toggleFilterMenu(): void {
-        this.isFilterMenuOpen = !this.isFilterMenuOpen;
-        this.isSortMenuOpen = false;
-        this.isExportMenuOpen = false;
-    }
-
-    toggleSortMenu(): void {
-        this.isSortMenuOpen = !this.isSortMenuOpen;
-        this.isFilterMenuOpen = false;
-        this.isExportMenuOpen = false;
-    }
-
-    toggleExportMenu(): void {
-        this.isExportMenuOpen = !this.isExportMenuOpen;
-        this.isFilterMenuOpen = false;
-        this.isSortMenuOpen = false;
-    }
-
-    toggleSelectAll(event: Event): void {
-        const input = event.target as HTMLInputElement;
-        this.pagedExports.forEach((item) => item.selected = input.checked);
-    }
-
-    isAllSelected(): boolean {
-        return this.pagedExports.length > 0 &&
-            this.pagedExports.every((item) => item.selected);
-    }
-
-    openAddModal(): void {
-        const today = new Date();
-
-        this.isFilterMenuOpen = false;
-        this.isSortMenuOpen = false;
-        this.isExportMenuOpen = false;
-        this.isEditModalOpen = false;
-        this.editingExport = null;
-
-        this.newExport = {
-            id: 0,
-            code: 'Tự động',
-            staff: '',
-            staffName: '',
-            exportDate: today,
-            selected: false,
-            reason: '',
-            note: '',
-            details: []
-        };
-
-        this.newExportDateText = this.formatInputDate(today);
-        this.isAddModalOpen = true;
-    }
-
-    saveNewExport(): void {
-        if (!this.newExport) return;
-
-        const parsedDate = this.parseInputDate(this.newExportDateText);
-        if (!parsedDate) {
-            alert('Ngày xuất phải có định dạng DD/MM/YYYY.');
-            return;
-        }
-
-        const details = this.validDetails(this.newExport.details);
-        if (details.length === 0) {
-            alert('Vui lòng thêm ít nhất một nguyên vật liệu.');
-            return;
-        }
-
-        this.adminApi.createExport({
-            staff: this.newExport.staff,
-            exportDate: parsedDate.toISOString(),
-            reason: this.newExport.reason.trim(),
-            note: this.newExport.note.trim(),
-            details
-        }).subscribe({
-            next: () => {
-                this.closeAddModal();
-                this.loadMaterials();
-                this.loadExports();
-            },
-            error: (error) => {
-                console.error('Cannot create export receipt', error);
-                alert('Không thể tạo phiếu xuất. Có thể số lượng tồn không đủ.');
-            }
-        });
-    }
-
-    closeAddModal(): void {
-        this.isAddModalOpen = false;
-        this.newExport = null;
-    }
-
-    editExport(exportReceipt: ExportReceipt): void {
-        this.editingExport = {
-            ...exportReceipt,
-            exportDate: new Date(exportReceipt.exportDate),
-            reason: exportReceipt.reason || '',
-            note: exportReceipt.note || '',
-            details: exportReceipt.details.map((detail) => ({ ...detail }))
-        };
-
-        this.editingExportDateText = this.formatInputDate(this.editingExport.exportDate);
-        this.isEditModalOpen = true;
-    }
-
-    saveExport(): void {
-        if (!this.editingExport) return;
-
-        const parsedDate = this.parseInputDate(this.editingExportDateText);
-        if (!parsedDate) {
-            alert('Ngày xuất phải có định dạng DD/MM/YYYY.');
-            return;
-        }
-
-        const details = this.validDetails(this.editingExport.details);
-        if (details.length === 0) {
-            alert('Vui lòng thêm ít nhất một nguyên vật liệu.');
-            return;
-        }
-
-        this.adminApi.updateExport(this.editingExport.code, {
-            staff: this.editingExport.staff,
-            exportDate: parsedDate.toISOString(),
-            reason: this.editingExport.reason.trim(),
-            note: this.editingExport.note.trim(),
-            details
-        }).subscribe({
-            next: () => {
-                this.closeEditModal();
-                this.loadMaterials();
-                this.loadExports();
-            },
-            error: (error) => {
-                console.error('Cannot update export receipt', error);
-                alert('Không thể lưu phiếu xuất. Có thể số lượng tồn không đủ.');
-            }
-        });
-    }
-
-    deleteExport(exportReceipt: ExportReceipt): void {
-        if (!confirm('Bạn có chắc muốn xóa phiếu xuất này?')) return;
-
-        this.adminApi.deleteExport(exportReceipt.code).subscribe({
-            next: () => {
-                this.loadMaterials();
-                this.loadExports();
-            },
-            error: (error) => {
-                console.error('Cannot delete export receipt', error);
-                alert('Không thể xóa phiếu xuất. Vui lòng thử lại.');
-            }
-        });
-    }
-
-    closeEditModal(): void {
-        this.isEditModalOpen = false;
-        this.editingExport = null;
-    }
-
-    previousPage(): void {
-        if (this.currentPage > 1) this.currentPage--;
-    }
-
-    nextPage(): void {
-        if (this.currentPage < this.totalPages) this.currentPage++;
-    }
-
-    goToPage(page: number | string): void {
-        if (typeof page === 'number') this.currentPage = page;
-    }
-
-    formatDate(date: Date): string {
-        return new Date(date).toLocaleDateString('vi-VN');
-    }
-
-    toDateInput(date: Date): string {
-        return new Date(date).toISOString().split('T')[0];
-    }
-
-    addExportDetail(type: 'edit' | 'new'): void {
-        if (type === 'edit') {
-            this.isEditingMaterialDropdownOpen = true;
-            return;
-        }
-
-        this.isNewMaterialDropdownOpen = true;
-    }
-
-    removeExportDetail(target: ExportReceipt, detailId: number): void {
-        target.details = target.details.filter((detail) => detail.id !== detailId);
-    }
-
-    getFilteredMaterials(keyword: string): MaterialOption[] {
-        const value = this.removeVietnameseTones(keyword.trim().toLowerCase());
-        if (!value) return this.materialOptions;
-
-        return this.materialOptions.filter((material) => {
-            const code = material.code.toLowerCase();
-            const name = this.removeVietnameseTones(material.name.toLowerCase());
-            return code.includes(value) || name.includes(value);
-        });
-    }
-
-    openEditingMaterialDropdown(): void {
-        this.isEditingMaterialDropdownOpen = true;
-    }
-
-    openNewMaterialDropdown(): void {
-        this.isNewMaterialDropdownOpen = true;
-    }
-
-    selectMaterialForExport(target: ExportReceipt, material: MaterialOption, type: 'edit' | 'new'): void {
-        const existedDetail = target.details.find((detail) => detail.materialCode === material.code);
-
-        if (existedDetail) {
-            existedDetail.quantity += 1;
-        } else {
-            const nextId = target.details.length > 0
-                ? Math.max(...target.details.map((detail) => detail.id)) + 1
-                : 1;
-
-            target.details.push({
-                id: nextId,
-                materialCode: material.code,
-                materialName: material.name,
-                image: material.image,
-                quantity: 1
-            });
-        }
-
-        if (type === 'edit') {
-            this.editingMaterialSearch = '';
-            this.isEditingMaterialDropdownOpen = false;
-        } else {
-            this.newMaterialSearch = '';
-            this.isNewMaterialDropdownOpen = false;
-        }
-    }
-
-    onMaterialCodeInput(detail: ExportDetail): void {
-        const code = detail.materialCode.trim().toUpperCase();
-        detail.materialCode = code;
-
-        const selectedMaterial = this.materialOptions.find((material) => material.code.toUpperCase() === code);
-        if (!selectedMaterial) {
-            detail.materialName = code;
-            detail.image = '';
-            return;
-        }
-
-        detail.materialName = selectedMaterial.name;
-        detail.image = selectedMaterial.image;
-    }
-
-    formatInputDate(date: Date): string {
-        const value = new Date(date);
-        const day = value.getDate().toString().padStart(2, '0');
-        const month = (value.getMonth() + 1).toString().padStart(2, '0');
-        const year = value.getFullYear();
-        return `${day}/${month}/${year}`;
-    }
-
-    parseInputDate(value: string): Date | null {
-        const match = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-        if (!match) return null;
-
-        const day = Number(match[1]);
-        const month = Number(match[2]);
-        const year = Number(match[3]);
-        const date = new Date(year, month - 1, day);
-
-        if (date.getDate() !== day || date.getMonth() !== month - 1 || date.getFullYear() !== year) {
-            return null;
-        }
-
-        return date;
-    }
-
-    private validDetails(details: ExportDetail[]): Array<{ materialCode: string; quantity: number }> {
-        return details
-            .filter((detail) => detail.materialCode.trim() && Number(detail.quantity || 0) > 0)
-            .map((detail) => ({
-                materialCode: detail.materialCode.trim(),
-                quantity: Number(detail.quantity || 0)
-            }));
-    }
-
-    removeVietnameseTones(value: string): string {
-        return value
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .replace(/đ/g, 'd')
-            .replace(/Đ/g, 'D');
-    }
+  }
+
+  /** Điền dòng theo BOM / lượng giữ của đơn. */
+  suggest(): void {
+    const t = this.header.type;
+    if (t === 'Làm hoa theo đơn' && !this.header.orderId) { this.formError.set('Nhập mã đơn hàng trước.'); return; }
+    if (t === 'Cắm bó sẵn' && !this.header.productId) { this.formError.set('Chọn sản phẩm trước.'); return; }
+    this.suggesting.set(true);
+    this.formError.set('');
+    this.api.suggestExport({ type: t, orderId: this.header.orderId, productId: this.header.productId, bundles: this.header.bundles }).subscribe({
+      next: (rows) => {
+        this.suggesting.set(false);
+        if (!rows.length) { this.formError.set('Không tìm thấy BOM / lượng giữ cho lựa chọn này.'); return; }
+        this.lines = rows.map((r) => ({ materialId: r.materialId, bomQty: r.bomQty, quantity: r.quantity, sourceId: '', note: '' }));
+      },
+      error: (e) => { this.suggesting.set(false); this.formError.set(inventoryErrorMessage(e)); },
+    });
+  }
+
+  lineWarn(l: ExportLine): string {
+    const m = this.materialById(l.materialId);
+    if (!l.materialId) return 'Chưa chọn NVL';
+    if (this.lines.filter((x) => x.materialId === l.materialId).length > 1) return 'NVL bị trùng';
+    if (!m) return '';
+    if (this.header.type === 'Xuất hủy NVL cách ly') return l.quantity > m.damaged ? `Chỉ còn ${m.damaged} đang cách ly` : '';
+    if (this.header.type !== 'Làm hoa theo đơn' && l.quantity > m.available) return `Vượt khả dụng (${m.available})`;
+    return '';
+  }
+
+  save(post: boolean): void {
+    const t = this.header.type;
+    if (t === 'Làm hoa theo đơn' && !this.header.orderId) { this.formError.set('Xuất theo đơn phải có mã đơn hàng.'); return; }
+    if (t === 'Cắm bó sẵn' && (!this.header.productId || !(this.header.bundles > 0))) { this.formError.set('Cắm bó sẵn phải chọn sản phẩm và số bó.'); return; }
+    if (t === 'Khác' && !this.header.note.trim()) { this.formError.set('Loại "Khác" bắt buộc ghi chú.'); return; }
+    const lines = this.lines.filter((l) => l.materialId);
+    if (!lines.length) { this.formError.set('Phiếu phải có ít nhất một NVL.'); return; }
+    if (lines.some((l) => this.lines.filter((x) => x.materialId === l.materialId).length > 1)) { this.formError.set('NVL bị trùng.'); return; }
+    if (post && !confirm('Ghi nhận phiếu xuất? Tồn thực bị trừ ngay và phiếu không sửa được nữa.')) return;
+    const body = {
+      type: t, orderId: this.header.orderId, productId: this.header.productId, bundles: this.header.bundles, note: this.header.note,
+      exportedAt: this.header.exportedAt ? new Date(this.header.exportedAt).toISOString() : undefined,
+      details: lines.map((l) => ({ materialId: l.materialId, bomQty: l.bomQty, quantity: Number(l.quantity || 0), sourceId: l.sourceId, note: l.note })),
+      post,
+    };
+    this.saving.set(true);
+    this.api.saveDocument('exports', body, this.editingId || undefined).subscribe({
+      next: (doc) => {
+        this.saving.set(false);
+        this.formOpen.set(false);
+        this.notify(post ? `Đã ghi nhận ${doc.PHIEU_XUAT_ID || this.editingId}. Giá vốn: ${(doc.TONG_GIA_VON || 0).toLocaleString('vi-VN')}đ` : 'Đã lưu phiếu nháp.');
+        this.load();
+        this.api.materials().subscribe({ next: (r) => this.materials.set(r.materials) });
+      },
+      error: (e) => { this.saving.set(false); this.formError.set(inventoryErrorMessage(e)); this.load(); },
+    });
+  }
+
+  post(doc: InvDocument): void {
+    if (!confirm(`Ghi nhận ${doc.PHIEU_XUAT_ID}? Tồn thực bị trừ ngay.`)) return;
+    this.api.postDocument('exports', doc.PHIEU_XUAT_ID!).subscribe({
+      next: (r) => { this.notify(r.alreadyPosted ? 'Phiếu đã ghi nhận trước đó — không trừ lần 2.' : 'Đã ghi nhận phiếu xuất.'); this.viewing.set(null); this.load(); },
+      error: (e) => this.notify(inventoryErrorMessage(e), true),
+    });
+  }
+  cancel(doc: InvDocument): void {
+    const reason = prompt('Lý do hủy phiếu nháp?') ?? '';
+    this.api.cancelDocument('exports', doc.PHIEU_XUAT_ID!, reason).subscribe({
+      next: () => { this.notify('Đã hủy phiếu.'); this.viewing.set(null); this.load(); },
+      error: (e) => this.notify(inventoryErrorMessage(e), true),
+    });
+  }
+  remove(doc: InvDocument): void {
+    if (!confirm(`Xóa hẳn phiếu ${doc.PHIEU_XUAT_ID}?`)) return;
+    this.api.deleteDocument('exports', doc.PHIEU_XUAT_ID!).subscribe({
+      next: () => { this.notify('Đã xóa phiếu.'); this.viewing.set(null); this.load(); },
+      error: (e) => this.notify(inventoryErrorMessage(e), true),
+    });
+  }
+
+  materialById(id: string): InvMaterial | undefined { return this.materials().find((m) => m.code === id); }
+  productName(id: string | null | undefined): string { return this.products().find((p) => p.SAN_PHAM_ID === id)?.TEN_SAN_PHAM || id || ''; }
+  statusClass(s: string): string { return s === 'Nháp' ? 'draft' : s === 'Đã hủy' ? 'cancelled' : 'posted'; }
+  totalQty(doc: InvDocument): number { return doc.details.reduce((s, d) => s + Number(d.SO_LUONG_XUAT || 0), 0); }
+  notify(text: string, error = false): void { this.toast.set({ text, error }); setTimeout(() => this.toast.set(null), error ? 7000 : 3500); }
 }

@@ -34,6 +34,12 @@ export const getDb = async (): Promise<Db> => {
   return connectMongo();
 };
 
+/** Dùng cho các nghiệp vụ kho cần transaction (MongoDB Atlas là replica set nên hỗ trợ). */
+export const getMongoClient = async (): Promise<MongoClient> => {
+  await connectMongo();
+  return client as MongoClient;
+};
+
 export const getCollection = async <T extends Document = Document>(name: string): Promise<Collection<T>> => {
   const db = await getDb();
   return db.collection<T>(name);

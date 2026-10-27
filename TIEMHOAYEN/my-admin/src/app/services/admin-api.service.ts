@@ -1,6 +1,7 @@
 ﻿import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, catchError, map, of, tap, timeout } from 'rxjs';
+import { apiBaseUrl } from './api-config';
 
 export interface AdminOrder {
   id: string;
@@ -608,7 +609,7 @@ export interface AdminDashboardResponse {
   providedIn: 'root',
 })
 export class AdminApiService {
-  private readonly apiBaseUrl = 'https://tiem-hoa-yen-api.onrender.com/api';
+  private readonly apiBaseUrl = apiBaseUrl();
   private readonly apiUrl = `${this.apiBaseUrl}/admin`;
   private readonly employeeApiUrl = `${this.apiBaseUrl}/employees`;
   private readonly chatApiUrl = `${this.apiBaseUrl}/chats`;
@@ -622,9 +623,6 @@ export class AdminApiService {
   private productsCache: AdminProductsResponse | null = null;
   private productsCacheAt = 0;
   private readonly productsCacheTtlMs = 15000;
-  private materialsCache: AdminMaterialsResponse | null = null;
-  private materialsCacheAt = 0;
-  private readonly materialsCacheTtlMs = 15000;
 
   constructor(private readonly http: HttpClient) {}
 
@@ -1158,185 +1156,5 @@ export class AdminApiService {
     );
   }
 
-  getMaterials(): Observable<AdminMaterialsResponse> {
-    if (this.materialsCache && Date.now() - this.materialsCacheAt < this.materialsCacheTtlMs) {
-      return of(this.materialsCache);
-    }
-
-    return this.http.get<AdminMaterialsResponse>(`${this.apiUrl}/materials`).pipe(
-      tap((response) => {
-        this.materialsCache = response;
-        this.materialsCacheAt = Date.now();
-      })
-    );
-  }
-
-  createMaterial(payload: {
-    name: string;
-    unit: string;
-    quantity: number;
-    importPrice?: number;
-    sellPrice?: number;
-    description?: string;
-    image?: string;
-  }): Observable<{ message: string; material: AdminMaterial }> {
-    return this.http.post<{ message: string; material: AdminMaterial }>(
-      `${this.apiUrl}/materials`,
-      payload
-    ).pipe(
-      tap(() => this.clearMaterialsCache())
-    );
-  }
-
-  updateMaterial(
-    materialId: string,
-    payload: {
-      name: string;
-      unit: string;
-      quantity: number;
-      importPrice?: number;
-      sellPrice?: number;
-      description?: string;
-      image?: string;
-    }
-  ): Observable<{ message: string; material: AdminMaterial }> {
-    return this.http.put<{ message: string; material: AdminMaterial }>(
-      `${this.apiUrl}/materials/${encodeURIComponent(materialId)}`,
-      payload
-    ).pipe(
-      tap(() => this.clearMaterialsCache())
-    );
-  }
-
-  uploadMaterialImage(file: File): Observable<{ message: string; imageUrl: string }> {
-    const formData = new FormData();
-    formData.append('image', file);
-
-    return this.http.post<{ message: string; imageUrl: string }>(
-      `${this.apiUrl}/materials/upload-image`,
-      formData
-    );
-  }
-
-  deleteMaterial(materialId: string): Observable<{ message: string }> {
-    return this.http.delete<{ message: string }>(
-      `${this.apiUrl}/materials/${encodeURIComponent(materialId)}`
-    ).pipe(
-      tap(() => this.clearMaterialsCache())
-    );
-  }
-
-  private clearMaterialsCache(): void {
-    this.materialsCache = null;
-    this.materialsCacheAt = 0;
-  }
-
-  getSuppliers(filters: { search?: string; status?: string } = {}): Observable<AdminSuppliersResponse> {
-    let params = new HttpParams();
-    const search = filters.search?.trim();
-    const status = filters.status?.trim();
-
-    if (search) {
-      params = params.set('search', search);
-    }
-
-    if (status) {
-      params = params.set('status', status);
-    }
-
-    return this.http.get<AdminSuppliersResponse>(`${this.apiUrl}/suppliers`, { params });
-  }
-
-  createSupplier(payload: Partial<AdminSupplier>): Observable<{ message: string; supplier: AdminSupplier }> {
-    return this.http.post<{ message: string; supplier: AdminSupplier }>(
-      `${this.apiUrl}/suppliers`,
-      payload
-    );
-  }
-
-  updateSupplier(
-    supplierId: string,
-    payload: Partial<AdminSupplier>
-  ): Observable<{ message: string; supplier: AdminSupplier }> {
-    return this.http.put<{ message: string; supplier: AdminSupplier }>(
-      `${this.apiUrl}/suppliers/${encodeURIComponent(supplierId)}`,
-      payload
-    );
-  }
-
-  deleteSupplier(supplierId: string): Observable<{ message: string }> {
-    return this.http.delete<{ message: string }>(
-      `${this.apiUrl}/suppliers/${encodeURIComponent(supplierId)}`
-    );
-  }
-
-  getImports(): Observable<AdminImportsResponse> {
-    return this.http.get<AdminImportsResponse>(`${this.apiUrl}/imports`);
-  }
-
-  createImport(payload: {
-    supplier: string;
-    importDate: string;
-    note: string;
-    details: Array<{ materialCode: string; quantity: number; unitPrice: number }>;
-  }): Observable<{ message: string; code: string }> {
-    return this.http.post<{ message: string; code: string }>(`${this.apiUrl}/imports`, payload);
-  }
-
-  updateImport(
-    receiptId: string,
-    payload: {
-      supplier: string;
-      importDate: string;
-      note: string;
-      details: Array<{ materialCode: string; quantity: number; unitPrice: number }>;
-    }
-  ): Observable<{ message: string }> {
-    return this.http.put<{ message: string }>(
-      `${this.apiUrl}/imports/${encodeURIComponent(receiptId)}`,
-      payload
-    );
-  }
-
-  deleteImport(receiptId: string): Observable<{ message: string }> {
-    return this.http.delete<{ message: string }>(
-      `${this.apiUrl}/imports/${encodeURIComponent(receiptId)}`
-    );
-  }
-
-  getExports(): Observable<AdminExportsResponse> {
-    return this.http.get<AdminExportsResponse>(`${this.apiUrl}/exports`);
-  }
-
-  createExport(payload: {
-    staff: string;
-    exportDate: string;
-    reason: string;
-    note: string;
-    details: Array<{ materialCode: string; quantity: number }>;
-  }): Observable<{ message: string; code: string }> {
-    return this.http.post<{ message: string; code: string }>(`${this.apiUrl}/exports`, payload);
-  }
-
-  updateExport(
-    receiptId: string,
-    payload: {
-      staff: string;
-      exportDate: string;
-      reason: string;
-      note: string;
-      details: Array<{ materialCode: string; quantity: number }>;
-    }
-  ): Observable<{ message: string }> {
-    return this.http.put<{ message: string }>(
-      `${this.apiUrl}/exports/${encodeURIComponent(receiptId)}`,
-      payload
-    );
-  }
-
-  deleteExport(receiptId: string): Observable<{ message: string }> {
-    return this.http.delete<{ message: string }>(
-      `${this.apiUrl}/exports/${encodeURIComponent(receiptId)}`
-    );
-  }
+  // API nguyên vật liệu / NCC / phiếu nhập / phiếu xuất: xem InventoryApiService (inventory-api.service.ts)
 }

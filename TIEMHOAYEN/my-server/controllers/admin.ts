@@ -728,76 +728,8 @@ export const deleteAdminCategory = async (req: Request, res: Response) => {
   }
 };
 
-const mapAdminMaterial = (row: any, index = 0) => ({
-  id: index + 1,
-  code: row.NGUYEN_VAT_LIEU_ID,
-  name: row.TEN_NGUYEN_VAT_LIEU || '',
-  image: row.URL_HINH_ANH || '',
-  unit: row.DON_VI_TINH || '',
-  quantity: Number(row.SO_LUONG_TON || 0),
-  importPrice: Number(row.GIA_NHAP || 0),
-  sellPrice: Number(row.GIA_BAN || 0),
-  selected: false,
-  description: row.MO_TA || '',
-  status: Number(row.SO_LUONG_TON || 0) <= 0 ? 'Hết hàng' : Number(row.SO_LUONG_TON || 0) <= 10 ? 'Sắp hết hàng' : 'Còn hàng',
-  raw: row,
-});
-
-export const getAdminMaterials = async (_req: Request, res: Response) => {
-  try {
-    const materials = (await (await getCollection<any>('NGUYEN_VAT_LIEU')).find({}).sort({ NGUYEN_VAT_LIEU_ID: 1 }).toArray()).map(mapAdminMaterial);
-    return res.status(200).json({ total: materials.length, materials });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot load materials: ' + error.message });
-  }
-};
-
-export const createAdminMaterial = async (req: Request, res: Response) => {
-  try {
-    const materialCollection = await getCollection<any>('NGUYEN_VAT_LIEU');
-    const id = String(req.body.code || '').trim() || await getNextPrefixedId('NGUYEN_VAT_LIEU', 'NGUYEN_VAT_LIEU_ID', 'NVL', 3);
-    const material = {
-      _id: id,
-      NGUYEN_VAT_LIEU_ID: id,
-      TEN_NGUYEN_VAT_LIEU: req.body.name || req.body.TEN_NGUYEN_VAT_LIEU,
-      DON_VI_TINH: req.body.unit || req.body.DON_VI_TINH,
-      SO_LUONG_TON: Number(req.body.quantity ?? req.body.SO_LUONG_TON ?? 0),
-      GIA_NHAP: money(req.body.importPrice ?? req.body.GIA_NHAP),
-      GIA_BAN: money(req.body.sellPrice ?? req.body.GIA_BAN),
-      MO_TA: req.body.description || req.body.MO_TA || '',
-      URL_HINH_ANH: req.body.image || req.body.URL_HINH_ANH || '',
-    };
-    await materialCollection.insertOne(material);
-    return res.status(201).json({ message: 'Material created.', material: mapAdminMaterial(material) });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot create material: ' + error.message });
-  }
-};
-
-export const updateAdminMaterial = async (req: Request, res: Response) => {
-  try {
-    const body = req.body || {};
-    const result = await (await getCollection<any>('NGUYEN_VAT_LIEU')).findOneAndUpdate(
-      { NGUYEN_VAT_LIEU_ID: req.params.materialId },
-      {
-        $set: {
-          TEN_NGUYEN_VAT_LIEU: body.name ?? body.TEN_NGUYEN_VAT_LIEU,
-          DON_VI_TINH: body.unit ?? body.DON_VI_TINH,
-          SO_LUONG_TON: Number(body.quantity ?? body.SO_LUONG_TON ?? 0),
-          GIA_NHAP: money(body.importPrice ?? body.GIA_NHAP),
-          GIA_BAN: money(body.sellPrice ?? body.GIA_BAN),
-          MO_TA: body.description ?? body.MO_TA ?? '',
-          URL_HINH_ANH: body.image ?? body.URL_HINH_ANH ?? '',
-        },
-      },
-      { returnDocument: 'after' },
-    );
-    if (!result) return res.status(404).json({ message: 'Không tìm thấy nguyên vật liệu.' });
-    return res.status(200).json({ message: 'Material updated.', material: mapAdminMaterial(result) });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot update material: ' + error.message });
-  }
-};
+// Các API NVL / NCC / phiếu nhập / phiếu xuất đã chuyển sang controllers/inventory.ts
+// (services/inventory/*) để áp dụng quy tắc kho mới: Nháp→Đã ghi nhận, FIFO, giữ tồn, sổ biến động.
 
 export const uploadAdminMaterialImage = (req: Request, res: Response) => {
   if (!req.file) return res.status(400).json({ message: 'Chưa chọn ảnh.' });
@@ -806,264 +738,6 @@ export const uploadAdminMaterialImage = (req: Request, res: Response) => {
     message: 'Upload image thành công.',
     url: `${publicBaseUrl}/uploads/materials/${req.file.filename}`,
   });
-};
-
-export const deleteAdminMaterial = async (req: Request, res: Response) => {
-  try {
-    await (await getCollection<any>('NGUYEN_VAT_LIEU')).deleteOne({ NGUYEN_VAT_LIEU_ID: req.params.materialId });
-    return res.status(200).json({ message: 'Material deleted.' });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot delete material: ' + error.message });
-  }
-};
-
-export const getAdminSuppliers = async (_req: Request, res: Response) => {
-  try {
-    const suppliers = await (await getCollection<any>('NHA_CUNG_CAP')).find({}).sort({ NHA_CUNG_CAP_ID: 1 }).toArray();
-    return res.status(200).json({ total: suppliers.length, suppliers });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot load suppliers: ' + error.message });
-  }
-};
-
-export const createAdminSupplier = async (req: Request, res: Response) => {
-  try {
-    const id = String(req.body.code || '').trim() || await getNextPrefixedId('NHA_CUNG_CAP', 'NHA_CUNG_CAP_ID', 'NCC', 3);
-    const supplier = {
-      _id: id,
-      NHA_CUNG_CAP_ID: id,
-      TEN_NHA_CUNG_CAP: req.body.name || req.body.TEN_NHA_CUNG_CAP,
-      NGUOI_DAI_DIEN: req.body.representative || req.body.NGUOI_DAI_DIEN || '',
-      SDT: req.body.phone || req.body.SDT || '',
-      EMAIL: req.body.email || req.body.EMAIL || '',
-      DIA_CHI: req.body.address || req.body.DIA_CHI || '',
-      MA_SO_THUE: req.body.taxCode || req.body.MA_SO_THUE || '',
-      TRANG_THAI: req.body.status || req.body.TRANG_THAI || 'Hoạt động',
-    };
-    await (await getCollection<any>('NHA_CUNG_CAP')).insertOne(supplier);
-    return res.status(201).json({ message: 'Supplier created.', supplier });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot create supplier: ' + error.message });
-  }
-};
-
-export const updateAdminSupplier = async (req: Request, res: Response) => {
-  try {
-    const body = req.body || {};
-    const result = await (await getCollection<any>('NHA_CUNG_CAP')).findOneAndUpdate(
-      { NHA_CUNG_CAP_ID: req.params.supplierId },
-      {
-        $set: {
-          TEN_NHA_CUNG_CAP: body.name ?? body.TEN_NHA_CUNG_CAP,
-          NGUOI_DAI_DIEN: body.representative ?? body.NGUOI_DAI_DIEN ?? '',
-          SDT: body.phone ?? body.SDT ?? '',
-          EMAIL: body.email ?? body.EMAIL ?? '',
-          DIA_CHI: body.address ?? body.DIA_CHI ?? '',
-          MA_SO_THUE: body.taxCode ?? body.MA_SO_THUE ?? '',
-          TRANG_THAI: body.status ?? body.TRANG_THAI ?? 'Hoạt động',
-        },
-      },
-      { returnDocument: 'after' },
-    );
-    if (!result) return res.status(404).json({ message: 'Không tìm thấy nhà cung cấp.' });
-    return res.status(200).json({ message: 'Supplier updated.', supplier: result });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot update supplier: ' + error.message });
-  }
-};
-
-export const deleteAdminSupplier = async (req: Request, res: Response) => {
-  try {
-    await (await getCollection<any>('NHA_CUNG_CAP')).deleteOne({ NHA_CUNG_CAP_ID: req.params.supplierId });
-    return res.status(200).json({ message: 'Supplier deleted.' });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot delete supplier: ' + error.message });
-  }
-};
-
-const getReceiptDetails = (body: any) => Array.isArray(body.details)
-  ? body.details
-  : Array.isArray(body.materials)
-    ? body.materials
-    : [];
-
-const adjustStock = async (materialId: string, delta: number) => {
-  await (await getCollection<any>('NGUYEN_VAT_LIEU')).updateOne(
-    { NGUYEN_VAT_LIEU_ID: materialId },
-    { $inc: { SO_LUONG_TON: delta } },
-  );
-};
-
-const mapImportDetail = (receiptId: string, detail: any) => {
-  const materialId = detail.materialCode || detail.materialId || detail.NGUYEN_VAT_LIEU_ID;
-  const quantity = Number(detail.quantity ?? detail.SO_LUONG_NHAP ?? 0);
-  const unitPrice = money(detail.unitPrice ?? detail.DON_GIA_NHAP);
-  return {
-    _id: { PHIEU_NHAP_ID: receiptId, NGUYEN_VAT_LIEU_ID: materialId },
-    PHIEU_NHAP_ID: receiptId,
-    NGUYEN_VAT_LIEU_ID: materialId,
-    SO_LUONG_NHAP: quantity,
-    DON_GIA_NHAP: unitPrice,
-    THANH_TIEN: quantity * unitPrice,
-  };
-};
-
-const mapExportDetail = (receiptId: string, detail: any) => {
-  const materialId = detail.materialCode || detail.materialId || detail.NGUYEN_VAT_LIEU_ID;
-  return {
-    _id: { PHIEU_XUAT_ID: receiptId, NGUYEN_VAT_LIEU_ID: materialId },
-    PHIEU_XUAT_ID: receiptId,
-    NGUYEN_VAT_LIEU_ID: materialId,
-    SO_LUONG_XUAT: Number(detail.quantity ?? detail.SO_LUONG_XUAT ?? 0),
-  };
-};
-
-export const getAdminImports = async (_req: Request, res: Response) => {
-  try {
-    const imports = await (await getCollection<any>('PHIEU_NHAP_NVL')).find({}).sort({ NGAY_NHAP: -1 }).toArray();
-    return res.status(200).json({ total: imports.length, imports });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot load imports: ' + error.message });
-  }
-};
-
-export const createAdminImport = async (req: Request, res: Response) => {
-  try {
-    const receiptId = await getNextPrefixedId('PHIEU_NHAP_NVL', 'PHIEU_NHAP_ID', 'PN', 6);
-    const details = getReceiptDetails(req.body).map((detail: any) => mapImportDetail(receiptId, detail));
-    const total = details.reduce((sum: number, detail: any) => sum + Number(detail.THANH_TIEN || 0), 0);
-    const receipt = {
-      _id: receiptId,
-      PHIEU_NHAP_ID: receiptId,
-      NHA_CUNG_CAP_ID: req.body.supplier || req.body.supplierCode || req.body.NHA_CUNG_CAP_ID || null,
-      NHAN_VIEN_ID: req.body.staff || req.body.employeeId || await getFirstEmployeeId(),
-      NGAY_NHAP: parseOptionalDate(req.body.importDate) || new Date(),
-      TONG_TIEN: total,
-      GHI_CHU: req.body.note || req.body.GHI_CHU || null,
-    };
-    await (await getCollection<any>('PHIEU_NHAP_NVL')).insertOne(receipt);
-    if (details.length) await (await getCollection<any>('CHI_TIET_PHIEU_NHAP_NVL')).insertMany(details);
-    for (const detail of details) await adjustStock(detail.NGUYEN_VAT_LIEU_ID, Number(detail.SO_LUONG_NHAP || 0));
-    return res.status(201).json({ message: 'Import created.', import: receipt, details });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot create import: ' + error.message });
-  }
-};
-
-export const updateAdminImport = async (req: Request, res: Response) => {
-  try {
-    const { receiptId } = req.params;
-    await deleteImportDetailsAndReverseStock(receiptId);
-    const details = getReceiptDetails(req.body).map((detail: any) => mapImportDetail(receiptId, detail));
-    const total = details.reduce((sum: number, detail: any) => sum + Number(detail.THANH_TIEN || 0), 0);
-    await (await getCollection<any>('PHIEU_NHAP_NVL')).updateOne(
-      { PHIEU_NHAP_ID: receiptId },
-      {
-        $set: {
-          NHA_CUNG_CAP_ID: req.body.supplier || req.body.supplierCode || req.body.NHA_CUNG_CAP_ID || null,
-          NHAN_VIEN_ID: req.body.staff || req.body.employeeId || await getFirstEmployeeId(),
-          NGAY_NHAP: parseOptionalDate(req.body.importDate) || new Date(),
-          TONG_TIEN: total,
-          GHI_CHU: req.body.note || req.body.GHI_CHU || null,
-        },
-      },
-    );
-    if (details.length) await (await getCollection<any>('CHI_TIET_PHIEU_NHAP_NVL')).insertMany(details);
-    for (const detail of details) await adjustStock(detail.NGUYEN_VAT_LIEU_ID, Number(detail.SO_LUONG_NHAP || 0));
-    return res.status(200).json({ message: 'Import updated.', details });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot update import: ' + error.message });
-  }
-};
-
-const deleteImportDetailsAndReverseStock = async (receiptId: string) => {
-  const detailCollection = await getCollection<any>('CHI_TIET_PHIEU_NHAP_NVL');
-  const details = await detailCollection.find({ PHIEU_NHAP_ID: receiptId }).toArray();
-  for (const detail of details) await adjustStock(detail.NGUYEN_VAT_LIEU_ID, -Number(detail.SO_LUONG_NHAP || 0));
-  await detailCollection.deleteMany({ PHIEU_NHAP_ID: receiptId });
-};
-
-export const deleteAdminImport = async (req: Request, res: Response) => {
-  try {
-    const { receiptId } = req.params;
-    await deleteImportDetailsAndReverseStock(receiptId);
-    await (await getCollection<any>('PHIEU_NHAP_NVL')).deleteOne({ PHIEU_NHAP_ID: receiptId });
-    return res.status(200).json({ message: 'Import deleted.' });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot delete import: ' + error.message });
-  }
-};
-
-export const getAdminExports = async (_req: Request, res: Response) => {
-  try {
-    const exports = await (await getCollection<any>('PHIEU_XUAT_NVL')).find({}).sort({ NGAY_XUAT: -1 }).toArray();
-    return res.status(200).json({ total: exports.length, exports });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot load exports: ' + error.message });
-  }
-};
-
-export const createAdminExport = async (req: Request, res: Response) => {
-  try {
-    const receiptId = await getNextPrefixedId('PHIEU_XUAT_NVL', 'PHIEU_XUAT_ID', 'PX', 6);
-    const details = getReceiptDetails(req.body).map((detail: any) => mapExportDetail(receiptId, detail));
-    const receipt = {
-      _id: receiptId,
-      PHIEU_XUAT_ID: receiptId,
-      NHAN_VIEN_ID: req.body.staff || req.body.employeeId || await getFirstEmployeeId(),
-      NGAY_XUAT: parseOptionalDate(req.body.exportDate) || new Date(),
-      LY_DO_XUAT: req.body.reason || req.body.LY_DO_XUAT || null,
-      GHI_CHU: req.body.note || req.body.GHI_CHU || null,
-    };
-    await (await getCollection<any>('PHIEU_XUAT_NVL')).insertOne(receipt);
-    if (details.length) await (await getCollection<any>('CHI_TIET_PHIEU_XUAT_NVL')).insertMany(details);
-    for (const detail of details) await adjustStock(detail.NGUYEN_VAT_LIEU_ID, -Number(detail.SO_LUONG_XUAT || 0));
-    return res.status(201).json({ message: 'Export created.', export: receipt, details });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot create export: ' + error.message });
-  }
-};
-
-const deleteExportDetailsAndReverseStock = async (receiptId: string) => {
-  const detailCollection = await getCollection<any>('CHI_TIET_PHIEU_XUAT_NVL');
-  const details = await detailCollection.find({ PHIEU_XUAT_ID: receiptId }).toArray();
-  for (const detail of details) await adjustStock(detail.NGUYEN_VAT_LIEU_ID, Number(detail.SO_LUONG_XUAT || 0));
-  await detailCollection.deleteMany({ PHIEU_XUAT_ID: receiptId });
-};
-
-export const updateAdminExport = async (req: Request, res: Response) => {
-  try {
-    const { receiptId } = req.params;
-    await deleteExportDetailsAndReverseStock(receiptId);
-    const details = getReceiptDetails(req.body).map((detail: any) => mapExportDetail(receiptId, detail));
-    await (await getCollection<any>('PHIEU_XUAT_NVL')).updateOne(
-      { PHIEU_XUAT_ID: receiptId },
-      {
-        $set: {
-          NHAN_VIEN_ID: req.body.staff || req.body.employeeId || await getFirstEmployeeId(),
-          NGAY_XUAT: parseOptionalDate(req.body.exportDate) || new Date(),
-          LY_DO_XUAT: req.body.reason || req.body.LY_DO_XUAT || null,
-          GHI_CHU: req.body.note || req.body.GHI_CHU || null,
-        },
-      },
-    );
-    if (details.length) await (await getCollection<any>('CHI_TIET_PHIEU_XUAT_NVL')).insertMany(details);
-    for (const detail of details) await adjustStock(detail.NGUYEN_VAT_LIEU_ID, -Number(detail.SO_LUONG_XUAT || 0));
-    return res.status(200).json({ message: 'Export updated.', details });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot update export: ' + error.message });
-  }
-};
-
-export const deleteAdminExport = async (req: Request, res: Response) => {
-  try {
-    const { receiptId } = req.params;
-    await deleteExportDetailsAndReverseStock(receiptId);
-    await (await getCollection<any>('PHIEU_XUAT_NVL')).deleteOne({ PHIEU_XUAT_ID: receiptId });
-    return res.status(200).json({ message: 'Export deleted.' });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot delete export: ' + error.message });
-  }
 };
 
 export const updateAdminOrderStatus = async (req: Request, res: Response) => {
@@ -1133,7 +807,7 @@ export const getAdminDashboard = async (_req: Request, res: Response) => {
         revenue: orders.reduce((sum, order) => sum + Number(order.TONG_TIEN || 0), 0),
         newCustomers: customers.length,
         productsSold: details.reduce((sum, detail) => sum + Number(detail.SO_LUONG || 0), 0),
-        warningMaterials: materials.filter((material) => Number(material.SO_LUONG_TON || 0) <= 10).length,
+        warningMaterials: materials.filter((material) => material.TRANG_THAI !== 'Ngừng sử dụng' && (Number(material.TON_THUC ?? material.SO_LUONG_TON ?? 0) - Number(material.TON_DANG_GIU || 0) - Number(material.TON_KHONG_DAT || 0)) <= Number(material.NGUONG_CANH_BAO ?? 10)).length,
       },
       chart: [],
       orders: recentOrders,
@@ -1145,7 +819,16 @@ export const getAdminDashboard = async (_req: Request, res: Response) => {
         total: Number(order.TONG_TIEN || 0),
       })),
       bestProducts,
-      warningMaterials: materials.sort((a, b) => Number(a.SO_LUONG_TON || 0) - Number(b.SO_LUONG_TON || 0)).slice(0, 5),
+      // Cảnh báo NVL theo tồn KHẢ DỤNG so với ngưỡng (D01.7 tầng 1)
+      warningMaterials: materials
+        .filter((material) => material.TRANG_THAI !== 'Ngừng sử dụng')
+        .map((material) => {
+          const available = Number(material.TON_THUC ?? material.SO_LUONG_TON ?? 0) - Number(material.TON_DANG_GIU || 0) - Number(material.TON_KHONG_DAT || 0);
+          const threshold = Number(material.NGUONG_CANH_BAO ?? 10) || 1;
+          return { id: material.NGUYEN_VAT_LIEU_ID, name: material.TEN_NGUYEN_VAT_LIEU, image: material.URL_HINH_ANH || '', unit: material.DON_VI_TINH || '', quantity: Math.max(0, available), ratio: available / threshold };
+        })
+        .sort((a, b) => a.ratio - b.ratio)
+        .slice(0, 5),
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot load dashboard: ' + error.message });

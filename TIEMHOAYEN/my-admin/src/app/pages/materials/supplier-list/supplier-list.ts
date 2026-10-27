@@ -1,296 +1,176 @@
-import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink, RouterLinkActive } from '@angular/router';
-import { AdminApiService, AdminSupplier } from '../../../services/admin-api.service';
+import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
+import {
+  InvMaterial,
+  InvSupplier,
+  InvSupplierMaterial,
+  InventoryApiService,
+  inventoryErrorMessage,
+} from '../../../services/inventory-api.service';
 
-interface Supplier extends AdminSupplier {}
+const EMPTY_SUPPLIER = {
+  name: '', representative: '', phone: '', email: '', address: '', taxCode: '', status: 'Hoạt động',
+  paymentTerms: '', orderCutoffTime: '12:00', defaultLeadDays: 1, note: '', logo: '',
+};
 
+const EMPTY_LINK = {
+  materialId: '', supplierSku: '', purchaseUnit: '', conversionRate: 1, unitCost: 0, minOrderQty: 0,
+  leadDays: 1, orderCutoffTime: '', priority: 1, confidence: 'Trung bình', note: '', active: true,
+};
+
+/**
+ * AD30–AD32 — Nhà cung cấp + nguồn cung theo NVL (NCC bán NVL nào, giá, lead time, giờ chốt đơn).
+ * NCC đã có phiếu/PO chỉ chuyển "Ngừng hợp tác", không xóa cứng.
+ */
 @Component({
-    selector: 'app-supplier-list',
-    standalone: true,
-    imports: [
-        CommonModule,
-        FormsModule,
-        RouterLink,
-        RouterLinkActive
-    ],
-    templateUrl: './supplier-list.html',
-    styleUrls: ['./supplier-list.css']
+  selector: 'app-supplier-list',
+  standalone: true,
+  imports: [CommonModule, FormsModule, InventoryTabsComponent],
+  templateUrl: './supplier-list.html',
+  styleUrls: ['../inventory.css', './supplier-list.css'],
 })
 export class SupplierListComponent implements OnInit {
-    searchKeyword = '';
-    selectedStatus = 'Tất cả';
+  private readonly api = inject(InventoryApiService);
 
-    isFilterMenuOpen = false;
-    isSortMenuOpen = false;
-    isExportMenuOpen = false;
-    isEditModalOpen = false;
-    isAddModalOpen = false;
+  readonly suppliers = signal<InvSupplier[]>([]);
+  readonly statuses = signal<string[]>(['Hoạt động', 'Đang hợp tác', 'Tạm ngưng', 'Ngừng hợp tác', 'Bị khóa']);
+  readonly materials = signal<InvMaterial[]>([]);
+  readonly loading = signal(false);
+  readonly error = signal('');
+  readonly toast = signal<{ text: string; error?: boolean } | null>(null);
 
-    currentPage = 1;
-    pageSize = 10;
+  search = '';
+  statusFilter = '';
+  private readonly tick = signal(0);
+  readonly filtered = computed(() => {
+    this.tick();
+    const q = this.search.trim().toLowerCase();
+    return this.suppliers().filter((s) => (!this.statusFilter || s.TRANG_THAI === this.statusFilter)
+      && (!q || `${s.NHA_CUNG_CAP_ID} ${s.TEN_NHA_CUNG_CAP} ${s.SDT || ''} ${s.EMAIL || ''} ${s.NGUOI_DAI_DIEN || ''}`.toLowerCase().includes(q)));
+  });
 
-    editingSupplier: Supplier | null = null;
-    newSupplier: Supplier | null = null;
+  // Chi tiết / form
+  readonly selected = signal<InvSupplier | null>(null);
+  readonly tab = signal<'info' | 'materials'>('info');
+  readonly formOpen = signal(false);
+  readonly saving = signal(false);
+  readonly formError = signal('');
+  form = { ...EMPTY_SUPPLIER };
 
-    statusOptions = [
-        'Đang hợp tác',
-        'Tạm ngưng'
-    ];
+  readonly links = signal<InvSupplierMaterial[]>([]);
+  linkForm: typeof EMPTY_LINK = { ...EMPTY_LINK };
+  editingLinkId: string | null = null;
+  readonly linkError = signal('');
 
-    suppliers: Supplier[] = [];
-    filteredSuppliers: Supplier[] = [];
+  ngOnInit(): void {
+    this.api.materials().subscribe({ next: (r) => this.materials.set(r.materials), error: () => {} });
+    this.load();
+  }
 
-    constructor(
-        private readonly adminApi: AdminApiService,
-        private readonly cdr: ChangeDetectorRef,
-        @Inject(PLATFORM_ID) private readonly platformId: object
-    ) {}
+  load(): void {
+    this.loading.set(true);
+    this.api.suppliers().subscribe({
+      next: (r) => { this.suppliers.set(r.suppliers); if (r.statuses?.length) this.statuses.set(r.statuses); this.loading.set(false); },
+      error: (e) => { this.error.set(inventoryErrorMessage(e)); this.loading.set(false); },
+    });
+  }
+  refilter(): void { this.tick.update((x) => x + 1); }
 
-    ngOnInit(): void {
-        if (isPlatformBrowser(this.platformId)) {
-            this.loadSuppliers();
-        }
-    }
+  openCreate(): void {
+    this.selected.set(null);
+    this.form = { ...EMPTY_SUPPLIER };
+    this.formError.set('');
+    this.tab.set('info');
+    this.formOpen.set(true);
+  }
 
-    loadSuppliers(): void {
-        this.adminApi.getSuppliers({
-            search: this.searchKeyword,
-            status: this.isAllStatus(this.selectedStatus) ? '' : this.selectedStatus
-        }).subscribe({
-            next: (data) => {
-                this.suppliers = data.suppliers || [];
-                this.filteredSuppliers = [...this.suppliers];
-                this.currentPage = 1;
-                this.cdr.detectChanges();
-            },
-            error: (error) => {
-                console.error('Cannot load suppliers', error);
-                this.suppliers = [];
-                this.filteredSuppliers = [];
-                this.cdr.detectChanges();
-            }
-        });
-    }
+  open(s: InvSupplier, tab: 'info' | 'materials' = 'info'): void {
+    this.selected.set(s);
+    this.form = {
+      name: s.TEN_NHA_CUNG_CAP, representative: s.NGUOI_DAI_DIEN || '', phone: String(s.SDT || ''), email: s.EMAIL || '', address: s.DIA_CHI || '',
+      taxCode: String(s.MA_SO_THUE || ''), status: s.TRANG_THAI, paymentTerms: s.DIEU_KHOAN_THANH_TOAN || '', orderCutoffTime: s.GIO_CHOT_DON || '',
+      defaultLeadDays: s.SO_NGAY_GIAO_MAC_DINH ?? 1, note: s.GHI_CHU || '', logo: s.LOGO || '',
+    };
+    this.formError.set('');
+    this.tab.set(tab);
+    this.formOpen.set(true);
+    this.loadLinks();
+  }
 
-    get totalPages(): number {
-        return Math.ceil(this.filteredSuppliers.length / this.pageSize) || 1;
-    }
+  save(): void {
+    if (!this.form.name.trim()) { this.formError.set('Tên nhà cung cấp là bắt buộc.'); return; }
+    if (this.form.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(this.form.email)) { this.formError.set('Email không hợp lệ.'); return; }
+    if (this.form.phone && !/^\+?\d{9,11}$/.test(this.form.phone.replace(/\s/g, ''))) { this.formError.set('Số điện thoại phải 9–11 chữ số.'); return; }
+    this.saving.set(true);
+    const s = this.selected();
+    const req = s ? this.api.updateSupplier(s.NHA_CUNG_CAP_ID, this.form) : this.api.createSupplier(this.form);
+    req.subscribe({
+      next: (r) => {
+        this.saving.set(false);
+        this.notify(s ? 'Đã cập nhật nhà cung cấp.' : 'Đã thêm nhà cung cấp. Khai báo NVL cung cấp ở tab "Nguồn cung".');
+        this.load();
+        if (!s) { this.open(r.supplier, 'materials'); } else { this.selected.set(r.supplier); }
+      },
+      error: (e) => { this.saving.set(false); this.formError.set(inventoryErrorMessage(e)); },
+    });
+  }
 
-    get pages(): (number | string)[] {
-        const total = this.totalPages;
-        const current = this.currentPage;
+  remove(s: InvSupplier): void {
+    if (!confirm(`Xóa / ngừng hợp tác với ${s.TEN_NHA_CUNG_CAP}? NCC đã có phiếu, PO hoặc nguồn cung sẽ chỉ chuyển "Ngừng hợp tác".`)) return;
+    this.api.deleteSupplier(s.NHA_CUNG_CAP_ID).subscribe({
+      next: (r) => { this.notify(r.message || 'Đã xóa NCC.'); this.formOpen.set(false); this.load(); },
+      error: (e) => this.notify(inventoryErrorMessage(e), true),
+    });
+  }
 
-        if (total <= 7) {
-            return Array.from({ length: total }, (_, index) => index + 1);
-        }
+  /* ---------- Nguồn cung NCC–NVL ---------- */
+  loadLinks(): void {
+    const s = this.selected();
+    if (!s) { this.links.set([]); return; }
+    this.api.supplierMaterials({ supplierId: s.NHA_CUNG_CAP_ID }).subscribe({ next: (r) => this.links.set(r.items), error: () => {} });
+  }
 
-        if (current <= 4) {
-            return [1, 2, 3, 4, 5, '...', total];
-        }
+  editLink(l: InvSupplierMaterial): void {
+    this.editingLinkId = l._id;
+    this.linkForm = {
+      materialId: l.NGUYEN_VAT_LIEU_ID, supplierSku: l.MA_HANG_NCC || '', purchaseUnit: l.DON_VI_MUA, conversionRate: l.HE_SO_QUY_DOI,
+      unitCost: l.DON_GIA, minOrderQty: l.SL_DAT_TOI_THIEU, leadDays: l.SO_NGAY_GIAO, orderCutoffTime: l.GIO_CHOT_DON || '',
+      priority: l.UU_TIEN, confidence: l.MUC_TIN_CAY, note: l.GHI_CHU || '', active: l.TRANG_THAI !== 'Ngừng',
+    };
+    this.linkError.set('');
+  }
 
-        if (current >= total - 3) {
-            return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
-        }
+  resetLink(): void {
+    this.editingLinkId = null;
+    const s = this.selected();
+    this.linkForm = { ...EMPTY_LINK, leadDays: s?.SO_NGAY_GIAO_MAC_DINH ?? 1 };
+    this.linkError.set('');
+  }
 
-        return [1, '...', current - 1, current, current + 1, '...', total];
-    }
+  onLinkMaterialChange(): void {
+    const m = this.materials().find((x) => x.code === this.linkForm.materialId);
+    if (m && !this.editingLinkId) { this.linkForm.unitCost = m.importPrice; this.linkForm.purchaseUnit = m.unit; }
+  }
 
-    get pagedSuppliers(): Supplier[] {
-        const start = (this.currentPage - 1) * this.pageSize;
-        return this.filteredSuppliers.slice(start, start + this.pageSize);
-    }
+  saveLink(): void {
+    const s = this.selected();
+    if (!s) return;
+    if (!this.linkForm.materialId) { this.linkError.set('Chọn NVL.'); return; }
+    this.api.saveSupplierMaterial({ ...this.linkForm, supplierId: s.NHA_CUNG_CAP_ID }, this.editingLinkId || undefined).subscribe({
+      next: () => { this.notify('Đã lưu nguồn cung.'); this.resetLink(); this.loadLinks(); this.load(); },
+      error: (e) => this.linkError.set(inventoryErrorMessage(e)),
+    });
+  }
 
-    applyFilters(): void {
-        this.currentPage = 1;
-        this.loadSuppliers();
-    }
+  removeLink(l: InvSupplierMaterial): void {
+    if (!confirm(`Bỏ ${l.TEN_NGUYEN_VAT_LIEU} khỏi danh sách NCC cung cấp?`)) return;
+    this.api.deleteSupplierMaterial(l._id).subscribe({ next: () => { this.loadLinks(); this.load(); }, error: (e) => this.notify(inventoryErrorMessage(e), true) });
+  }
 
-    private isAllStatus(status: string): boolean {
-        const normalized = this.removeVietnameseTones(status || '').toLowerCase();
-        return !status ||
-            normalized === 'all' ||
-            normalized.includes('tat') ||
-            (normalized.includes('ta') && normalized.includes('ca'));
-    }
-
-    sortSuppliers(field: string): void {
-        this.filteredSuppliers.sort((a, b) => {
-            if (field === 'code') return a.code.localeCompare(b.code, 'vi');
-            if (field === 'name') return a.name.localeCompare(b.name, 'vi');
-            if (field === 'representative') return a.representative.localeCompare(b.representative, 'vi');
-            if (field === 'status') return a.status.localeCompare(b.status, 'vi');
-            return 0;
-        });
-
-        this.isSortMenuOpen = false;
-    }
-
-    toggleFilterMenu(): void {
-        this.isFilterMenuOpen = !this.isFilterMenuOpen;
-        this.isSortMenuOpen = false;
-        this.isExportMenuOpen = false;
-    }
-
-    toggleSortMenu(): void {
-        this.isSortMenuOpen = !this.isSortMenuOpen;
-        this.isFilterMenuOpen = false;
-        this.isExportMenuOpen = false;
-    }
-
-    toggleExportMenu(): void {
-        this.isExportMenuOpen = !this.isExportMenuOpen;
-        this.isFilterMenuOpen = false;
-        this.isSortMenuOpen = false;
-    }
-
-    toggleSelectAll(event: Event): void {
-        const input = event.target as HTMLInputElement;
-        this.pagedSuppliers.forEach((item) => item.selected = input.checked);
-    }
-
-    isAllSelected(): boolean {
-        return this.pagedSuppliers.length > 0 &&
-            this.pagedSuppliers.every((item) => item.selected);
-    }
-
-    openAddModal(): void {
-        const nextId = this.suppliers.length > 0
-            ? Math.max(...this.suppliers.map((item) => item.id)) + 1
-            : 1;
-
-        this.isFilterMenuOpen = false;
-        this.isSortMenuOpen = false;
-        this.isExportMenuOpen = false;
-        this.isEditModalOpen = false;
-        this.editingSupplier = null;
-
-        this.newSupplier = {
-            id: nextId,
-            code: '',
-            name: '',
-            representative: '',
-            phone: '',
-            email: '',
-            address: '',
-            taxCode: '',
-            status: 'Đang hợp tác',
-            selected: false,
-            image: ''
-        };
-
-        this.isAddModalOpen = true;
-    }
-
-    saveNewSupplier(): void {
-        if (!this.newSupplier) return;
-
-        if (!this.newSupplier.name.trim()) {
-            alert('Vui lòng nhập tên nhà cung cấp.');
-            return;
-        }
-
-        this.adminApi.createSupplier({
-            name: this.newSupplier.name.trim(),
-            representative: this.newSupplier.representative.trim(),
-            phone: this.newSupplier.phone.trim(),
-            email: this.newSupplier.email.trim(),
-            address: this.newSupplier.address.trim(),
-            taxCode: this.newSupplier.taxCode.trim(),
-            status: this.newSupplier.status
-        }).subscribe({
-            next: () => {
-                this.closeAddModal();
-                this.loadSuppliers();
-            },
-            error: (error) => {
-                console.error('Cannot create supplier', error);
-                alert('Không thể thêm nhà cung cấp. Vui lòng thử lại.');
-            }
-        });
-    }
-
-    closeAddModal(): void {
-        this.isAddModalOpen = false;
-        this.newSupplier = null;
-    }
-
-    editSupplier(supplier: Supplier): void {
-        this.editingSupplier = { ...supplier };
-        this.isEditModalOpen = true;
-    }
-
-    saveSupplier(): void {
-        if (!this.editingSupplier) return;
-
-        if (!this.editingSupplier.name.trim()) {
-            alert('Vui lòng nhập tên nhà cung cấp.');
-            return;
-        }
-
-        this.adminApi.updateSupplier(this.editingSupplier.code, {
-            name: this.editingSupplier.name.trim(),
-            representative: this.editingSupplier.representative.trim(),
-            phone: this.editingSupplier.phone.trim(),
-            email: this.editingSupplier.email.trim(),
-            address: this.editingSupplier.address.trim(),
-            taxCode: this.editingSupplier.taxCode.trim(),
-            status: this.editingSupplier.status
-        }).subscribe({
-            next: () => {
-                this.closeEditModal();
-                this.loadSuppliers();
-            },
-            error: (error) => {
-                console.error('Cannot update supplier', error);
-                alert('Không thể lưu nhà cung cấp. Vui lòng thử lại.');
-            }
-        });
-    }
-
-    deleteSupplier(supplier: Supplier): void {
-        if (!confirm('Bạn có chắc muốn xóa nhà cung cấp này?')) return;
-
-        this.adminApi.deleteSupplier(supplier.code).subscribe({
-            next: () => this.loadSuppliers(),
-            error: (error) => {
-                console.error('Cannot delete supplier', error);
-                alert('Không thể xóa nhà cung cấp vì có thể đang được phiếu nhập sử dụng.');
-            }
-        });
-    }
-
-    closeEditModal(): void {
-        this.isEditModalOpen = false;
-        this.editingSupplier = null;
-    }
-
-    previousPage(): void {
-        if (this.currentPage > 1) this.currentPage--;
-    }
-
-    nextPage(): void {
-        if (this.currentPage < this.totalPages) this.currentPage++;
-    }
-
-    goToPage(page: number | string): void {
-        if (typeof page === 'number') this.currentPage = page;
-    }
-
-    uploadSupplierImage(target: Supplier): void {
-        target.image = 'assets/images/supplier-avatar.png';
-    }
-
-    removeSupplierImage(target: Supplier): void {
-        target.image = '';
-    }
-
-    removeVietnameseTones(value: string): string {
-        return value
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .replace(/đ/g, 'd')
-            .replace(/Đ/g, 'D');
-    }
+  statusClass(st: string): string {
+    return ['Hoạt động', 'Đang hợp tác'].includes(st) ? 'ok' : st === 'Tạm ngưng' ? 'low' : 'out';
+  }
+  notify(text: string, error = false): void { this.toast.set({ text, error }); setTimeout(() => this.toast.set(null), error ? 7000 : 3500); }
 }

@@ -1,552 +1,256 @@
-import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink, RouterLinkActive } from '@angular/router';
-import { AdminApiService, AdminMaterial } from '../../../services/admin-api.service';
+import { Router } from '@angular/router';
+import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
+import {
+  InvMaterial,
+  InvMaterialDetail,
+  InventoryApiService,
+  inventoryErrorMessage,
+} from '../../../services/inventory-api.service';
 
-interface MaterialItem extends AdminMaterial {}
+type MaterialForm = Partial<InvMaterial> & { code?: string };
 
-interface MaterialSearchIndex {
-  name: string;
-  code: string;
-  unit: string;
-  importPrice: string;
-  sellPrice: string;
-  quantity: string;
-}
+const EMPTY_FORM: MaterialForm = {
+  name: '', unit: '', group: 'IT_HU', type: 'Phụ kiện cắm', importPrice: 0, sellPrice: 0, threshold: 10, maxLevel: 30,
+  shelfDays: null, substitutionGroup: '', purchaseUnit: '', conversionRate: 1, description: '', image: '',
+};
 
+/**
+ * AD21–AD23 — Danh sách NVL.
+ * Hiển thị tồn thực / đang giữ / không đạt / khả dụng; KHÔNG cho sửa tồn trực tiếp (đi qua phiếu nhập/xuất).
+ */
 @Component({
   selector: 'app-material-list',
   standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    RouterLink,
-    RouterLinkActive
-  ],
+  imports: [CommonModule, FormsModule, InventoryTabsComponent],
   templateUrl: './material-list.html',
-  styleUrls: ['./material-list.css']
+  styleUrls: ['../inventory.css', './material-list.css'],
 })
 export class MaterialListComponent implements OnInit {
-  readonly allUnitsOption = '__all__';
-  searchKeyword = '';
-  selectedUnit = this.allUnitsOption;
+  private readonly api = inject(InventoryApiService);
+  private readonly router = inject(Router);
 
-  isFilterMenuOpen = false;
-  isSortMenuOpen = false;
-  isExportMenuOpen = false;
-  isEditModalOpen = false;
-  isAddModalOpen = false;
-  isDetailModalOpen = false;
-  isUploadingMaterialImage = false;
+  readonly materials = signal<InvMaterial[]>([]);
+  readonly types = signal<string[]>([]);
+  readonly loading = signal(false);
+  readonly error = signal('');
+  readonly toast = signal<{ text: string; error?: boolean } | null>(null);
 
-  currentPage = 1;
-  pageSize = 10;
+  search = '';
+  typeFilter = '';
+  groupFilter = '';
+  stockFilter = '';
+  includeHidden = false;
+  sortKey: keyof InvMaterial = 'code';
+  sortAsc = true;
+  readonly page = signal(1);
+  readonly pageSize = 15;
+  private readonly filterTick = signal(0);
 
-  editingMaterial: MaterialItem | null = null;
-  newMaterial: MaterialItem | null = null;
-  detailMaterial: MaterialItem | null = null;
+  readonly filtered = computed(() => {
+    this.filterTick();
+    const q = this.normalize(this.search);
+    const rows = this.materials().filter((m) =>
+      (!q || this.normalize(`${m.code} ${m.name} ${m.type}`).includes(q))
+      && (!this.typeFilter || m.type === this.typeFilter)
+      && (!this.groupFilter || m.group === this.groupFilter)
+      && (!this.stockFilter || m.stockStatus === this.stockFilter));
+    const key = this.sortKey;
+    return [...rows].sort((a, b) => {
+      const x = a[key] as any;
+      const y = b[key] as any;
+      const r = typeof x === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? ''), 'vi');
+      return this.sortAsc ? r : -r;
+    });
+  });
+  readonly paged = computed(() => this.filtered().slice((this.page() - 1) * this.pageSize, this.page() * this.pageSize));
+  readonly totalPages = computed(() => Math.max(1, Math.ceil(this.filtered().length / this.pageSize)));
+  readonly summary = computed(() => {
+    const all = this.materials();
+    return {
+      total: all.length,
+      out: all.filter((m) => m.stockStatus === 'out').length,
+      low: all.filter((m) => m.stockStatus === 'low').length,
+      damaged: all.filter((m) => m.damaged > 0).length,
+      reserved: all.filter((m) => m.reserved > 0).length,
+    };
+  });
 
-  colorOptions = [
-    'Màu đỏ',
-    'Màu trắng',
-    'Màu hồng',
-    'Màu vàng',
-    'Màu xanh',
-    'Màu tím'
-  ];
+  // Form thêm/sửa
+  readonly formOpen = signal(false);
+  readonly saving = signal(false);
+  readonly formError = signal('');
+  editingCode: string | null = null;
+  form: MaterialForm = { ...EMPTY_FORM };
 
-  unitOptions = [
-    'Bông',
-    'Bó',
-    'Cành',
-    'Cuộn',
-    'Miếng',
-    'Cái'
-  ];
-
-  statusOptions = [
-    'Còn hàng',
-    'Sắp hết hàng',
-    'Hết hàng',
-    'Tạm ngưng'
-  ];
-
-  materials: MaterialItem[] = [];
-  filteredMaterials: MaterialItem[] = [];
-  private pagedMaterialsValue: MaterialItem[] = [];
-  private pagesValue: Array<number | string> = [1];
-  private availableUnitOptionsValue: string[] = [];
-  private materialSearchIndex = new Map<string, MaterialSearchIndex>();
-
-  constructor(
-    private adminApi: AdminApiService,
-    private cdr: ChangeDetectorRef,
-    @Inject(PLATFORM_ID) private platformId: object
-  ) {}
+  // Chi tiết
+  readonly detail = signal<InvMaterialDetail | null>(null);
+  readonly detailLoading = signal(false);
+  damageForm = { sourceId: '', quantity: 0, note: '' };
 
   ngOnInit(): void {
-    if (isPlatformBrowser(this.platformId)) {
-      this.selectedUnit = this.allUnitsOption;
-      this.loadMaterials();
-    }
+    this.api.meta().subscribe({ next: (m) => this.types.set(m.materialTypes), error: () => {} });
+    this.load();
   }
 
-  private loadMaterials(): void {
-    this.adminApi.getMaterials().subscribe({
-      next: (response) => {
-        this.materials = response.materials.map((item) => ({
-          ...item,
-          selected: false
-        }));
-        this.rebuildMaterialCaches();
-        this.filteredMaterials = [...this.materials];
-        this.currentPage = 1;
-        this.rebuildPagedMaterials();
-        this.cdr.detectChanges();
+  load(): void {
+    this.loading.set(true);
+    this.error.set('');
+    this.api.materials({ includeHidden: this.includeHidden }).subscribe({
+      next: (res) => {
+        if (res.materials?.length && (res.materials[0] as any).available === undefined) {
+          this.error.set(inventoryErrorMessage({ status: 404, error: null }));
+        }
+        this.materials.set(res.materials);
+        if (res.types?.length) this.types.set(res.types);
+        this.loading.set(false);
+        if (this.page() > this.totalPages()) this.page.set(1);
       },
-      error: (error) => {
-        console.error('Cannot load admin materials', error);
-        this.materials = [];
-        this.filteredMaterials = [];
-        this.rebuildMaterialCaches();
-        this.rebuildPagedMaterials();
-        this.cdr.detectChanges();
-      }
+      error: (e) => { this.error.set(inventoryErrorMessage(e)); this.loading.set(false); },
     });
-  }
-
-  private createEmptyMaterial(id: number): MaterialItem {
-    return {
-      id,
-      code: `NVL${id.toString().padStart(4, '0')}`,
-      name: '',
-      image: '',
-      color: '',
-      unit: '',
-      quantity: 0,
-      importPrice: 0,
-      sellPrice: 0,
-      selected: false,
-      description: '',
-      status: ''
-    };
-  }
-
-  get totalPages(): number {
-    return Math.ceil(this.filteredMaterials.length / this.pageSize) || 1;
-  }
-
-  get pages(): (number | string)[] {
-    return this.pagesValue;
-  }
-
-  get pagedMaterials(): MaterialItem[] {
-    return this.pagedMaterialsValue;
-  }
-
-  private buildPages(total: number): Array<number | string> {
-    if (total <= 7) {
-      return Array.from({ length: total }, (_, index) => index + 1);
-    }
-
-    if (this.currentPage <= 4) {
-      return [1, 2, 3, 4, 5, '...', total];
-    }
-
-    if (this.currentPage >= total - 3) {
-      return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
-    }
-
-    return [1, '...', this.currentPage - 1, this.currentPage, this.currentPage + 1, '...', total];
-  }
-
-  private rebuildPagedMaterials(): void {
-    const total = this.totalPages;
-
-    if (this.currentPage > total) {
-      this.currentPage = total;
-    }
-
-    if (this.currentPage < 1) {
-      this.currentPage = 1;
-    }
-
-    const start = (this.currentPage - 1) * this.pageSize;
-    this.pagedMaterialsValue = this.filteredMaterials.slice(start, start + this.pageSize);
-    this.pagesValue = this.buildPages(total);
-  }
-
-  private normalizeFilterValue(value: string): string {
-    return this.removeVietnameseTones(String(value || '').trim().toLowerCase());
-  }
-
-  get availableUnitOptions(): string[] {
-    return this.availableUnitOptionsValue;
-  }
-
-  private rebuildMaterialCaches(): void {
-    const units = new Set<string>();
-    this.materialSearchIndex.clear();
-
-    this.materials.forEach((item) => {
-      const unit = item.unit?.trim();
-      if (unit) {
-        units.add(unit);
-      }
-
-      this.materialSearchIndex.set(item.code, {
-        name: this.normalizeFilterValue(item.name),
-        code: this.normalizeFilterValue(item.code),
-        unit: this.normalizeFilterValue(item.unit),
-        importPrice: this.formatPrice(item.importPrice),
-        sellPrice: this.formatPrice(item.sellPrice),
-        quantity: item.quantity.toString()
-      });
-    });
-
-    this.availableUnitOptionsValue = Array.from(units).sort((a, b) => a.localeCompare(b, 'vi'));
   }
 
   applyFilters(): void {
-    const keyword = this.removeVietnameseTones(this.searchKeyword.trim().toLowerCase());
-    const selectedUnit = this.normalizeFilterValue(this.selectedUnit);
-    const isAllUnits = this.selectedUnit === this.allUnitsOption;
-
-    this.filteredMaterials = this.materials.filter((item) => {
-      const index = this.materialSearchIndex.get(item.code);
-
-      const matchesKeyword =
-        !keyword ||
-        Boolean(index && (
-          index.name.includes(keyword) ||
-          index.code.includes(keyword) ||
-          index.unit.includes(keyword) ||
-          index.importPrice.includes(keyword) ||
-          index.sellPrice.includes(keyword) ||
-          index.quantity.includes(keyword)
-        ));
-
-      const matchesUnit = isAllUnits || index?.unit === selectedUnit;
-
-      return matchesKeyword && matchesUnit;
-    });
-
-    this.currentPage = 1;
-    this.rebuildPagedMaterials();
+    this.page.set(1);
+    this.filterTick.update((x) => x + 1);
   }
 
-  onUnitFilterChange(): void {
-    this.applyFilters();
-    this.isFilterMenuOpen = false;
+  sortBy(key: keyof InvMaterial): void {
+    this.sortAsc = this.sortKey === key ? !this.sortAsc : true;
+    this.sortKey = key;
+    this.filterTick.update((x) => x + 1);
   }
 
-  sortMaterials(field: string): void {
-    this.filteredMaterials.sort((a, b) => {
-      if (field === 'name') {
-        return a.name.localeCompare(b.name, 'vi');
-      }
-
-      if (field === 'code') {
-        return a.code.localeCompare(b.code, 'vi');
-      }
-
-      if (field === 'quantity') {
-        return b.quantity - a.quantity;
-      }
-
-      if (field === 'importPrice') {
-        return b.importPrice - a.importPrice;
-      }
-
-      if (field === 'sellPrice') {
-        return b.sellPrice - a.sellPrice;
-      }
-
-      return 0;
-    });
-
-    this.isSortMenuOpen = false;
-    this.rebuildPagedMaterials();
+  /* ---------- Thêm / sửa ---------- */
+  openCreate(): void {
+    this.editingCode = null;
+    this.form = { ...EMPTY_FORM };
+    this.formError.set('');
+    this.formOpen.set(true);
   }
 
-  toggleFilterMenu(): void {
-    this.isFilterMenuOpen = !this.isFilterMenuOpen;
-    this.isSortMenuOpen = false;
-    this.isExportMenuOpen = false;
+  openEdit(m: InvMaterial): void {
+    this.editingCode = m.code;
+    this.form = { ...m };
+    this.formError.set('');
+    this.formOpen.set(true);
   }
 
-  toggleSortMenu(): void {
-    this.isSortMenuOpen = !this.isSortMenuOpen;
-    this.isFilterMenuOpen = false;
-    this.isExportMenuOpen = false;
+  onGroupChange(): void {
+    if (this.form.group === 'DE_HU' && !this.form.shelfDays) this.form.shelfDays = 5;
   }
 
-  toggleExportMenu(): void {
-    this.isExportMenuOpen = !this.isExportMenuOpen;
-    this.isFilterMenuOpen = false;
-    this.isSortMenuOpen = false;
-  }
-
-  toggleSelectAll(event: Event): void {
-    const input = event.target as HTMLInputElement;
-
-    this.pagedMaterials.forEach((item) => {
-      item.selected = input.checked;
+  uploadImage(event: Event): void {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    this.api.uploadMaterialImage(file).subscribe({
+      next: (url) => { this.form = { ...this.form, image: url }; this.notify('Đã tải ảnh lên.'); },
+      error: (e) => this.notify(inventoryErrorMessage(e), true),
     });
   }
 
-  isAllSelected(): boolean {
-    return this.pagedMaterials.length > 0 &&
-      this.pagedMaterials.every((item) => item.selected);
-  }
-
-  openAddModal(): void {
-    const nextId = this.materials.length > 0
-      ? Math.max(...this.materials.map((item) => item.id)) + 1
-      : 1;
-
-    this.isFilterMenuOpen = false;
-    this.isSortMenuOpen = false;
-    this.isExportMenuOpen = false;
-    this.isEditModalOpen = false;
-    this.isDetailModalOpen = false;
-    this.editingMaterial = null;
-    this.detailMaterial = null;
-    this.newMaterial = this.createEmptyMaterial(nextId);
-    this.isAddModalOpen = true;
-  }
-
-  saveNewMaterial(): void {
-    if (!this.newMaterial) {
+  save(): void {
+    if (!this.form.name?.trim() || !this.form.unit?.trim()) {
+      this.formError.set('Tên NVL và đơn vị tính là bắt buộc.');
       return;
     }
-
-    if (!this.newMaterial.name.trim()) {
-      alert('Vui lòng nhập tên nguyên vật liệu.');
+    if (Number(this.form.maxLevel || 0) > 0 && Number(this.form.maxLevel) < Number(this.form.threshold || 0)) {
+      this.formError.set('Ngưỡng tối đa phải ≥ ngưỡng cảnh báo.');
       return;
     }
-
-    if (!this.newMaterial.unit.trim()) {
-      alert('Vui lòng nhập đơn vị tính.');
-      return;
-    }
-
-    this.adminApi.createMaterial({
-      name: this.newMaterial.name.trim(),
-      unit: this.newMaterial.unit.trim(),
-      quantity: Number(this.newMaterial.quantity || 0),
-      importPrice: Number(this.newMaterial.importPrice || 0),
-      sellPrice: Number(this.newMaterial.sellPrice || 0),
-      description: this.newMaterial.description || '',
-      image: this.newMaterial.image || ''
-    }).subscribe({
-      next: () => {
-        this.closeAddModal();
-        this.loadMaterials();
-      },
-      error: (error) => {
-        console.error('Cannot create material', error);
-        alert('Không thể thêm nguyên vật liệu. Vui lòng thử lại.');
-      }
-    });
-  }
-
-  closeAddModal(): void {
-    this.isAddModalOpen = false;
-    this.newMaterial = null;
-  }
-
-  closeAddModalFromBackdrop(event: MouseEvent): void {
-    if (event.target === event.currentTarget) {
-      this.closeAddModal();
-    }
-  }
-
-  openDetailModal(material: MaterialItem): void {
-    this.detailMaterial = { ...material };
-    this.isDetailModalOpen = true;
-    this.isAddModalOpen = false;
-    this.isEditModalOpen = false;
-    this.newMaterial = null;
-    this.editingMaterial = null;
-  }
-
-  closeDetailModal(): void {
-    this.isDetailModalOpen = false;
-    this.detailMaterial = null;
-  }
-
-  closeDetailModalFromBackdrop(event: MouseEvent): void {
-    if (event.target === event.currentTarget) {
-      this.closeDetailModal();
-    }
-  }
-
-  editMaterial(material: MaterialItem): void {
-    this.editingMaterial = {
-      ...material,
-      description: material.description || '',
-      color: material.color || '',
-      status: material.status || ''
+    const body: MaterialForm = {
+      code: this.editingCode ? undefined : (this.form.code || undefined),
+      name: this.form.name, unit: this.form.unit, group: this.form.group, type: this.form.type,
+      importPrice: Number(this.form.importPrice || 0), sellPrice: Number(this.form.sellPrice || 0),
+      threshold: Number(this.form.threshold || 0), maxLevel: Number(this.form.maxLevel || 0),
+      shelfDays: this.form.shelfDays === null || (this.form.shelfDays as any) === '' ? null : Number(this.form.shelfDays),
+      substitutionGroup: this.form.substitutionGroup || '', purchaseUnit: this.form.purchaseUnit || '',
+      conversionRate: Number(this.form.conversionRate || 1), description: this.form.description || '', image: this.form.image || '',
     };
-
-    this.isEditModalOpen = true;
-    this.isAddModalOpen = false;
-    this.isDetailModalOpen = false;
-    this.detailMaterial = null;
-  }
-
-  saveMaterial(): void {
-    if (!this.editingMaterial) {
-      return;
-    }
-
-    if (!this.editingMaterial.name.trim()) {
-      alert('Vui lòng nhập tên nguyên vật liệu.');
-      return;
-    }
-
-    if (!this.editingMaterial.unit.trim()) {
-      alert('Vui lòng nhập đơn vị tính.');
-      return;
-    }
-
-    this.adminApi.updateMaterial(this.editingMaterial.code, {
-      name: this.editingMaterial.name.trim(),
-      unit: this.editingMaterial.unit.trim(),
-      quantity: Number(this.editingMaterial.quantity || 0),
-      importPrice: Number(this.editingMaterial.importPrice || 0),
-      sellPrice: Number(this.editingMaterial.sellPrice || 0),
-      description: this.editingMaterial.description || '',
-      image: this.editingMaterial.image || ''
-    }).subscribe({
+    this.saving.set(true);
+    const req = this.editingCode ? this.api.updateMaterial(this.editingCode, body) : this.api.createMaterial(body);
+    req.subscribe({
       next: () => {
-        this.closeEditModal();
-        this.loadMaterials();
+        this.saving.set(false);
+        this.formOpen.set(false);
+        this.notify(this.editingCode ? 'Đã cập nhật NVL.' : 'Đã thêm NVL. Nhập tồn đầu kỳ bằng phiếu nhập.');
+        this.load();
+        if (this.detail()) this.openDetail(this.detail()!.material.code);
       },
-      error: (error) => {
-        console.error('Cannot update material', error);
-        alert('Không thể lưu nguyên vật liệu. Vui lòng thử lại.');
-      }
+      error: (e) => { this.saving.set(false); this.formError.set(inventoryErrorMessage(e)); },
     });
   }
 
-  closeEditModal(): void {
-    this.isEditModalOpen = false;
-    this.editingMaterial = null;
-  }
-
-  closeEditModalFromBackdrop(event: MouseEvent): void {
-    if (event.target === event.currentTarget) {
-      this.closeEditModal();
+  toggleActive(m: InvMaterial): void {
+    if (m.active) {
+      if (!confirm(`Ngừng sử dụng / xóa NVL ${m.name}? NVL đã có giao dịch hoặc nằm trong BOM sẽ chỉ bị ẩn.`)) return;
+      this.api.deleteMaterial(m.code).subscribe({
+        next: (r) => { this.notify(r.message || (r.deleted ? 'Đã xóa NVL.' : 'Đã ẩn NVL.')); this.detail.set(null); this.load(); },
+        error: (e) => this.notify(inventoryErrorMessage(e), true),
+      });
+    } else {
+      this.api.updateMaterial(m.code, { active: true }).subscribe({
+        next: () => { this.notify('Đã kích hoạt lại NVL.'); this.load(); this.openDetail(m.code); },
+        error: (e) => this.notify(inventoryErrorMessage(e), true),
+      });
     }
   }
 
-  selectMaterialImage(material: MaterialItem | null): void {
-    if (!material || this.isUploadingMaterialImage) {
-      return;
-    }
-
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/jpeg,image/png,image/webp,image/gif';
-    input.onchange = () => {
-      const file = input.files?.[0];
-
-      if (!file) {
-        return;
-      }
-
-      this.uploadMaterialImageFile(file, material);
-    };
-    input.click();
-  }
-
-  private uploadMaterialImageFile(file: File, material: MaterialItem): void {
-    this.isUploadingMaterialImage = true;
-    this.adminApi.uploadMaterialImage(file).subscribe({
-      next: (response) => {
-        material.image = response.imageUrl;
-        this.isUploadingMaterialImage = false;
-        this.cdr.detectChanges();
-      },
-      error: (error) => {
-        console.error('Cannot upload material image', error);
-        alert('Không thể tải ảnh lên. Vui lòng chọn ảnh JPG, PNG, WEBP hoặc GIF dưới 5MB.');
-        this.isUploadingMaterialImage = false;
-        this.cdr.detectChanges();
-      }
+  /* ---------- Chi tiết ---------- */
+  openDetail(code: string): void {
+    this.detailLoading.set(true);
+    this.damageForm = { sourceId: '', quantity: 0, note: '' };
+    this.api.materialDetail(code).subscribe({
+      next: (d) => { this.detail.set(d); this.detailLoading.set(false); },
+      error: (e) => { this.detailLoading.set(false); this.notify(inventoryErrorMessage(e), true); },
     });
   }
 
-  onMaterialImageError(event: Event): void {
-    const image = event.target as HTMLImageElement;
-    image.style.display = 'none';
-  }
-
-  deleteMaterial(material: MaterialItem): void {
-    if (!confirm('Bạn có chắc muốn xóa nguyên vật liệu này?')) {
-      return;
-    }
-
-    this.adminApi.deleteMaterial(material.code).subscribe({
-      next: () => {
-        this.materials = this.materials.filter((item) => item.code !== material.code);
-        this.rebuildMaterialCaches();
-        this.applyFilters();
-      },
-      error: (error) => {
-        console.error('Cannot delete material', error);
-        alert('Không thể xóa nguyên vật liệu này. Có thể đang được dùng trong phiếu nhập/xuất.');
-      }
+  markDamaged(): void {
+    const d = this.detail();
+    if (!d) return;
+    const qty = Number(this.damageForm.quantity);
+    if (!(qty > 0)) { this.notify('Nhập số lượng không đạt > 0.', true); return; }
+    this.api.markDamaged(d.material.code, { quantity: qty, sourceId: this.damageForm.sourceId || undefined, note: this.damageForm.note }).subscribe({
+      next: () => { this.notify(`Đã chuyển ${qty} ${d.material.unit} sang "Không đạt". Lập phiếu xuất "Xuất hủy NVL cách ly" khi hủy.`); this.openDetail(d.material.code); this.load(); },
+      error: (e) => this.notify(inventoryErrorMessage(e), true),
     });
   }
 
-  previousPage(): void {
-    if (this.currentPage > 1) {
-      this.currentPage--;
-      this.rebuildPagedMaterials();
-    }
+  goImport(code: string): void {
+    this.router.navigate(['/materials/imports'], { queryParams: { new: 1, material: code } });
   }
 
-  nextPage(): void {
-    if (this.currentPage < this.totalPages) {
-      this.currentPage++;
-      this.rebuildPagedMaterials();
-    }
+  /* ---------- Xuất CSV ---------- */
+  exportCsv(): void {
+    const header = ['Mã', 'Tên', 'Loại', 'Nhóm', 'ĐVT', 'Tồn thực', 'Đang giữ', 'Không đạt', 'Khả dụng', 'Ngưỡng cảnh báo', 'Ngưỡng tối đa', 'Trạng thái', 'Giá vốn BQ'];
+    const rows = this.filtered().map((m) => [m.code, m.name, m.type, this.groupLabel(m.group), m.unit, m.onHand, m.reserved, m.damaged, m.available, m.threshold, m.maxLevel, m.status, m.averageCost]);
+    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `ton-kho-nvl-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
-  goToPage(page: number | string): void {
-    if (typeof page !== 'number') {
-      return;
-    }
-
-    this.currentPage = page;
-    this.rebuildPagedMaterials();
+  /* ---------- helpers ---------- */
+  groupLabel(g: string): string { return g === 'DE_HU' ? 'Dễ hư (FIFO)' : 'Ít hư (tồn tổng)'; }
+  barWidth(m: InvMaterial, part: 'avail' | 'held' | 'bad'): number {
+    const total = Math.max(m.onHand, 1);
+    const v = part === 'avail' ? m.available : part === 'held' ? m.reserved : m.damaged;
+    return Math.max(0, Math.min(100, (v / total) * 100));
   }
-
-  formatPrice(value: number): string {
-    return value.toLocaleString('vi-VN') + 'đ';
+  movementLabel(type: string): string {
+    return ({ NHAP: 'Nhập kho', XUAT: 'Xuất kho', GIU: 'Giữ tồn', NHA_GIU: 'Nhả giữ', KET_THUC_GIU: 'Kết thúc giữ', DANH_DAU_KHONG_DAT: 'Đánh dấu không đạt', XUAT_HUY: 'Xuất hủy/hao hụt' } as Record<string, string>)[type] || type;
   }
-
-  removeVietnameseTones(value: string): string {
-    return value
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/đ/g, 'd')
-      .replace(/Đ/g, 'D');
+  notify(text: string, error = false): void {
+    this.toast.set({ text, error });
+    setTimeout(() => this.toast.set(null), error ? 6000 : 3500);
   }
-
-  trackByMaterialCode(_index: number, item: MaterialItem): string {
-    return item.code;
-  }
-
-  trackByPage(_index: number, page: number | string): number | string {
-    return page;
-  }
-
-  trackByText(_index: number, value: string): string {
-    return value;
+  private normalize(v: string): string {
+    return (v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().trim();
   }
 }
