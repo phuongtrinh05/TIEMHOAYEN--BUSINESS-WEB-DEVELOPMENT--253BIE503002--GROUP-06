@@ -1,3 +1,4 @@
+import { endCustomerOrderSession } from '../../services/api-config';
 import {
   Component,
   HostListener,
@@ -1622,6 +1623,7 @@ export class PageHeader implements OnInit, OnDestroy {
 
   logout() {
     if (this.isBrowser()) {
+      endCustomerOrderSession();
       localStorage.removeItem('khachHang');
       localStorage.removeItem('token');
       sessionStorage.removeItem('tiemHoaYenSessionAuth');

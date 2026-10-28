@@ -129,6 +129,7 @@ export class OrderService {
   constructor(private http: HttpClient, private salesChat: SalesChatService, private access: OrderAccessService, private router: Router) {}
 
   createOrder(payload: CreateOrderPayload): Observable<CreateOrderResponse> {
+    if (!payload.customerId && this.access.session?.authType === 'member') payload = { ...payload, customerId: this.access.session.customerId! };
     const fingerprint = JSON.stringify(payload);
     let pending: { fingerprint: string; key: string } | null = null;
     try { pending = JSON.parse(sessionStorage.getItem('pendingOrderSession') || 'null'); } catch {}
@@ -141,7 +142,8 @@ export class OrderService {
       if (result.kind !== 'sales_request') sessionStorage.removeItem('pendingOrderSession');
       if (result.kind === 'sales_request') {
         const phone = String(payload.sender.phone || '').replace(/\D/g, '').replace(/^84/, '0');
-        if (this.access.session?.phone !== phone) {
+        const member = payload.customerId && this.access.session?.authType === 'member' && this.access.session.customerId === payload.customerId;
+        if (!member && this.access.session?.phone !== phone) {
           this.access.logout();
           sessionStorage.setItem('pendingSalesLookup', JSON.stringify({ requestId: result.requestId, phone }));
           this.salesChat.assistant();

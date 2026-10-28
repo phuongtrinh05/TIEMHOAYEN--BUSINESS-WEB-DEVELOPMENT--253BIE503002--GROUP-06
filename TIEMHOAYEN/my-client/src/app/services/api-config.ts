@@ -23,10 +23,21 @@ export const apiEndpointInterceptor: HttpInterceptorFn = (request, next) => {
   return next(target);
 };
 
-export function orderAccessSession(): { accessToken: string; phone: string; expiresAt: string; accountKey: string } | null {
+export function currentOrderAccountKey(): string {
+  try { return JSON.parse(localStorage.getItem('khachHang') || 'null')?.KHACH_HANG_ID || ''; } catch { return ''; }
+}
+export function endCustomerOrderSession() {
+  const token = orderAccessSession()?.accessToken;
+  sessionStorage.removeItem('orderLookupAccess');
+  sessionStorage.removeItem('tiemHoaYenActiveSalesChat');
+  sessionStorage.removeItem('pendingSalesLookup');
+  if (token) void fetch(`${apiBaseUrl()}/orders/lookup/logout`, { method: 'POST', headers: { 'x-order-access': token } }).catch(() => {});
+}
+export function orderAccessSession(): { accessToken: string; phone: string; expiresAt: string; accountKey: string; authType?: string; customerId?: string } | null {
   try {
     const value = JSON.parse(sessionStorage.getItem('orderLookupAccess') || 'null');
-    if (value && /^oa_[a-f0-9]{64}$/.test(value.accessToken) && new Date(value.expiresAt).getTime() > Date.now() && value.accountKey === (localStorage.getItem('khachHang') || '')) return value;
+    const accountKey = currentOrderAccountKey();
+    if (value && /^oa_[a-f0-9]{64}$/.test(value.accessToken) && new Date(value.expiresAt).getTime() > Date.now() && value.accountKey === accountKey && (!accountKey || value.authType === 'member' && value.customerId === accountKey)) return value;
     sessionStorage.removeItem('orderLookupAccess');
   } catch {}
   return null;

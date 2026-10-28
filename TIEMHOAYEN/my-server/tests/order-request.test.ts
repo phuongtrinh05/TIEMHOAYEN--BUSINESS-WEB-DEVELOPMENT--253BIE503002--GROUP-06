@@ -374,4 +374,33 @@ if (!uri) {
     try {await assert.rejects(access.requestOrderOtp('0900111226','test-prod'),/chưa được cấu hình/);} finally { if(old===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=old; }
   });
 
+  test('member login opens only account-owned orders and requests without lookup OTP', async()=>{
+    const express=(await import('express')).default;const app=express();app.use(express.json());app.use('/api/customers',(await import('../routes/customer.js')).default);app.use('/api/orders',(await import('../routes/order.js')).default);
+    const customers=await mongo.getCollection<any>('KHACH_HANG');
+    await customers.insertMany([{KHACH_HANG_ID:'MEMBER_A',SDT:'0900555001',MAT_KHAU:'LocalTestOnly!1',TEN:'Member A',TRANG_THAI:'Hoạt động'},{KHACH_HANG_ID:'MEMBER_B',SDT:'0900555002',MAT_KHAU:'LocalTestOnly!2',TEN:'Member B',TRANG_THAI:'Hoạt động'}]);
+    await (await mongo.getCollection<any>('DON_HANG')).insertMany([{DON_HANG_ID:'MEMBER_ORDER_A',KHACH_HANG_ID:'MEMBER_A',SDT_NGUOI_DAT:'0900555002',TONG_TIEN:300000},{DON_HANG_ID:'MEMBER_ORDER_B',KHACH_HANG_ID:'MEMBER_B',SDT_NGUOI_DAT:'0900555001',TONG_TIEN:400000}]);
+    await (await mongo.getCollection<any>(service.REQUESTS)).insertMany([{_id:'MEMBER_REQ_A',requestId:'MEMBER_REQ_A',customerId:'MEMBER_A',sender:{phone:'0900555002'},status:service.REQUEST_STATUS.waiting},{_id:'MEMBER_REQ_B',requestId:'MEMBER_REQ_B',customerId:'MEMBER_B',sender:{phone:'0900555001'},status:service.REQUEST_STATUS.waiting}]);
+    const listener=await new Promise<any>(resolve=>{const server=app.listen(0,'127.0.0.1',()=>resolve(server));});const base='http://127.0.0.1:'+listener.address().port+'/api';
+    const post=async(path:string,body:any,headers:any={})=>fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});
+    try {
+      const otpBefore=await (await mongo.getCollection<any>('XAC_THUC_TRA_CUU_DON')).countDocuments({kind:'otp'});
+      assert.equal((await post('/customers/login',{SDT:'0900555001',MAT_KHAU:'wrong'})).status,401);
+      const response=await post('/customers/login',{SDT:'0900555001',MAT_KHAU:'LocalTestOnly!1'});assert.equal(response.status,200);const auth=await response.json() as any;
+      assert.equal(auth.customer.MAT_KHAU,undefined);assert.equal(auth.orderAccess.authType,'member');
+      const headers={'x-order-access':auth.token};const history=await (await fetch(base+'/orders/lookup',{headers})).json() as any;
+      assert.deepEqual(history.orders.map((o:any)=>o.DON_HANG_ID),['MEMBER_ORDER_A']);assert.deepEqual(history.requests.map((r:any)=>r.requestId),['MEMBER_REQ_A']);
+      assert.equal((await fetch(base+'/orders/requests/MEMBER_REQ_A',{headers})).status,200);
+      assert.equal((await fetch(base+'/orders/requests/MEMBER_REQ_B',{headers})).status,404);
+      assert.equal((await fetch(base+'/orders/MEMBER_ORDER_B/detail',{headers})).status,404);
+      assert.equal((await fetch(base+'/customers/MEMBER_A/orders',{headers})).status,200);assert.equal((await fetch(base+'/customers/MEMBER_B/orders',{headers})).status,404);
+      assert.equal((await post('/orders',{customerId:'MEMBER_B'},headers)).status,403);
+      assert.equal((await fetch(base+'/orders/lookup',{headers:{'x-customer-id':'MEMBER_A'}})).status,401);
+      assert.equal(await (await mongo.getCollection<any>('XAC_THUC_TRA_CUU_DON')).countDocuments({kind:'otp'}),otpBefore);
+      await post('/orders/lookup/logout',{},headers);assert.equal((await fetch(base+'/orders/lookup',{headers})).status,401);
+      const second=await (await post('/customers/login',{SDT:'0900555001',MAT_KHAU:'LocalTestOnly!1'})).json() as any;
+      await customers.updateOne({KHACH_HANG_ID:'MEMBER_A'},{$set:{TRANG_THAI:'Bị khóa'}});
+      assert.equal((await fetch(base+'/orders/lookup',{headers:{'x-order-access':second.token}})).status,401);
+    } finally {await new Promise<void>((resolve,reject)=>listener.close((e:any)=>e?reject(e):resolve()));}
+  });
+
 }

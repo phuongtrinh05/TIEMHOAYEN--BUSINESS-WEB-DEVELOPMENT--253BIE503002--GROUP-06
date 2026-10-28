@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId } from '../mongo.js';
 import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordHash.js';
+import { createCustomerOrderAccess } from '../services/order-access.service.js';
 
 const otpStore = new Map<string, string>();
 
@@ -158,6 +159,7 @@ export const loginCustomer = async (req: Request, res: Response) => {
     if (!isValidPassword) {
       return res.status(401).json({ message: 'Mật khẩu không chính xác.' });
     }
+    if (!isActiveRow(customer) || /khóa|ngừng|inactive/i.test(String(customer.TRANG_THAI || ''))) return res.status(403).json({ message: 'Tài khoản không còn hoạt động.' });
 
     if (!isPasswordHash(customer.MAT_KHAU)) {
       await customerCollection.updateOne(
@@ -166,8 +168,9 @@ export const loginCustomer = async (req: Request, res: Response) => {
       );
     }
 
+    const orderAccess = await createCustomerOrderAccess(customer);
     return res.status(200).json({
-      message: 'Đăng nhập thành công.',
+      message: 'Đăng nhập thành công.', token: orderAccess.accessToken, orderAccess,
       customer: sanitizeCustomer(customer),
     });
   } catch (error: any) {

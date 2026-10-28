@@ -4,12 +4,16 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { OrderAccessService } from '../../../services/order-access.service';
 import { OrderService } from '../../../services/order.service';
+import { currentOrderAccountKey } from '../../../services/api-config';
 
 @Component({ selector: 'app-request-history', standalone: true, imports: [CommonModule, FormsModule, RouterLink],
   template: `<main><a routerLink="/">Trang chủ</a><h1>Tra cứu đơn hàng và yêu cầu tư vấn</h1>
     @if (error) { <p class="error" role="alert">{{error}}</p> }
-    @if (pendingRequestId && !access.session) { <section role="status"><strong>Shop đã nhận yêu cầu {{pendingRequestId}}.</strong><p>Yêu cầu chưa phải đơn đã xác nhận; bạn chưa cần thanh toán. Xác minh SĐT người đặt bên dưới để mở cuộc tư vấn với nhân viên.</p></section> }
+    @if (pendingRequestId && !access.session && !hasAccount) { <section role="status"><strong>Shop đã nhận yêu cầu {{pendingRequestId}}.</strong><p>Yêu cầu chưa phải đơn đã xác nhận; bạn chưa cần thanh toán. Xác minh SĐT người đặt bên dưới để mở cuộc tư vấn với nhân viên.</p></section> }
     @if (!access.session) {
+      @if (hasAccount) {
+        <section><h2>Đăng nhập lại để xem đơn hàng</h2><p>Phiên đăng nhập đã hết hạn hoặc được tạo từ phiên bản cũ. Khách có tài khoản không cần OTP tra cứu; hãy đăng nhập lại để xem đơn và yêu cầu của mình.</p><a routerLink="/login">Đăng nhập</a></section>
+      } @else {
       <section><h2>Xác minh số điện thoại người đặt</h2><p>Nhập số điện thoại đã dùng khi đặt hoa. Xác nhận OTP trước khi xem đơn hoặc nội dung tư vấn.</p>
       <label>Số điện thoại người đặt<input type="tel" autocomplete="tel" [(ngModel)]="phone" [disabled]="!!challengeId" placeholder="Nhập số điện thoại đã đặt hoa"></label>
       @if (!challengeId) { <button (click)="sendOtp()" [disabled]="busy || !phone.trim()">{{busy ? 'Đang gửi…' : 'Gửi mã OTP'}}</button> }
@@ -19,8 +23,9 @@ import { OrderService } from '../../../services/order.service';
         <button class="secondary" (click)="sendOtp()" [disabled]="busy || resendSeconds>0">{{resendSeconds>0 ? 'Gửi lại sau '+resendSeconds+' giây' : 'Gửi lại mã'}}</button>
         <button class="secondary" (click)="changePhone()" [disabled]="busy">Đổi số điện thoại</button>
       }</section>
+      }
     } @else {
-      <div class="toolbar"><p>Đã xác minh: {{access.session?.phone}} · Phiên tra cứu có hạn 30 phút.</p><button class="secondary" (click)="end()">Kết thúc tra cứu / Đổi số</button><button (click)="load()" [disabled]="busy">Cập nhật</button></div>
+      <div class="toolbar"><p>{{access.session?.authType==='member' ? 'Đơn hàng và yêu cầu của tài khoản đang đăng nhập.' : 'Đã xác minh: '+access.session?.phone+' · Phiên tra cứu có hạn 30 phút.'}}</p>@if(access.session?.authType!=='member') { <button class="secondary" (click)="end()">Kết thúc tra cứu / Đổi số</button> }<button (click)="load()" [disabled]="busy">Cập nhật</button></div>
       <h2>Yêu cầu tư vấn</h2>
       @for(r of requests; track r.requestId) { <section><strong>{{r.requestId}}</strong><span class="badge">{{r.status}}</span>@for(i of r.items; track i.productId) { <p>{{i.name}} × {{i.quantity}}</p> }<p>Giao dự kiến: {{r.delivery?.date}} · {{r.delivery?.time}}</p><button (click)="open(r)">Xem yêu cầu / Trao đổi với shop</button></section> }
       @if(!busy && !requests.length) { <p>Chưa có yêu cầu tư vấn cho số điện thoại này.</p> }
@@ -36,6 +41,7 @@ export class RequestHistory implements OnInit, OnDestroy {
   requests: any[] = []; orders: any[] = []; phone = ''; code = ''; challengeId = ''; error = ''; notice = ''; busy = false; resendAt = 0; now = Date.now(); page = 1; total = 0;
   private timer?: ReturnType<typeof setInterval>;
   pendingRequestId = '';
+  get hasAccount() { return !!currentOrderAccountKey(); }
   get validCode() { return /^\d{6}$/.test(this.code); }
   get resendSeconds() { return Math.max(0, Math.ceil((this.resendAt-this.now)/1000)); }
   ngOnInit() {

@@ -8,6 +8,7 @@ import { syncCheckoutInventory } from '../services/checkout-payment.service.js';
 import { confirmReservations, releaseReservations, reserveProducts } from '../services/inventory/stock.service.js';
 import { randomUUID } from 'node:crypto';
 import { reserveOrderLines } from '../services/order-stock.service.js';
+import { lookupAccess } from '../services/order-access.service.js';
 
 interface CreateOrderItem {
   id: string;
@@ -279,6 +280,10 @@ export const createOrder = async (req: Request, res: Response) => {
   try {
     const { customerId, receiver, sender, delivery, items, voucher, summary, payment, flags } = req.body;
     const normalizedCustomerId = customerId ? String(customerId) : null;
+    if (normalizedCustomerId) {
+      const access = await lookupAccess(req.headers?.['x-order-access']);
+      if (access.authType !== 'member' || access.customerId !== normalizedCustomerId) throw new InventoryError(403, 'Bạn chỉ được đặt hàng cho tài khoản đang đăng nhập.');
+    }
 
     if (!receiver?.name || !receiver?.phone || !receiver?.address) {
       return res.status(400).json({ message: 'Thiếu thông tin người nhận.' });

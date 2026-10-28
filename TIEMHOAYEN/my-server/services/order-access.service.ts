@@ -63,14 +63,29 @@ export async function verifyOrderOtp(challengeId: unknown, code: unknown) {
   return { accessToken: token, phone: row.phone, expiresAt };
 }
 export async function lookupAccess(token: unknown, session?: ClientSession) {
-  if (!/^oa_[a-f0-9]{64}$/.test(String(token))) throw new InventoryError(401, 'Vui lòng xác minh số điện thoại bằng OTP trước khi xem đơn.');
+  if (!/^oa_[a-f0-9]{64}$/.test(String(token))) throw new InventoryError(401, 'Vui lòng đăng nhập; khách vãng lai cần xác minh SĐT bằng OTP để xem đơn.');
   const row = await (await getCollection<any>(ACCESS)).findOne({ _id: hash(String(token)), kind: 'lookup', expiresAt: { $gt: new Date() } }, { session });
-  if (!row) throw new InventoryError(401, 'Phiên tra cứu đã hết hạn. Vui lòng xác minh lại số điện thoại.');
+  if (!row) throw new InventoryError(401, 'Phiên truy cập đã hết hạn. Vui lòng đăng nhập lại hoặc xác minh OTP nếu là khách vãng lai.');
+  if (row.authType === 'member') {
+    const customer = await (await getCollection<any>('KHACH_HANG')).findOne({ KHACH_HANG_ID: row.customerId }, { session });
+    if (!customer || customer.DA_XOA === true || customer.DA_XOA === 1 || /khóa|ngừng|inactive/i.test(String(customer.TRANG_THAI || ''))) throw new InventoryError(401, 'Phiên đăng nhập không còn hiệu lực. Vui lòng đăng nhập lại.');
+  }
   return row;
+}
+export async function createCustomerOrderAccess(customer: any) {
+  const accessToken = `oa_${randomBytes(32).toString('hex')}`;
+  const expiresAt = new Date(Date.now() + 8 * 3600000);
+  const phone = normalizeOrderPhone(customer.SDT);
+  await (await getCollection<any>(ACCESS)).insertOne({ _id: hash(accessToken), kind: 'lookup', authType: 'member', customerId: customer.KHACH_HANG_ID, phone, expiresAt, createdAt: new Date() });
+  return { accessToken, expiresAt, phone, authType: 'member', customerId: customer.KHACH_HANG_ID };
+}
+export const ownedRequestQuery = (access: any) => access.authType === 'member' ? { customerId: access.customerId } : { 'sender.phone': phonePattern(access.phone) };
+export async function ownedOrderQuery(access: any) {
+  return access.authType === 'member' ? { KHACH_HANG_ID: access.customerId } : orderPhoneQuery(access.phone);
 }
 export async function requestByVerifiedPhone(id: string, token: string, session?: ClientSession) {
   const access = await lookupAccess(token, session);
-  const row = await (await getCollection<any>('YEU_CAU_DAT_HANG')).findOne({ _id: id, 'sender.phone': phonePattern(access.phone) }, { session });
+  const row = await (await getCollection<any>('YEU_CAU_DAT_HANG')).findOne({ _id: id, ...ownedRequestQuery(access) }, { session });
   if (!row) throw new InventoryError(404, 'Không tìm thấy yêu cầu trong phạm vi được phép.');
   return row;
 }
@@ -80,7 +95,7 @@ export async function orderPhoneQuery(phone: string) {
 }
 export async function authorizeOrder(id: string, token: string) {
   const access = await lookupAccess(token);
-  const order = await (await getCollection<any>('DON_HANG')).findOne({ DON_HANG_ID: id, ...await orderPhoneQuery(access.phone) });
+  const order = await (await getCollection<any>('DON_HANG')).findOne({ DON_HANG_ID: id, ...await ownedOrderQuery(access) });
   if (!order) throw new InventoryError(404, 'Không tìm thấy đơn trong phạm vi được phép.');
   return access;
 }

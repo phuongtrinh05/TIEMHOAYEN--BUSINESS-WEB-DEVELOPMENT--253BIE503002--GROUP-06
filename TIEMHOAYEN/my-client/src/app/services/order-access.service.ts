@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { apiBaseUrl, orderAccessSession } from './api-config';
+import { apiBaseUrl, currentOrderAccountKey, orderAccessSession } from './api-config';
 import { tap } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
@@ -14,7 +14,7 @@ export class OrderAccessService {
   requestOtp(phone: string) { return this.http.post<any>(`${apiBaseUrl()}/orders/lookup/otp`, { phone }); }
   verify(challengeId: string, code: string) {
     return this.http.post<any>(`${apiBaseUrl()}/orders/lookup/verify`, { challengeId, code }).pipe(tap(data => {
-      sessionStorage.setItem('orderLookupAccess', JSON.stringify({ ...data, accountKey: localStorage.getItem('khachHang') || '' }));
+      sessionStorage.setItem('orderLookupAccess', JSON.stringify({ ...data, accountKey: currentOrderAccountKey() }));
     }));
   }
   history(page = 1) { return this.http.get<any>(`${apiBaseUrl()}/orders/lookup`, { params: { page } }); }
