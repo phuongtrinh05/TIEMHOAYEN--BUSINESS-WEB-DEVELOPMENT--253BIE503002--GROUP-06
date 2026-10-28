@@ -1,0 +1,146 @@
+<div class="inv-page">
+  <div class="inv-card">
+    <app-inventory-tabs />
+    <h2 class="inv-title">Công thức sản phẩm (BOM)</h2>
+    <p class="inv-sub">Định lượng NVL cho <b>1 bó</b>. Số bó làm được = min ⌊khả dụng / định mức⌋. Mỗi sản phẩm chỉ có 1 BOM “Hiệu lực”; sửa BOM = tạo phiên bản mới.</p>
+
+    <div class="inv-split">
+      <!-- Danh sách sản phẩm -->
+      <div>
+        <input class="inv-input mb-2" placeholder="Tìm sản phẩm…" [(ngModel)]="search" (ngModelChange)="refilter()">
+        <div class="d-flex gap-3 small mb-2">
+          <label><input type="checkbox" [(ngModel)]="onlyReview" (ngModelChange)="refilter()"> Cần rà soát</label>
+          <label><input type="checkbox" [(ngModel)]="onlyNoBom" (ngModelChange)="refilter()"> Chưa có BOM</label>
+        </div>
+        <div class="inv-table-wrap" style="max-height:68vh;overflow-y:auto">
+          <table class="inv-table">
+            <thead><tr><th>Sản phẩm</th><th class="num">Bán được</th></tr></thead>
+            <tbody>
+              @if (loading()) { <tr><td colspan="2" class="inv-empty">Đang tải…</td></tr> }
+              @for (p of filtered(); track p.SAN_PHAM_ID) {
+                <tr class="clickable" [class.row-low]="selected()?.SAN_PHAM_ID === p.SAN_PHAM_ID" (click)="select(p)">
+                  <td>
+                    <div class="fw-semibold">{{ p.TEN_SAN_PHAM }}</div>
+                    <div class="muted">{{ p.SAN_PHAM_ID }} · {{ p.KIEU_DANG }}
+                      @if (p.activeVersion) { · v{{ p.activeVersion }} } @else { · <span class="text-danger">chưa có BOM</span> }
+                      @if (p.needsReview) { <span class="badge-s low">rà soát</span> }
+                      @if (p.draftCount) { <span class="badge-s draft">{{ p.draftCount }} nháp</span> }
+                    </div>
+                  </td>
+                  <td class="num"><span class="badge-s" [class.out]="p.sellable <= 0" [class.low]="p.sellable > 0 && p.sellable <= 3" [class.ok]="p.sellable > 3">{{ p.sellable }}</span>
+                    @if (p.finishedAvailable) { <div class="muted">{{ p.finishedAvailable }} cắm sẵn</div> }</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Chi tiết BOM -->
+      <div>
+        @if (!selected()) {
+          <div class="inv-empty">Chọn một sản phẩm để xem / sửa BOM.</div>
+        } @else {
+          @let p = selected()!;
+          <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+            <div>
+              <h4 class="mb-1" style="color:#731919">{{ p.TEN_SAN_PHAM }}</h4>
+              <div class="muted">{{ p.SAN_PHAM_ID }} · giá {{ (p.GIA_KHUYEN_MAI || p.GIA) | number }}đ · cắm sẵn {{ p.finishedAvailable }} · làm thêm được {{ p.buildable }}
+                @if (p.bottleneck) { · NVL chốt chặn: <b>{{ p.bottleneck.name }}</b> }</div>
+            </div>
+            @if (!editing()) { <button class="inv-btn primary" (click)="newVersion()"><i class="bi bi-plus-lg"></i> {{ active() ? 'Tạo phiên bản mới' : 'Tạo BOM' }}</button> }
+          </div>
+
+          @if (editing()) {
+            <div class="inv-section-title"><i class="bi bi-pencil-square"></i> {{ editBomId ? 'Sửa nháp ' + editBomId : 'Phiên bản mới' }}</div>
+            @if (editError()) { <div class="inv-alert error">{{ editError() }}</div> }
+            <div class="inv-table-wrap">
+              <table class="inv-table">
+                <thead><tr><th style="min-width:220px">NVL</th><th class="num">Định lượng / bó</th><th>ĐVT</th><th>Vai trò</th><th>NVL thay thế được (cùng nhóm)</th><th>Ghi chú</th><th></th></tr></thead>
+                <tbody>
+                  @for (l of lines; track $index) {
+                    <tr>
+                      <td>
+                        <select class="inv-select sm" [(ngModel)]="l.materialId" (ngModelChange)="l.substitutes = []">
+                          <option value="">— Chọn NVL —</option>
+                          @for (m of materials(); track m.code) { <option [value]="m.code">{{ m.code }} · {{ m.name }}</option> }
+                        </select>
+                      </td>
+                      <td><input class="inv-input sm" style="width:90px" type="number" min="0" step="0.1" [(ngModel)]="l.quantity"></td>
+                      <td>{{ material(l.materialId)?.unit }}</td>
+                      <td><select class="inv-select sm" style="width:110px" [(ngModel)]="l.role">@for (r of roles; track r) { <option [value]="r">{{ r }}</option> }</select></td>
+                      <td>
+                        @for (s of substituteOptions(l.materialId); track s.code) {
+                          <label class="d-inline-flex align-items-center gap-1 me-2 small"><input type="checkbox" [checked]="l.substitutes.includes(s.code)" (change)="toggleSub(l, s.code)">{{ s.name }}</label>
+                        } @empty { <span class="muted">{{ material(l.materialId)?.substitutionGroup ? 'Không có NVL khác cùng nhóm' : 'NVL chưa có nhóm thay thế' }}</span> }
+                      </td>
+                      <td><input class="inv-input sm" [(ngModel)]="l.note"></td>
+                      <td><button class="inv-icon-btn" (click)="lines.splice($index, 1)"><i class="bi bi-trash"></i></button></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <div class="d-flex flex-wrap gap-3 align-items-center mt-2">
+              <button class="inv-btn sm" (click)="lines.push({ materialId: '', quantity: 1, role: 'Phụ', substitutes: [], note: '' })"><i class="bi bi-plus"></i> Thêm NVL</button>
+              <label class="small"><input type="checkbox" [(ngModel)]="allowSubstitution"> Cho phép khách/Admin thay thế NVL</label>
+              <input class="inv-input sm grow" style="max-width:360px" [(ngModel)]="editNote" placeholder="Ghi chú thay đổi">
+            </div>
+            <div class="muted mt-2">Ràng buộc: ≥ 1 NVL “Chính”, định lượng &gt; 0, không trùng NVL, đơn vị khớp NVL, NVL đang hoạt động.</div>
+            <div class="d-flex gap-2 justify-content-end mt-3">
+              <button class="inv-btn" (click)="editing.set(false)">Hủy</button>
+              <button class="inv-btn" [disabled]="saving()" (click)="save(false)">Lưu nháp</button>
+              <button class="inv-btn success" [disabled]="saving()" (click)="save(true)">Lưu & kích hoạt</button>
+            </div>
+          }
+
+          @for (b of boms(); track b.BOM_ID) {
+            <div class="inv-section-title">
+              <span>{{ b.BOM_ID }} · v{{ b.PHIEN_BAN }}</span> <span class="badge-s" [class]="statusClass(b.TRANG_THAI)">{{ b.TRANG_THAI }}</span>
+              @if (b.CAN_RA_SOAT) { <span class="badge-s low" title="Đơn vị trong công thức cũ không khớp đơn vị NVL">Cần rà soát đơn vị</span> }
+              <span class="muted ms-auto">{{ b.HIEU_LUC_TU ? ('từ ' + (b.HIEU_LUC_TU | date: 'dd/MM/yyyy')) : '' }} {{ b.HIEU_LUC_DEN ? ('đến ' + (b.HIEU_LUC_DEN | date: 'dd/MM/yyyy')) : '' }}</span>
+            </div>
+            <div class="inv-table-wrap">
+              <table class="inv-table">
+                <thead><tr><th>NVL</th><th class="num">Định lượng</th><th>Vai trò</th><th>Thay thế</th><th class="num">Khả dụng</th><th class="num">Đủ làm</th><th class="num">Giá vốn dự kiến</th></tr></thead>
+                <tbody>
+                  @for (l of b.lines; track l.NGUYEN_VAT_LIEU_ID) {
+                    <tr>
+                      <td><b>{{ l.NGUYEN_VAT_LIEU_ID }}</b> {{ material(l.NGUYEN_VAT_LIEU_ID)?.name }} @if (l.GHI_CHU) { <div class="muted">{{ l.GHI_CHU }}</div> }</td>
+                      <td class="num">{{ l.DINH_LUONG }} {{ l.DON_VI_TINH }}</td>
+                      <td>{{ l.VAI_TRO }}</td>
+                      <td class="muted">{{ l.DS_THAY_THE.join(', ') || '—' }}</td>
+                      <td class="num">{{ material(l.NGUYEN_VAT_LIEU_ID)?.available ?? '—' }}</td>
+                      <td class="num">{{ canMake(l) }} bó</td>
+                      <td class="num">@for (c of b.cost?.items || []; track c.materialId) { @if (c.materialId === l.NGUYEN_VAT_LIEU_ID) { {{ c.amount | number }}đ } }</td>
+                    </tr>
+                  }
+                </tbody>
+                @if (b.cost) {
+                  <tfoot><tr><td colspan="6" class="num fw-bold">Giá vốn NVL dự kiến / bó @if (margin(b) !== null) { · biên lợi nhuận gộp ≈ {{ margin(b) }}% }</td><td class="num fw-bold">{{ b.cost.total | number }}đ</td></tr></tfoot>
+                }
+              </table>
+            </div>
+            <div class="d-flex gap-2 justify-content-end mt-2">
+              @if (b.TRANG_THAI === 'Nháp') {
+                <button class="inv-btn sm danger" (click)="retire(b)">Xóa nháp</button>
+                <button class="inv-btn sm" (click)="editDraft(b)">Sửa nháp</button>
+                <button class="inv-btn sm success" (click)="activate(b)">Kích hoạt</button>
+              } @else if (b.TRANG_THAI === 'Hiệu lực') {
+                <button class="inv-btn sm danger" (click)="retire(b)">Ngừng sử dụng</button>
+              }
+            </div>
+          } @empty {
+            @if (legacy().length) {
+              <div class="inv-alert warn mt-3">Sản phẩm chưa có BOM mới — đang đọc tạm công thức cũ ({{ legacy().length }} NVL). Bấm “Tạo BOM” để chuẩn hóa.</div>
+            } @else if (!editing()) {
+              <div class="inv-alert warn mt-3">Sản phẩm chưa có công thức. Đơn đặt sản phẩm này sẽ luôn phải chuyển Sales/Admin duyệt.</div>
+            }
+          }
+        }
+      </div>
+    </div>
+  </div>
+</div>
+
+@if (toast(); as t) { <div class="inv-toast" [class.error]="t.error">{{ t.text }}</div> }

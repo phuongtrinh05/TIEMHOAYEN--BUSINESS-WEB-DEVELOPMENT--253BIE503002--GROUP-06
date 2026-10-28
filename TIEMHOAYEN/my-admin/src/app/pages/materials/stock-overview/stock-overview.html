@@ -1,0 +1,212 @@
+<div class="inv-page">
+  <div class="inv-card">
+    <app-inventory-tabs />
+    <h2 class="inv-title">Tổng quan kho & cảnh báo</h2>
+    <p class="inv-sub">3 tầng cảnh báo: (1) NVL theo khả dụng hiện tại và dự báo theo lịch T, (2) bó hoa trên website, (3) đơn tương lai có nguy cơ thiếu. Hệ thống không tự đặt hàng.</p>
+
+    @if (alerts(); as a) {
+      <div class="inv-kpis">
+        <div class="inv-kpi bad"><div class="label">NVL hết kho</div><div class="value">{{ a.summary['materialsOut'] }}</div></div>
+        <div class="inv-kpi warn"><div class="label">NVL sắp hết</div><div class="value">{{ a.summary['materialsLow'] }}</div></div>
+        <div class="inv-kpi bad"><div class="label">Dự kiến thiếu theo T</div><div class="value">{{ a.summary['forecastShortages'] }}</div></div>
+        <div class="inv-kpi warn"><div class="label">Đơn chờ xếp T</div><div class="value">{{ a.summary['ordersWithoutSchedule'] }}</div></div>
+        <div class="inv-kpi bad"><div class="label">Bó hoa hết hàng</div><div class="value">{{ a.summary['productsOut'] }}</div></div>
+        <div class="inv-kpi warn"><div class="label">Bó hoa sắp hết (1–3)</div><div class="value">{{ a.summary['productsLow'] }}</div></div>
+        <div class="inv-kpi"><div class="label">Nguồn hoa cần kiểm tra</div><div class="value">{{ a.summary['qualityChecks'] }}</div></div>
+      </div>
+    }
+
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      @for (t of [['alerts','Cảnh báo'],['reservations','Đang giữ'],['demands','Nhu cầu theo lịch T'],['finished','Thành phẩm cắm sẵn'],['ledger','Sổ biến động'],['reconcile','Đối soát']]; track t[0]) {
+        <button class="inv-btn sm" [class.primary]="tab() === t[0]" (click)="setTab($any(t[0]))">{{ t[1] }}</button>
+      }
+    </div>
+    @if (error()) { <div class="inv-alert error">{{ error() }}</div> }
+
+    <!-- ===== CẢNH BÁO ===== -->
+    @if (tab() === 'alerts') {
+      @if (loading()) { <div class="inv-empty">Đang tính…</div> }
+      @if (alerts(); as a) {
+        <div class="inv-section-title"><i class="bi bi-exclamation-triangle"></i> Tầng 1 — NVL dưới ngưỡng (khả dụng đã trừ giữ & không đạt)</div>
+        <div class="inv-table-wrap">
+          <table class="inv-table">
+            <thead><tr><th>NVL</th><th>Tình trạng</th><th class="num">Khả dụng</th><th class="num">Ngưỡng</th><th class="num">Gợi ý nhập tới mức tối đa</th><th></th></tr></thead>
+            <tbody>
+              @for (m of a.materialAlerts; track m.materialId) {
+                <tr [class.row-out]="m.status === 'out'" [class.row-low]="m.status === 'low'">
+                  <td><b>{{ m.materialId }}</b> {{ m.name }}</td><td><span class="badge-s" [class]="m.status">{{ m.label }}</span></td>
+                  <td class="num">{{ m.available }} {{ m.unit }}</td><td class="num">{{ m.threshold }}</td><td class="num">{{ m.suggestedOrder }}</td>
+                  <td><button class="inv-btn sm" (click)="createPo(m.materialId, m.suggestedOrder)"><i class="bi bi-truck"></i> Lập PO</button></td>
+                </tr>
+              } @empty { <tr><td colspan="6" class="inv-empty">Không có NVL dưới ngưỡng.</td></tr> }
+            </tbody>
+          </table>
+        </div>
+
+        <div class="inv-section-title"><i class="bi bi-calendar-x"></i> Tầng 1b + 3 — Dự kiến thiếu trước lịch chuẩn bị T</div>
+        <div class="inv-table-wrap">
+          <table class="inv-table">
+            <thead><tr><th>Đơn</th><th>T</th><th>NVL</th><th class="num">Cần</th><th class="num">Khả dụng</th><th class="num">PO đang giao kịp</th><th class="num">Thiếu</th><th></th></tr></thead>
+            <tbody>
+              @for (f of a.forecastShortages; track f.orderId + f.materialId) {
+                <tr class="row-out">
+                  <td class="fw-bold">{{ f.orderId }}</td><td>{{ f.neededAt | date: 'dd/MM HH:mm' }}</td><td>{{ f.name }}</td>
+                  <td class="num">{{ f.required }}</td><td class="num">{{ f.available }}</td><td class="num">{{ f.incoming }}</td><td class="num fw-bold">{{ f.missing }} {{ f.unit }}</td>
+                  <td><button class="inv-btn sm" (click)="createPo(f.materialId, f.missing)">Lập PO</button></td>
+                </tr>
+              } @empty { <tr><td colspan="8" class="inv-empty">Không có đơn tương lai dự kiến thiếu NVL.</td></tr> }
+            </tbody>
+          </table>
+        </div>
+        @if (a.ordersWithoutSchedule.length) {
+          <div class="inv-alert warn mt-2">Đơn đã thanh toán nhưng <b>chưa có T</b> (Chờ xếp lịch): {{ a.ordersWithoutSchedule.join(', ') }} — nhập T ở tab “Nhu cầu theo lịch T”.</div>
+        }
+
+        <div class="inv-section-title"><i class="bi bi-flower3"></i> Tầng 2 — Bó hoa trên website hết / sắp hết</div>
+        <div class="inv-table-wrap" style="max-height:360px;overflow-y:auto">
+          <table class="inv-table">
+            <thead><tr><th>Sản phẩm</th><th>Nhãn</th><th class="num">Tồn bán được</th><th>NVL chốt chặn</th></tr></thead>
+            <tbody>
+              @for (p of a.productAlerts; track p.productId) {
+                <tr><td><b>{{ p.productId }}</b> {{ p.name }}</td><td><span class="badge-s" [class]="p.status">{{ p.label }}</span></td><td class="num">{{ p.sellable }}</td>
+                  <td>{{ p.noBom ? 'Chưa có BOM' : (p.bottleneck?.name || '—') }}</td></tr>
+              } @empty { <tr><td colspan="4" class="inv-empty">Không có.</td></tr> }
+            </tbody>
+          </table>
+        </div>
+
+        <div class="inv-section-title"><i class="bi bi-thermometer-half"></i> Hoa tươi quá số ngày bảo quản — cần kiểm tra chất lượng</div>
+        <div class="inv-table-wrap">
+          <table class="inv-table">
+            <thead><tr><th>NVL</th><th>Nguồn nhập</th><th>Nhận lúc</th><th class="num">Tuổi / hạn (ngày)</th><th class="num">SL còn</th><th class="num">Đang giữ</th><th></th></tr></thead>
+            <tbody>
+              @for (q of a.qualityChecks; track q.sourceId + q.materialId) {
+                <tr><td>{{ q.name }}</td><td>{{ q.sourceId }}</td><td>{{ q.receivedAt | date: 'dd/MM HH:mm' }}</td><td class="num">{{ q.ageDays }} / {{ q.shelfDays }}</td><td class="num">{{ q.quantity }}</td><td class="num">{{ q.reserved }}</td>
+                  <td><button class="inv-btn sm" (click)="openMaterial()">Kiểm tra</button></td></tr>
+              } @empty { <tr><td colspan="7" class="inv-empty">Không có.</td></tr> }
+            </tbody>
+          </table>
+        </div>
+      }
+    }
+
+    <!-- ===== ĐANG GIỮ ===== -->
+    @if (tab() === 'reservations') {
+      <div class="inv-alert info">Giữ tạm QR tự nhả khi quá hạn thanh toán. Giữ chính thức kết thúc khi lập phiếu xuất cho đơn, hoặc nhả khi hủy đơn trước khi xuất.</div>
+      <div class="inv-table-wrap">
+        <table class="inv-table">
+          <thead><tr><th>Mã giữ</th><th>Đơn / phiên QR</th><th>Loại</th><th>Đối tượng</th><th class="num">SL</th><th>Nguồn PN</th><th>Tạo lúc</th><th>Hết hạn / T</th><th></th></tr></thead>
+          <tbody>
+            @for (r of reservations(); track r.MA_GIU_TON) {
+              <tr>
+                <td>{{ r.MA_GIU_TON }}</td><td class="fw-bold">{{ r.DON_HANG_ID || r.MA_PHIEN_THANH_TOAN }}</td>
+                <td><span class="badge-s" [class.waiting]="r.TRANG_THAI === 'TAM_CHO_QR'" [class.info]="r.TRANG_THAI === 'CHINH_THUC'">{{ holdLabel(r.TRANG_THAI) }}</span></td>
+                <td>{{ r.LOAI_DOI_TUONG === 'THANH_PHAM' ? 'Bó cắm sẵn ' + r.SAN_PHAM_ID : r.TEN }}</td><td class="num">{{ r.SO_LUONG }}</td><td>{{ r.PHIEU_NHAP_NGUON || '—' }}</td>
+                <td>{{ r.TAO_LUC | date: 'dd/MM HH:mm' }}</td><td>{{ (r.HET_HAN_LUC || r.THOI_DIEM_CAN_DUNG) | date: 'dd/MM HH:mm' }}</td>
+                <td><button class="inv-btn sm danger" (click)="release(r)">Nhả</button></td>
+              </tr>
+            } @empty { <tr><td colspan="9" class="inv-empty">Không có lượng đang giữ.</td></tr> }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    <!-- ===== NHU CẦU THEO T ===== -->
+    @if (tab() === 'demands') {
+      <div class="inv-toolbar">
+        <select class="inv-select" style="width:160px" [(ngModel)]="demandStatus" (ngModelChange)="loadDemands()">
+          <option>Chờ giữ</option><option>Đã giữ</option><option>Đã xuất</option><option>Đã hủy</option>
+        </select>
+        <span class="muted">Đơn giao ngày khác: sau khi nhận tiền chỉ ghi nhu cầu dự kiến (không giữ hoa). Admin nhập T; đến lịch thì giữ chính thức; khi bắt đầu cắm thì xuất NVL một lần.</span>
+      </div>
+      @for (g of demandGroups(); track g.orderId) {
+        <div class="inv-section-title">
+          Đơn {{ g.orderId }} · T: {{ g.neededAt ? (g.neededAt | date: 'dd/MM/yyyy HH:mm') : 'Chờ xếp lịch' }}
+          <span class="ms-auto d-flex gap-1">
+            @if (g.status === 'Chờ giữ') {
+              <button class="inv-btn sm" (click)="setPrep(g)"><i class="bi bi-clock"></i> Nhập / đổi T</button>
+              <button class="inv-btn sm primary" (click)="reserveNow(g.orderId)"><i class="bi bi-lock"></i> Giữ chính thức</button>
+            }
+            @if (g.status === 'Chờ giữ' || g.status === 'Đã giữ') {
+              <button class="inv-btn sm success" (click)="issueForOrder(g.orderId)"><i class="bi bi-box-arrow-up"></i> Xuất NVL khi cắm</button>
+            }
+          </span>
+        </div>
+        <div class="inv-table-wrap">
+          <table class="inv-table">
+            <thead><tr><th>Sản phẩm</th><th>BOM</th><th>NVL</th><th class="num">Số lượng</th><th>Trạng thái</th></tr></thead>
+            <tbody>
+              @for (d of g.lines; track d._id) {
+                <tr><td>{{ d.SAN_PHAM_ID }}</td><td>{{ d.BOM_ID || 'công thức cũ' }} {{ d.BOM_PHIEN_BAN ? 'v' + d.BOM_PHIEN_BAN : '' }}</td><td>{{ d.TEN }}</td><td class="num">{{ d.SO_LUONG }} {{ d.DON_VI_TINH }}</td><td>{{ d.TRANG_THAI }}</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @empty { <div class="inv-empty">Không có nhu cầu ở trạng thái này.</div> }
+    }
+
+    <!-- ===== THÀNH PHẨM ===== -->
+    @if (tab() === 'finished') {
+      <div class="inv-alert info">Thành phẩm chỉ tăng khi ghi nhận phiếu xuất “Cắm bó sẵn”. Bán/giao bó cắm sẵn không trừ NVL lần nữa.</div>
+      <div class="inv-table-wrap">
+        <table class="inv-table">
+          <thead><tr><th>Sản phẩm</th><th class="num">Tồn thành phẩm</th><th class="num">Đang giữ</th><th class="num">Khả dụng</th><th class="num">Giá vốn / bó</th><th class="num">Giá bán</th><th></th></tr></thead>
+          <tbody>
+            @for (p of finished(); track p.SAN_PHAM_ID) {
+              <tr><td><b>{{ p.SAN_PHAM_ID }}</b> {{ p.TEN_SAN_PHAM }}</td><td class="num">{{ p.TON_THANH_PHAM }}</td><td class="num">{{ p.TP_DANG_GIU || 0 }}</td><td class="num fw-bold">{{ p.KHA_DUNG }}</td>
+                <td class="num">{{ p.GIA_VON_THANH_PHAM | number }}đ</td><td class="num">{{ p.GIA | number }}đ</td>
+                <td><button class="inv-btn sm danger" (click)="dispose(p)">Hủy bó hỏng</button></td></tr>
+            } @empty { <tr><td colspan="7" class="inv-empty">Chưa có bó cắm sẵn.</td></tr> }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    <!-- ===== SỔ BIẾN ĐỘNG ===== -->
+    @if (tab() === 'ledger') {
+      <div class="inv-toolbar">
+        <input class="inv-input" style="width:130px" placeholder="Mã NVL" [(ngModel)]="ledgerFilter.materialId">
+        <input class="inv-input" style="width:130px" placeholder="Mã đơn" [(ngModel)]="ledgerFilter.orderId">
+        <select class="inv-select" style="width:200px" [(ngModel)]="ledgerFilter.type">
+          <option value="">Mọi nghiệp vụ</option>
+          @for (k of ['NHAP','XUAT','GIU','NHA_GIU','KET_THUC_GIU','DANH_DAU_KHONG_DAT','XUAT_HUY','NHAP_THANH_PHAM','XUAT_THANH_PHAM','HUY_THANH_PHAM']; track k) { <option [value]="k">{{ movementLabel[k] }}</option> }
+        </select>
+        <input class="inv-input" style="width:150px" type="date" [(ngModel)]="ledgerFilter.from">
+        <input class="inv-input" style="width:150px" type="date" [(ngModel)]="ledgerFilter.to">
+        <button class="inv-btn primary" (click)="loadLedger()"><i class="bi bi-search"></i> Lọc</button>
+      </div>
+      <div class="inv-table-wrap" style="max-height:65vh;overflow-y:auto">
+        <table class="inv-table">
+          <thead><tr><th>Thời điểm</th><th>Nghiệp vụ</th><th>Đối tượng</th><th>Nguồn PN</th><th>Chứng từ / đơn</th><th class="num">Δ Tồn thực</th><th class="num">Δ Đang giữ</th><th class="num">Δ Không đạt</th><th class="num">Tồn / giữ / KĐ sau</th><th class="num">Khả dụng sau</th><th>Người</th></tr></thead>
+          <tbody>
+            @for (m of ledger(); track m._id) {
+              <tr>
+                <td>{{ m.THOI_DIEM | date: 'dd/MM/yy HH:mm:ss' }}</td><td>{{ movementLabel[m.LOAI] || m.LOAI }}</td>
+                <td>{{ m.NGUYEN_VAT_LIEU_ID || m.SAN_PHAM_ID }} <span class="muted">{{ m.TEN }}</span></td><td>{{ m.PHIEU_NHAP_NGUON || '—' }}</td>
+                <td>{{ m.CHUNG_TU_ID }} {{ m.DON_HANG_ID ? '· ' + m.DON_HANG_ID : '' }}</td>
+                <td class="num">{{ m.DELTA_TON_THUC || '' }}</td><td class="num">{{ m.DELTA_DANG_GIU || '' }}</td><td class="num">{{ m.DELTA_KHONG_DAT || '' }}</td>
+                <td class="num muted">{{ m.TON_THUC_SAU }} / {{ m.DANG_GIU_SAU }} / {{ m.KHONG_DAT_SAU }}</td><td class="num fw-bold">{{ m.KHA_DUNG_SAU }}</td>
+                <td class="muted">{{ m.TEN_NGUOI_THUC_HIEN }}</td>
+              </tr>
+            } @empty { <tr><td colspan="11" class="inv-empty">Không có biến động.</td></tr> }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    <!-- ===== ĐỐI SOÁT ===== -->
+    @if (tab() === 'reconcile') {
+      <div class="inv-alert info">So bộ đếm tồn (tồn thực / đang giữ / không đạt) của từng NVL, nguồn nhập và thành phẩm với tổng sổ biến động và bản ghi giữ tồn.</div>
+      <div class="d-flex gap-2">
+        <button class="inv-btn primary" (click)="reconcile(false)"><i class="bi bi-clipboard-check"></i> Chạy đối soát</button>
+        @if (reconcileResult() && !reconcileResult()!.ok) { <button class="inv-btn danger" (click)="reconcile(true)">Sửa bộ đếm theo sổ</button> }
+      </div>
+      @if (reconcileResult(); as r) {
+        <div class="inv-alert mt-3" [class.success]="r.ok" [class.error]="!r.ok">{{ r.ok ? 'KHỚP — đã kiểm tra ' + r.checkedMaterials + ' NVL.' : 'Có ' + r.diffs.length + ' chênh lệch:' }}</div>
+        @if (!r.ok) { <pre class="small" style="white-space:pre-wrap">{{ r.diffs | json }}</pre> }
+      }
+    }
+  </div>
+</div>
+
+@if (toast(); as t) { <div class="inv-toast" [class.error]="t.error">{{ t.text }}</div> }

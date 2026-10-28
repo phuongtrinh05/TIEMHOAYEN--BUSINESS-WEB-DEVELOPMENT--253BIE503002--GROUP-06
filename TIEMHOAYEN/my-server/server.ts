@@ -49,6 +49,9 @@ import categoryProductRoutes from './routes/categoryProduct.js';
 import contactRoutes from './routes/contact.js';
 import adminRoutes from './routes/admin.js';
 import rolePermissionRoutes from './routes/rolePermission.js';
+import inventoryRoutes from './routes/inventory.js';
+import { getProductAvailability } from './controllers/inventory.js';
+import { ensureInventoryIndexes, startInventoryJobs } from './services/inventory/setup.js';
 
 const app = express();
 const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
@@ -78,6 +81,8 @@ app.use('/uploads', express.static('uploads'));
 app.use('/api/customers', customerRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/addresses', addressRoutes);
+// Kiểm tra khả năng đáp ứng (public) — đặt trước productRoutes
+app.get('/api/products/:id/availability', getProductAvailability);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/product-images', productImageRoutes);
@@ -134,6 +139,7 @@ app.use('/api/collection-products', collectionProductRoutes);
 app.use('/api/styles', styleRoutes);
 app.use('/api/category-products', categoryProductRoutes);
 app.use('/api/contacts', contactRoutes);
+app.use('/api/admin', inventoryRoutes);
 app.use('/api/admin', rolePermissionRoutes);
 app.use('/api/admin', adminRoutes);
 
@@ -150,6 +156,8 @@ const PORT = Number(process.env.PORT ?? 3000);
 (async () => {
   try {
     await connectMongo();
+    await ensureInventoryIndexes();
+    startInventoryJobs();
 
     app.listen(PORT, () => {
       console.log(`\nServer: http://localhost:${PORT}`);

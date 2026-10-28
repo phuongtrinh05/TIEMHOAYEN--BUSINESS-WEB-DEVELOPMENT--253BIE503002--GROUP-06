@@ -1,0 +1,121 @@
+<div class="inv-page">
+  <div class="inv-card">
+    <app-inventory-tabs />
+
+    <div class="inv-head">
+      <div>
+        <h2 class="inv-title">Đơn đặt mua nhà cung cấp (PO)</h2>
+        <p class="inv-sub">PO chỉ là nguồn <b>dự kiến</b>: không làm tăng tồn. Chỉ PO <b>Đang giao</b> được tính vào dự báo trước lịch chuẩn bị T. Hàng về → bấm “Nhận hàng” để lập phiếu nhập.</p>
+      </div>
+      <button class="inv-btn primary" (click)="openCreate()"><i class="bi bi-plus-lg"></i> Tạo PO</button>
+    </div>
+
+    <div class="inv-toolbar">
+      <select class="inv-select" style="width:200px" [(ngModel)]="statusFilter" (ngModelChange)="refilter()">
+        <option value="">Mọi trạng thái</option>
+        @for (s of ['Nháp','Chờ NCC xác nhận','Đang giao','Giao thành công','Đã hủy']; track s) { <option [value]="s">{{ s }}</option> }
+      </select>
+      <button class="inv-btn" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button>
+    </div>
+    @if (error()) { <div class="inv-alert error">{{ error() }}</div> }
+
+    <div class="inv-table-wrap">
+      <table class="inv-table">
+        <thead><tr><th>PO</th><th>Nhà cung cấp</th><th>NVL (đã nhận / đặt)</th><th>Dự kiến giao</th><th class="num">Còn chờ giao</th><th class="num">Giá trị dự kiến</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+        <tbody>
+          @if (loading()) { <tr><td colspan="8" class="inv-empty">Đang tải…</td></tr> }
+          @for (po of filtered(); track po.PO_ID) {
+            <tr>
+              <td class="fw-bold">{{ po.PO_ID }}<div class="muted">{{ po.NGAY_DAT | date: 'dd/MM/yyyy' }}</div></td>
+              <td>{{ supplierName(po.NHA_CUNG_CAP_ID) }}</td>
+              <td>
+                @for (l of po.CHI_TIET; track l.NGUYEN_VAT_LIEU_ID) {
+                  <div>{{ materialName(l.NGUYEN_VAT_LIEU_ID) }}: <b>{{ l.SL_DA_NHAN || 0 }}</b> / {{ l.SL_DAT }} {{ l.DON_VI_TINH }} @if (l.SL_DAT_DA_NHAN && l.SL_DAT_DA_NHAN < (l.SL_DA_NHAN || 0)) { <span class="muted">(đạt {{ l.SL_DAT_DA_NHAN }})</span> }</div>
+                }
+              </td>
+              <td>{{ po.NGAY_GIO_DU_KIEN_GIAO ? (po.NGAY_GIO_DU_KIEN_GIAO | date: 'dd/MM/yyyy HH:mm') : '—' }}
+                @if (po.TRANG_THAI === 'Đang giao') { <button class="inv-icon-btn" title="NCC báo đổi giờ giao" (click)="updateExpected(po)"><i class="bi bi-calendar-event"></i></button> }
+              </td>
+              <td class="num">{{ ['Đang giao','Chờ NCC xác nhận'].includes(po.TRANG_THAI) ? pending(po) : '—' }}</td>
+              <td class="num">{{ po.TONG_TIEN_DU_KIEN | number }}đ</td>
+              <td><span class="badge-s" [class]="statusClass(po.TRANG_THAI)">{{ po.TRANG_THAI }}</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  @if (po.TRANG_THAI === 'Nháp' || po.TRANG_THAI === 'Chờ NCC xác nhận') { <button class="inv-btn sm" (click)="openEdit(po)"><i class="bi bi-pencil"></i></button> }
+                  @if (po.TRANG_THAI === 'Đang giao') { <button class="inv-btn sm success" (click)="receive(po)"><i class="bi bi-box-arrow-in-down"></i> Nhận hàng</button> }
+                  @for (s of nextStatus[po.TRANG_THAI] || []; track s) {
+                    <button class="inv-btn sm" [class.danger]="s === 'Đã hủy'" (click)="changeStatus(po, s)">{{ s === 'Chờ NCC xác nhận' ? 'Gửi NCC' : s === 'Đang giao' ? 'NCC xác nhận' : s === 'Giao thành công' ? 'Đóng PO' : 'Hủy' }}</button>
+                  }
+                </div>
+              </td>
+            </tr>
+          } @empty { @if (!loading()) { <tr><td colspan="8" class="inv-empty">Chưa có PO.</td></tr> } }
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+@if (formOpen()) {
+  <div class="inv-backdrop" (click)="formOpen.set(false)">
+    <div class="inv-modal" (click)="$event.stopPropagation()">
+      <div class="inv-modal-head">
+        <h3>{{ editingId ? 'Sửa ' + editingId : 'Tạo đơn đặt mua NCC' }}</h3>
+        <button class="inv-icon-btn" (click)="formOpen.set(false)"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="inv-modal-body">
+        @if (formError()) { <div class="inv-alert error">{{ formError() }}</div> }
+        <div class="inv-grid">
+          <div class="inv-field"><label class="required">Nhà cung cấp</label>
+            <select class="inv-select" [(ngModel)]="header.supplierId" (ngModelChange)="onSupplierChange()" [disabled]="!!editingId">
+              <option value="">— Chọn NCC —</option>
+              @for (s of suppliers(); track s.NHA_CUNG_CAP_ID) { <option [value]="s.NHA_CUNG_CAP_ID" [disabled]="!s.DANG_HOAT_DONG">{{ s.TEN_NHA_CUNG_CAP }}{{ s.DANG_HOAT_DONG ? '' : ' (' + s.TRANG_THAI + ')' }}</option> }
+            </select>
+          </div>
+          <div class="inv-field"><label>Ngày giờ dự kiến giao</label><input class="inv-input" type="datetime-local" [(ngModel)]="header.expectedAt"><div class="hint">Bắt buộc trước khi chuyển "Đang giao".</div></div>
+          <div class="inv-field full"><label>Ghi chú</label><input class="inv-input" [(ngModel)]="header.note"></div>
+        </div>
+        <div class="inv-section-title"><i class="bi bi-list"></i> NVL đặt mua</div>
+        <div class="inv-table-wrap">
+          <table class="inv-table">
+            <thead><tr><th style="min-width:240px">NVL</th><th>Thông tin NCC</th><th class="num">SL đặt</th><th class="num">Giá dự kiến</th><th class="num">Thành tiền</th><th></th></tr></thead>
+            <tbody>
+              @for (l of lines; track $index) {
+                <tr>
+                  <td>
+                    <select class="inv-select sm" [(ngModel)]="l.materialId" (ngModelChange)="onLineMaterial(l)">
+                      <option value="">— Chọn NVL —</option>
+                      @if (supplierLinks().length) {
+                        <optgroup label="NCC này cung cấp">
+                          @for (x of supplierLinks(); track x._id) { <option [value]="x.NGUYEN_VAT_LIEU_ID">{{ x.NGUYEN_VAT_LIEU_ID }} · {{ x.TEN_NGUYEN_VAT_LIEU }}</option> }
+                        </optgroup>
+                      }
+                      <optgroup label="Tất cả NVL">
+                        @for (m of materials(); track m.code) { <option [value]="m.code">{{ m.code }} · {{ m.name }} (khả dụng {{ m.available }})</option> }
+                      </optgroup>
+                    </select>
+                  </td>
+                  <td class="muted">@if (linkFor(l.materialId); as k) { lead {{ k.SO_NGAY_GIAO }}n · tối thiểu {{ k.SL_DAT_TOI_THIEU }} · tin cậy {{ k.MUC_TIN_CAY }} } @else { @if (l.materialId) { NCC chưa khai báo NVL này } }</td>
+                  <td><input class="inv-input sm" style="width:100px" type="number" min="0" [(ngModel)]="l.quantity"></td>
+                  <td><input class="inv-input sm" style="width:110px" type="number" min="0" [(ngModel)]="l.unitCost"></td>
+                  <td class="num">{{ (l.quantity || 0) * (l.unitCost || 0) | number }}đ</td>
+                  <td><button class="inv-icon-btn" (click)="lines.splice($index, 1)"><i class="bi bi-trash"></i></button></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <div class="d-flex justify-content-between mt-2">
+          <button class="inv-btn sm" (click)="lines.push({ materialId: '', quantity: 0, unitCost: 0 })"><i class="bi bi-plus"></i> Thêm dòng</button>
+          <div>Tổng dự kiến: <b>{{ total() | number }}đ</b></div>
+        </div>
+      </div>
+      <div class="inv-modal-foot">
+        <button class="inv-btn" (click)="formOpen.set(false)">Hủy</button>
+        <button class="inv-btn primary" [disabled]="saving()" (click)="save()">{{ saving() ? 'Đang lưu…' : 'Lưu PO' }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (toast(); as t) { <div class="inv-toast" [class.error]="t.error">{{ t.text }}</div> }

@@ -11,6 +11,9 @@ import { MaterialListComponent } from './pages/materials/material-list/material-
 import { ImportListComponent } from './pages/materials/import-list/import-list';
 import { ExportListComponent } from './pages/materials/export-list/export-list';
 import { SupplierListComponent } from './pages/materials/supplier-list/supplier-list';
+import { PurchaseOrderListComponent } from './pages/materials/purchase-order-list/purchase-order-list';
+import { BomListComponent } from './pages/materials/bom-list/bom-list';
+import { StockOverviewComponent } from './pages/materials/stock-overview/stock-overview';
 
 import { TransactionListComponent } from './pages/transactions/transaction-list';
 
@@ -145,6 +148,24 @@ export const routes: Routes = [
     {
         path: 'materials/suppliers',
         component: SupplierListComponent,
+        canActivate: [adminPermissionGuard],
+        data: { module: 'materials' }
+    },
+    {
+        path: 'materials/purchase-orders',
+        component: PurchaseOrderListComponent,
+        canActivate: [adminPermissionGuard],
+        data: { module: 'materials' }
+    },
+    {
+        path: 'materials/boms',
+        component: BomListComponent,
+        canActivate: [adminPermissionGuard],
+        data: { module: 'materials' }
+    },
+    {
+        path: 'materials/stock',
+        component: StockOverviewComponent,
         canActivate: [adminPermissionGuard],
         data: { module: 'materials' }
     },
