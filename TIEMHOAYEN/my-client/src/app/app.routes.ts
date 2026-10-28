@@ -1,4 +1,6 @@
 import { Routes } from '@angular/router';
+import { OrderRequest } from './pages/orders/order-request/order-request';
+import { RequestHistory } from './pages/orders/request-history/request-history';
 
 import { ChatbotWidget } from './components/chatbot-widget/chatbot-widget';
 
@@ -26,7 +28,6 @@ import { ForgotPasswordComponent } from './pages/forgot-password/forgot-password
 // =========================
 import { CartComponent } from './pages/orders/cart/cart';
 import { CheckoutComponent } from './pages/orders/checkout/checkout';
-import { OrderList } from './pages/orders/order-list/order-list';
 
 // =========================
 // ORDERS
@@ -47,6 +48,8 @@ import { ProductDetailComponent } from './pages/product-detail/product-detail';
 import { PolicyLayoutComponent } from './pages/policy/policy-layout';
 
 export const routes: Routes = [
+  { path: 'order-requests', component: RequestHistory, title: 'Yêu cầu đặt hoa của tôi - Tiệm Hoa Yên' },
+  { path: 'order-request/:id', component: OrderRequest, title: 'Yêu cầu đặt hàng - Tiệm Hoa Yên' },
   // =========================
   // DEFAULT
   // =========================
@@ -144,7 +147,8 @@ export const routes: Routes = [
   },
   {
     path: 'order-list',
-    component: OrderList,
+    redirectTo: 'order-requests',
+    pathMatch: 'full',
     title: 'Danh sách đơn hàng - Tiệm Hoa Yên',
   },
 

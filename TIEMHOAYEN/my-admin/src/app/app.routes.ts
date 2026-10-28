@@ -1,6 +1,7 @@
 ﻿import { Routes } from '@angular/router';
 
 import { Login } from './pages/login/login';
+import { OrderRequests } from './pages/orders/order-requests/order-requests';
 
 import { Dashboard } from './pages/dashboard/dashboard';
 
@@ -42,6 +43,7 @@ import { AdminAccount } from './pages/admin-account/admin-account';
 import { adminPermissionGuard } from './services/admin-permission.guard';
 
 export const routes: Routes = [
+    { path: 'orders/requests', component: OrderRequests, canActivate: [adminPermissionGuard], data: { module: 'orders' } },
     {
         path: '',
         redirectTo: 'login',

@@ -667,15 +667,15 @@ export const reserveMaterialNeeds = async (session: ClientSession, needs: Map<st
  * Giữ tồn cho danh sách sản phẩm: ưu tiên thành phẩm cắm sẵn còn khả dụng, phần còn lại quy đổi BOM → NVL.
  * Dùng cho: tạo QR đơn giao trong ngày (TAM_CHO_QR), hoặc Admin giữ chính thức.
  */
-export const reserveProducts = async (items: { productId: string; quantity: number }[], ctx: ReserveContext) => {
+export const reserveProducts = async (items: { productId: string; quantity: number }[], ctx: ReserveContext, outerSession?: ClientSession) => {
   if (!Array.isArray(items) || !items.length) throw new InventoryError(400, 'Chưa có sản phẩm cần giữ.');
   if (ctx.paymentSessionId) {
     const existing = await (await col(COLLECTIONS.reservation)).find({
       MA_PHIEN_THANH_TOAN: ctx.paymentSessionId, TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES },
-    }).toArray();
+    }, { session: outerSession }).toArray();
     if (existing.length) return { reservations: existing, idempotent: true };
   }
-  return withTransaction(async (session) => {
+  const work = async (session: ClientSession) => {
     const created: any[] = [];
     const needs = new Map<string, number>();
     const shortages: Shortage[] = [];
@@ -711,7 +711,8 @@ export const reserveProducts = async (items: { productId: string; quantity: numb
     if (shortages.length) throw new InventoryError(409, 'Không đủ hàng để giữ.', { shortages });
     created.push(...(await reserveMaterialNeeds(session, needs, ctx)));
     return { reservations: created, idempotent: false };
-  });
+  };
+  return outerSession ? work(outerSession) : withTransaction(work);
 };
 
 const releaseOne = async (session: ClientSession, r: any, actor: Actor, reason: string) => {
@@ -730,24 +731,25 @@ const releaseOne = async (session: ClientSession, r: any, actor: Actor, reason: 
   return true;
 };
 
-export const releaseReservations = async (filter: { orderId?: string; paymentSessionId?: string; reservationIds?: string[] }, actor: Actor, reason = 'Nhả giữ') => {
+export const releaseReservations = async (filter: { orderId?: string; paymentSessionId?: string; reservationIds?: string[] }, actor: Actor, reason = 'Nhả giữ', outerSession?: ClientSession) => {
   const query: any = { TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES } };
   if (filter.orderId) query.DON_HANG_ID = filter.orderId;
   if (filter.paymentSessionId) query.MA_PHIEN_THANH_TOAN = filter.paymentSessionId;
   if (filter.reservationIds?.length) query.MA_GIU_TON = { $in: filter.reservationIds };
   if (!filter.orderId && !filter.paymentSessionId && !filter.reservationIds?.length) throw new InventoryError(400, 'Thiếu điều kiện nhả giữ.');
-  return withTransaction(async (session) => {
+  const work = async (session: ClientSession) => {
     const rows = await (await col(COLLECTIONS.reservation)).find(query, { session }).toArray();
     let released = 0;
     for (const r of rows) if (await releaseOne(session, r, actor, reason)) released++;
     return { released };
-  });
+  };
+  return outerSession ? work(outerSession) : withTransaction(work);
 };
 
 /** Thanh toán hợp lệ trong hạn: TAM_CHO_QR → CHINH_THUC, không giữ thêm (sự kiện 4). Idempotent. */
-export const confirmReservations = async (filter: { paymentSessionId?: string; orderId?: string }, attachOrderId: string | null, actor: Actor) => {
+export const confirmReservations = async (filter: { paymentSessionId?: string; orderId?: string }, attachOrderId: string | null, actor: Actor, outerSession?: ClientSession) => {
   if (!filter.paymentSessionId && !filter.orderId) throw new InventoryError(400, 'Thiếu mã phiên thanh toán hoặc mã đơn.');
-  return withTransaction(async (session) => {
+  const work = async (session: ClientSession) => {
     const resCol = await col(COLLECTIONS.reservation);
     const query: any = filter.paymentSessionId ? { MA_PHIEN_THANH_TOAN: filter.paymentSessionId } : { DON_HANG_ID: filter.orderId };
     const rows = await resCol.find(query, { session }).toArray();
@@ -762,7 +764,8 @@ export const confirmReservations = async (filter: { paymentSessionId?: string; o
       confirmed++;
     }
     return { confirmed, alreadyConfirmed: confirmed === 0 };
-  });
+  };
+  return outerSession ? work(outerSession) : withTransaction(work);
 };
 
 /** Nhả các lượng giữ tạm QR đã hết hạn. Gọi định kỳ từ server. */

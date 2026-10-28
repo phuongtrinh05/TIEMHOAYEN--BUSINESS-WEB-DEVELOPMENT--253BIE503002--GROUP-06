@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId } from '../mongo.js';
 import { getAdminOrderDetailById } from '../services/admin-order.service.js';
+import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
+import { syncCheckoutInventory } from '../services/checkout-payment.service.js';
+import { releaseReservations } from '../services/inventory/stock.service.js';
 
 const toDate = (value: unknown): Date | null => {
   if (!value) return null;
@@ -445,7 +448,12 @@ export const updateAdminTransaction = async (req: Request, res: Response) => {
     const { transactionId } = req.params;
     const paymentCollection = await getCollection<any>('THANH_TOAN');
     const { gateway, status, amount, referenceCode, paidAt } = req.body;
-    const result = await paymentCollection.findOneAndUpdate(
+    const result = await withTransaction(async session => {
+    const current = await paymentCollection.findOne({ THANH_TOAN_ID: transactionId }, { session });
+    if (current && status !== undefined && ['Thành công', 'Thất bại'].includes(normalizeTransactionStatus(status))) {
+      await syncCheckoutInventory(session, current.DON_HANG_ID, normalizeTransactionStatus(status) === 'Thành công');
+    }
+    return paymentCollection.findOneAndUpdate(
       { THANH_TOAN_ID: transactionId },
       {
         $set: {
@@ -456,12 +464,13 @@ export const updateAdminTransaction = async (req: Request, res: Response) => {
           ...(paidAt !== undefined ? { NGAY_THANH_TOAN: parseOptionalDate(paidAt) || new Date() } : {}),
         },
       },
-      { returnDocument: 'after' },
+      { returnDocument: 'after', session },
     );
+    });
     if (!result) return res.status(404).json({ message: 'Không tìm thấy giao dịch.' });
     return res.status(200).json({ message: 'Transaction updated.', transaction: result });
   } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot update transaction: ' + error.message });
+    return res.status(error instanceof InventoryError ? error.status : 500).json({ message: 'Cannot update transaction: ' + error.message });
   }
 };
 
@@ -479,10 +488,13 @@ export const createAdminTransaction = async (req: Request, res: Response) => {
       TRANG_THAI_THANH_TOAN: normalizeTransactionStatus(req.body.status),
       NGAY_THANH_TOAN: parseOptionalDate(req.body.paidAt) || new Date(),
     };
-    await paymentCollection.insertOne(transaction);
+    await withTransaction(async session => {
+      if (['Thành công', 'Thất bại'].includes(transaction.TRANG_THAI_THANH_TOAN)) await syncCheckoutInventory(session, transaction.DON_HANG_ID, transaction.TRANG_THAI_THANH_TOAN === 'Thành công');
+      await paymentCollection.insertOne(transaction, { session });
+    });
     return res.status(201).json({ message: 'Transaction created.', transaction });
   } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot create transaction: ' + error.message });
+    return res.status(error instanceof InventoryError ? error.status : 500).json({ message: 'Cannot create transaction: ' + error.message });
   }
 };
 
@@ -494,11 +506,14 @@ export const updateAdminOrderPaymentStatus = async (req: Request, res: Response)
     const status = normalizeTransactionStatus(req.body.status);
     const amount = money(req.body.paidAmount ?? req.body.amount);
     const gateway = req.body.gateway || req.body.paymentMethod || 'Admin';
-    const latest = (await paymentCollection.find({ DON_HANG_ID: orderId }).sort({ NGAY_THANH_TOAN: -1 }).toArray())[0];
+    await withTransaction(async session => {
+    if (['Thành công', 'Thất bại'].includes(status)) await syncCheckoutInventory(session, String(orderId), status === 'Thành công');
+    const latest = (await paymentCollection.find({ DON_HANG_ID: orderId }, { session }).sort({ NGAY_THANH_TOAN: -1 }).toArray())[0];
     if (latest) {
       await paymentCollection.updateOne(
         { THANH_TOAN_ID: latest.THANH_TOAN_ID },
         { $set: { TRANG_THAI_THANH_TOAN: status, SO_TIEN: amount || latest.SO_TIEN, CONG_THANH_TOAN: gateway, NGAY_THANH_TOAN: new Date() } },
+        { session },
       );
     } else {
       const paymentId = await getNextPrefixedId('THANH_TOAN', 'THANH_TOAN_ID', 'TT', 5);
@@ -511,13 +526,14 @@ export const updateAdminOrderPaymentStatus = async (req: Request, res: Response)
         SO_TIEN: amount,
         TRANG_THAI_THANH_TOAN: status,
         NGAY_THANH_TOAN: new Date(),
-      });
+      }, { session });
     }
-    if (status === 'Thành công') await orderCollection.updateOne({ DON_HANG_ID: orderId }, { $set: { TRANG_THAI: 'Chờ xử lý', TIEN_COC: amount } });
+    if (status === 'Thành công') await orderCollection.updateOne({ DON_HANG_ID: orderId }, { $set: { TRANG_THAI: 'Chờ xử lý', TIEN_COC: amount } }, { session });
+    });
     const order = await getAdminOrderDetailById(orderId);
     return res.status(200).json({ message: 'Payment status updated.', order });
   } catch (error: any) {
-    return res.status(500).json({ message: 'Không thể cập nhật trạng thái thanh toán: ' + error.message });
+    return res.status(error instanceof InventoryError ? error.status : 500).json({ message: 'Không thể cập nhật trạng thái thanh toán: ' + error.message });
   }
 };
 
@@ -745,6 +761,12 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
     const { orderId } = req.params;
     const status = String(req.body.status || req.body.TRANG_THAI || '').trim();
     if (!status) return res.status(400).json({ message: 'Missing status.' });
+    await withTransaction(async session => {
+    const orders = await getCollection<any>('DON_HANG');
+    const current = await orders.findOne({ DON_HANG_ID: orderId }, { session });
+    if (current?.KIEM_TRA_TON_KHO && status === 'Đã hủy') {
+      await releaseReservations({ orderId }, { id: String(req.headers['x-admin-id'] || ''), role: 'Admin' }, 'Admin hủy đơn', session);
+    }
     await (await getCollection<any>('DON_HANG')).updateOne(
       { DON_HANG_ID: orderId },
       {
@@ -753,7 +775,9 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
           ...(req.body.rejectReason ? { LY_DO_TU_CHOI: String(req.body.rejectReason).trim() } : {}),
         },
       },
+      { session },
     );
+    });
     const order = await getAdminOrderDetailById(orderId);
     return res.status(200).json({ message: 'Order status updated.', order });
   } catch (error: any) {

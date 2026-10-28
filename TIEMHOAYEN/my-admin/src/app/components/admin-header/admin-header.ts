@@ -30,6 +30,7 @@ export class AdminHeader implements OnInit {
 
   private readonly routeTitles: Array<{ match: string; title: string; exact?: boolean }> = [
     { match: '/dashboard', title: 'Dashboard', exact: true },
+    { match: '/orders/requests', title: 'Yêu cầu đặt hàng' },
     { match: '/orders/order-list', title: 'Đơn hàng' },
     { match: '/orders/create-order', title: 'Tạo đơn hàng' },
     { match: '/orders/order-detail', title: 'Chi tiết đơn hàng' },

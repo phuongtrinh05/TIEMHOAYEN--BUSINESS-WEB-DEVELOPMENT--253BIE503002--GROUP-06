@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
 import { getCollection, getNextPrefixedId } from '../mongo.js';
+import { SALES_CHAT_TYPES } from '../services/sales-proposal.service.js';
 
 const N8N_WEBHOOK_URL = 'https://thuongthu.app.n8n.cloud/webhook/2bb78087-b702-4dc2-91d4-12b65ef2dc79';
 const CHAT_PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -159,7 +160,7 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
       getCollection<any>('KHACH_HANG'),
       getCollection<any>('SAN_PHAM'),
     ]);
-    const rows = (await chatCollection.find({}).toArray()).sort(sortChats);
+    const rows = (await chatCollection.find({ LOAI_TIN_NHAN: { $nin: SALES_CHAT_TYPES } }).toArray()).sort(sortChats);
     const customerIds = Array.from(new Set(rows.map((row) => row.KHACH_HANG_ID).filter(Boolean)));
     const productIds = Array.from(new Set(rows.map((row) => row.SAN_PHAM_ID).filter(Boolean)));
     const [customers, products] = await Promise.all([
@@ -212,7 +213,7 @@ export const getAdminChatConversations = async (_req: Request, res: Response) =>
 export const getCustomerChatMessages = async (req: Request, res: Response) => {
   try {
     const { customerId } = req.params;
-    const rows = (await (await getChatCollection()).find({ KHACH_HANG_ID: customerId }).toArray()).sort(sortChats);
+    const rows = (await (await getChatCollection()).find({ KHACH_HANG_ID: customerId, LOAI_TIN_NHAN: { $nin: SALES_CHAT_TYPES } }).toArray()).sort(sortChats);
     return res.status(200).json({
       total: rows.length,
       messages: rows.map(mapChatRow),
@@ -253,7 +254,7 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
     const chatCollection = await getChatCollection();
     const seed = await chatCollection.findOne({ TIN_NHAN_ID: chatId });
 
-    if (!seed) {
+    if (!seed || SALES_CHAT_TYPES.includes(seed.LOAI_TIN_NHAN)) {
       return res.status(404).json({ message: 'Không tìm thấy hội thoại.' });
     }
 
@@ -262,7 +263,7 @@ export const getGuestChatMessages = async (req: Request, res: Response) => {
       : seed.DON_HANG_ID
         ? { DON_HANG_ID: seed.DON_HANG_ID, KHACH_HANG_ID: null }
         : { TIN_NHAN_ID: chatId };
-    const rows = (await chatCollection.find(query).toArray()).sort(sortChats);
+    const rows = (await chatCollection.find({ ...query, LOAI_TIN_NHAN: { $nin: SALES_CHAT_TYPES } }).toArray()).sort(sortChats);
 
     return res.status(200).json({
       total: rows.length,
@@ -298,6 +299,7 @@ export const replyAdminChat = async (req: Request, res: Response) => {
     if (!target) {
       return res.status(404).json({ message: 'Không tìm thấy hội thoại cần phản hồi.' });
     }
+    if (SALES_CHAT_TYPES.includes(target.LOAI_TIN_NHAN)) return res.status(403).json({ message: 'Vui lòng phản hồi qua màn Yêu cầu đặt hàng của Sales.' });
 
     await chatCollection.updateOne(
       { TIN_NHAN_ID: target.TIN_NHAN_ID },

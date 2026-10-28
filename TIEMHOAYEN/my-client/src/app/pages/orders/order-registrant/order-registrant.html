@@ -548,6 +548,9 @@
           </div>
         </div>
 
+        <p *ngIf="salesRequestId" role="status" style="background:#fff2cc;color:#604913;padding:14px;border-radius:8px;margin-top:12px">
+          Đã chuyển yêu cầu {{salesRequestId}} đến Sales do chưa đủ hàng hoặc nguyên liệu khả dụng. Shop chưa xác nhận đơn hoặc cam kết giao kịp. Nhân viên sẽ kiểm tra kho và liên hệ tư vấn; nếu cần ngay, hãy gọi shop. Bạn chưa cần thanh toán.
+        </p>
         <p class="payment-card-error" *ngIf="submitOrderError">
           {{ submitOrderError }}
         </p>
@@ -557,7 +560,7 @@
           class="btn-order"
           [class.is-ready]="orForm.valid && !isSubmittingOrder && formData.paymentMethod !== 'card' && !isPaymentMethodDisabled(formData.paymentMethod)"
           (click)="onSubmit(orForm)">
-          {{ isSubmittingOrder ? 'Đang thanh toán...' : 'Thanh toán' }}
+          {{ salesRequestId ? 'Mở khung tư vấn' : (isSubmittingOrder ? 'Đang kiểm tra đơn...' : 'Thanh toán') }}
         </button>
       </div>
     </div>

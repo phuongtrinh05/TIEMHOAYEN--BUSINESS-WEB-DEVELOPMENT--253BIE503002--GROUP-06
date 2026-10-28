@@ -1,3 +1,4 @@
+import { orderAccessSession } from '../../../services/api-config';
 import { CommonModule, isPlatformBrowser } 
 from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -95,6 +96,7 @@ export class OrderDetail implements OnInit, OnDestroy {
   private autoRefreshTimer: number | null = null;
 
   ngOnInit(): void {
+    if (isPlatformBrowser(this.platformId) && !orderAccessSession()) { this.router.navigate(['/order-requests']); return; }
     this.loadOrderDetail(true);
     this.startAutoRefreshStatus();
   }
@@ -126,7 +128,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       const lookupPhone = this.getLookupPhoneFromRoute();
       const phoneQuery = lookupPhone ? `?phone=${encodeURIComponent(lookupPhone)}` : '';
       const apiUrl = `${this.ordersApiUrl}/${encodeURIComponent(orderId)}/detail${phoneQuery}`;
-      const response = await fetch(apiUrl);
+      const response = await fetch(apiUrl, { headers: { 'x-order-access': orderAccessSession()?.accessToken || '' } });
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null);
@@ -746,6 +748,7 @@ export class OrderDetail implements OnInit, OnDestroy {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'x-order-access': orderAccessSession()?.accessToken || '',
         },
         body: JSON.stringify({
           reason: this.selectedReason,
@@ -791,6 +794,7 @@ export class OrderDetail implements OnInit, OnDestroy {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'x-order-access': orderAccessSession()?.accessToken || '',
         },
         body: JSON.stringify({
           reason: this.selectedReason,
@@ -848,6 +852,7 @@ export class OrderDetail implements OnInit, OnDestroy {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
+          'x-order-access': orderAccessSession()?.accessToken || '',
                 },
                 body: JSON.stringify({
                   customerId,

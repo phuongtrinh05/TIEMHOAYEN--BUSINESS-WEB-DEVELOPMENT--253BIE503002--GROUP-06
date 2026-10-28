@@ -33,6 +33,7 @@ export class AdminSidebar implements OnInit, OnDestroy {
   mainMenuItems: SidebarItem[] = [
     { label: 'Dashboard', icon: 'bi-house', route: '/dashboard', module: 'dashboard', exact: true },
     { label: 'Đơn hàng', icon: 'bi-cart', route: '/orders/order-list', module: 'orders' },
+    { label: 'Yêu cầu đặt hàng', icon: 'bi-inbox', route: '/orders/requests', module: 'orders' },
     { label: 'Thanh toán', icon: 'bi-credit-card', route: '/transactions', module: 'payments' },
     { label: 'Sản phẩm', icon: 'bi-box-seam', route: '/products/product-list', module: 'products' },
     { label: 'Nguyên vật liệu', icon: 'bi-flower1', route: '/materials', module: 'materials' },

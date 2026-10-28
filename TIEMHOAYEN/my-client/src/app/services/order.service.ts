@@ -1,6 +1,10 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, tap } from 'rxjs';
+import { apiBaseUrl } from './api-config';
+import { OrderAccessService } from './order-access.service';
+import { SalesChatService } from './sales-chat.service';
+import { Router } from '@angular/router';
 
 export interface CreateOrderItemPayload {
   id: string;
@@ -55,6 +59,10 @@ export interface CreateOrderPayload {
 }
 
 export interface CreateOrderResponse {
+  checkoutAccessToken?: string;
+  kind?: 'order' | 'sales_request';
+  requestId?: string;
+  accessToken?: string;
   message: string;
   orderId: string;
   paymentId: string;
@@ -114,12 +122,58 @@ export interface UpdateShippingPayload {
   providedIn: 'root',
 })
 export class OrderService {
-  private readonly apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/orders';
+  private get apiUrl(): string {
+    return `${apiBaseUrl()}/orders`;
+  }
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private salesChat: SalesChatService, private access: OrderAccessService, private router: Router) {}
 
   createOrder(payload: CreateOrderPayload): Observable<CreateOrderResponse> {
-    return this.http.post<CreateOrderResponse>(this.apiUrl, payload);
+    const fingerprint = JSON.stringify(payload);
+    let pending: { fingerprint: string; key: string } | null = null;
+    try { pending = JSON.parse(sessionStorage.getItem('pendingOrderSession') || 'null'); } catch {}
+    if (pending?.fingerprint !== fingerprint) {
+      pending = { fingerprint, key: crypto.randomUUID() };
+      sessionStorage.setItem('pendingOrderSession', JSON.stringify(pending));
+    }
+    return this.http.post<CreateOrderResponse>(this.apiUrl, { ...payload, checkoutSessionId: pending!.key }).pipe(tap(result => {
+      if (result.checkoutAccessToken) sessionStorage.setItem(`checkoutOrderAccess:${result.orderId}`, result.checkoutAccessToken);
+      if (result.kind !== 'sales_request') sessionStorage.removeItem('pendingOrderSession');
+      if (result.kind === 'sales_request') {
+        const phone = String(payload.sender.phone || '').replace(/\D/g, '').replace(/^84/, '0');
+        if (this.access.session?.phone !== phone) {
+          this.access.logout();
+          sessionStorage.setItem('pendingSalesLookup', JSON.stringify({ requestId: result.requestId, phone }));
+          this.salesChat.assistant();
+          this.router.navigate(['/order-requests']);
+        } else this.salesChat.open(result.requestId!);
+      }
+    }));
+  }
+
+  getSalesRequest(requestId: string, token: string): Observable<any> {
+    return this.http.get(`${this.apiUrl}/requests/${encodeURIComponent(requestId)}`, { headers: { 'x-request-token': token } });
+  }
+  openSalesChat(requestId: string): void {
+    if (!this.access.session) { this.salesChat.assistant(); this.router.navigate(['/order-requests']); return; }
+    this.salesChat.open(requestId);
+  }
+  updateSalesRequest(id: string, token: string, body: any): Observable<any> {
+    return this.http.patch(`${this.apiUrl}/requests/${encodeURIComponent(id)}`, body, { headers: { 'x-request-token': token } });
+  }
+  closeSalesChat(): void { this.salesChat.assistant(); }
+  respondSalesRequest(id: string, token: string, quoteId: string, action: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/requests/${encodeURIComponent(id)}/respond`, { quoteId, action }, { headers: { 'x-request-token': token } });
+  }
+  getRequestMessages(id: string, token: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/requests/${encodeURIComponent(id)}/messages`, { headers: { 'x-request-token': token } });
+  }
+  sendRequestMessage(id: string, token: string, text: string, messageId: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/requests/${encodeURIComponent(id)}/messages`, { text, messageId }, { headers: { 'x-request-token': token } });
+  }
+  assetUrl(url: string): string {
+    if (!url) return 'assets/images/hoa.jpg';
+    return url.startsWith('/uploads/') ? `${this.apiUrl.split('/api/')[0]}${url}` : url;
   }
 
   getPaymentStatus(orderId: string): Observable<OrderPaymentStatusResponse> {

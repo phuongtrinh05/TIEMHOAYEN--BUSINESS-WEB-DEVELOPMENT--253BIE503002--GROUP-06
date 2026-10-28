@@ -1,0 +1,104 @@
+<main>
+  <a routerLink="/orders/order-list">← Quản lý đơn hàng</a><h1>Yêu cầu đặt hàng · Sales</h1>
+  <p>Kiểm tra kho → tư vấn → gửi phương án → khách đồng ý → kiểm tra và giữ tồn để lên đơn.</p>
+  <div class="toolbar"><select aria-label="Lọc trạng thái" [(ngModel)]="status" (ngModelChange)="page=1;active=null;load()"><option value="">Tất cả trạng thái</option>@for (s of statuses; track s) { <option [value]="s">{{s}}</option> }</select>
+    <button (click)="load()" [disabled]="loading || busy">{{loading ? 'Đang tải…' : 'Làm mới'}}</button><span>{{total}} yêu cầu</span></div>
+  @if (error) { <p class="error" role="alert">{{error}}</p> }
+  @if (!loading && !requests.length) { <p>Chưa có yêu cầu trong nhóm này.</p> }
+  <div class="workspace"><aside><div class="queue">@for (r of requests; track r.requestId) {
+    <article [class.selected]="active?.requestId === r.requestId"><span class="badge" [class.urgent]="r.workflow?.urgency==='urgent'">{{r.workflow?.urgency==='urgent' ? 'Cần liên hệ sớm' : 'Theo lịch hẹn'}}</span><strong>{{r.requestId}}</strong><p>{{r.sender?.name}} · {{r.status}}</p>
+      <p>Giao {{r.delivery?.date}} · {{r.delivery?.time}}</p><small>{{r.createdAt | date:'dd/MM HH:mm'}} · {{r.assignedName || 'Chưa tiếp nhận'}}</small>
+      @if (r.status === statuses[0]) { <button (click)="update(r,'claim')" [disabled]="busy">Tiếp nhận</button> }
+      @if (r.assignedTo === employeeId) { <button class="secondary" (click)="open(r)">Mở tư vấn</button> }
+    </article>
+  }</div>
+  <div class="toolbar"><button (click)="page=page-1;active=null;load()" [disabled]="page===1 || loading || busy">Trước</button><span>Trang {{page}}</span><button (click)="page=page+1;active=null;load()" [disabled]="page*20>=total || loading || busy">Sau</button></div>
+  </aside>
+  @if (active; as r) {
+    <section><h2>{{r.requestId}} · {{r.status}}</h2>
+      <p><strong>Người đặt:</strong> {{r.sender?.name}} · <a [href]="'tel:'+r.sender?.phone">{{r.sender?.phone}}</a></p>
+      <div class="next-action"><strong>Việc cần làm: {{r.workflow?.nextAction}}</strong><p>{{r.status==='Khách đã đồng ý' ? 'Khách đã thống nhất mẫu, giá và lịch giao. Kiểm tra tồn để tạo đơn từ đúng phương án.' : r.status==='Đã lên đơn' ? 'Mở đơn để theo dõi thanh toán và giao hàng.' : r.workflow?.scheduleExpired ? 'Lịch cũ đã qua. Thống nhất lịch mới trước khi gửi phương án.' : r.workflow?.urgency==='urgent' ? 'Ưu tiên gọi người đặt. Kiểm tra kho và khả năng giao trước khi nhận đơn.' : 'Kiểm tra kho, gửi phương án và theo dõi phản hồi của khách.'}}</p>@if(r.followUpAt) { <p>Hẹn liên hệ: {{r.followUpAt | date:'dd/MM HH:mm'}}</p> }</div><details><summary>Thông tin người nhận</summary><p><strong>Người nhận:</strong> {{r.receiver?.name}} · {{r.receiver?.phone}} · {{r.receiver?.address}}</p></details>
+      <div class="customer-need"><h3>Khách cần gì?</h3>
+        @for (item of r.items; track item.productId) { <p>{{item.name}} × {{item.quantity}}</p> }
+        <p>Giá trị ban đầu: {{r.originalSummary?.total || 0 | number:'1.0-0'}}đ · Giao {{r.delivery?.date}} {{r.delivery?.time}}</p>
+        @if (r.delivery?.noteShop) { <p>Ghi chú: {{r.delivery.noteShop}}</p> }
+      </div>
+      <div class="tabs">@for(tab of [['stock','Kho & mẫu thay thế'],['proposal','Phương án & lên đơn'],['chat','Gọi / nhắn khách']]; track tab[0]) { <button [class.secondary]="workTab!==tab[0]" (click)="workTab=tab[0]">{{tab[1]}}</button> }</div>
+      @if(workTab==='stock') {
+      @if (options) {
+        <h3>Kho cho mẫu khách yêu cầu</h3><p>Khả dụng đã trừ hàng giữ cho đơn khác. Kiểm tra lại khi lên đơn.</p>
+        @for(p of originals; track p.id) { <div class="stock-card"><div class="product"><img [src]="image(p.image)" [alt]="p.name"><div><strong>{{p.name}}</strong><p>{{p.price | number:'1.0-0'}}đ / bó</p><p><b>{{p.finished}}</b> bó sẵn · Cắm thêm tối đa <b>{{p.buildable}}</b> bó</p></div></div>
+        @if(!p.active) { <p class="error">Mẫu đã ngừng bán. Tư vấn mẫu thay thế.</p> }
+        @if(p.formulaReview) { <p class="reason">Công thức cần được kho kiểm tra lại trước khi hứa với khách.</p> }
+        <div class="table-scroll"><table><thead><tr><th>Nguyên liệu</th><th>Cần cắm thêm</th><th>Khả dụng</th><th>Thiếu</th></tr></thead><tbody>@for(m of p.requirements; track m.materialId) { <tr><td>{{m.name}}</td><td>{{m.required}}</td><td>{{m.available}} {{m.unit}}</td><td [class.error]="m.missing>0">{{m.missing || 0}}</td></tr> }</tbody></table></div></div> }
+        <h3>Mẫu khác còn khả dụng</h3><div class="toolbar"><input aria-label="Tìm mẫu" [(ngModel)]="search" placeholder="Tên hoặc mã mẫu"><button (click)="loadOptions()">Tìm / cập nhật kho</button></div>
+        <div class="alternatives">@for(p of alternatives; track p.id) { <div class="stock-card"><img class="preview" [src]="image(p.image)" [alt]="p.name"><h4>{{p.name}}</h4><p>{{p.price | number:'1.0-0'}}đ</p><p>{{p.finished}} bó sẵn · cắm thêm {{p.buildable}}</p>@if((r.quote?.items || r.items).length===1 && ['Sales đang xử lý','Chờ khách xác nhận','Khách đã đồng ý'].includes(r.status)) { <button (click)="chooseAlternative(p)" [disabled]="busy">Soạn với mẫu này</button> }</div> }</div>
+        <button (click)="edit()" [disabled]="busy || !['Sales đang xử lý','Chờ khách xác nhận','Khách đã đồng ý'].includes(r.status)">Soạn mẫu / bó phối để tư vấn</button>
+        @if(options.suppliers?.length) { <details><summary>Nguồn nhập cần xác minh</summary>@for(s of options.suppliers; track $index) { <p>{{s.supplierName}} · {{s.materialId}} · dự kiến {{s.estimatedArrival | date:'dd/MM HH:mm'}} · {{s.canArriveInTime ? 'Dự kiến kịp lịch' : 'Chưa kịp lịch'}}</p> }</details> }
+      } @else { <p>Đang tải kho…</p><button (click)="loadOptions()">Tải lại kho</button> }
+      }
+      @if(workTab==='proposal') {
+      @if (r.quote; as q) {
+        <div class="proposal"><h3>Phương án {{q.revision}} · {{r.acceptedQuoteId===q.id ? 'Khách đã đồng ý' : 'Chưa được khách xác nhận'}}</h3>
+          @for (item of q.items; track item.id) { <div class="product"><img [src]="image(item.image)" [alt]="item.name"><div><strong>{{item.name}}</strong><p>{{item.qty}} × {{item.price | number:'1.0-0'}}đ</p><small>{{item.imageDescription}}</small></div></div> }
+          <p>Tổng: <strong>{{q.summary.total | number:'1.0-0'}}đ</strong> · Trả trước: {{q.payment.amountToPay | number:'1.0-0'}}đ · Còn lại: {{q.summary.total-q.payment.amountToPay | number:'1.0-0'}}đ</p>
+          <p>Giao {{q.delivery.date}} {{q.delivery.time}} · {{q.note}}</p>
+        </div>
+      }
+      @if (['Sales đang xử lý','Chờ khách xác nhận','Khách đã đồng ý'].includes(r.status)) {
+        <button (click)="edit()" [disabled]="busy || !options">{{r.quote ? 'Tạo phiên bản phương án mới' : 'Soạn phương án cho khách'}}</button>
+        @if (r.status === 'Khách đã đồng ý') { <button (click)="convert()" [disabled]="busy || editing || r.workflow?.scheduleExpired">Kiểm tra tồn và lên đơn từ phương án</button> }
+        <p>Sửa phương án cần khách xác nhận lại mẫu, giá và lịch giao.</p>
+      }
+      @if (r.orderResult) { <a [routerLink]="['/orders/order-detail', r.orderResult.orderId]">Xem đơn {{r.orderResult.orderId}}</a> }
+      @if (editing && draft) {
+        <div class="editor"><h3>Soạn phương án — giá do server tính khi gửi</h3>
+          @for (item of draft.items; track $index; let index=$index) {
+            <fieldset><legend>{{item.custom ? 'Bó phối mới' : 'Mẫu trong danh mục'}} · Dòng {{index+1}}</legend>
+              @if (!item.custom) { <label>Mẫu<select [(ngModel)]="item.id"><option value="">Chọn mẫu</option>@for (p of options.products; track p.id) { <option [value]="p.id">{{p.name}} · {{p.price | number:'1.0-0'}}đ</option> }</select></label> }
+              @else {
+                <label>Tên bó<input [(ngModel)]="item.name" maxlength="150"></label>
+                <label>Ảnh mẫu / ảnh minh họa<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" (change)="upload(item,$event)" [disabled]="busy"></label>
+                @if (item.image) { <img class="preview" [src]="image(item.image)" alt="Ảnh phương án"> }
+                <label>Chú thích ảnh để khách hiểu<input [(ngModel)]="item.imageDescription" maxlength="300"></label>
+                <label>Mô tả bó<textarea [(ngModel)]="item.description" maxlength="2000" rows="2"></textarea></label>
+                @for (m of item.materials; track $index; let mi=$index) {
+                  <div class="toolbar"><select aria-label="Nguyên vật liệu" [(ngModel)]="m.materialId"><option value="">Chọn NVL</option>@for (material of options.materials; track material.id) { <option [value]="material.id">{{material.name}} · còn {{material.available}} {{material.unit}} · giá bán {{material.price | number:'1.0-0'}}đ</option> }</select>
+                  <label>Định lượng/bó<input type="number" min="0.001" step="0.001" [(ngModel)]="m.quantity"></label><button class="secondary" (click)="item.materials.splice(mi,1)">Bỏ NVL</button></div>
+                }
+                <button class="secondary" (click)="item.materials.push({materialId:'',quantity:1})">Thêm NVL</button>
+                <div class="toolbar"><label>Phí cắm/bó<input type="number" min="0" [(ngModel)]="item.designFee"></label><label>Chi phí bổ sung/bó<input type="number" min="0" [(ngModel)]="item.extraFee"></label></div>
+              }
+              <div class="toolbar"><label>Số bó<input type="number" min="1" max="1000" step="1" [(ngModel)]="item.qty"></label><strong>Tạm tính/bó: {{unitPrice(item) | number:'1.0-0'}}đ</strong><button class="secondary" (click)="draft.items.splice(index,1)">Bỏ dòng</button></div>
+            </fieldset>
+          }
+          <div class="toolbar"><button class="secondary" (click)="addCatalog()">Thêm mẫu danh mục</button><button class="secondary" (click)="addCustom()">Thêm bó phối mới</button></div>
+          <div class="toolbar"><label>Ngày giao<input type="date" [(ngModel)]="draft.date"></label><label>Giờ giao<input type="time" [(ngModel)]="draft.time"></label><label>Phí giao<input type="number" min="0" [(ngModel)]="draft.shippingFee"></label></div>
+          <label>Thanh toán<select [(ngModel)]="draft.paymentMethod"><option value="bank">Chuyển khoản toàn bộ</option><option value="cod">Cọc thỏa thuận, còn lại COD</option></select></label>
+          @if (draft.paymentMethod==='cod') { <label>Tiền cọc theo phương án thỏa thuận<input type="number" min="1" [max]="draftTotal" [(ngModel)]="draft.depositAmount"></label> }
+          <label>Nội dung tư vấn và điều kiện phương án<textarea [(ngModel)]="draft.note" maxlength="2000" rows="3"></textarea></label>
+          <p>Tổng tạm tính: <strong>{{draftTotal | number:'1.0-0'}}đ</strong>. Phương án chưa áp voucher/điểm của yêu cầu cũ; khách sẽ thấy rõ khi xác nhận.</p>
+          <button (click)="propose()" [disabled]="busy || !draft.items.length || !draft.note.trim()">Gửi phương án để khách xác nhận</button><button class="secondary" (click)="editing=false" [disabled]="busy">Đóng bản soạn</button>
+        </div>
+      }
+      }
+      @if(workTab==='chat') {
+      <h3>Liên hệ người đặt</h3><a class="call" [href]="'tel:'+r.sender?.phone">Gọi {{r.sender?.phone}}</a>
+      @if(['Sales đang xử lý','Chờ khách xác nhận','Khách đã đồng ý'].includes(r.status)) {
+      <div class="contact-form"><label>Kết quả gọi<select [(ngModel)]="contact.outcome"><option value="connected">Đã trao đổi, cần tư vấn tiếp</option><option value="unreachable">Chưa liên lạc được</option>@if(r.status==='Chờ khách xác nhận') { <option value="agreed">Khách đồng ý phương án hiện tại</option> }</select></label>
+      <label>Nội dung đã trao đổi (khách xem được)<textarea [(ngModel)]="contact.note" maxlength="2000"></textarea></label><label>Hẹn gọi lại<input type="datetime-local" [(ngModel)]="contact.followUpAt"></label>
+      @if(contact.outcome==='agreed') { <p>Phương án {{r.quote?.revision}} · {{r.quote?.summary.total | number:'1.0-0'}}đ · trả trước {{r.quote?.payment.amountToPay | number:'1.0-0'}}đ · giao {{r.quote?.delivery.date}} {{r.quote?.delivery.time}}</p><label><input type="checkbox" [(ngModel)]="contact.readBackConfirmed"> Tôi đã đọc lại mẫu, giá, khoản trả trước và lịch giao; người đặt xác nhận đồng ý.</label> }
+      <button (click)="saveContact()" [disabled]="busy || !contact.note.trim() || contact.outcome==='agreed' && !contact.readBackConfirmed">Lưu kết quả cuộc gọi</button></div> }
+      <h3>Nhắn với khách trên website</h3>
+      <div class="chat">@for (m of messages; track m.id) { <div class="bubble" [class.mine]="m.senderType==='sales'"><strong>{{m.senderName}}</strong><small> · {{m.at | date:'dd/MM HH:mm'}} {{m.channel==='phone' ? '· Ghi nhận cuộc gọi' : ''}}</small><p>{{m.text}}</p></div> }@if (!messages.length) { <p>Chưa có tin nhắn.</p> }</div>
+      @if (r.status !== 'Đã từ chối' && r.status !== 'Đã tư vấn' && r.status !== 'Khách đã hủy') {
+
+        <label>Nội dung<textarea [(ngModel)]="message" maxlength="2000" rows="3"></textarea></label><button (click)="send()" [disabled]="busy || !message.trim()">{{channel==='phone' ? 'Lưu kết quả gọi' : 'Gửi cho khách'}}</button>
+      }
+      }
+      @if (['Sales đang xử lý','Chờ khách xác nhận','Khách đã đồng ý'].includes(r.status)) { <details><summary>Không thể đáp ứng / khách muốn dừng yêu cầu</summary><label>Lý do<textarea [(ngModel)]="note" maxlength="2000"></textarea></label><button class="reject" (click)="update(r,'reject')" [disabled]="busy || !note.trim()">Kết thúc, từ chối yêu cầu</button></details> }
+      <details><summary>Lịch sử xử lý</summary>@for (h of r.history; track h.id) { <p>{{h.at | date:'dd/MM/yyyy HH:mm'}} · {{h.actor || 'Khách'}} · {{h.action}} {{h.note}}</p> }</details>
+    </section>
+  }
+  </div>
+</main>

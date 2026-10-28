@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { connectMongo } from './mongo.js';
+import { ensureSalesRequestIndexes } from './services/sales-proposal.service.js';
 
 import customerRoutes from './routes/customer.js';
 import employeeRoutes from './routes/employee.js';
@@ -156,8 +157,10 @@ const PORT = Number(process.env.PORT ?? 3000);
 (async () => {
   try {
     await connectMongo();
-    await ensureInventoryIndexes();
-    startInventoryJobs();
+    if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureInventoryIndexes();
+    await ensureSalesRequestIndexes();
+    await (await import('./services/order-access.service.js')).ensureOrderAccessIndexes();
+    if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startInventoryJobs();
 
     app.listen(PORT, () => {
       console.log(`\nServer: http://localhost:${PORT}`);

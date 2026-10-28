@@ -213,8 +213,8 @@ export const getAdminOrderDetailById = async (orderId: string): Promise<AdminOrd
     const image = imageMap.get(item.SAN_PHAM_ID);
     return {
       id: item.SAN_PHAM_ID || '',
-      name: product?.TEN_SAN_PHAM || item.SAN_PHAM_ID || 'Sản phẩm',
-      image: image?.URL || 'assets/images/logo-main.png',
+      name: item.TEN_SAN_PHAM_SNAPSHOT || product?.TEN_SAN_PHAM || item.SAN_PHAM_ID || 'Sản phẩm',
+      image: item.HINH_ANH_SNAPSHOT || image?.URL || 'assets/images/logo-main.png',
       qty: Number(item.SO_LUONG || 0),
       price: Number(item.GIA || 0),
     };
@@ -258,10 +258,10 @@ export const getAdminOrderDetailById = async (orderId: string): Promise<AdminOrd
     createdAt: formatDate(order.NGAY_TAO),
     createdTime: formatTime(order.NGAY_TAO),
     estimatedDelivery: order.KHUNG_GIO_MUON_GIAO || '',
-    senderName: customer?.TEN || 'Khách lẻ',
+    senderName: order.TEN_NGUOI_DAT || customer?.TEN || 'Khách lẻ',
     senderCustomerId: order.KHACH_HANG_ID || '',
-    senderPhone: customer?.SDT || '',
-    senderEmail: customer?.EMAIL || '',
+    senderPhone: order.SDT_NGUOI_DAT || customer?.SDT || '',
+    senderEmail: order.EMAIL_NGUOI_DAT || customer?.EMAIL || '',
     senderAvatar: customer?.AVATAR || '',
     receiverName: order.TEN_NGUOI_NHAN || '',
     receiverPhone: order.SDT_NGUOI_NHAN || '',

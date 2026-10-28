@@ -4,6 +4,9 @@ import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { take } from 'rxjs/operators';
+import { Subscription } from 'rxjs';
+import { SalesChatService } from '../../services/sales-chat.service';
+import { OrderRequest } from '../../pages/orders/order-request/order-request';
 
 interface Message {
   id?: string;
@@ -47,7 +50,7 @@ interface GuestContactForm {
 @Component({
   selector: 'app-chatbot-widget',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, OrderRequest],
   templateUrl: './chatbot-widget.html',
   styleUrl: './chatbot-widget.css'
 })
@@ -57,6 +60,9 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   @ViewChild('fileInput') fileInput!: ElementRef<HTMLInputElement>;
 
   isOpen = false;
+  salesRequestId = '';
+  latestSalesRequestId = '';
+  private salesSubscription?: Subscription;
   inputText = '';
   isLoading = false;
   loadingText = 'Dang xu ly...';
@@ -96,10 +102,17 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     private http: HttpClient,
     private cdr: ChangeDetectorRef,
     private zone: NgZone,
-    private router: Router
+    private router: Router,
+    private salesChat: SalesChatService
   ) {}
 
   ngOnInit(): void {
+    if (typeof window === 'undefined') return;
+    this.salesSubscription = this.salesChat.request$.subscribe(id => {
+      this.salesRequestId = id;
+      if (id) { this.latestSalesRequestId = id; this.isOpen = true; this.showGuestContactForm = false; this.clearSelectedFile(); }
+      this.cdr.markForCheck();
+    });
     this.loadLocalHistory();
     this.syncCustomerReplies();
     this.syncTimer = window.setInterval(() => {
@@ -108,6 +121,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.salesSubscription?.unsubscribe();
     if (this.syncTimer !== null) {
       window.clearInterval(this.syncTimer);
     }
@@ -117,6 +131,8 @@ export class ChatbotWidget implements OnInit, OnDestroy {
     this.isOpen = true;
     this.syncCustomerReplies();
   }
+  backToAssistant(): void { this.salesChat.assistant(); }
+  resumeSalesChat(): void { if (this.latestSalesRequestId) this.salesChat.open(this.latestSalesRequestId); }
   closeChat(): void { this.isOpen = false; }
 
   getTime(): string {
@@ -434,6 +450,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   }
 
   private syncCustomerReplies(): void {
+    if (this.salesRequestId) return;
     const customerId = this.getCustomerId();
     const guestConversationId = this.getGuestConversationId();
     const syncUrl = customerId
@@ -729,6 +746,7 @@ export class ChatbotWidget implements OnInit, OnDestroy {
   }
 
   sendMessage(): void {
+    if (this.salesRequestId) return;
     const imagePayload = this.getSelectedImagePayload();
 
     if ((!this.inputText.trim() && !imagePayload) || this.isLoading || this.isSending) return;

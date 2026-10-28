@@ -16,6 +16,7 @@ export function apiBaseUrl(): string {
   } catch {
     /* SSR / private mode */
   }
+  if (typeof location !== 'undefined' && ['localhost', '127.0.0.1'].includes(location.hostname)) return LOCAL_API_BASE_URL;
   return DEFAULT_API_BASE_URL;
 }
 

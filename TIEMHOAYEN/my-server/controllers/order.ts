@@ -1,5 +1,13 @@
 import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
+import { writeCheckoutOrder } from '../services/checkout-order-writer.service.js';
+import { routeCheckout } from '../services/order-request.service.js';
+import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
+import { INVENTORY_CONFIG, RESERVATION_STATUS } from '../services/inventory/constants.js';
+import { syncCheckoutInventory } from '../services/checkout-payment.service.js';
+import { confirmReservations, releaseReservations, reserveProducts } from '../services/inventory/stock.service.js';
+import { randomUUID } from 'node:crypto';
+import { reserveOrderLines } from '../services/order-stock.service.js';
 
 interface CreateOrderItem {
   id: string;
@@ -22,7 +30,7 @@ const RETURN_REFUND_REASONS = [
   'Giao hàng trễ so với thời gian yêu cầu',
 ];
 
-const PAYMENT_WINDOW_MINUTES = 5;
+const PAYMENT_WINDOW_MINUTES = INVENTORY_CONFIG.holdMinutes;
 const REWARD_POINTS_PER_UNIT = 2;
 const REWARD_UNIT_VALUE = 1000;
 
@@ -92,7 +100,7 @@ const isFailedStatus = (status: string): boolean => {
 };
 
 const getOrderNumericPart = (orderId: string): string => {
-  return orderId.replace(/\D/g, '') || Date.now().toString().slice(-8);
+  return orderId.replace(/^YEN/, '') || Date.now().toString().slice(-8);
 };
 
 const createPaymentId = (orderId: string, attempt = 1): string => {
@@ -109,20 +117,6 @@ const createTransactionCode = (orderId: string, attempt = 1): string => {
 
 const createPaymentDeadline = (): string => {
   return new Date(Date.now() + PAYMENT_WINDOW_MINUTES * 60 * 1000).toISOString();
-};
-
-const createNextOrderId = async (): Promise<string> => {
-  const orderCollection = await getCollection<any>('DON_HANG');
-  const orders = await orderCollection
-    .find({ DON_HANG_ID: { $regex: '^YEN\\d+$' } })
-    .project({ DON_HANG_ID: 1 })
-    .toArray();
-  const maxNumber = orders.reduce((max, order) => {
-    const value = Number(String(order.DON_HANG_ID || '').replace('YEN', ''));
-    return Number.isFinite(value) ? Math.max(max, value) : max;
-  }, 16000);
-
-  return `YEN${String(maxNumber + 1).padStart(5, '0')}`;
 };
 
 const getNextPaymentAttempt = async (orderId: string): Promise<number> => {
@@ -220,8 +214,12 @@ const removePaidItemsFromCart = async (orderId: string, customerId: string): Pro
 
 const finalizeSuccessfulPayment = async (orderId: string): Promise<void> => {
   const orderCollection = await getCollection<any>('DON_HANG');
+  const current = await orderCollection.findOne({ DON_HANG_ID: orderId });
+  if (current?.KIEM_TRA_TON_KHO && ['Chờ thanh toán', 'Thanh toán thất bại', 'Chờ xử lý'].includes(current.TRANG_THAI)) {
+    await confirmReservations(current.MA_PHIEN_THANH_TOAN ? { paymentSessionId: current.MA_PHIEN_THANH_TOAN } : { orderId }, orderId, { id: 'PAYMENT', role: 'system' });
+  }
   const order = await orderCollection.findOneAndUpdate(
-    { DON_HANG_ID: orderId },
+    { DON_HANG_ID: orderId, TRANG_THAI: { $in: ['Chờ thanh toán', 'Thanh toán thất bại', 'Chờ xử lý'] } },
     { $set: { TRANG_THAI: 'Chờ xử lý' } },
     { returnDocument: 'after' },
   );
@@ -233,32 +231,28 @@ const finalizeSuccessfulPayment = async (orderId: string): Promise<void> => {
 };
 
 const markPaymentFailed = async (orderId: string): Promise<void> => {
+  await withTransaction(async session => {
   const [orderCollection, paymentCollection] = await Promise.all([
     getCollection<any>('DON_HANG'),
     getCollection<any>('THANH_TOAN'),
   ]);
+  const paid = await paymentCollection.findOne({ DON_HANG_ID: orderId, TRANG_THAI_THANH_TOAN: { $in: ['Thành công', 'Thanh toán thành công', 'Đã thanh toán'] } }, { session });
+  if (paid) return;
+  await syncCheckoutInventory(session, orderId, false);
   await paymentCollection.updateMany(
     {
       DON_HANG_ID: orderId,
       TRANG_THAI_THANH_TOAN: { $nin: ['Thành công', 'Thanh toán thành công', 'Đã thanh toán'] },
     },
     { $set: { TRANG_THAI_THANH_TOAN: 'Thất bại' } },
+    { session },
   );
   await orderCollection.updateOne(
-    { DON_HANG_ID: orderId, TRANG_THAI: { $ne: 'Chờ xử lý' } },
+    { DON_HANG_ID: orderId, TRANG_THAI: { $in: ['Chờ thanh toán', 'Thanh toán thất bại'] } },
     { $set: { TRANG_THAI: 'Thanh toán thất bại' } },
+    { session },
   );
-};
-
-export const getAllOrders = async (_req: Request, res: Response) => {
-  try {
-    const orderCollection = await getCollection<any>('DON_HANG');
-    const orders = await orderCollection.find({}).toArray();
-    orders.sort((left, right) => (toDate(right.NGAY_TAO)?.getTime() || 0) - (toDate(left.NGAY_TAO)?.getTime() || 0));
-    return res.status(200).json(orders);
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Lỗi Controller: ' + error.message });
-  }
+  });
 };
 
 export const getPublicVouchers = async (_req: Request, res: Response) => {
@@ -283,7 +277,7 @@ export const getPublicVouchers = async (_req: Request, res: Response) => {
 
 export const createOrder = async (req: Request, res: Response) => {
   try {
-    const { customerId, receiver, delivery, items, voucher, summary, payment, flags } = req.body;
+    const { customerId, receiver, sender, delivery, items, voucher, summary, payment, flags } = req.body;
     const normalizedCustomerId = customerId ? String(customerId) : null;
 
     if (!receiver?.name || !receiver?.phone || !receiver?.address) {
@@ -292,6 +286,9 @@ export const createOrder = async (req: Request, res: Response) => {
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'Đơn hàng chưa có sản phẩm.' });
+    }
+    if (!sender?.name || !/^\+?\d[\d\s.-]{7,19}$/.test(String(sender?.phone || ''))) {
+      return res.status(400).json({ message: 'Cần tên và số điện thoại người đặt để Sales liên hệ khi thiếu hàng.' });
     }
 
     const paymentMethod = String(payment?.method || '').trim();
@@ -303,12 +300,16 @@ export const createOrder = async (req: Request, res: Response) => {
 
     const productItemsById = new Map<string, CreateOrderItem>();
     for (const rawItem of items) {
+      const quantity = Number(rawItem.qty ?? rawItem.quantity ?? rawItem.SO_LUONG ?? 1);
+      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000) {
+        return res.status(400).json({ message: 'Số lượng sản phẩm phải là số nguyên từ 1–1000.' });
+      }
       const item = {
         id: String(rawItem.id || rawItem.SAN_PHAM_ID || ''),
-        qty: Math.max(1, Number(rawItem.qty || rawItem.quantity || rawItem.SO_LUONG || 1)),
+        qty: quantity,
         price: Math.max(0, Number(rawItem.price || rawItem.GIA || 0)),
       };
-      if (!item.id.startsWith('SP')) continue;
+      if (!item.id.startsWith('SP')) return res.status(400).json({ message: 'Mã sản phẩm không hợp lệ.' });
 
       const current = productItemsById.get(item.id);
       productItemsById.set(item.id, current ? { ...current, qty: current.qty + item.qty, price: item.price } : item);
@@ -361,104 +362,15 @@ export const createOrder = async (req: Request, res: Response) => {
       });
     }
 
-    const orderId = await createNextOrderId();
-    const paymentId = createPaymentId(orderId, 1);
-    const transactionCode = createTransactionCode(orderId, 1);
-    const paymentDeadline = createPaymentDeadline();
-    const subtotal = Math.max(0, Number(summary?.subtotal || 0));
-    const shippingFee = Math.max(0, Number(summary?.shippingFee || 0));
-    const clientDepositAmount = Math.max(0, Number(summary?.depositAmount || 0));
-    const depositAmount = paymentMethod === 'cod' ? clientDepositAmount : 0;
-    const total = Math.max(0, Number(summary?.total || 0));
-    const paymentAmount = paymentMethod === 'cod' ? depositAmount : total;
-    const initialPaymentStatus = paymentAmount <= 0 ? 'Thành công' : 'Chờ thanh toán';
-    const initialOrderStatus = paymentAmount <= 0 ? 'Chờ xử lý' : 'Chờ thanh toán';
-    const paymentMethodName = String(payment?.methodName || paymentMethod || '');
-
-    const [orderCollection, detailCollection, paymentCollection, orderVoucherCollection] = await Promise.all([
-      getCollection<any>('DON_HANG'),
-      getCollection<any>('DON_HANG_CHI_TIET'),
-      getCollection<any>('THANH_TOAN'),
-      getCollection<any>('DON_HANG_VOUCHER'),
-    ]);
-
-    await orderCollection.insertOne({
-      _id: orderId,
-      DON_HANG_ID: orderId,
-      KHACH_HANG_ID: normalizedCustomerId,
-      NGAY_TAO: new Date(),
-      TRANG_THAI: initialOrderStatus,
-      TAM_TINH: subtotal,
-      PHI_VAN_CHUYEN: shippingFee,
-      TIEN_COC: depositAmount,
-      TONG_TIEN: total,
-      PHUONG_THUC_THANH_TOAN: paymentMethodName,
-      VAT: 0,
-      NGAY_MUON_GIAO: toSqlDate(delivery?.date),
-      KHUNG_GIO_MUON_GIAO: String(delivery?.time || ''),
-      LOI_NHAN_THIEP: String(delivery?.message || ''),
-      AN_THONG_TIN: toBit(flags?.hideSender),
-      GHI_CHU: String(delivery?.noteShop || ''),
-      TEN_NGUOI_NHAN: receiver.name,
-      SDT_NGUOI_NHAN: receiver.phone,
-      DIA_CHI_GIAO_HANG: receiver.address,
-      YEU_CAU_VAT: toBit(flags?.requestVAT),
-      GUI_ANH_QUA_ZALO: toBit(flags?.sendZaloPhoto),
-      DA_CHINH_SUA_GIAO_HANG: false,
-      LY_DO_HUY: null,
-      NGAY_HUY: null,
-      LY_DO_HOAN_TIEN_TRA_HANG: null,
-      NGAY_YEU_CAU_HOAN_TIEN_TRA_HANG: null,
-      DIEM_THUONG_SU_DUNG: loyaltyPointsToUse > 0 ? loyaltyPointsToUse : null,
-      DA_TRU_DIEM_THUONG: false,
-      LY_DO_TU_CHOI: null,
+    const outcome = await routeCheckout(String(req.body.checkoutSessionId || ''), req.body,
+      productItems.map(item => ({ productId: item.id, quantity: item.qty })), async (session, orderId) => {
+      return writeCheckoutOrder(session, orderId, { ...req.body, items: productItems }, { voucher: checkedVoucher, loyaltyPoints: loyaltyPointsToUse });
     });
-
-    await detailCollection.insertMany(productItems.map((item) => ({
-      _id: { DON_HANG_ID: orderId, SAN_PHAM_ID: item.id },
-      DON_HANG_ID: orderId,
-      SAN_PHAM_ID: item.id,
-      SO_LUONG: item.qty,
-      GIA: item.price,
-    })));
-
-    if (checkedVoucher) {
-      await orderVoucherCollection.insertOne({
-        _id: { DON_HANG_ID: orderId, VOUCHER_ID: checkedVoucher.VOUCHER_ID },
-        DON_HANG_ID: orderId,
-        VOUCHER_ID: checkedVoucher.VOUCHER_ID,
-        MO_TA: `Áp dụng voucher ${checkedVoucher.MA_VOUCHER}`,
-      });
-    }
-
-    await paymentCollection.insertOne({
-      _id: paymentId,
-      THANH_TOAN_ID: paymentId,
-      DON_HANG_ID: orderId,
-      CONG_THANH_TOAN: paymentMethodName,
-      MA_GIAO_DICH: transactionCode,
-      SO_TIEN: paymentAmount,
-      TRANG_THAI_THANH_TOAN: initialPaymentStatus,
-      NGAY_THANH_TOAN: new Date(),
-    });
-
-    if (paymentAmount <= 0) {
-      await finalizeSuccessfulPayment(orderId);
-    }
-
-    return res.status(201).json({
-      message: 'Tạo đơn hàng và mã thanh toán thành công.',
-      orderId,
-      paymentId,
-      transactionCode,
-      paymentAmount,
-      paymentDeadline,
-      orderStatus: initialOrderStatus,
-      paymentStatus: initialPaymentStatus,
-      paymentWindowSeconds: PAYMENT_WINDOW_MINUTES * 60,
-    });
+    if (outcome.kind === 'order' && outcome.paymentAmount <= 0) await finalizeSuccessfulPayment(outcome.orderId);
+    return res.status(201).json(outcome);
   } catch (error: any) {
     console.error('Lỗi tạo đơn hàng:', error);
+    if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({ message: 'Không thể tạo đơn hàng: ' + error.message });
   }
 };
@@ -539,7 +451,7 @@ export const retryOrderPayment = async (req: Request, res: Response) => {
     }
 
     const currentOrderStatus = String(order.TRANG_THAI || '');
-    if (currentOrderStatus === 'Chờ xử lý' || currentOrderStatus === 'Hoàn thành') {
+    if (!['Chờ thanh toán', 'Thanh toán thất bại'].includes(currentOrderStatus)) {
       return res.status(400).json({ message: 'Đơn hàng đã thanh toán hoặc đã xử lý, không thể thanh toán lại.' });
     }
 
@@ -556,12 +468,24 @@ export const retryOrderPayment = async (req: Request, res: Response) => {
     const nextPaymentStatus = paymentAmount <= 0 ? 'Thành công' : 'Chờ thanh toán';
     const nextOrderStatus = paymentAmount <= 0 ? 'Chờ xử lý' : 'Chờ thanh toán';
 
+    await withTransaction(async session => {
+    const fresh = await orderCollection.findOne({ DON_HANG_ID: orderId }, { session });
+    if (!fresh || !['Chờ thanh toán', 'Thanh toán thất bại'].includes(fresh.TRANG_THAI)) throw new InventoryError(409, 'Đơn vừa thay đổi trạng thái.');
+    const newSessionId = randomUUID();
+    if (fresh.KIEM_TRA_TON_KHO) {
+      await releaseReservations({ orderId }, { id: 'PAYMENT', role: 'system' }, 'Tạo phiên thanh toán mới', session);
+      const details = await (await getCollection<any>('DON_HANG_CHI_TIET')).find({ DON_HANG_ID: orderId }, { session }).toArray();
+      await reserveOrderLines(session, details.map(item => ({ id: item.SAN_PHAM_ID, qty: item.SO_LUONG, custom: item.SAN_PHAM_TUY_CHINH, bom: item.BOM_SNAPSHOT })), {
+        orderId, paymentSessionId: newSessionId, status: RESERVATION_STATUS.temporary, actor: { id: null, role: 'customer' },
+      });
+    }
     await paymentCollection.updateMany(
       {
         DON_HANG_ID: orderId,
         TRANG_THAI_THANH_TOAN: { $nin: ['Thành công', 'Thanh toán thành công', 'Đã thanh toán'] },
       },
       { $set: { TRANG_THAI_THANH_TOAN: 'Thất bại' } },
+      { session },
     );
     await paymentCollection.insertOne({
       _id: paymentId,
@@ -572,8 +496,9 @@ export const retryOrderPayment = async (req: Request, res: Response) => {
       SO_TIEN: paymentAmount,
       TRANG_THAI_THANH_TOAN: nextPaymentStatus,
       NGAY_THANH_TOAN: new Date(),
+    }, { session });
+    await orderCollection.updateOne({ DON_HANG_ID: orderId }, { $set: { TRANG_THAI: nextOrderStatus, MA_PHIEN_THANH_TOAN: newSessionId } }, { session });
     });
-    await orderCollection.updateOne({ DON_HANG_ID: orderId }, { $set: { TRANG_THAI: nextOrderStatus } });
 
     if (paymentAmount <= 0) {
       await finalizeSuccessfulPayment(orderId);
@@ -592,6 +517,7 @@ export const retryOrderPayment = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Lỗi tạo lại mã thanh toán:', error);
+    if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({ message: 'Không thể tạo lại mã thanh toán: ' + error.message });
   }
 };
@@ -606,10 +532,14 @@ export const markOrderPaymentSuccess = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Không tìm thấy thanh toán.' });
     }
 
+    await withTransaction(async session => {
+    await syncCheckoutInventory(session, String(orderId), true);
     await paymentCollection.updateOne(
       { THANH_TOAN_ID: payment.THANH_TOAN_ID },
       { $set: { TRANG_THAI_THANH_TOAN: 'Thành công', NGAY_THANH_TOAN: new Date() } },
+      { session },
     );
+    });
     await finalizeSuccessfulPayment(orderId);
 
     return res.status(200).json({
@@ -621,6 +551,7 @@ export const markOrderPaymentSuccess = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Lỗi xác nhận thanh toán thành công:', error);
+    if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({ message: 'Không thể xác nhận thanh toán: ' + error.message });
   }
 };
@@ -698,10 +629,10 @@ export const getOrderDetail = async (req: Request, res: Response) => {
         SAN_PHAM_ID: detail.SAN_PHAM_ID,
         SO_LUONG: detail.SO_LUONG,
         GIA: detail.GIA,
-        TEN_SAN_PHAM: product?.TEN_SAN_PHAM || null,
+        TEN_SAN_PHAM: detail.TEN_SAN_PHAM_SNAPSHOT || product?.TEN_SAN_PHAM || null,
         KIEU_DANG: product?.KIEU_DANG || null,
         TRANG_THAI_SAN_PHAM: product?.TRANG_THAI || null,
-        HINH_ANH: image?.URL || null,
+        HINH_ANH: detail.HINH_ANH_SNAPSHOT || image?.URL || null,
       };
     });
 
@@ -777,10 +708,16 @@ export const cancelOrder = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Chỉ có đơn hàng ở trạng thái Chờ xử lý mới được hủy.' });
     }
 
+    await withTransaction(async session => {
+    const fresh = await orderCollection.findOne({ DON_HANG_ID: orderId }, { session });
+    if (fresh?.TRANG_THAI !== 'Chờ xử lý') throw new InventoryError(409, 'Đơn vừa thay đổi trạng thái.');
+    if (fresh.KIEM_TRA_TON_KHO) await releaseReservations({ orderId }, { id: 'CUSTOMER', role: 'customer' }, 'Khách hủy đơn', session);
     await orderCollection.updateOne(
-      { DON_HANG_ID: orderId },
+      { DON_HANG_ID: orderId, TRANG_THAI: 'Chờ xử lý' },
       { $set: { TRANG_THAI: 'Đã hủy', LY_DO_HUY: reason, NGAY_HUY: new Date() } },
+      { session },
     );
+    });
 
     return res.status(200).json({
       message: 'Hủy đơn hàng thành công.',

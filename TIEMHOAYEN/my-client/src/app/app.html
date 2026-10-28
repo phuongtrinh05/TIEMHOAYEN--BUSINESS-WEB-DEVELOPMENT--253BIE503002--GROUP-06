@@ -11,6 +11,9 @@
   [class.layout-one-content]="useLayoutOne()"
   [class.auth-content]="useAuthLayout()"
 >
+  @if (!useAuthLayout()) {
+    <nav aria-label="Theo dõi yêu cầu đặt hoa" class="requests-shortcut"><a routerLink="/order-requests">Tra cứu đơn hàng và yêu cầu tư vấn</a></nav>
+  }
   <router-outlet></router-outlet>
   @if (!useAuthLayout()) {
     <app-chatbot-widget></app-chatbot-widget>

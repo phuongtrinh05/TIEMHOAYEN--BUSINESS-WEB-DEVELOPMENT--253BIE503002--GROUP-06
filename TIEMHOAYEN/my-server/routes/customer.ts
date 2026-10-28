@@ -1,4 +1,5 @@
 import express from 'express';
+import { requireCustomerLookup } from '../controllers/order-access.js';
 import multer from 'multer';
 import path from 'path';
 import {
@@ -54,7 +55,7 @@ router.get('/:id/addresses', getCustomerAddresses);
 router.delete('/addresses/:addressId', deleteCustomerAddress);
 router.put('/addresses/:addressId', updateCustomerAddress);
 router.put('/addresses/:addressId/default', setDefaultCustomerAddress);
-router.get('/:id/orders', getCustomerOrders);
+router.get('/:id/orders', requireCustomerLookup, getCustomerOrders);
 router.get('/:id/vouchers', getCustomerVouchers);
 router.get('/:id/wishlist', getCustomerWishlist);
 router.put('/:id/avatar', upload.single('avatar'), updateCustomerAvatar);

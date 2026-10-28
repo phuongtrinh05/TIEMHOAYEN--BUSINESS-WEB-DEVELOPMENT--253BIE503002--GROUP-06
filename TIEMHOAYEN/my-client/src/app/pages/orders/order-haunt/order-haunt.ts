@@ -167,6 +167,7 @@ export class OrderHauntComponent implements OnInit {
   selectedVoucher: Voucher | null = null;
   paymentError = '';
   submitOrderError = '';
+  salesRequestId = '';
   voucherError = '';
   isSubmitting = false;
 
@@ -1056,6 +1057,7 @@ export class OrderHauntComponent implements OnInit {
   }
 
   onSubmit(form?: NgForm): void {
+    if (this.salesRequestId) { this.orderService.openSalesChat(this.salesRequestId); return; }
     if (!isPlatformBrowser(this.platformId)) {
       return;
     }
@@ -1106,6 +1108,11 @@ export class OrderHauntComponent implements OnInit {
 
     this.orderService.createOrder(payload).subscribe({
       next: (createdOrder: CreateOrderResponse) => {
+        if (createdOrder.kind === 'sales_request') {
+          this.salesRequestId = createdOrder.requestId || '';
+          this.isSubmitting = false;
+          return;
+        }
         const finalOrderForCheckout = {
           ...orderForCheckout,
           orderCode: createdOrder.orderId,

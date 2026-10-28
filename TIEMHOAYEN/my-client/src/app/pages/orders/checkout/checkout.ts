@@ -1,3 +1,4 @@
+import { orderAccessSession } from '../../../services/api-config';
 ﻿import { CommonModule, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectorRef,
@@ -140,6 +141,9 @@ export class CheckoutComponent implements OnInit, OnDestroy {
       return;
     }
 
+    if (!sessionStorage.getItem(`checkoutOrderAccess:${createdOrder.orderId}`) && !orderAccessSession()) {
+      this.order = null; this.router.navigate(['/order-requests']); return;
+    }
     const source = this.resolveCheckoutSource(createdOrder, registrantOrder, guestOrder);
     const storedOrder = source === 'guest' ? guestOrder : registrantOrder;
 

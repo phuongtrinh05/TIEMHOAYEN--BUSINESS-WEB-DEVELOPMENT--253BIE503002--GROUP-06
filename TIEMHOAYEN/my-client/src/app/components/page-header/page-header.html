@@ -942,54 +942,7 @@
     </div>
   </nav>
 
-@if(showLookupPopup){
-  <div class="popup-overlay">
-    <div class="lookup-popup">
-      <h2>Tra cứu đơn hàng</h2>
 
-      <div class="lookup-form">
-        <div class="form-row">
-          <label>Mã đơn hàng:</label>
-          <input
-            type="text"
-            placeholder="Nhập mã đơn hàng"
-            [(ngModel)]="orderCode"
-            (keyup.enter)="lookupOrder()"
-          >
-        </div>
-
-        <div class="form-row">
-          <label>Số điện thoại:</label>
-          <input
-            type="tel"
-            inputmode="numeric"
-            maxlength="12"
-            placeholder="Nhập số điện thoại nhận hàng"
-            [(ngModel)]="phone"
-            (input)="onLookupPhoneInput($event)"
-            (keyup.enter)="lookupOrder()"
-          >
-        </div>
-      </div>
-
-      <button
-        type="button"
-        class="btn-search"
-        (click)="lookupOrder()"
-      >
-        Tra cứu
-      </button>
-
-      <button
-        type="button"
-        class="btn-later"
-        (click)="closeLookupPopup()"
-      >
-        Để sau
-      </button>
-    </div>
-  </div>
-}
 
 @if(showCameraCapture){
   <div class="camera-capture-overlay" (click)="closeCameraCapture()">

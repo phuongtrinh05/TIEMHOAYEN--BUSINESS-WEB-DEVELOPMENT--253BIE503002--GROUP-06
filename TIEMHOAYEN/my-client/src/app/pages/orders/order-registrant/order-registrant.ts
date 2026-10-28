@@ -134,6 +134,7 @@ export class OrderRegistrantComponent implements OnInit {
   selectedVoucher: Voucher | null = null;
   paymentCardError = '';
   submitOrderError = '';
+  salesRequestId = '';
   voucherError = '';
   isSubmittingOrder = false;
 
@@ -1697,6 +1698,7 @@ export class OrderRegistrantComponent implements OnInit {
 
   // ===== SUBMIT =====
   onSubmit(form?: NgForm): void {
+    if (this.salesRequestId) { this.orderService.openSalesChat(this.salesRequestId); return; }
     if (!isPlatformBrowser(this.platformId) || this.isSubmittingOrder) {
       return;
     }
@@ -1862,6 +1864,11 @@ export class OrderRegistrantComponent implements OnInit {
 
     this.orderService.createOrder(payload).subscribe({
       next: (createdOrder: CreateOrderResponse) => {
+        if (createdOrder.kind === 'sales_request') {
+          this.salesRequestId = createdOrder.requestId || '';
+          this.isSubmittingOrder = false;
+          return;
+        }
         const registrantOrderWithPayment = {
           ...registrantOrder,
           createdOrder,

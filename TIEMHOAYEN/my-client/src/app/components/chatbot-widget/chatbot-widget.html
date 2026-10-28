@@ -4,7 +4,7 @@
 </button>
 
 <!-- POPUP CHAT -->
-<div class="chatbot-container" *ngIf="isOpen">
+<div class="chatbot-container" [class.sales-mode]="!!salesRequestId" *ngIf="isOpen">
 
   <!-- Header -->
   <div class="chat-header">
@@ -15,8 +15,8 @@
         </div>
       </div>
       <div>
-        <h2>Hoa Yên Assistant</h2>
-        <p>Hỗ trợ bạn 24/7</p>
+        <h2>{{salesRequestId ? 'Nhân viên tư vấn đặt hoa' : 'Hoa Yên Assistant'}}</h2>
+        <p>{{salesRequestId ? 'Trao đổi trực tiếp với Sales' : 'Hỗ trợ bạn 24/7'}}</p>
       </div>
     </div>
     <button class="close-btn" (click)="closeChat()">
@@ -24,6 +24,12 @@
     </button>
   </div>
 
+  @if (salesRequestId) {
+    <div class="sales-chat-panel">
+      @for (id of [salesRequestId]; track id) { <app-order-request [requestId]="id" [compact]="true"></app-order-request> }
+      <button class="assistant-back" (click)="backToAssistant()">Quay lại trợ lý AI</button>
+    </div>
+  } @else {
   <div class="guest-contact-panel" *ngIf="showGuestContactForm">
     <div class="guest-contact-head">
       <div>
@@ -134,6 +140,7 @@
 
   <!-- Quick Actions -->
   <div class="quick-actions">
+    <button class="btn-action" *ngIf="latestSalesRequestId" (click)="resumeSalesChat()">Tiếp tục tư vấn đơn hàng</button>
     <button class="btn-action" (click)="sendQuickAction('Liên hệ nhân viên')">
       Liên hệ nhân viên
     </button>
@@ -181,6 +188,7 @@
       <i class="bi bi-send"></i>
     </button>
   </div>
+  }
 </div>
 <a
   class="zalo-button"

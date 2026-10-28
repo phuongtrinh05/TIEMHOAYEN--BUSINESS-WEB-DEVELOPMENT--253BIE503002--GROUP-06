@@ -1,0 +1,80 @@
+<main class="receipt" [class.compact]="compact">
+  @if (!compact) {
+  <a routerLink="/">Tiệm Hoa Yên</a><span class="tag">TƯ VẤN ĐẶT HOA</span>
+  <h1>Cùng chọn một bó hoa phù hợp</h1>
+  <p>Trao đổi với Sales tại đây hoặc qua điện thoại. Chỉ bấm đồng ý khi mẫu hoa, giá và lịch giao đã đúng mong muốn của bạn.</p>
+  }
+  @if (error) { <p role="alert" class="error">{{error}}</p> }
+  @if (!request) { <a routerLink="/order-requests">Xác minh OTP để tra cứu</a> }
+  @if (request) {
+    <section><h2>{{request.requestId}}</h2><p><strong>{{request.workflow?.customerStatus || request.status}}</strong></p>
+      @if (!request.orderResult && request.status !== 'Đã từ chối' && request.status !== 'Đã tư vấn' && request.status !== 'Khách đã hủy') {
+      <div class="review-notice" role="status">
+        <strong>{{request.workflow?.urgency === 'urgent' ? 'Cần giao sớm — chưa xác nhận giao kịp' : 'Đã gửi yêu cầu — chờ shop kiểm tra'}}</strong>
+        <p>{{request.reviewReason}}</p><p>{{request.workflow?.instruction}}</p>
+        @if (request.workflow?.urgency === 'urgent') { <a routerLink="/contact">Liên hệ shop nếu bạn cần ngay</a> }
+      </div>
+      }
+      @if (request.assignedName) { <p>Nhân viên tiếp nhận: {{request.assignedName}}</p> }
+      @if (request.workflow?.followUpAt) { <p>Lịch liên hệ tiếp theo: {{request.workflow.followUpAt | date:'dd/MM HH:mm'}}</p> }
+      <details><summary>Yêu cầu ban đầu</summary>
+        @for (item of request.items; track item.productId) { <p>{{item.name}} × {{item.quantity}}</p> }
+        @if (request.originalTotal !== null) { <p>Giá trị yêu cầu ban đầu: {{request.originalTotal | number:'1.0-0'}}đ</p> }
+        <p>Lịch giao: {{request.delivery?.date}} · {{request.delivery?.time}}</p>
+      </details>
+      @if (request.customerMessage) { <p class="message">{{request.customerMessage}}</p> }
+      @if (request.orderSummary) { <p>Đơn hàng: {{request.orderSummary.status}} · Thanh toán: {{request.orderSummary.paymentStatus}}</p> }
+      <a routerLink="/order-requests">Yêu cầu đặt hoa của tôi</a>
+      @if (feedback) { <p role="status">{{feedback}}</p> }
+      @if (canChange) {
+        <details><summary>Đổi lịch hoặc dừng yêu cầu</summary>
+          <button class="secondary" (click)="editSchedule()">Đề nghị đổi lịch giao</button>
+          @if (showSchedule) { <label>Ngày giao<input type="date" [(ngModel)]="requestedDate"></label><label>Giờ giao<input type="time" [(ngModel)]="requestedTime"></label><p>Shop sẽ kiểm tra lại. Phương án và xác nhận trước đó không còn áp dụng cho lịch mới.</p><button (click)="change('reschedule')" [disabled]="busy || !requestedDate || !requestedTime">Gửi lịch mới</button> }
+          <label class="consent"><input type="checkbox" [(ngModel)]="cancelConfirmation"> Tôi muốn dừng yêu cầu, không chờ shop tư vấn tiếp.</label><button class="secondary" (click)="change('cancel')" [disabled]="busy || !cancelConfirmation">Dừng yêu cầu</button>
+        </details>
+      }
+    </section>
+    @if (request.quote; as q) {
+      <section class="proposal"><span class="tag">PHƯƠNG ÁN {{q.revision}}</span><h2>Mẫu và giá Sales đề xuất</h2>
+        @for (item of q.items; track item.id) {
+          <div class="product"><img [src]="image(item.image)" [alt]="item.name"><div><h3>{{item.name}}</h3>
+          <p>{{item.qty}} bó × {{item.price | number:'1.0-0'}}đ</p><small>{{item.imageDescription || 'Ảnh mẫu sản phẩm'}}</small>
+          @if (item.description) { <p>{{item.description}}</p> }
+          @if (item.custom) { <details><summary>Thành phần và giá một bó</summary>
+            @for (m of item.bom.materials; track m.materialId) { <p>{{m.name}}: {{m.quantity}} {{m.unit}} × {{m.price | number:'1.0-0'}}đ</p> }
+            <p>Phí cắm: {{item.bom.designFee | number:'1.0-0'}}đ · Chi phí bổ sung: {{item.bom.extraFee | number:'1.0-0'}}đ</p>
+          </details> }</div></div>
+        }
+        <p>Tiền hoa: {{q.summary.subtotal | number:'1.0-0'}}đ · Phí giao: {{q.summary.shippingFee | number:'1.0-0'}}đ</p>
+        <p class="total">Tổng đơn: {{q.summary.total | number:'1.0-0'}}đ</p>
+        <p>Thanh toán trước: <strong>{{q.payment.amountToPay | number:'1.0-0'}}đ</strong> · Còn lại: {{q.summary.total-q.payment.amountToPay | number:'1.0-0'}}đ</p>
+        <p>Giao lúc {{q.delivery.time}}, ngày {{q.delivery.date}} · {{q.payment.methodName}}</p>
+        <p class="message">{{q.note}}</p><small>{{q.discountNote}}</small>
+        @if (request.status === 'Chờ khách xác nhận') {
+          <label class="consent"><input type="checkbox" [(ngModel)]="confirmed"> Tôi đã xem ảnh, thành phần, giá, tiền trả trước và lịch giao của phương án này.</label>
+          <button (click)="respond('accept')" [disabled]="busy || !confirmed || request.workflow?.scheduleExpired">Đồng ý phương án này</button>
+          <button class="secondary" (click)="respond('decline')" [disabled]="busy">Tôi muốn tư vấn lại</button>
+          <p><small>Đồng ý chưa giữ hàng. Sales kiểm tra lại tồn khi lên đơn; bạn chỉ thanh toán sau khi đơn đã được tạo.</small></p>
+        }
+        @if (request.status === 'Khách đã đồng ý') { <p>Bạn đã đồng ý. Sales đang kiểm tra và lên đơn.</p> }
+        @if (request.orderResult) { <p>Đã lên đơn <strong>{{request.orderResult.orderId}}</strong>.</p>
+          @if (request.orderSummary?.hasPaid) { <a [routerLink]="['/order-detail',request.orderResult.orderId]" [queryParams]="{phone: request.checkoutData?.receiver?.phone}">Theo dõi đơn hàng</a> }
+          @else { <button (click)="checkout()">Xem đơn và thanh toán</button> }
+        }
+      </section>
+    }
+    <section><h2>Trao đổi với nhân viên</h2>
+      <div class="chat" aria-live="polite">
+        @for (m of messages; track m.id) { <div class="bubble" [class.mine]="m.senderType==='customer'">
+          <strong>{{m.senderName}}</strong><small> · {{m.at | date:'dd/MM HH:mm'}} {{m.channel==='phone' ? '· Ghi nhận cuộc gọi' : ''}}</small><p>{{m.text}}</p>
+        </div> }
+        @if (!messages.length) { <p>Chưa có tin nhắn.</p> }
+      </div>
+      @if (request.status !== 'Đã từ chối' && request.status !== 'Đã tư vấn' && request.status !== 'Khách đã hủy') {
+        <label for="message">Nội dung trao đổi</label><textarea id="message" [(ngModel)]="message" maxlength="2000" rows="3"></textarea>
+        <button (click)="send()" [disabled]="busy || !message.trim()">Gửi tin nhắn</button>
+      }
+    </section>
+  }
+  <button class="secondary" (click)="load()" [disabled]="loading || busy">{{loading ? 'Đang tải…' : 'Cập nhật trạng thái'}}</button>@if (!compact) { <a routerLink="/cart">Về giỏ hàng</a> }
+</main>

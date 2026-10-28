@@ -89,9 +89,6 @@ interface HeaderCartItem {
   styleUrl: './page-header.css',
 })
 export class PageHeader implements OnInit, OnDestroy {
-  showLookupPopup = false;
-  orderCode: string = '';
-  phone: string = '';
 
   private readonly productApiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/products';
   private readonly notificationApiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/notifications';
@@ -119,66 +116,8 @@ export class PageHeader implements OnInit, OnDestroy {
   
 
   openLookupPopup() {
-    this.showLookupPopup = true;
+    this.router.navigate(['/order-requests']);
   }
-
-  closeLookupPopup() {
-    this.showLookupPopup = false;
-  }
-
-  lookupOrder(): void {
-    const orderCode = String(this.orderCode || '').trim().toUpperCase();
-    const receiverPhone = this.normalizeLookupPhone(this.phone);
-
-    if (!orderCode) {
-      alert('Vui lòng nhập mã đơn hàng.');
-      return;
-    }
-
-    if (!receiverPhone) {
-      alert('Vui lòng nhập số điện thoại nhận hàng.');
-      return;
-    }
-
-    if (!/^0\d{9}$/.test(receiverPhone)) {
-      alert('Số điện thoại nhận hàng không hợp lệ.');
-      return;
-    }
-
-    this.showLookupPopup = false;
-    this.orderCode = '';
-    this.phone = '';
-
-    this.router.navigate(['/order-detail', orderCode], {
-      queryParams: {
-        phone: receiverPhone,
-      },
-    });
-  }
-
-  onLookupPhoneInput(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    this.phone = this.formatLookupPhone(input.value);
-  }
-
-  private normalizeLookupPhone(phone: string): string {
-    return String(phone || '').replace(/\D/g, '').slice(0, 10);
-  }
-
-  private formatLookupPhone(phone: string): string {
-    const digits = this.normalizeLookupPhone(phone);
-
-    if (digits.length <= 4) {
-      return digits;
-    }
-
-    if (digits.length <= 7) {
-      return `${digits.slice(0, 4)} ${digits.slice(4)}`;
-    }
-
-    return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
-  }
-
 
   goToWishlist(): void {
     if (!this.isBrowser()) {
@@ -1686,6 +1625,8 @@ export class PageHeader implements OnInit, OnDestroy {
       localStorage.removeItem('khachHang');
       localStorage.removeItem('token');
       sessionStorage.removeItem('tiemHoaYenSessionAuth');
+      sessionStorage.removeItem('orderLookupAccess');
+      sessionStorage.removeItem('tiemHoaYenActiveSalesChat');
       window.dispatchEvent(new Event('auth-changed'));
     }
 

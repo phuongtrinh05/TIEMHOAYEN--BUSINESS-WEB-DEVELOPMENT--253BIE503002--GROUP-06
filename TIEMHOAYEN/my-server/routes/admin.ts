@@ -1,4 +1,5 @@
 import express from 'express';
+import { requireSales, listRequests, changeRequest, salesOptions, salesPropose, salesConvert, listRequestMessages, postRequestMessage, requireRequestOwner, uploadedProposalImage, salesRecordContact } from '../controllers/order-request.js';
 import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
@@ -81,6 +82,20 @@ router.get('/dashboard', requireAdminPermission('dashboard'), getAdminDashboard)
 router.get('/address-options', requireAdminPermission('customers'), getAdminAddressOptions);
 router.get('/staff-accounts', requireAdminPermission('permissions'), getAdminStaffAccounts);
 router.get('/orders', requireAdminPermission('orders'), getAdminOrders);
+router.get('/order-requests', requireSales, listRequests);
+router.patch('/order-requests/:requestId', requireSales, changeRequest);
+router.get('/order-requests/:requestId/options', requireSales, salesOptions);
+router.post('/order-requests/:requestId/proposal', requireSales, salesPropose);
+router.post('/order-requests/:requestId/convert', requireSales, salesConvert);
+router.post('/order-requests/:requestId/contact', requireSales, salesRecordContact);
+router.get('/order-requests/:requestId/messages', requireSales, listRequestMessages);
+router.post('/order-requests/:requestId/messages', requireSales, postRequestMessage);
+router.post('/order-requests/:requestId/image', requireSales, requireRequestOwner, (req, res) => {
+  materialImageUpload.single('image')(req, res, error => {
+    if (error) return res.status(400).json({ message: error.message || 'Không tải được ảnh. Tối đa 5MB.' });
+    return uploadedProposalImage(req, res);
+  });
+});
 router.get('/orders/:orderId', requireAdminPermission('orders'), getAdminOrderDetail);
 router.post('/orders', requireAdminPermission('orders'), createAdminOrder);
 router.put('/orders/:orderId/status', requireAdminPermission('orders'), updateAdminOrderStatus);
