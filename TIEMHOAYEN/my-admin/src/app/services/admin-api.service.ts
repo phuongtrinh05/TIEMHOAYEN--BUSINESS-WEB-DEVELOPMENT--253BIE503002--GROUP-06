@@ -386,6 +386,7 @@ export interface AdminBlogPayload {
 }
 
 export interface AdminFAQRow {
+  SO_LUOT_HOI?: number;
   CAU_HOI_ID: string;
   CAU_HOI: string;
   CAU_TRA_LOI: string;

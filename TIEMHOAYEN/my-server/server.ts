@@ -48,6 +48,7 @@ import collectionProductRoutes from './routes/collectionProduct.js';
 import styleRoutes from './routes/style.js';
 import categoryProductRoutes from './routes/categoryProduct.js';
 import contactRoutes from './routes/contact.js';
+import supportRoutes from './routes/support.js';
 import adminRoutes from './routes/admin.js';
 import rolePermissionRoutes from './routes/rolePermission.js';
 import inventoryRoutes from './routes/inventory.js';
@@ -76,7 +77,8 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '8mb' }));
+app.use('/api/support', supportRoutes);
 app.use('/uploads', express.static('uploads'));
 
 app.use('/api/customers', customerRoutes);
@@ -160,6 +162,7 @@ const PORT = Number(process.env.PORT ?? 3000);
     if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureInventoryIndexes();
     await ensureSalesRequestIndexes();
     await (await import('./services/order-access.service.js')).ensureOrderAccessIndexes();
+    await (await import('./services/support.service.js')).ensureSupportIndexes();
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startInventoryJobs();
 
     app.listen(PORT, () => {

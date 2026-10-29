@@ -1,951 +1,167 @@
-import { Component, ElementRef, ViewChild, ChangeDetectorRef, NgZone, OnDestroy, OnInit } from '@angular/core';
+import { Component, inject, OnDestroy, OnInit, ChangeDetectorRef, AfterViewChecked, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
-import { Router } from '@angular/router';
-import { take } from 'rxjs/operators';
+import { Router, RouterLink } from '@angular/router';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Subscription } from 'rxjs';
+import { apiBaseUrl, currentOrderAccountKey, orderAccessSession } from '../../services/api-config';
+import { OrderAccessService } from '../../services/order-access.service';
 import { SalesChatService } from '../../services/sales-chat.service';
+import { SupportChatService, SupportSession } from '../../services/support-chat.service';
 import { OrderRequest } from '../../pages/orders/order-request/order-request';
-
-interface Message {
-  id?: string;
-  role: 'bot' | 'user';
-  content: string;
-  type: 'text';
-  time: string;
-  imageUrl?: string;
-}
-
-interface ServerChatMessage {
-  id: string;
-  role: 'bot' | 'user';
-  content: string;
-  time: string;
-  imageUrl?: string | null;
-  type?: string | null;
-}
-
-interface ProductChatContext {
-  productId: string | null;
-  productInfo: Record<string, unknown> | null;
-}
-
-interface OrderChatContext {
-  orderId: string | null;
-}
-
-interface ChatImagePayload {
-  name: string;
-  type: string;
-  dataUrl: string;
-}
-
-interface GuestContactForm {
-  name: string;
-  phone: string;
-  email: string;
-}
-
-@Component({
-  selector: 'app-chatbot-widget',
-  standalone: true,
-  imports: [CommonModule, FormsModule, OrderRequest],
-  templateUrl: './chatbot-widget.html',
-  styleUrl: './chatbot-widget.css'
-})
-export class ChatbotWidget implements OnInit, OnDestroy {
-
-  @ViewChild('chatBody') chatBody!: ElementRef;
-  @ViewChild('fileInput') fileInput!: ElementRef<HTMLInputElement>;
-
-  isOpen = false;
-  salesRequestId = '';
-  latestSalesRequestId = '';
-  private salesSubscription?: Subscription;
-  inputText = '';
-  isLoading = false;
-  loadingText = 'Dang xu ly...';
-  private isSending = false;
-
-  private webhookUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats';
-  private handoffUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats/handoff';
-  private customerMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats/customer';
-  private guestMessagesUrl = 'https://tiem-hoa-yen-api.onrender.com/api/chats/guest';
-  private readonly chatHistoryKeyPrefix = 'tiemHoaYenChatHistory';
-  private readonly productContextKey = 'tiemHoaYenCurrentProductContext';
-  private readonly guestConversationKey = 'tiemHoaYenGuestConversationId';
-  private readonly maxImageSizeBytes = 5 * 1024 * 1024;
-  private readonly maxImageDimension = 1280;
-  private syncTimer: number | null = null;
-  private syncedServerMessageIds = new Set<string>();
-  private pendingGuestText = 'Liên hệ nhân viên';
-  private pendingGuestImage: ChatImagePayload | null = null;
-
-  showGuestContactForm = false;
-  guestContact: GuestContactForm = {
-    name: '',
-    phone: '',
-    email: ''
-  };
-
-  messages: Message[] = [
-    {
-      role: 'bot',
-      content: 'Chào bạn! 🌸 Tiệm Hoa Yên rất vui được hỗ trợ bạn. Bạn đang cần mình giúp gì ạ?',
-      type: 'text',
-      time: this.getTime()
+@Component({ selector: 'app-chatbot-widget', standalone: true, imports: [CommonModule, FormsModule, RouterLink, OrderRequest], templateUrl: './chatbot-widget.html', styleUrl: './chatbot-widget.css' })
+export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
+    @ViewChild('chatBody')
+    private chatBody?: ElementRef<HTMLElement>;
+    private lastScrollKey = '';
+    private http = inject(HttpClient);
+    private router = inject(Router);
+    private cdr = inject(ChangeDetectorRef);
+    private sales = inject(SalesChatService);
+    private support = inject(SupportChatService);
+    readonly access = inject(OrderAccessService);
+    isOpen = false;
+    salesRequestId = '';
+    latestSalesRequestId = '';
+    session: SupportSession | null = null;
+    ticket: any;
+    messages: any[] = [];
+    inputText = '';
+    busy = false;
+    error = '';
+    contact = { name: '', phone: '', email: '' };
+    selectedImageDataUrl = '';
+    selectedFileName = '';
+    orderData: any = null;
+    showOrderAccess = false;
+    orderPhone = '';
+    otpCode = '';
+    challengeId = '';
+    otpBusy = false;
+    otpNotice = '';
+    resendAt = 0;
+    now = Date.now();
+    rating = 0;
+    formatOrderTotal(value: unknown) {
+        const total = Number(value);
+        return Number.isFinite(total) ? total.toLocaleString('vi-VN', { maximumFractionDigits: 0 }) : '—';
     }
-  ];
-
-  constructor(
-    private http: HttpClient,
-    private cdr: ChangeDetectorRef,
-    private zone: NgZone,
-    private router: Router,
-    private salesChat: SalesChatService
-  ) {}
-
-  ngOnInit(): void {
-    if (typeof window === 'undefined') return;
-    this.salesSubscription = this.salesChat.request$.subscribe(id => {
-      this.salesRequestId = id;
-      if (id) { this.latestSalesRequestId = id; this.isOpen = true; this.showGuestContactForm = false; this.clearSelectedFile(); }
-      this.cdr.markForCheck();
-    });
-    this.loadLocalHistory();
-    this.syncCustomerReplies();
-    this.syncTimer = window.setInterval(() => {
-      this.syncCustomerReplies();
-    }, 4000);
-  }
-
-  ngOnDestroy(): void {
-    this.salesSubscription?.unsubscribe();
-    if (this.syncTimer !== null) {
-      window.clearInterval(this.syncTimer);
+    ratingNotice = '';
+    private subscriptions: Subscription[] = [];
+    private timer?: ReturnType<typeof setInterval>;
+    private accountKey = '';
+    private pendingSend: {
+        fingerprint: string;
+        id: string;
+    } | null = null;
+    get hasAccount() { return !!currentOrderAccountKey(); }
+    get needsLogin() { return this.hasAccount && !orderAccessSession(); }
+    get guestForm() { return !this.session && !this.hasAccount; }
+    get resendSeconds() { return Math.max(0, Math.ceil((this.resendAt - this.now) / 1000)); }
+    get statusText() { return this.ticket?.status === 'Đã xử lý' ? 'Đã kết thúc hỗ trợ' : this.ticket?.mode === 'WAITING' ? 'Đang chờ nhân viên tiếp nhận' : this.ticket?.mode === 'HUMAN' ? 'Nhân viên đang hỗ trợ' : 'Tư vấn tự động'; }
+    ngOnInit() {
+        if (typeof window === 'undefined')
+            return;
+        this.accountKey = currentOrderAccountKey();
+        this.session = this.support.session;
+        this.subscriptions.push(this.sales.request$.subscribe(id => { this.salesRequestId = id; if (id) {
+            this.latestSalesRequestId = id;
+            this.isOpen = true;
+        } this.cdr.markForCheck(); }));
+        this.subscriptions.push(this.support.opened.subscribe(s => { this.session = s; this.sales.assistant(); this.isOpen = true; this.read(); }));
+        this.timer = setInterval(() => { this.now = Date.now(); const account = currentOrderAccountKey(); if (account !== this.accountKey) {
+            this.accountKey = account;
+            this.resetView();
+            this.support.clear();
+        } if (this.isOpen && this.session && !this.busy && !this.salesRequestId)
+            this.read(true); if (!orderAccessSession())
+            this.orderData = null; this.cdr.markForCheck(); }, 5000);
     }
-  }
-
-  openChat(): void {
-    this.isOpen = true;
-    this.syncCustomerReplies();
-  }
-  backToAssistant(): void { this.salesChat.assistant(); }
-  resumeSalesChat(): void { if (this.latestSalesRequestId) this.salesChat.open(this.latestSalesRequestId); }
-  closeChat(): void { this.isOpen = false; }
-
-  getTime(): string {
-    return new Date().toLocaleTimeString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
-
-  scrollToBottom(): void {
-    setTimeout(() => {
-      if (this.chatBody) {
-        this.chatBody.nativeElement.scrollTop =
-          this.chatBody.nativeElement.scrollHeight;
-      }
-    }, 100);
-  }
-
-  private getCustomerId(): string | null {
-    const rawCustomer = localStorage.getItem('khachHang');
-
-    if (!rawCustomer || rawCustomer === 'null' || rawCustomer === 'undefined') {
-      return null;
+    ngOnDestroy() { this.subscriptions.forEach(s => s.unsubscribe()); if (this.timer)
+        clearInterval(this.timer); }
+    ngAfterViewChecked() { const key = `${this.session?.ticketId}:${this.messages.length}:${this.showOrderAccess}:${this.ticket?.ratingEligible}`; if (this.chatBody && key !== this.lastScrollKey) {
+        this.lastScrollKey = key;
+        this.chatBody.nativeElement.scrollTop = this.chatBody.nativeElement.scrollHeight;
+    } }
+    openChat() { this.isOpen = true; this.error = ''; this.session = this.support.session; if (this.session)
+        this.read();
+    else if (this.hasAccount && !this.needsLogin)
+        this.start(); }
+    closeChat() { this.isOpen = false; }
+    backToAssistant() { this.sales.assistant(); this.openChat(); }
+    resumeSalesChat() { if (this.latestSalesRequestId)
+        this.sales.open(this.latestSalesRequestId); }
+    private get url() { return `${apiBaseUrl()}/support`; }
+    private headers() { return new HttpHeaders(this.session?.guestToken ? { 'x-support-token': this.session.guestToken } : {}); }
+    start() {
+        if (this.busy)
+            return;
+        if (!this.hasAccount && (!this.contact.name.trim() || !/^0\d{9}$/.test(this.contact.phone.replace(/[\s.-]/g, '')))) {
+            this.error = 'Nhập tên và SĐT hợp lệ trước khi bắt đầu chat.';
+            return;
+        }
+        this.busy = true;
+        this.error = '';
+        this.http.post<any>(`${this.url}/sessions`, { ...this.contact, ...(this.session ? { ticketId: this.session.ticketId } : {}) }, { headers: this.headers() }).subscribe({ next: r => { this.session = this.support.save(r); this.ticket = r.ticket; this.busy = false; this.read(); }, error: e => this.fail(e) });
     }
-
-    try {
-      const customer = JSON.parse(rawCustomer);
-      const customerId =
-        customer?.KHACH_HANG_ID ??
-        customer?.khachHangId ??
-        customer?.customerId ??
-        customer?.id ??
-        customer?.maKhachHang;
-
-      return customerId ? String(customerId) : null;
-    } catch {
-      return null;
+    read(quiet = false) {
+        if (!this.session)
+            return;
+        const id = this.session.ticketId;
+        this.http.get<any>(`${this.url}/sessions/${id}`, { headers: this.headers() }).subscribe({ next: r => { if (this.session?.ticketId !== id)
+                return; this.ticket = r.ticket; this.messages = r.messages; this.cdr.markForCheck(); }, error: e => { if (this.session?.ticketId !== id)
+                return; if (e.status === 401 || e.status === 403) {
+                if (e.status === 401 && this.hasAccount)
+                    sessionStorage.removeItem('orderLookupAccess');
+                this.support.clear();
+                this.resetView();
+            } if (!quiet)
+                this.fail(e); } });
     }
-  }
-
-  private getGuestConversationId(): string | null {
-    const chatId = localStorage.getItem(this.guestConversationKey);
-    return chatId && chatId !== 'null' && chatId !== 'undefined' ? chatId : null;
-  }
-
-  private setGuestConversationId(chatId: unknown): void {
-    const value = String(chatId || '').trim();
-    if (value) {
-      localStorage.setItem(this.guestConversationKey, value);
+    private context() { const match = this.router.url.match(/\/product-detail\/([^/?#]+)/); return match ? { productId: decodeURIComponent(match[1]) } : {}; }
+    sendMessage(extra: any = {}) {
+        if (this.busy || !this.session)
+            return;
+        const text = String(extra.chatInput ?? this.inputText).trim();
+        if (!text && !this.selectedImageDataUrl && !extra.selectedImageId)
+            return;
+        const payload = { chatInput: text, imageDataUrl: this.selectedImageDataUrl || undefined, ...this.context(), ...extra };
+        const fingerprint = JSON.stringify(payload);
+        if (this.pendingSend?.fingerprint !== fingerprint)
+            this.pendingSend = { fingerprint, id: crypto.randomUUID() };
+        this.busy = true;
+        this.error = '';
+        this.http.post<any>(`${this.url}/sessions/${this.session.ticketId}/messages`, { ...payload, messageId: this.pendingSend.id }, { headers: this.headers() }).subscribe({ next: r => { this.busy = false; this.messages = r.messages; this.ticket = r.ticket; this.inputText = ''; this.selectedImageDataUrl = ''; this.selectedFileName = ''; this.pendingSend = null; if (r.authRequired) {
+                this.showOrderAccess = true;
+                this.otpNotice = 'Xác minh SĐT người đặt để xem dữ liệu đơn riêng.';
+            } if (r.orderData) {
+                this.orderData = r.orderData;
+                this.showOrderAccess = true;
+            } this.cdr.markForCheck(); }, error: e => this.fail(e) });
     }
-  }
-
-  private getChatHistoryKey(): string {
-    const customerId = this.getCustomerId();
-    if (customerId) {
-      return `${this.chatHistoryKeyPrefix}:customer:${customerId}`;
-    }
-
-    const guestConversationId = this.getGuestConversationId();
-    if (guestConversationId) {
-      return `${this.chatHistoryKeyPrefix}:guest:${guestConversationId}`;
-    }
-
-    return `${this.chatHistoryKeyPrefix}:anonymous`;
-  }
-
-  private loadLocalHistory(): void {
-    const historyKey = this.getChatHistoryKey();
-    const rawHistory = localStorage.getItem(historyKey);
-    if (!rawHistory) {
-      return;
-    }
-
-    try {
-      const history = JSON.parse(rawHistory);
-      if (!Array.isArray(history) || history.length === 0) {
+    quick(text: string) { this.sendMessage({ chatInput: text }); }
+    selectImage(image: any) { this.sendMessage({ chatInput: 'Tôi muốn nhân viên tư vấn mẫu ảnh này.', selectedImageId: image.id, action: 'handoff' }); }
+    onEnter(e: KeyboardEvent) { if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.sendMessage();
+    } }
+    onFileSelected(e: Event) { const file = (e.target as HTMLInputElement).files?.[0]; if (!file)
+        return; if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+        this.error = 'Chọn ảnh JPG, PNG hoặc WEBP tối đa 5MB.';
         return;
-      }
-
-      this.messages = history
-        .filter((item: Partial<Message>) => item?.role && item?.time)
-        .map((item: Partial<Message>) => ({
-          id: item.id,
-          role: item.role === 'user' ? 'user' : 'bot',
-          content: String(item.content || ''),
-          imageUrl: item.imageUrl,
-          type: 'text',
-          time: String(item.time || this.getTime())
-        }));
-
-      this.messages.forEach((item) => {
-        if (item.id) {
-          this.syncedServerMessageIds.add(String(item.id));
-        }
-      });
-    } catch {
-      localStorage.removeItem(historyKey);
-    }
-  }
-
-  private persistMessages(): void {
-    try {
-      localStorage.setItem(this.getChatHistoryKey(), JSON.stringify(this.messages.slice(-100)));
-    } catch {
-      // If browser storage is unavailable, server-side sync still works.
-    }
-  }
-
-  getDisplayImageUrl(value: string | null | undefined): string {
-    return this.cleanImageUrl(value) || '';
-  }
-
-  onImageError(event: Event): void {
-    const image = event.target as HTMLImageElement;
-    image.style.display = 'none';
-  }
-
-  private cleanImageUrl(value: unknown): string {
-    return String(value || '')
-      .trim()
-      .replace(/^["'([{<]+/, '')
-      .replace(/["')\]}>.,;]+$/, '')
-      .trim();
-  }
-
-  private extractImageUrl(value: unknown): string {
-    const visited = new Set<unknown>();
-
-    const visit = (item: unknown): string => {
-      if (item === null || item === undefined || visited.has(item)) {
-        return '';
-      }
-
-      if (typeof item === 'string') {
-        const text = item.trim();
-        if (!text) return '';
-
-        if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
-          try {
-            return visit(JSON.parse(text));
-          } catch {
-            // Continue parsing this value as plain text.
-          }
-        }
-
-        const markdownImage = text.match(/!\[[^\]]*]\(([^)\s]+)[^)]*\)/);
-        const candidate = this.cleanImageUrl(markdownImage?.[1] || text);
-
-        if (this.isImageUrl(candidate)) return candidate;
-
-        const imageUrlMatch = text.match(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?/i);
-        const storageUrlMatch = text.match(/https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*/i);
-        return this.cleanImageUrl(imageUrlMatch?.[0] || storageUrlMatch?.[0]);
-      }
-
-      if (typeof item !== 'object') {
-        return '';
-      }
-
-      visited.add(item);
-
-      if (Array.isArray(item)) {
-        for (const entry of item) {
-          const found = visit(entry);
-          if (found) return found;
-        }
-
-        return '';
-      }
-
-      const row = item as Record<string, any>;
-      const direct =
-        row['image_url'] ??
-        row['imageUrl'] ??
-        row['url'] ??
-        row['secure_url'] ??
-        row['fileUrl'] ??
-        row['image']?.['url'] ??
-        row['image']?.['src'] ??
-        row['image']?.['data'] ??
-        row['data']?.['url'];
-      const foundDirect = visit(direct);
-      if (foundDirect) return foundDirect;
-
-      for (const entry of Object.values(row)) {
-        const found = visit(entry);
-        if (found) return found;
-      }
-
-      return '';
-    };
-
-    return visit(value);
-  }
-
-  private isImageUrl(value: unknown): boolean {
-    const url = this.cleanImageUrl(value);
-
-    if (!url) {
-      return false;
-    }
-
-    return /^(https?:\/\/|data:image\/)/i.test(url) &&
-      (
-        /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(url) ||
-        /\/storage\/v1\/object\/public\//i.test(url) ||
-        /\/api\/chats\/image\//i.test(url) ||
-        /^data:image\/[^;]+;base64,/i.test(url)
-      );
-  }
-
-  private normalizeServerMessage(msg: ServerChatMessage): Message {
-    const content = String(msg.content || '').trim();
-    const explicitImageUrl = this.extractImageUrl(msg.imageUrl);
-    const imageFromContent = !explicitImageUrl ? this.extractImageUrl(content) : '';
-    const imageUrl = explicitImageUrl || imageFromContent;
-
-    return {
-      id: msg.id,
-      role: msg.role,
-      content: imageUrl && (content === imageUrl || this.extractImageUrl(content) === imageUrl) ? '' : content,
-      imageUrl: imageUrl || undefined,
-      type: 'text',
-      time: msg.time || this.getTime()
-    };
-  }
-
-  private normalizeVietnamese(value: string): string {
-    return value
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/đ/g, 'd');
-  }
-
-  private isHumanContactRequest(text: string): boolean {
-    const normalized = this.normalizeVietnamese(text);
-    return normalized.includes('lien he nhan vien') ||
-      normalized.includes('lien he') ||
-      normalized.includes('nhan vien') ||
-      normalized.includes('gap nhan vien') ||
-      normalized.includes('tu van') ||
-      normalized.includes('nhan vien ho tro');
-  }
-
-  private getProductContext(): ProductChatContext {
-    const match = this.router.url.match(/\/product-detail\/([^/?#]+)/);
-
-    if (!match) {
-      return { productId: null, productInfo: null };
-    }
-
-    const routeProductId = decodeURIComponent(match[1]);
-    const fallbackInfo = { SAN_PHAM_ID: routeProductId };
-    const rawContext = localStorage.getItem(this.productContextKey);
-
-    if (!rawContext) {
-      return { productId: routeProductId, productInfo: fallbackInfo };
-    }
-
-    try {
-      const context = JSON.parse(rawContext);
-      const contextProductId = String(
-        context?.productId || context?.productInfo?.SAN_PHAM_ID || ''
-      );
-
-      if (contextProductId !== routeProductId) {
-        return { productId: routeProductId, productInfo: fallbackInfo };
-      }
-
-      return {
-        productId: routeProductId,
-        productInfo: context?.productInfo || fallbackInfo
-      };
-    } catch {
-      return { productId: routeProductId, productInfo: fallbackInfo };
-    }
-  }
-
-  private getOrderContext(): OrderChatContext {
-    const match = this.router.url.match(/\/order-detail\/([^/?#]+)/);
-
-    if (!match) {
-      return { orderId: null };
-    }
-
-    return { orderId: decodeURIComponent(match[1]) };
-  }
-
-  private getSelectedImagePayload(): ChatImagePayload | null {
-    if (!this.selectedFile || !this.selectedImageDataUrl) {
-      return null;
-    }
-
-    return {
-      name: this.selectedFile.name,
-      type: this.selectedFile.type,
-      dataUrl: this.selectedImageDataUrl
-    };
-  }
-
-  private getLoadingText(message: string, hasImageAttachment: boolean): string {
-    if (hasImageAttachment) {
-      return 'Dang chuyen nhan vien...';
-    }
-
-    const normalized = message.toLowerCase();
-    const likelyImageRequest =
-      normalized.includes('tao') ||
-      normalized.includes('mau') ||
-      normalized.includes('hinh') ||
-      normalized.includes('anh');
-
-    return likelyImageRequest ? 'Dang tao anh...' : 'Dang tra loi...';
-  }
-
-  private syncCustomerReplies(): void {
-    if (this.salesRequestId) return;
-    const customerId = this.getCustomerId();
-    const guestConversationId = this.getGuestConversationId();
-    const syncUrl = customerId
-      ? `${this.customerMessagesUrl}/${encodeURIComponent(customerId)}/messages`
-      : guestConversationId
-        ? `${this.guestMessagesUrl}/${encodeURIComponent(guestConversationId)}/messages`
-        : null;
-
-    if (!syncUrl) {
-      return;
-    }
-
-    this.http
-      .get<{ messages: ServerChatMessage[] }>(syncUrl)
-      .pipe(take(1))
-      .subscribe({
-        next: (res) => {
-          const syncTypes = new Set(['human_request', 'staff_reply', 'image_generation', 'bot_reply']);
-          const serverMessages = (res?.messages || []).filter((msg) =>
-            syncTypes.has(String(msg.type || ''))
-          );
-
-          if (!serverMessages.length) {
-            return;
-          }
-
-          if (customerId) {
-            const newServerMessages = serverMessages.filter(
-              (msg) => !this.syncedServerMessageIds.has(msg.id)
-            );
-
-            newServerMessages.forEach((msg) => {
-              this.syncedServerMessageIds.add(msg.id);
-
-              if (!this.hasEquivalentMessage(msg)) {
-                this.messages.push(this.normalizeServerMessage(msg));
-              }
-            });
-
-            this.persistMessages();
-            this.cdr.detectChanges();
-            this.scrollToBottom();
-            return;
-          }
-
-          const newServerMessages = serverMessages.filter((msg) => !this.syncedServerMessageIds.has(msg.id));
-
-          newServerMessages.forEach((msg) => {
-            this.syncedServerMessageIds.add(msg.id);
-            if (this.hasEquivalentMessage(msg)) {
-              return;
-            }
-            this.messages.push(this.normalizeServerMessage(msg));
-          });
-
-          this.persistMessages();
-          this.cdr.detectChanges();
-          this.scrollToBottom();
-        },
-        error: (error) => {
-          console.warn('Khong dong bo duoc tin nhan chat:', error);
-        }
-      });
-  }
-
-  private saveHandoffMessage(payload: Record<string, unknown>): void {
-    this.http.post<any>(this.handoffUrl, payload).pipe(take(1)).subscribe({
-      next: (res) => {
-        this.zone.run(() => {
-          this.isLoading = false;
-          this.isSending = false;
-          if (!this.getCustomerId()) {
-            this.setGuestConversationId(res?.chatId);
-          }
-          if (res?.chatId) {
-            this.syncedServerMessageIds.add(String(res.chatId));
-          }
-
-          this.messages.push({
-            role: 'bot',
-            content: res?.imageSaved === false
-              ? 'Mình đã chuyển yêu cầu cho nhân viên, nhưng database chưa có cột lưu ảnh nên ảnh chưa được lưu.'
-              : 'Mình đã chuyển yêu cầu kèm hình ảnh cho nhân viên. Nhân viên Tiệm Hoa Yên sẽ phản hồi bạn sớm nhất nhé!',
-            type: 'text',
-            time: this.getTime()
-          });
-
-          this.persistMessages();
-          this.cdr.detectChanges();
-          this.scrollToBottom();
-        });
-      },
-      error: (error) => {
-        console.error('Khong luu duoc yeu cau kem hinh anh:', error);
-        this.zone.run(() => {
-          this.isLoading = false;
-          this.isSending = false;
-
-          this.messages.push({
-            role: 'bot',
-            content: 'Xin lỗi, mình chưa lưu được yêu cầu kèm hình ảnh. Bạn thử lại nhé!',
-            type: 'text',
-            time: this.getTime()
-          });
-
-          this.persistMessages();
-          this.cdr.detectChanges();
-          this.scrollToBottom();
-        });
-      }
-    });
-  }
-
-  private hasEquivalentMessage(msg: ServerChatMessage): boolean {
-    const normalized = this.normalizeServerMessage(msg);
-    const content = String(normalized.content || '').trim();
-    const imageUrl = this.cleanImageUrl(normalized.imageUrl);
-    const comparableContent = this.normalizeComparableChatText(content);
-
-    return this.messages.slice(-8).some((item) => {
-      if (item.role !== msg.role) return false;
-
-      const itemContent = String(item.content || '').trim();
-      const itemImageUrl = this.cleanImageUrl(item.imageUrl);
-      const sameImage = !!imageUrl && !!itemImageUrl && itemImageUrl === imageUrl;
-      const sameCaptionInSameMinute =
-        !!comparableContent &&
-        item.time === normalized.time &&
-        this.normalizeComparableChatText(itemContent) === comparableContent;
-
-      if (!sameImage && !sameCaptionInSameMinute) {
-        return false;
-      }
-
-      // Merge the richer database version into the optimistic n8n message
-      // instead of rendering a second bubble.
-      if (imageUrl) item.imageUrl = imageUrl;
-      if (content) item.content = content;
-      if (normalized.id) item.id = normalized.id;
-      return true;
-    });
-  }
-
-  private normalizeComparableChatText(value: unknown): string {
-    return String(value || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/đ/g, 'd')
-      .replace(/Đ/g, 'D')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, ' ')
-      .trim();
-  }
-
-  private openGuestContactForm(text: string, imagePayload: ChatImagePayload | null = null): void {
-    this.pendingGuestText = text || 'Liên hệ nhân viên';
-    this.pendingGuestImage = imagePayload;
-    this.showGuestContactForm = true;
-    this.isOpen = true;
-    this.isLoading = false;
-    this.isSending = false;
-    this.cdr.detectChanges();
-  }
-
-  closeGuestContactForm(): void {
-    this.showGuestContactForm = false;
-    this.pendingGuestImage = null;
-  }
-
-  submitGuestContactForm(): void {
-    const name = this.guestContact.name.trim();
-    const phone = this.guestContact.phone.trim();
-
-    if (!name || !phone) {
-      alert('Vui lòng nhập tên và số điện thoại để nhân viên liên hệ.');
-      return;
-    }
-
-    const productContext = this.getProductContext();
-    const orderContext = this.getOrderContext();
-    const imagePayload = this.pendingGuestImage;
-    const userText = this.pendingGuestText || 'Liên hệ nhân viên';
-
-    this.showGuestContactForm = false;
-    this.inputText = '';
-    this.clearSelectedFile();
-    this.isLoading = true;
-    this.isSending = true;
-    this.loadingText = 'Dang chuyen nhan vien...';
-
-    this.messages.push({
-      role: 'user',
-      content: userText,
-      imageUrl: imagePayload?.dataUrl,
-      type: 'text',
-      time: this.getTime()
-    });
-
-    this.saveHandoffMessage({
-      chatInput: userText,
-      customerId: null,
-      productId: productContext.productId,
-      productInfo: productContext.productInfo,
-      orderId: orderContext.orderId,
-      image: imagePayload,
-      imageDataUrl: imagePayload?.dataUrl || null,
-      imageName: imagePayload?.name || null,
-      imageType: imagePayload?.type || null,
-      guestName: name,
-      guestPhone: phone,
-      guestEmail: this.guestContact.email.trim() || null
-    });
-
-    this.pendingGuestImage = null;
-    this.persistMessages();
-    this.cdr.detectChanges();
-    this.scrollToBottom();
-  }
-
-  private parseWebhookResponse(response: any): { reply: string; imageUrl?: string } {
-    let reply = '';
-    let imageUrl = '';
-    const visited = new Set<any>();
-
-    const extractImageUrl = (value: unknown): string => {
-      const text = String(value || '').trim();
-      if (!text) return '';
-
-      const markdownImage = text.match(/!\[[^\]]*]\(([^)\s]+)[^)]*\)/);
-      const candidate = this.cleanImageUrl(markdownImage?.[1] || text);
-
-      if (/^data:image\/[^;]+;base64,/i.test(candidate)) return candidate;
-      if (/^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?$/i.test(candidate)) return candidate;
-      if (/^https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*$/i.test(candidate)) {
-        return candidate;
-      }
-
-      const imageUrlMatch = text.match(/https?:\/\/\S+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?\S*)?/i);
-      const storageUrlMatch = text.match(/https?:\/\/\S+(?:supabase\.co\/storage|cloudinary\.com|\/storage\/v1\/|\/api\/chats\/image\/)\S*/i);
-      return this.cleanImageUrl(imageUrlMatch?.[0] || storageUrlMatch?.[0]);
-    };
-
-    const visit = (value: any): void => {
-      if (value === null || value === undefined || visited.has(value)) return;
-
-      if (typeof value === 'string') {
-        const text = value.trim();
-        if (!text) return;
-
-        if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
-          try {
-            visit(JSON.parse(text));
-            return;
-          } catch {
-            // This is a regular text reply, not serialized JSON.
-          }
-        }
-        if (!imageUrl) {
-          imageUrl = extractImageUrl(text);
-        }
-        return;
-      }
-
-      if (typeof value !== 'object') return;
-      visited.add(value);
-
-      if (Array.isArray(value)) {
-        value.forEach(visit);
-        return;
-      }
-
-      const textCandidate =
-        value.output ?? value.reply ?? value.message ?? value.text ?? value.content?.parts?.[0]?.text;
-      const imageCandidate =
-        value.image_url ??
-        value.imageUrl ??
-        value.image?.url ??
-        value.image?.src ??
-        value.image?.data ??
-        value.url ??
-        value.secure_url ??
-        value.fileUrl ??
-        value.data?.url;
-
-      if (!reply && typeof textCandidate === 'string') reply = textCandidate.trim();
-      if (!imageUrl) imageUrl = extractImageUrl(imageCandidate);
-
-      Object.values(value).forEach(visit);
-    };
-
-    visit(response);
-    return { reply, imageUrl: imageUrl || undefined };
-  }
-
-  sendMessage(): void {
-    if (this.salesRequestId) return;
-    const imagePayload = this.getSelectedImagePayload();
-
-    if ((!this.inputText.trim() && !imagePayload) || this.isLoading || this.isSending) return;
-
-    this.isSending = true;
-    const userText = this.inputText.trim();
-    const userMsg = userText || 'Khach hang da gui hinh anh';
-
-    if (imagePayload && !this.getCustomerId()) {
-      this.openGuestContactForm(userMsg, imagePayload);
-      return;
-    }
-
-    this.loadingText = this.getLoadingText(userMsg, !!imagePayload);
-    this.inputText = '';
-
-    this.messages.push({
-      role: 'user',
-      content: userText,
-      imageUrl: imagePayload?.dataUrl,
-      type: 'text',
-      time: this.getTime()
-    });
-
-    this.clearSelectedFile();
-    this.persistMessages();
-
-    this.isLoading = true;
-    this.cdr.detectChanges();
-    this.scrollToBottom();
-
-    const productContext = this.getProductContext();
-    const orderContext = this.getOrderContext();
-
-    const payload = {
-      chatInput: userMsg,
-      customerId: this.getCustomerId(),
-      productId: productContext.productId,
-      productInfo: productContext.productInfo,
-      orderId: orderContext.orderId,
-      image: imagePayload,
-      imageDataUrl: imagePayload?.dataUrl || null,
-      imageName: imagePayload?.name || null,
-      imageType: imagePayload?.type || null
-    };
-
-    if (imagePayload) {
-      this.saveHandoffMessage(payload);
-      return;
-    }
-
-    this.http.post<any>(this.webhookUrl, payload).pipe(take(1)).subscribe({
-      next: (res) => {
-        this.zone.run(() => {
-          this.isLoading = false;
-          this.isSending = false;
-          console.log('Response:', res);
-          const { reply, imageUrl } = this.parseWebhookResponse(res);
-
-          this.messages.push({
-            role: 'bot',
-            content: reply || '',
-            imageUrl: this.cleanImageUrl(imageUrl),
-            type: 'text',
-            time: this.getTime()
-            
-          });
-
-          this.persistMessages();
-          this.cdr.detectChanges();
-          this.scrollToBottom();
-        });
-      },
-      error: () => {
-        this.zone.run(() => {
-          this.isLoading = false;
-          this.isSending = false;
-          this.messages.push({
-            role: 'bot',
-            content: 'Xin lỗi, mình đang gặp sự cố. Bạn thử lại nhé! 🌸',
-            type: 'text',
-            time: this.getTime()
-          });
-          this.persistMessages();
-          this.cdr.detectChanges();
-          this.scrollToBottom();
-        });
-      }
-    });
-  }
-
-  sendQuickAction(text: string): void {
-    if (this.isLoading || this.isSending) return;
-
-    if (!this.getCustomerId() && this.isHumanContactRequest(text)) {
-      this.openGuestContactForm(text);
-      return;
-    }
-
-    this.inputText = text;
-    this.sendMessage();
-  }
-
-  autoResize(el: HTMLTextAreaElement): void {
-    el.style.height = 'auto';
-    const maxHeight = 120;
-    if (el.scrollHeight >= maxHeight) {
-      el.style.height = maxHeight + 'px';
-      el.style.overflowY = 'auto';
-    } else {
-      el.style.height = el.scrollHeight + 'px';
-      el.style.overflowY = 'hidden';
-    }
-  }
-
-  onEnter(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      this.sendMessage();
-      setTimeout(() => {
-        const ta = document.querySelector('.chat-input textarea') as HTMLTextAreaElement;
-        if (ta) { ta.style.height = 'auto'; }
-      }, 0);
-    }
-  }
-
-  selectedFile: File | null = null;
-  selectedImageDataUrl: string | null = null;
-
-  clearSelectedFile(): void {
-    this.selectedFile = null;
-    this.selectedImageDataUrl = null;
-  }
-
-  private compressImage(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-
-      reader.onerror = () => reject(new Error('Khong doc duoc file anh.'));
-      reader.onload = () => {
-        const img = new Image();
-
-        img.onerror = () => reject(new Error('Khong xu ly duoc file anh.'));
-        img.onload = () => {
-          const scale = Math.min(
-            1,
-            this.maxImageDimension / Math.max(img.width, img.height)
-          );
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.max(1, Math.round(img.width * scale));
-          canvas.height = Math.max(1, Math.round(img.height * scale));
-
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            reject(new Error('Khong tao duoc canvas anh.'));
-            return;
-          }
-
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL('image/jpeg', 0.82));
-        };
-
-        img.src = String(reader.result || '');
-      };
-
-      reader.readAsDataURL(file);
-    });
-  }
-
-  onFileSelected(event: any): void {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      alert('Vui long chon file anh.');
-      event.target.value = '';
-      return;
-    }
-
-    if (file.size > this.maxImageSizeBytes) {
-      alert('Anh qua lon. Vui long chon anh duoi 5MB.');
-      event.target.value = '';
-      return;
-    }
-
-    this.selectedFile = file;
-    this.compressImage(file)
-      .then((dataUrl) => {
-        this.selectedImageDataUrl = dataUrl;
-        this.cdr.detectChanges();
-      })
-      .catch((error) => {
-        console.error('Khong xu ly duoc anh dinh kem:', error);
-        alert('Khong xu ly duoc anh. Ban thu chon anh khac nhe.');
-        this.clearSelectedFile();
-      })
-      .finally(() => {
-        this.cdr.detectChanges();
-        event.target.value = '';
-      });
-  }
+    } const reader = new FileReader(); reader.onload = () => { this.selectedImageDataUrl = String(reader.result); this.selectedFileName = file.name; this.cdr.markForCheck(); }; reader.readAsDataURL(file); }
+    openOrders() { this.orderPhone = this.ticket?.phone || ''; this.showOrderAccess = true; this.error = ''; if (orderAccessSession())
+        this.loadOrders(); }
+    loadOrders() { if (!this.session)
+        return; this.otpBusy = true; this.http.get<any>(`${this.url}/sessions/${this.session.ticketId}/orders`, { headers: this.headers() }).subscribe({ next: r => { this.orderData = r; this.otpBusy = false; this.cdr.markForCheck(); }, error: e => { this.otpBusy = false; this.orderData = null; this.error = e.error?.message || 'Chưa tải được đơn.'; this.cdr.markForCheck(); } }); }
+    sendOtp() { if (this.otpBusy || this.resendSeconds)
+        return; this.otpBusy = true; this.error = ''; this.access.requestOtp(this.orderPhone || this.ticket.phone).subscribe({ next: r => { this.challengeId = r.challengeId; this.otpNotice = r.message; this.resendAt = Date.now() + 60000; this.otpBusy = false; this.cdr.markForCheck(); }, error: e => { this.otpBusy = false; this.fail(e); } }); }
+    verifyOtp() { if (this.otpBusy || !/^\d{6}$/.test(this.otpCode))
+        return; this.otpBusy = true; this.access.verify(this.challengeId, this.otpCode).subscribe({ next: () => { this.otpCode = ''; this.challengeId = ''; this.otpBusy = false; this.loadOrders(); }, error: e => { this.otpBusy = false; this.fail(e); } }); }
+    rate() { if (this.busy || !this.session || !this.rating)
+        return; this.busy = true; this.http.post(`${this.url}/sessions/${this.session.ticketId}/rating`, { score: this.rating, round: this.ticket.round }, { headers: this.headers() }).subscribe({ next: () => { this.busy = false; this.ratingNotice = 'Cảm ơn bạn đã đánh giá!'; this.read(); }, error: e => this.fail(e) }); }
+    image(url: string) { return url?.startsWith('/uploads/') ? `${apiBaseUrl().replace(/\/api$/, '')}${url}` : url; }
+    newSession() { this.support.clear(); this.resetView(); }
+    private resetView() { this.session = null; this.ticket = null; this.messages = []; this.orderData = null; this.showOrderAccess = false; this.error = ''; this.contact = { name: '', phone: '', email: '' }; this.inputText = ''; this.selectedImageDataUrl = ''; this.pendingSend = null; }
+    private fail(e: any) { this.busy = false; this.error = e?.error?.message || 'Chưa thực hiện được, vui lòng thử lại.'; this.cdr.markForCheck(); }
 }

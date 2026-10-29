@@ -1,0 +1,15 @@
+import { Router } from 'express';
+import * as c from '../controllers/support.js';
+const router = Router();
+router.post('/sessions', c.start);
+router.get('/sessions/:id', c.read);
+router.post('/sessions/:id/messages', c.send);
+router.get('/sessions/:id/orders', c.orders);
+router.post('/sessions/:id/rating', c.rate);
+router.get('/admin/tickets', c.requireSupportStaff, c.list);
+router.get('/admin/summary', c.requireSupportStaff, c.summary);
+router.get('/admin/staff', c.requireSupportStaff, c.staff);
+router.get('/admin/tickets/:id', c.requireSupportStaff, c.detail);
+router.post('/admin/tickets/:id/actions', c.requireSupportStaff, c.action);
+router.post('/admin/test', c.requireSupportStaff, c.testChat);
+export default router;

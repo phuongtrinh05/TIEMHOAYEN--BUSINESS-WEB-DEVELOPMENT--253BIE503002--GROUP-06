@@ -4,7 +4,8 @@ import { apiBaseUrl } from './api-config';
 export const adminAuthInterceptor: HttpInterceptorFn = (req, next) => {
   const prefix = /^https?:\/\/(?:tiem-hoa-yen-api\.onrender\.com|localhost:3000)\/api(?=\/|$)/;
   if (prefix.test(req.url)) req = req.clone({ url: req.url.replace(prefix, apiBaseUrl()) });
-  if (!req.url.includes('/api/admin')) {
+  const path = req.url.startsWith(`${apiBaseUrl()}/`) ? req.url.slice(apiBaseUrl().length) : '';
+  if (!/^\/(?:admin(?:\/|$)|support\/admin(?:\/|$)|chats(?:\/|$)|faqs(?:\/|$)|contacts(?:\/|$))/.test(path)) {
     return next(req);
   }
 

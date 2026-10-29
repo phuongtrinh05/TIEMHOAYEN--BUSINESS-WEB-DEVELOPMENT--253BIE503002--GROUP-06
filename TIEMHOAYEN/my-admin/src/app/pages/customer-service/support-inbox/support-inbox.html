@@ -1,0 +1,84 @@
+<main class="support-page">
+  <header class="toolbar">
+    <nav class="tabs" aria-label="Chăm sóc khách hàng">
+      <a class="active" routerLink="/customer-service/customer-chat">Hộp thư hỗ trợ <span>{{pending}}</span></a>
+      <a routerLink="/customer-service/chatbot-management">Quản lý chatbot</a>
+    </nav>
+    <div class="toolbar-actions">
+      <a routerLink="/customer-service/legacy-chat">Hội thoại cũ</a>
+      <button class="outline" (click)="testOpen=!testOpen"><i class="bi bi-stars"></i> Test chatbot</button>
+    </div>
+  </header>
+
+  @if(error){<p class="error" role="alert"><i class="bi bi-exclamation-circle"></i> {{error}}</p>}
+  @if(testOpen){
+    <section class="test-panel">
+      <div class="section-heading"><div><h2>Thử nghiệm chatbot</h2><p>Kiểm tra phản hồi, không gửi tin nhắn đến khách.</p></div><button class="icon-button" (click)="testOpen=false" aria-label="Đóng thử nghiệm"><i class="bi bi-x-lg"></i></button></div>
+      <div class="test-fields"><label>Câu hỏi<input [(ngModel)]="testText" maxlength="2000" placeholder="Nhập câu hỏi muốn kiểm tra"></label><label>Mã sản phẩm<input [(ngModel)]="testProduct" placeholder="Không bắt buộc"></label><button class="primary" (click)="test()" [disabled]="testBusy||!testText.trim()">{{testBusy?'Đang thử…':'Kiểm tra'}}</button></div>
+      @if(testResult){<div class="test-result"><span class="badge">{{testResult.intent}}</span><p>{{testResult.reply}}</p>@for(pic of testResult.images||[];track pic.id){<img class="preview" [src]="pic.url" alt="Mẫu minh họa">}</div>}
+    </section>
+  }
+
+  <div class="inbox" [class.with-info]="infoOpen&&active">
+    <aside class="conversations">
+      <div class="list-heading"><h2>Hội thoại <span>{{total}}</span></h2><button class="icon-button" (click)="load()" aria-label="Làm mới hội thoại" title="Làm mới"><i class="bi bi-arrow-clockwise"></i></button></div>
+      <label class="search"><i class="bi bi-search"></i><input [(ngModel)]="search" aria-label="Tìm hội thoại trong trang" placeholder="Tìm tên, SĐT hoặc mã…"></label>
+      <div class="list-filters">
+        <select aria-label="Trạng thái" [(ngModel)]="status" (ngModelChange)="page=1;load()"><option value="">Tất cả trạng thái</option>@for(s of ['Chưa xử lý','Đang xử lý','Đã xử lý'];track s){<option>{{s}}</option>}</select>
+        <select aria-label="Nguồn" [(ngModel)]="source" (ngModelChange)="page=1;load()"><option value="">Mọi nguồn</option><option>Chat</option><option>Form</option></select>
+      </div>
+      <div class="ticket-list">
+        @for(t of visibleTickets;track t.id){
+          <button class="ticket" [class.selected]="active?.id===t.id" (click)="open(t.id)">
+            <span class="avatar">{{initials(t.name)}}</span>
+            <span class="ticket-copy"><span class="ticket-top"><strong>{{t.name}}</strong><time>{{t.updatedAt|date:'HH:mm'}}</time></span><span class="ticket-preview">{{t.reason||t.assignedName||'Yêu cầu hỗ trợ mới'}}</span><span class="ticket-bottom"><span class="status" [class.waiting]="t.status==='Chưa xử lý'" [class.closed]="t.status==='Đã xử lý'">{{t.status}}</span><span>{{t.source}}</span>@if(t.priority==='urgent'&&t.status!=='Đã xử lý'){<span class="urgent">Ưu tiên</span>}</span></span>
+          </button>
+        } @empty {<div class="list-empty"><i class="bi bi-chat-square-text"></i><p>Không có hội thoại phù hợp.</p></div>}
+      </div>
+      <footer class="pagination"><button class="icon-button" (click)="page=page-1;load()" [disabled]="page===1" aria-label="Trang trước"><i class="bi bi-chevron-left"></i></button><span>Trang {{page}}</span><button class="icon-button" (click)="page=page+1;load()" [disabled]="page*30>=total" aria-label="Trang sau"><i class="bi bi-chevron-right"></i></button></footer>
+    </aside>
+
+    @if(active;as t){
+      <section class="thread">
+        <header class="thread-header">
+          <span class="avatar">{{initials(t.name)}}</span>
+          <div class="thread-title"><h2>{{t.name}}</h2><p><span class="mode-dot" [class.waiting]="t.mode==='WAITING'"></span>{{modeLabel(t.mode)}} <span class="separator">·</span> {{t.phone||t.email}}</p></div>
+          <button class="icon-button" [class.pressed]="infoOpen" (click)="infoOpen=!infoOpen" aria-label="Thông tin hội thoại" title="Thông tin hội thoại"><i class="bi bi-layout-sidebar-reverse"></i></button>
+        </header>
+        <div class="conversation-bar"><span class="status" [class.waiting]="t.status==='Chưa xử lý'" [class.closed]="t.status==='Đã xử lý'">{{t.status}}</span><span class="assignee">{{t.assignedName||'Chưa có người phụ trách'}}</span>
+          <div class="conversation-actions">
+            @if(t.mode==='WAITING'&&t.status!=='Đã xử lý'){<button class="primary compact" (click)="act('claim')" [disabled]="busy">Tiếp nhận</button>}
+            @else if(t.status==='Đã xử lý'){<button class="outline compact" (click)="act('reopen')" [disabled]="busy||!canHandle">Mở lại</button>}
+            @else if(t.mode==='AI'){<button class="outline compact" (click)="act('claim')" [disabled]="busy">Nhân viên tiếp nhận</button>}
+            @else {<button class="outline compact" (click)="act('close')" [disabled]="busy||!canHandle">Kết thúc hỗ trợ</button>}
+            <details class="more-menu"><summary aria-label="Thao tác khác"><i class="bi bi-three-dots"></i></summary><div><button (click)="act('ai')" [disabled]="busy||!canHandle||t.status==='Đã xử lý'||t.mode==='AI'">Chuyển về AI</button><button (click)="act('close')" [disabled]="busy||!canHandle||t.status==='Đã xử lý'">Kết thúc hỗ trợ</button><a routerLink="/orders/requests">Mở yêu cầu Sales <i class="bi bi-arrow-up-right"></i></a></div></details>
+          </div>
+        </div>
+        @if(t.productId||t.selectedImageId){<div class="context-bar"><i class="bi bi-flower1"></i><div><strong>{{t.productId?'Sản phẩm đang trao đổi':'Mẫu ảnh khách chọn'}}</strong><span>{{t.productId||t.selectedImageId}}</span></div></div>}
+        <div class="messages" #messageList (scroll)="onMessageScroll()" aria-label="Nội dung hội thoại">
+          <div class="conversation-start"><span>{{t.createdAt|date:'dd/MM/yyyy'}}</span></div>
+          @for(m of messages;track m.id){
+            <article class="message-row" [class.outgoing]="m.role!=='user'">
+              @if(m.role==='user'){<span class="avatar small-avatar">{{initials(t.name)}}</span>}
+              <div class="message-content"><span class="sender">{{m.role==='user'?t.name:m.staff?'Nhân viên':'Trợ lý Hoa Yên'}}</span><div class="bubble" [class.automated]="m.role!=='user'&&!m.staff">@if(m.text){<p>{{m.text}}</p>}@if(m.image){<a [href]="m.image" target="_blank" rel="noopener noreferrer"><img class="message-image" [src]="m.image" alt="Ảnh trong hội thoại"></a>}@if(m.product){<div class="product-card">@if(m.product.image){<img [src]="m.product.image" [alt]="m.product.name">}<div><strong>{{m.product.name}}</strong><span>{{m.product.price|number:'1.0-0'}}đ</span></div></div>}@for(pic of m.images||[];track pic.id){<img class="message-image" [src]="pic.url" alt="Mẫu hoa AI minh họa">}</div><time>{{m.at|date:'HH:mm'}}</time></div>
+            </article>
+          }
+        </div>
+        <footer class="composer">
+          @if(t.mode!=='HUMAN'||t.status!=='Đang xử lý'||!canHandle){<p class="composer-hint"><i class="bi bi-info-circle"></i> {{t.status==='Đã xử lý'?'Hỗ trợ đã kết thúc. Mở lại để tiếp tục trao đổi.':t.mode==='WAITING'?'Tiếp nhận hội thoại để trả lời khách.':t.mode==='AI'?'Trợ lý AI đang hỗ trợ khách.':'Hội thoại do nhân viên khác phụ trách.'}}</p>}
+          <div class="composer-field"><textarea [(ngModel)]="reply" maxlength="2000" rows="2" aria-label="Phản hồi khách" placeholder="Nhập phản hồi cho khách…" [disabled]="!canHandle||t.mode!=='HUMAN'||t.status!=='Đang xử lý'"></textarea><button class="send" (click)="act('reply',reply)" [disabled]="busy||!canHandle||t.mode!=='HUMAN'||t.status!=='Đang xử lý'||!reply.trim()" aria-label="Gửi phản hồi"><i class="bi bi-send-fill"></i></button></div>
+        </footer>
+      </section>
+
+      @if(infoOpen){<aside class="info">
+        <div class="section-heading"><h2>Chi tiết hội thoại</h2><button class="icon-button" (click)="infoOpen=false" aria-label="Đóng chi tiết"><i class="bi bi-x-lg"></i></button></div>
+        <div class="customer-profile"><span class="avatar profile-avatar">{{initials(t.name)}}</span><h3>{{t.name}}</h3><span class="badge">{{t.customerId?'Thành viên':'Khách vãng lai'}}</span></div>
+        <dl><dt>Số điện thoại</dt><dd>@if(t.phone){<a [href]="'tel:'+t.phone">{{t.phone}}</a>}@else{Chưa cung cấp}</dd><dt>Email</dt><dd>{{t.email||'Chưa cung cấp'}}</dd><dt>Mã hỗ trợ</dt><dd class="ticket-id">{{t.id}}</dd><dt>Nguồn</dt><dd>{{t.source}}</dd></dl>
+        <label>Người phụ trách<select [(ngModel)]="targetStaff"><option value="">{{t.assignedName||'Chọn nhân viên'}}</option>@for(e of staff;track e.id){<option [value]="e.id">{{e.name}}</option>}</select></label><button class="outline full-width" (click)="act('assign')" [disabled]="busy||!canHandle||!targetStaff||t.status==='Đã xử lý'">Chuyển người phụ trách</button>
+        <details open><summary>Ghi chú nội bộ <i class="bi bi-chevron-down"></i></summary><textarea [(ngModel)]="note" maxlength="2000" rows="3" aria-label="Ghi chú nội bộ" placeholder="Chỉ nhân viên được xem…"></textarea><button class="outline full-width" (click)="act('note',note)" [disabled]="busy||!canHandle||!note.trim()">Lưu ghi chú</button>@for(n of t.notes||[];track $index){<div class="note"><p>{{n.text}}</p><small>{{n.actor}} · {{n.at|date:'dd/MM HH:mm'}}</small></div>}</details>
+        <details><summary>Lịch sử xử lý <i class="bi bi-chevron-down"></i></summary>@for(h of t.history||[];track $index){<div class="note"><p>{{h.action}} {{h.reason||''}}</p><small>{{h.actor}} · {{h.at|date:'dd/MM HH:mm'}}</small></div>}</details>
+        <details><summary>Đánh giá hỗ trợ <i class="bi bi-star"></i></summary>@for(r of t.ratings||[];track r.round){<div class="note"><strong class="rating">{{r.score}} / 5 ★</strong><p>{{r.comment||'Không có nhận xét'}}</p><small>Lần hỗ trợ {{r.round}}</small></div>}@empty{<p class="muted">Chưa có đánh giá.</p>}</details>
+      </aside>}
+    } @else {<section class="empty-thread"><div class="empty-icon"><i class="bi bi-chat-heart"></i></div><h2>Mỗi cuộc trò chuyện, một sự quan tâm</h2><p>Chọn hội thoại bên trái để xem nội dung<br>và hỗ trợ khách hàng.</p><span>{{pending}} yêu cầu đang chờ tiếp nhận</span></section>}
+  </div>
+</main>

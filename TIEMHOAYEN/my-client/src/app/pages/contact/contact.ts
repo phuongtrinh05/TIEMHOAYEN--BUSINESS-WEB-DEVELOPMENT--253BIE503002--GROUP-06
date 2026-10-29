@@ -1,3 +1,5 @@
+import { apiBaseUrl, orderAccessSession } from '../../services/api-config';
+import { SupportChatService } from '../../services/support-chat.service';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectorRef, Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -11,7 +13,8 @@ import { RouterLink } from '@angular/router';
   styleUrl: './contact.css',
 })
 export class Contact {
-  private readonly contactApiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/contacts';
+  private get contactApiUrl() { return `${apiBaseUrl()}/contacts`; }
+  private readonly support = inject(SupportChatService);
   private readonly requestTimeoutMs = 10000;
   private readonly cdr = inject(ChangeDetectorRef);
 
@@ -95,6 +98,7 @@ export class Contact {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
+            ...(orderAccessSession() ? {'x-order-access': orderAccessSession()!.accessToken} : {}),
         },
         signal: controller.signal,
         body: JSON.stringify({
@@ -120,6 +124,7 @@ export class Contact {
         throw new Error(data?.message || `Không thể gửi liên hệ. Mã lỗi: ${response.status}`);
       }
 
+      if (data.support) this.support.save(data.support, true);
       this.showSuccess(
         data?.message || 'Gửi liên hệ thành công. Tiệm Hoa Yên sẽ phản hồi bạn sớm nhất!'
       );

@@ -1,6 +1,6 @@
 # Tiệm Hoa Yên
 
-Tiệm Hoa Yên là hệ thống thương mại điện tử chuyên kinh doanh hoa tươi, quà tặng và phụ kiện. Dự án gồm website dành cho khách hàng, trang quản trị nội bộ và REST API kết nối Microsoft SQL Server.
+Tiệm Hoa Yên là hệ thống thương mại điện tử chuyên kinh doanh hoa tươi, quà tặng và phụ kiện. Dự án gồm website dành cho khách hàng, trang quản trị nội bộ và REST API kết nối MongoDB Atlas.
 
 Website hỗ trợ toàn bộ quy trình từ xem sản phẩm, tìm kiếm, thiết kế bó hoa 3D, đặt hàng, thanh toán, theo dõi đơn, đánh giá sản phẩm đến quản lý sản phẩm, khách hàng, kho, khuyến mãi và nội dung ở phía quản trị.
 
@@ -15,7 +15,7 @@ Website hỗ trợ toàn bộ quy trình từ xem sản phẩm, tìm kiếm, thi
 | --- | --- | --- | --- |
 | Website khách hàng | `TIEMHOAYEN/my-client` | Angular 22, Bootstrap, Three.js | `4200` |
 | Trang quản trị | `TIEMHOAYEN/my-admin` | Angular 22, Chart.js, TinyMCE, jsPDF, XLSX | `4300` |
-| Backend API | `TIEMHOAYEN/my-server` | Node.js, Express, TypeScript, SQL Server | `3000` |
+| Backend API | `TIEMHOAYEN/my-server` | Node.js, Express, TypeScript, MongoDB | `3000` |
 
 ## Tính năng chính
 
@@ -33,7 +33,7 @@ Website hỗ trợ toàn bộ quy trình từ xem sản phẩm, tìm kiếm, thi
 - Quản lý hồ sơ, địa chỉ, đơn hàng, voucher và điểm thưởng.
 - Đăng ký, đăng nhập, ghi nhớ đăng nhập và quên mật khẩu bằng OTP.
 - Thiết kế bó hoa 3D bằng Three.js.
-- Chatbot hỗ trợ khách hàng và tạo hình ảnh qua workflow n8n.
+- Chatbot chạy trực tiếp qua backend, giải đáp FAQ, tìm ảnh hoa có sẵn và chuyển nhân viên hỗ trợ.
 - Giao diện responsive cho desktop, tablet và mobile.
 
 ### Trang quản trị
@@ -59,6 +59,15 @@ Website hỗ trợ toàn bộ quy trình từ xem sản phẩm, tìm kiếm, thi
 - Quản lý kho, nhà cung cấp, nhập/xuất nguyên vật liệu.
 - Blog, liên hệ, FAQ, chat và yêu cầu tạo ảnh.
 - API quản trị, thống kê và phân quyền.
+
+## Chatbot và Hộp thư hỗ trợ
+
+- Khách vãng lai nhập tên và SĐT trước khi chat; thành viên đã đăng nhập không cần nhập lại. Thông tin đầu phiên chưa xác minh quyền xem đơn: khách vãng lai cần OTP SĐT người đặt; thành viên dùng phiên đăng nhập để xem đúng đơn của mình.
+- Mở chat khi đang ở chi tiết sản phẩm để hỏi mẫu đó. Backend đọc lại giá và tồn từ MongoDB. Ảnh gợi ý lấy từ `YEU_CAU_TAO_ANH`, chỉ là ảnh minh họa có sẵn, không tạo ảnh thời gian thực.
+- Khi khách bức xúc, muốn gặp người thật, gửi ảnh hoặc chọn mẫu cần tư vấn, hội thoại chuyển sang chờ nhân viên. Admin vào **Chăm sóc khách hàng → Hộp thư hỗ trợ → Tiếp nhận → Gửi phản hồi → Kết thúc hỗ trợ**. Chỉ khi kết thúc mới gửi đánh giá 1–5 sao. Form Liên hệ cũng vào hộp thư này.
+- Thêm `GROQ_API_KEY` và `CHAT_MODEL=openai/gpt-oss-20b` vào `.env` backend rồi khởi động lại để bật AI phân loại câu hỏi. Không có khóa thì FAQ, tra sản phẩm, tìm ảnh và chuyển nhân viên vẫn hoạt động theo quy tắc. FAQ ở trạng thái **Bị khóa** không được dùng trả lời. System prompt nằm trong `my-server/services/chatbot-brain.service.ts`.
+- Nút **Test chatbot** ở Admin không tạo ticket hay lưu tin nhắn. Chạy kiểm thử tự động bằng `npm.cmd run test:support` trong backend, với `TEST_MONGO_URI` trỏ tới MongoDB replica set riêng ở localhost; không dùng database thật để chạy test.
+- Backend ghi hội thoại mới vào `TIN_NHAN_CHAT`, liên kết ticket `YEU_CAU_HO_TRO`. Hội thoại cũ vẫn xem qua nút **Hội thoại cũ**. Khách vãng lai có thể mở lại chat trong cùng phiên trình duyệt (tối đa 12 giờ); thành viên được khôi phục hội thoại đang mở khi đăng nhập lại.
 
 ## Cấu trúc thư mục
 

@@ -1,4 +1,5 @@
 import express from 'express';
+import { requireSupportStaff } from '../controllers/support.js';
 import {
     createFAQ,
     deleteFAQ,
@@ -10,9 +11,9 @@ import {
 const router = express.Router();
 
 router.get('/', getAllFAQs);
-router.post('/', createFAQ);
+router.post('/', requireSupportStaff, createFAQ);
 router.get('/:id', getFAQById);
-router.put('/:id', updateFAQ);
-router.delete('/:id', deleteFAQ);
+router.put('/:id', requireSupportStaff, updateFAQ);
+router.delete('/:id', requireSupportStaff, deleteFAQ);
 
 export default router;

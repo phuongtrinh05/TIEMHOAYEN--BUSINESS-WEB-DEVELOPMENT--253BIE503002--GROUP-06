@@ -1,200 +1,49 @@
-<!-- NÚT CHAT NỔI -->
-<button class="chat-toggle" *ngIf="!isOpen" (click)="openChat()">
-  <img src="assets/images/logoAI.png" alt="Hoa Yên Assistant">
-</button>
-
-<!-- POPUP CHAT -->
+<button class="chat-toggle" *ngIf="!isOpen" (click)="openChat()"><img src="assets/images/logoAI.png" alt="Hoa Yên Assistant"></button>
 <div class="chatbot-container" [class.sales-mode]="!!salesRequestId" *ngIf="isOpen">
-
-  <!-- Header -->
-  <div class="chat-header">
-    <div class="bot-info">
-      <div class="avatar">
-        <div class="header-avatar">
-          <img src="assets/images/logoAI.png" alt="AI">
-        </div>
+  <div class="chat-header"><div class="bot-info"><div class="avatar"><img src="assets/images/logoAI.png" alt="Hoa Yên"></div><div><h2>{{salesRequestId?'Nhân viên tư vấn đặt hoa':'Hoa Yên hỗ trợ'}}</h2><p>{{salesRequestId?'Trao đổi về yêu cầu đặt hoa':statusText}}</p></div></div><button class="close-btn" (click)="closeChat()" aria-label="Đóng chat">×</button></div>
+  @if(salesRequestId){<div class="sales-chat-panel">@for(id of [salesRequestId];track id){<app-order-request [requestId]="id" [compact]="true"></app-order-request>}<button class="assistant-back" (click)="backToAssistant()">Về hỗ trợ chung</button></div>}
+  @else {
+    @if(error){<p class="support-error" role="alert">{{error}}</p>}
+    @if(needsLogin){<div class="support-form"><p>Phiên đăng nhập đã hết hạn. Bạn đăng nhập lại để chat bằng tài khoản, không cần OTP tra cứu.</p><a routerLink="/login">Đăng nhập</a></div>}
+    @else if(guestForm){<div class="support-form"><h3>Bắt đầu trò chuyện</h3><p>Bạn để lại thông tin một lần để shop tiện tư vấn và liên hệ lại.</p><label>Họ tên *<input [(ngModel)]="contact.name" maxlength="100" autocomplete="name"></label><label>SĐT liên hệ *<input [(ngModel)]="contact.phone" type="tel" autocomplete="tel"></label><label>Email (không bắt buộc)<input [(ngModel)]="contact.email" type="email" autocomplete="email"></label><button (click)="start()" [disabled]="busy">{{busy?'Đang mở…':'Bắt đầu chat'}}</button><small>Thông tin liên hệ chưa thay thế OTP khi cần xem đơn riêng.</small></div>}
+    @else if(ticket){
+      <div class="support-context"><span>{{ticket.name}} · {{ticket.id}}</span>@if(ticket.mode==='WAITING'){<p>Đã gửi yêu cầu. Nhân viên chưa tiếp nhận; bạn vẫn có thể bổ sung nội dung.</p>}@if(ticket.mode==='HUMAN'&&ticket.assignedName){<p>Nhân viên: {{ticket.assignedName}}</p>}</div>
+      <div class="chat-body" #chatBody>
+        @for(m of messages;track m.id){<div class="message-row" [class.user]="m.role==='user'" [class.bot]="m.role!=='user'"><div class="message" [class.bot-message]="m.role!=='user'" [class.user-message]="m.role==='user'"><small *ngIf="m.staff">Nhân viên</small><div>{{m.text}}</div>@if(m.image){<img class="chat-image" [src]="image(m.image)" alt="Ảnh trong cuộc tư vấn">}@if(m.product){<div class="support-product"><img *ngIf="m.product.image" [src]="image(m.product.image)" [alt]="m.product.name"><a [routerLink]="['/product-detail',m.product.id]">{{m.product.name}}</a></div>}@for(pic of m.images;track pic.id){<div class="support-library"><img class="chat-image" [src]="pic.url" alt="Ảnh AI minh họa mẫu hoa"><small>{{pic.exact?'Mẫu phù hợp tiêu chí':'Mẫu gần giống'}} · Ảnh AI minh họa</small><button (click)="selectImage(pic)" [disabled]="busy">Nhờ tư vấn mẫu này</button></div>}<small>{{m.at|date:'HH:mm'}}</small></div></div>}
+        @if(busy){<p role="status">Đang xử lý…</p>}
+        @if(showOrderAccess){
+          <section class="support-order" aria-label="Tra cứu đơn hàng">
+            <header class="order-panel-heading"><div><span class="order-eyebrow">TRA CỨU</span><h3>Đơn hàng của bạn</h3></div><button type="button" class="order-close" (click)="showOrderAccess=false" aria-label="Đóng tra cứu">×</button></header>
+            @if(!access.session){
+              <p class="order-intro">Xác minh SĐT người đặt để xem đơn hàng.</p>
+              <label>Số điện thoại<input [(ngModel)]="orderPhone" [disabled]="!!challengeId" type="tel" [placeholder]="ticket.phone||'Nhập SĐT đã đặt hoa'"></label>
+              <button type="button" class="order-primary" (click)="sendOtp()" [disabled]="otpBusy||resendSeconds>0">{{resendSeconds?'Gửi lại sau '+resendSeconds+' giây':'Gửi mã OTP'}}</button>
+              @if(challengeId){<p class="order-intro">{{otpNotice}}</p><label>Mã OTP<input [(ngModel)]="otpCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Nhập mã 6 số"></label><button type="button" class="order-primary" (click)="verifyOtp()" [disabled]="otpBusy||otpCode.length!==6">Xác nhận</button>}
+            } @else {
+              <div class="order-panel-toolbar"><span>{{orderData?orderData.orders.length+' đơn hàng':'Đang tải đơn hàng'}}</span><button type="button" class="order-refresh" (click)="loadOrders()" [disabled]="otpBusy">{{otpBusy?'Đang tải…':'↻ Làm mới'}}</button></div>
+              @if(orderData){
+                <div class="order-list">
+                  @for(o of orderData.orders;track o.DON_HANG_ID){
+                    <a class="order-card order-row" [routerLink]="['/order-detail',o.DON_HANG_ID]" (click)="closeChat()" [attr.aria-label]="'Xem chi tiết đơn '+o.DON_HANG_ID">
+                      <span class="order-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 8h6M9 12h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+                      <span class="order-row-info"><strong>Đơn #{{o.DON_HANG_ID}}</strong><span class="order-row-meta"><span class="order-total">{{formatOrderTotal(o.TONG_TIEN)}}đ</span><span class="order-row-status">{{o.TRANG_THAI||'Đang cập nhật'}}</span></span></span>
+                      <span class="order-detail-link">Xem chi tiết <span aria-hidden="true">›</span></span>
+                    </a>
+                  }
+                  @if(orderData.requests.length){<p class="request-list-title">Yêu cầu tư vấn đặt hoa</p>}
+                  @for(r of orderData.requests;track r.requestId){<button type="button" class="order-card request-card" (click)="latestSalesRequestId=r.requestId;resumeSalesChat()"><div class="order-card-top"><strong>{{r.requestId}}</strong></div><div class="order-card-bottom"><span class="request-status">{{r.status}}</span><span class="order-detail-link">Trao đổi <span aria-hidden="true">→</span></span></div></button>}
+                </div>
+                @if(!orderData.orders.length&&!orderData.requests.length){<p class="order-empty">Chưa có đơn hàng hoặc yêu cầu tư vấn.</p>}
+              }
+            }
+          </section>
+        }
+        @if(ticket.ratingEligible){<section class="support-rating" aria-label="Đánh giá hỗ trợ"><p class="rating-title">Bạn hài lòng với hỗ trợ vừa rồi chứ?</p><div class="rating-controls"><div class="rating-stars" role="group" aria-label="Chọn số sao">@for(score of [1,2,3,4,5];track score){<button type="button" class="rating-star" [class.filled]="score<=rating" [attr.aria-label]="score+' sao'" [attr.aria-pressed]="rating===score" (click)="rating=score" [disabled]="busy">{{score<=rating?'★':'☆'}}</button>}</div><span class="rating-value" aria-live="polite">{{rating?rating+'/5':''}}</span><button type="button" class="rating-submit" (click)="rate()" [disabled]="busy||!rating">Gửi</button></div></section>}@if(ratingNotice){<p>{{ratingNotice}}</p>}
       </div>
-      <div>
-        <h2>{{salesRequestId ? 'Nhân viên tư vấn đặt hoa' : 'Hoa Yên Assistant'}}</h2>
-        <p>{{salesRequestId ? 'Trao đổi trực tiếp với Sales' : 'Hỗ trợ bạn 24/7'}}</p>
-      </div>
-    </div>
-    <button class="close-btn" (click)="closeChat()">
-      <i class="bi bi-x-lg"></i>
-    </button>
-  </div>
-
-  @if (salesRequestId) {
-    <div class="sales-chat-panel">
-      @for (id of [salesRequestId]; track id) { <app-order-request [requestId]="id" [compact]="true"></app-order-request> }
-      <button class="assistant-back" (click)="backToAssistant()">Quay lại trợ lý AI</button>
-    </div>
-  } @else {
-  <div class="guest-contact-panel" *ngIf="showGuestContactForm">
-    <div class="guest-contact-head">
-      <div>
-        <h3>Chat với nhân viên tư vấn</h3>
-        <p>Để nhân viên hỗ trợ chính xác hơn, bạn để lại thông tin nhé.</p>
-      </div>
-      <button type="button" (click)="closeGuestContactForm()">
-        <i class="bi bi-x-lg"></i>
-      </button>
-    </div>
-
-    <div class="guest-contact-body">
-      <label>
-        <span>Họ và tên *</span>
-        <input type="text" [(ngModel)]="guestContact.name" placeholder="Nhập tên của bạn">
-      </label>
-
-      <label>
-        <span>Số điện thoại *</span>
-        <input type="tel" [(ngModel)]="guestContact.phone" placeholder="Nhập số điện thoại">
-      </label>
-
-      <label>
-        <span>Email</span>
-        <input type="email" [(ngModel)]="guestContact.email" placeholder="Nhập email nếu có">
-      </label>
-
-      <button type="button" class="guest-start-btn" (click)="submitGuestContactForm()">
-        <i class="bi bi-send-fill"></i>
-        Bắt đầu trò chuyện
-      </button>
-    </div>
-  </div>
-
-  <!-- Chat Body -->
-  <div class="chat-body" #chatBody>
-
-    <div *ngFor="let msg of messages" [class]="'message-row ' + msg.role">
-
-      <!-- Avatar bot -->
-      <div class="message-avatar" *ngIf="msg.role === 'bot'">
-        <img src="assets/images/logoAI.png" alt="bot">
-      </div>
-
-      <div>
-        <!-- Ảnh -->
-        <div
-          class="message bot-message"
-          *ngIf="msg.role === 'bot'">
-
-          <img
-            *ngIf="msg.imageUrl"
-            [src]="getDisplayImageUrl(msg.imageUrl)"
-            alt="flower"
-            referrerpolicy="no-referrer"
-            (error)="onImageError($event)"
-            class="chat-image">
-
-          <div>
-            {{ msg.content }}
-          </div>
-
-        </div>
-
-        <!-- Text user -->
-        <div class="message bot-message"
-     *ngIf="msg.type === 'text'
-            && msg.role === 'user'
-            && !msg.imageUrl">
-          {{ msg.content }}
-        </div>
-        <div
-          class="message bot-message"
-          *ngIf="msg.role === 'user' && msg.imageUrl">
-
-          <img
-            [src]="getDisplayImageUrl(msg.imageUrl)"
-            class="chat-image"
-            referrerpolicy="no-referrer"
-            (error)="onImageError($event)"
-            alt="preview">
-
-          <div *ngIf="msg.content">
-            {{ msg.content }}
-          </div>
-
-        </div>
-        <div class="time" [class.text-end]="msg.role === 'user'">
-          {{ msg.time }}
-        </div>
-      </div>
-
-    </div>
-
-    <!-- Loading -->
-    <div class="message-row bot" *ngIf="isLoading">
-      <div class="message-avatar">
-        <img src="assets/images/logoAI.png" alt="bot">
-      </div>
-      <div class="message bot-message typing-indicator">
-        <span class="typing-dots">
-          <i></i><i></i><i></i>
-        </span>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- Quick Actions -->
-  <div class="quick-actions">
-    <button class="btn-action" *ngIf="latestSalesRequestId" (click)="resumeSalesChat()">Tiếp tục tư vấn đơn hàng</button>
-    <button class="btn-action" (click)="sendQuickAction('Liên hệ nhân viên')">
-      Liên hệ nhân viên
-    </button>
-    <button class="btn-action" (click)="sendQuickAction('Tạo một bó Hoa sinh nhật')">
-     Tạo một bó Hoa sinh nhật
-    </button>
-    <button class="btn-action" (click)="sendQuickAction('Chương trình khuyến mãi')">
-      Chương trình khuyến mãi
-    </button>
-    <button class="btn-action" (click)="sendQuickAction('Hoa tốt nghiệp')">
-     Hoa tốt nghiệp
-    </button>
-  </div>
-
-  <!-- Input -->
-  <div class="attachment-preview" *ngIf="selectedImageDataUrl">
-    <img [src]="selectedImageDataUrl" alt="selected image">
-    <div class="attachment-info">
-      <span>{{ selectedFile?.name }}</span>
-      <small>Gõ thêm tin nhắn rồi bấm gửi</small>
-    </div>
-    <button type="button" class="attachment-remove" (click)="clearSelectedFile()">
-      <i class="bi bi-x-lg"></i>
-    </button>
-  </div>
-
-  <div class="chat-input">
-    <button class="attach-btn" (click)="fileInput.click()">
-      <i class="bi bi-paperclip"></i>
-    </button>
-    <input
-      #fileInput
-      type="file"
-      accept="image/*"
-      hidden
-      (change)="onFileSelected($event)">
-    <textarea
-      #msgInput
-      placeholder="Nhập tin nhắn..."
-      [(ngModel)]="inputText"
-      (keydown)="onEnter($event)"
-      (input)="autoResize(msgInput)"
-      rows="1"></textarea>
-    <button class="send-btn" (click)="sendMessage()" [disabled]="isLoading">
-      <i class="bi bi-send"></i>
-    </button>
-  </div>
+      <div class="quick-actions"><button class="btn-action" (click)="quick('Gặp nhân viên')" [disabled]="busy||ticket.mode!=='AI'">Gặp nhân viên</button><button class="btn-action" (click)="quick('Cho tôi xem mẫu hoa sinh nhật')" [disabled]="busy||ticket.mode!=='AI'">Xem mẫu hoa</button><button class="btn-action" (click)="openOrders()">Đơn hàng của tôi</button></div>
+      @if(selectedImageDataUrl){<div class="attachment-preview"><img [src]="selectedImageDataUrl" alt="Ảnh chuẩn bị gửi"><span>{{selectedFileName}}</span><button (click)="selectedImageDataUrl=''">Bỏ ảnh</button></div>}
+      <div class="chat-input"><label class="attach-btn" aria-label="Gửi ảnh">📎<input type="file" hidden accept="image/jpeg,image/png,image/webp" (change)="onFileSelected($event)"></label><textarea [(ngModel)]="inputText" (keydown)="onEnter($event)" maxlength="2000" rows="2" placeholder="Nhập tin nhắn…"></textarea><button class="send-btn" (click)="sendMessage()" [disabled]="busy">Gửi</button></div>
+    } @else {<div class="support-form"><button (click)="start()" [disabled]="busy">Mở cuộc tư vấn</button></div>}
   }
 </div>
-<a
-  class="zalo-button"
-  href="https://zalo.me/0786941361"
-  target="_blank">
-
-  <img src="assets/images/zalo.webp" alt="Zalo">
-
-</a>
+<a class="zalo-button" href="https://zalo.me/0786941361" target="_blank" rel="noopener noreferrer"><img src="assets/images/zalo.webp" alt="Zalo"></a>

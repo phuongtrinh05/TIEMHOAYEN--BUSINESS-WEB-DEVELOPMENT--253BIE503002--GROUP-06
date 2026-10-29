@@ -1,4 +1,6 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { apiBaseUrl } from '../../services/api-config';
 import {
   Router,
   NavigationEnd,
@@ -18,7 +20,10 @@ import { AdminApiService } from '../../services/admin-api.service';
   templateUrl: './admin-header.html',
   styleUrl: './admin-header.css'
 })
-export class AdminHeader implements OnInit {
+export class AdminHeader implements OnInit, OnDestroy {
+  supportPending = 0;
+  supportVisible = false;
+  private supportTimer?: ReturnType<typeof setInterval>;
 
   pageTitle = '';
   productCount = 0;
@@ -63,10 +68,15 @@ export class AdminHeader implements OnInit {
   constructor(
     private router: Router,
     private cdr: ChangeDetectorRef,
-    private adminApi: AdminApiService
+    private adminApi: AdminApiService,
+    private http: HttpClient
   ) {}
 
   ngOnInit(): void {
+    if (typeof window !== 'undefined') {
+      this.loadSupportSummary();
+      this.supportTimer = setInterval(() => { if (!document.hidden) this.loadSupportSummary(); }, 20000);
+    }
     
     this.updateHeader(this.router.url);
 
@@ -82,6 +92,15 @@ export class AdminHeader implements OnInit {
             event.urlAfterRedirects
           );
       });
+  }
+
+  ngOnDestroy(): void { if (this.supportTimer) clearInterval(this.supportTimer); }
+
+  private loadSupportSummary(): void {
+    this.http.get<{pending:number}>(`${apiBaseUrl()}/support/admin/summary`).subscribe({
+      next: r => { this.supportPending = r.pending; this.supportVisible = true; this.cdr.markForCheck(); },
+      error: () => { this.supportVisible = false; this.cdr.markForCheck(); }
+    });
   }
 
   private updateHeader(url: string): void {

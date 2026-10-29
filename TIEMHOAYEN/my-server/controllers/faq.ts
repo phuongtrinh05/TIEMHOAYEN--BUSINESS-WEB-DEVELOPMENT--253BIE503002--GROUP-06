@@ -1,7 +1,19 @@
 import { Request, Response } from 'express';
-import { getCollection, getNextPrefixedId } from '../mongo.js';
+import { getCollection } from '../mongo.js';
+import { randomBytes } from 'node:crypto';
+import { InventoryError } from '../services/inventory/helpers.js';
 
-const DEFAULT_FAQ_STATUS = 'Hoạt động';
+const DEFAULT_FAQ_STATUS = 'Bị khóa';
+const canonicalQuestion=(s:unknown)=>String(s||'').normalize('NFC').trim().replace(/\s+/g,' ').toLocaleLowerCase('vi');
+async function validateFaq(body:any,id='') {
+  const {question,answer,category}=body; const status=body.status||DEFAULT_FAQ_STATUS;
+  if(!String(question||'').trim()||!String(answer||'').trim()||!String(category||'').trim())throw new InventoryError(400,'Câu hỏi, câu trả lời và danh mục là bắt buộc.');
+  if(String(question).trim().length>1000||String(answer).trim().length>8000||String(category).trim().length>100)throw new InventoryError(400,'Nội dung FAQ vượt độ dài cho phép.');
+  if(!['Hoạt động','Bị khóa'].includes(status))throw new InventoryError(400,'Trạng thái câu hỏi không hợp lệ.');
+  const rows=await (await getFAQCollection()).find({CAU_HOI_ID:{$ne:id}},{projection:{CAU_HOI:1}}).toArray();
+  if(rows.some(r=>canonicalQuestion(r.CAU_HOI)===canonicalQuestion(question)))throw new InventoryError(409,'Câu hỏi đã tồn tại.');
+  return canonicalQuestion(question);
+}
 
 const getFAQCollection = () => getCollection('CAU_HOI_CO_SAN');
 
@@ -15,8 +27,12 @@ const sortFAQ = (left: any, right: any): number => {
 export const getAllFAQs = async (_req: Request, res: Response) => {
   try {
     const collection = await getFAQCollection();
-    const faqs = await collection.find({}).toArray();
-    return res.status(200).json(faqs.sort(sortFAQ));
+    const [faqs,usage] = await Promise.all([
+      collection.find({}).toArray(),
+      (await getCollection('TIN_NHAN_CHAT')).aggregate([{$match:{CAU_HOI_ID:{$type:'string'},LOAI_TIN_NHAN:{$ne:'test'}}},{$group:{_id:'$CAU_HOI_ID',count:{$sum:1}}}]).toArray(),
+    ]);
+    const counts=new Map(usage.map(r=>[r._id,r.count]));
+    return res.status(200).json(faqs.sort(sortFAQ).map(f=>({...f,SO_LUOT_HOI:counts.get(f.CAU_HOI_ID)||0})));
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot load FAQs: ' + error.message });
   }
@@ -46,10 +62,12 @@ export const createFAQ = async (req: Request, res: Response) => {
     }
 
     const collection = await getFAQCollection();
-    const faqId = await getNextPrefixedId('CAU_HOI_CO_SAN', 'CAU_HOI_ID', 'CH', 3);
+    const normalized=await validateFaq(req.body);
+    const faqId = `CH${randomBytes(4).toString('hex').toUpperCase()}`;
     const faq = {
       CAU_HOI_ID: faqId,
       CAU_HOI: String(question).trim(),
+      CAU_HOI_CHUAN: normalized,
       CAU_TRA_LOI: String(answer).trim(),
       DANH_MUC_CAU_HOI: String(category).trim(),
       TRANG_THAI: String(status || DEFAULT_FAQ_STATUS).trim(),
@@ -62,6 +80,8 @@ export const createFAQ = async (req: Request, res: Response) => {
       faq,
     });
   } catch (error: any) {
+    if(error instanceof InventoryError)return res.status(error.status).json({message:error.message});
+    if(error.code===11000)return res.status(409).json({message:'Câu hỏi đã tồn tại.'});
     return res.status(500).json({ message: 'Cannot create FAQ: ' + error.message });
   }
 };
@@ -76,11 +96,13 @@ export const updateFAQ = async (req: Request, res: Response) => {
     }
 
     const collection = await getFAQCollection();
+    const normalized=await validateFaq(req.body,String(id));
     await collection.updateOne(
       { CAU_HOI_ID: id },
       {
         $set: {
           CAU_HOI: String(question).trim(),
+          CAU_HOI_CHUAN: normalized,
           CAU_TRA_LOI: String(answer).trim(),
           DANH_MUC_CAU_HOI: String(category).trim(),
           TRANG_THAI: String(status || DEFAULT_FAQ_STATUS).trim(),
@@ -98,6 +120,8 @@ export const updateFAQ = async (req: Request, res: Response) => {
       faq,
     });
   } catch (error: any) {
+    if(error instanceof InventoryError)return res.status(error.status).json({message:error.message});
+    if(error.code===11000)return res.status(409).json({message:'Câu hỏi đã tồn tại.'});
     return res.status(500).json({ message: 'Cannot update FAQ: ' + error.message });
   }
 };

@@ -12,7 +12,7 @@
               routerLink="/customer-service/customer-chat"
               routerLinkActive="active"
               [routerLinkActiveOptions]="{ exact: true }">
-              Chat
+              Hộp thư hỗ trợ
             </button>
             <button
               routerLink="/customer-service/chatbot-management"
@@ -21,7 +21,7 @@
             </button>
           </div>
 
-          <div class="toolbar-right">
+          <div class="toolbar-right"><button routerLink="/customer-service/customer-chat" [queryParams]="{test:1}">Test chatbot</button>
           <div class="search-box">
             <i class="bi bi-search"></i>
             <input
@@ -63,6 +63,7 @@
             <div class="dropdown-menu sort-menu" *ngIf="isSortOpen">
               <button (click)="sortBy('code')">Theo mã</button>
               <button (click)="sortBy('question')">Theo câu hỏi</button>
+              <button (click)="sortBy('askedCount')">Được hỏi nhiều nhất</button>
               <button (click)="sortBy('category')">Theo danh mục</button>
               <button (click)="sortBy('status')">Theo trạng thái</button>
             </div>
@@ -123,6 +124,7 @@
                 </td>
                 <td>
                   <div class="q-name">{{ item.question }}</div>
+                  <small>{{ item.askedCount || 0 }} lượt hỏi được chatbot giải đáp</small>
                   <div class="q-code">{{ item.code }}</div>
                 </td>
                 <td class="answer-col">
@@ -262,14 +264,14 @@
       <div class="chatbot-edit-modal">
         <div class="modal-header">
           <div class="title-mark"></div>
-          <h2>Chi tiết / chỉnh sửa câu hỏi</h2>
+          <h2>Chi tiết câu hỏi</h2>
           <button class="modal-close-btn" (click)="closeEditModal()"><i class="bi bi-x-lg"></i></button>
         </div>
         <div class="form-group">
           <label>Câu hỏi</label>
           <textarea
             class="question-field"
-            [(ngModel)]="editingItem!.question"
+            [(ngModel)]="editingItem!.question" [readOnly]="detailReadOnly" maxlength="1000"
             autocomplete="new-password"
             autocapitalize="off"
             spellcheck="false"
@@ -280,7 +282,7 @@
         <div class="form-group">
           <label>Câu trả lời</label>
           <textarea
-            [(ngModel)]="editingItem!.answer"
+            [(ngModel)]="editingItem!.answer" [readOnly]="detailReadOnly" maxlength="8000"
             autocomplete="off"
             autocapitalize="off"
             spellcheck="false"
@@ -290,7 +292,7 @@
         <div class="form-row">
           <div class="form-group">
             <label>Danh mục</label>
-            <select [(ngModel)]="editingItem!.category">
+            <select [(ngModel)]="editingItem!.category" [disabled]="detailReadOnly">
               <option *ngFor="let cat of categoryOptions" [value]="cat">{{ cat }}</option>
             </select>
           </div>
@@ -308,13 +310,13 @@
         </div>
         <div class="form-group">
           <label>Trạng thái</label>
-          <select [(ngModel)]="editingItem!.status">
+          <select [(ngModel)]="editingItem!.status" [disabled]="detailReadOnly">
             <option [value]="activeStatus">{{ activeStatus }}</option>
             <option [value]="lockedStatus">{{ lockedStatus }}</option>
           </select>
         </div>
         <div class="modal-actions">
-          <button class="save-btn" [disabled]="isSaving" (click)="saveEdit()">
+          <button *ngIf="detailReadOnly" class="save-btn" (click)="detailReadOnly=false">Chỉnh sửa</button><button *ngIf="!detailReadOnly" class="save-btn" [disabled]="isSaving" (click)="saveEdit()">
             {{ isSaving ? 'Đang lưu...' : 'Lưu' }}
           </button>
         </div>

@@ -6,6 +6,7 @@ import { finalize, forkJoin, timeout } from 'rxjs';
 import { AdminApiService, AdminFAQPayload, AdminFAQRow } from '../../../services/admin-api.service';
 
 interface ChatbotItem {
+    askedCount?: number;
     id: string;
     code: string;
     question: string;
@@ -34,6 +35,7 @@ export class ChatbotManagementComponent implements OnInit {
     isExportOpen = false;
     isAddModalOpen = false;
     isEditModalOpen = false;
+    detailReadOnly = true;
     isLoading = false;
     isSaving = false;
 
@@ -170,6 +172,7 @@ export class ChatbotManagementComponent implements OnInit {
 
     sortBy(field: string): void {
         this.filteredItems.sort((a, b) => {
+            if (field === 'askedCount') return (b.askedCount || 0) - (a.askedCount || 0);
             if (field === 'code') return a.code.localeCompare(b.code, 'vi');
             if (field === 'question') return a.question.localeCompare(b.question, 'vi');
             if (field === 'category') return a.category.localeCompare(b.category, 'vi');
@@ -253,16 +256,7 @@ export class ChatbotManagementComponent implements OnInit {
     }
 
     openAddModal(): void {
-        const nextNumber = this.items
-            .map(item => Number(item.code.replace(/\D/g, '')))
-            .filter(Number.isFinite)
-            .reduce((max, value) => Math.max(max, value), 0) + 1;
-
-        this.newItem = {
-            ...this.createEmptyItem(),
-            id: `CH${String(nextNumber).padStart(3, '0')}`,
-            code: `CH${String(nextNumber).padStart(3, '0')}`
-        };
+        this.newItem = { ...this.createEmptyItem(), id: '', code: 'Tự sinh khi lưu' };
 
         this.isAddModalOpen = true;
     }
@@ -280,6 +274,7 @@ export class ChatbotManagementComponent implements OnInit {
                 this.currentPage = 1;
                 this.applyFilters();
                 this.closeAddModal();
+                this.openEditModal(this.mapFAQRow(response.faq));
                 this.isSaving = false;
             },
             error: error => {
@@ -296,6 +291,7 @@ export class ChatbotManagementComponent implements OnInit {
 
     openEditModal(item: ChatbotItem, event?: Event): void {
         event?.stopPropagation();
+        this.detailReadOnly = !event;
         this.editingItem = { ...item };
         this.isEditModalOpen = true;
 
@@ -315,7 +311,7 @@ export class ChatbotManagementComponent implements OnInit {
 
     saveEdit(): void {
         if (this.isSaving) return;
-        if (!this.editingItem || !this.validateItem(this.editingItem)) return;
+        if (this.detailReadOnly || !this.editingItem || !this.validateItem(this.editingItem)) return;
 
         this.isSaving = true;
         this.cdr.detectChanges();
@@ -332,7 +328,7 @@ export class ChatbotManagementComponent implements OnInit {
                     item.code === updatedItem.code ? { ...updatedItem, selected: item.selected } : item
                 );
                 this.applyFilters();
-                this.closeEditModal();
+                this.editingItem = updatedItem; this.detailReadOnly = true;
                 this.isSaving = false;
             },
             error: error => {
@@ -417,6 +413,7 @@ export class ChatbotManagementComponent implements OnInit {
 
     private mapFAQRow(row: AdminFAQRow): ChatbotItem {
         return {
+            askedCount: row.SO_LUOT_HOI || 0,
             id: row.CAU_HOI_ID,
             code: row.CAU_HOI_ID,
             question: row.CAU_HOI || '',
@@ -480,7 +477,7 @@ export class ChatbotManagementComponent implements OnInit {
             question: '',
             answer: '',
             category: 'Đặt hàng',
-            status: 'Hoạt động',
+            status: 'Bị khóa',
             selected: false
         };
     }

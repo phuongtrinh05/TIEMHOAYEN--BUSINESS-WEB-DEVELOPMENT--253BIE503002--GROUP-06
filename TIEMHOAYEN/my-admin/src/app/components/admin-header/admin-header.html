@@ -42,9 +42,9 @@
             <i class="bi bi-search"></i>
         </div>
 
-        <button class="header-icon">
+        <button *ngIf="supportVisible" class="header-icon" routerLink="/customer-service/customer-chat" [attr.aria-label]="supportPending + ' yêu cầu hỗ trợ chờ tiếp nhận'" [title]="supportPending + ' yêu cầu hỗ trợ chờ tiếp nhận'">
             <i class="bi bi-bell"></i>
-            <span class="dot"></span>
+            <span *ngIf="supportPending" class="support-count">{{supportPending}}</span>
         </button>
 
         <div

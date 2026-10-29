@@ -40,7 +40,9 @@ export async function endLookup(req: Request, res: Response) {
 export async function requireCustomerLookup(req: Request, res: Response, next: NextFunction) {
   try {
     const access = await lookupAccess(accessToken(req));
-    const customer = await (await getCollection<any>('KHACH_HANG')).findOne({ KHACH_HANG_ID: req.params.id, ...(access.authType === 'member' ? { KHACH_HANG_ID: access.customerId === req.params.id ? access.customerId : null } : { SDT: phonePattern(access.phone) }) });
+    const customer = await (await getCollection<any>('KHACH_HANG')).findOne(access.authType === 'member'
+      ? { KHACH_HANG_ID: access.customerId === req.params.id ? access.customerId : null }
+      : { KHACH_HANG_ID: req.params.id, SDT: phonePattern(access.phone) });
     if (!customer) throw new InventoryError(404, 'Không tìm thấy lịch sử trong phạm vi được phép.');
     next();
   } catch(e) { failure(res,e); }

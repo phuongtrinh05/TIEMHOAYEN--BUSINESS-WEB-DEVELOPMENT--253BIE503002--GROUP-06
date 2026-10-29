@@ -14,6 +14,7 @@
     "inventory:reconcile": "tsx scripts/inventory-setup.ts --reconcile",
     "test:inventory": "tsx --test tests/inventory.test.ts",
     "test:order-requests": "tsx --test tests/order-request.test.ts",
+    "test:support": "tsx --test tests/support.test.ts",
     "preview:frontends": "tsx scripts/serve-frontends.ts"
   },
   "dependencies": {

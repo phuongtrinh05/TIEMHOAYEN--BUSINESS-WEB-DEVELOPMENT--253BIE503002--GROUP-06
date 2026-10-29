@@ -91,6 +91,7 @@
     cursor:pointer;
 }
 
+.support-count{position:absolute;top:-6px;right:-8px;min-width:18px;padding:1px 4px;border-radius:12px;background:#b12e36;color:white;font-size:11px;line-height:18px}
 .dot{
     width:8px;
     height:8px;

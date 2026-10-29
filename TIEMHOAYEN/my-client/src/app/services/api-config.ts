@@ -13,7 +13,7 @@ export function apiBaseUrl(): string {
 export const apiEndpointInterceptor: HttpInterceptorFn = (request, next) => {
   const prefix = /^https?:\/\/(?:tiem-hoa-yen-api\.onrender\.com|localhost:3000)\/api(?=\/|$)/;
   let target = prefix.test(request.url) ? request.clone({ url: request.url.replace(prefix, apiBaseUrl()) }) : request;
-  if ((target.url.startsWith(`${apiBaseUrl()}/orders`) || target.url.startsWith(`${apiBaseUrl()}/customers/`) && /\/orders(?:\?|$)/.test(target.url)) && typeof sessionStorage !== 'undefined') {
+  if ((target.url.startsWith(`${apiBaseUrl()}/orders`) || target.url.startsWith(`${apiBaseUrl()}/support`) || target.url.startsWith(`${apiBaseUrl()}/customers/`) && /\/orders(?:\?|$)/.test(target.url)) && typeof sessionStorage !== 'undefined') {
     const session = orderAccessSession();
     if (session) target = target.clone({ setHeaders: { 'x-order-access': session.accessToken } });
     const payment = target.url.match(/\/orders\/([^/?]+)\/payment-(status|expired|retry)(?:\?|$)/);

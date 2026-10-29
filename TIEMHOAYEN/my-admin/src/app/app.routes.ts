@@ -30,6 +30,7 @@ import { CreateOrder } from './pages/orders/create-order/create-order';
 import { OrderDetail } from './pages/orders/order-detail/order-detail';
 
 import { CustomerChatComponent } from './pages/customer-service/customer-chat/customer-chat';
+import { SupportInbox } from './pages/customer-service/support-inbox/support-inbox';
 import { ChatbotManagementComponent } from './pages/customer-service/chatbot-management/chatbot-management';
 
 import { ArticleList } from './pages/content/article-list/article-list';
@@ -43,6 +44,7 @@ import { AdminAccount } from './pages/admin-account/admin-account';
 import { adminPermissionGuard } from './services/admin-permission.guard';
 
 export const routes: Routes = [
+    { path: 'customer-service/legacy-chat', component: CustomerChatComponent, canActivate: [adminPermissionGuard], data: { module: 'customerService' } },
     { path: 'orders/requests', component: OrderRequests, canActivate: [adminPermissionGuard], data: { module: 'orders' } },
     {
         path: '',
@@ -211,6 +213,12 @@ export const routes: Routes = [
     },
     {
         path: 'customer-service/customer-chat',
+        component: SupportInbox,
+        canActivate: [adminPermissionGuard],
+        data: { module: 'customerService' }
+    },
+    {
+        path: 'customer-service/legacy-chat',
         component: CustomerChatComponent,
         canActivate: [adminPermissionGuard],
         data: { module: 'customerService' }
