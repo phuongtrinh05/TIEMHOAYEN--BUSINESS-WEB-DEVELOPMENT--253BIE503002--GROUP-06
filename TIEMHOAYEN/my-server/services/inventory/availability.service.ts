@@ -196,7 +196,15 @@ export const supplierOptionsFor = async (materialIds: string[], deadline: Date) 
  * --------------------------------------------------------------------- */
 
 export const getInventoryAlerts = async () => {
-  const materials = await (await col(COLLECTIONS.material)).find({ TRANG_THAI: { $ne: MATERIAL_STATUS.hidden } }).toArray();
+  // Đọc song song mọi nguồn (trước đây 6 lượt tuần tự → chậm khi DB ở xa như Atlas)
+  const [materials, demandRows, pos, products, bomMap, sources] = await Promise.all([
+    col(COLLECTIONS.material).then((c) => c.find({ TRANG_THAI: { $ne: MATERIAL_STATUS.hidden } }).toArray()),
+    col(COLLECTIONS.demand).then((c) => c.find({ TRANG_THAI: DEMAND_STATUS.waiting }).sort({ THOI_DIEM_CAN_DUNG: 1, DON_HANG_ID: 1 }).toArray()),
+    col(COLLECTIONS.purchaseOrder).then((c) => c.find({ TRANG_THAI: PO_STATUS.shipping }).toArray()),
+    col(COLLECTIONS.product).then((c) => c.find({ TRANG_THAI: 'Đang bán' }).project({ SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1, TON_THANH_PHAM: 1, TP_DANG_GIU: 1, KIEU_DANG: 1 }).toArray()),
+    getActiveBomMap(),
+    col(COLLECTIONS.importDetail).then((c) => c.find({ LA_NGUON_NHAP: true, SL_CON_LAI: { $gt: 0 } }).toArray()),
+  ]);
   const byId = new Map(materials.map((m: any) => [m.NGUYEN_VAT_LIEU_ID, m]));
 
   // Tầng 1 — NVL theo tồn hiện tại
@@ -211,7 +219,6 @@ export const getInventoryAlerts = async () => {
     .sort((a, b) => (a.status === b.status ? a.available - b.available : a.status === 'out' ? -1 : 1));
 
   // Tầng 1b + 3 — dự báo theo lịch T: khả dụng + PO đang giao kịp T − nhu cầu chưa giữ các đơn có T sớm hơn/cùng T
-  const demandRows = await (await col(COLLECTIONS.demand)).find({ TRANG_THAI: DEMAND_STATUS.waiting }).sort({ THOI_DIEM_CAN_DUNG: 1, DON_HANG_ID: 1 }).toArray();
   // Gộp theo (đơn, NVL) — một đơn có nhiều sản phẩm dùng chung NVL
   const grouped = new Map<string, any>();
   demandRows.forEach((d: any) => {
@@ -221,7 +228,6 @@ export const getInventoryAlerts = async () => {
     else grouped.set(key, { ...d, SO_LUONG: Number(d.SO_LUONG || 0) });
   });
   const demands = [...grouped.values()];
-  const pos = await (await col(COLLECTIONS.purchaseOrder)).find({ TRANG_THAI: PO_STATUS.shipping }).toArray();
   const cumulative = new Map<string, number>();
   const forecastShortages: any[] = [];
   const unscheduled = new Set<string>();
@@ -246,8 +252,6 @@ export const getInventoryAlerts = async () => {
   }
 
   // Tầng 2 — sản phẩm trên website
-  const products = await (await col(COLLECTIONS.product)).find({ TRANG_THAI: 'Đang bán' }).project({ SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1, TON_THANH_PHAM: 1, TP_DANG_GIU: 1, KIEU_DANG: 1 }).toArray();
-  const bomMap = await getActiveBomMap();
   const productAlerts: any[] = [];
   for (const p of products as any[]) {
     const lines = bomMap.get(p.SAN_PHAM_ID) || [];
@@ -260,7 +264,6 @@ export const getInventoryAlerts = async () => {
   productAlerts.sort((a, b) => a.sellable - b.sellable);
 
   // Chất lượng hoa tươi: nguồn nhập còn hàng đã quá số ngày bảo quản → nhắc kiểm tra (không tự loại)
-  const sources = await (await col(COLLECTIONS.importDetail)).find({ LA_NGUON_NHAP: true, SL_CON_LAI: { $gt: 0 } }).toArray();
   const now = Date.now();
   const qualityChecks = (sources as any[])
     .map((s) => {

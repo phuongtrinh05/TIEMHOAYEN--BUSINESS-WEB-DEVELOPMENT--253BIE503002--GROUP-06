@@ -175,6 +175,11 @@ export class OrderList implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     if (isPlatformBrowser(this.platformId)) {
+      // Dashboard "Cần xử lý" mở danh sách đã lọc sẵn: /orders/order-list?status=<trạng thái>
+      const statusParam = new URLSearchParams(window.location.search).get('status');
+      if (statusParam && (this.orderStatusFilters as string[]).includes(statusParam)) {
+        this.orderStatusFilter = statusParam as OrderStatusFilter;
+      }
       this.loadOrders();
       this.startLiveDatabaseRefresh();
     }

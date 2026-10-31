@@ -4,6 +4,7 @@ import { getAdminOrderDetailById } from '../services/admin-order.service.js';
 import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
 import { syncCheckoutInventory } from '../services/checkout-payment.service.js';
 import { releaseReservations } from '../services/inventory/stock.service.js';
+import { invalidateAnalyticsCache } from '../services/analytics/cache.js';
 
 const toDate = (value: unknown): Date | null => {
   if (!value) return null;
@@ -773,11 +774,16 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
         $set: {
           TRANG_THAI: status,
           ...(req.body.rejectReason ? { LY_DO_TU_CHOI: String(req.body.rejectReason).trim() } : {}),
+          // Mốc thời gian cho Dashboard/Báo cáo (D05): doanh thu tính theo ngày hoàn thành, tỷ lệ hủy theo ngày hủy
+          ...(status === 'Hoàn thành' && !current?.NGAY_HOAN_THANH ? { NGAY_HOAN_THANH: new Date() } : {}),
+          ...(status === 'Đã hủy' && !current?.NGAY_HUY ? { NGAY_HUY: new Date() } : {}),
+          NGAY_CAP_NHAT: new Date(),
         },
       },
       { session },
     );
     });
+    invalidateAnalyticsCache(); // Dashboard lấy số mới ở lần xem tiếp theo
     const order = await getAdminOrderDetailById(orderId);
     return res.status(200).json({ message: 'Order status updated.', order });
   } catch (error: any) {

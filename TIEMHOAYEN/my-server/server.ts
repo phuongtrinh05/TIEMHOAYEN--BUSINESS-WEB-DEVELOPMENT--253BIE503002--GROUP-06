@@ -52,6 +52,8 @@ import supportRoutes from './routes/support.js';
 import adminRoutes from './routes/admin.js';
 import rolePermissionRoutes from './routes/rolePermission.js';
 import inventoryRoutes from './routes/inventory.js';
+import analyticsRoutes from './routes/analytics.js';
+import { ensureNotificationIndexes, startNotificationJobs } from './services/analytics/notifications.service.js';
 import { getProductAvailability } from './controllers/inventory.js';
 import { ensureInventoryIndexes, startInventoryJobs } from './services/inventory/setup.js';
 
@@ -143,6 +145,7 @@ app.use('/api/styles', styleRoutes);
 app.use('/api/category-products', categoryProductRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/admin', inventoryRoutes);
+app.use('/api/admin', analyticsRoutes);
 app.use('/api/admin', rolePermissionRoutes);
 app.use('/api/admin', adminRoutes);
 
@@ -164,6 +167,8 @@ const PORT = Number(process.env.PORT ?? 3000);
     await (await import('./services/order-access.service.js')).ensureOrderAccessIndexes();
     await (await import('./services/support.service.js')).ensureSupportIndexes();
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startInventoryJobs();
+    if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureNotificationIndexes();
+    if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startNotificationJobs();
 
     app.listen(PORT, () => {
       console.log(`\nServer: http://localhost:${PORT}`);
