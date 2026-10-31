@@ -15,7 +15,10 @@
     "test:inventory": "tsx --test tests/inventory.test.ts",
     "test:order-requests": "tsx --test tests/order-request.test.ts",
     "test:support": "tsx --test tests/support.test.ts",
-    "preview:frontends": "tsx scripts/serve-frontends.ts"
+    "preview:frontends": "tsx scripts/serve-frontends.ts",
+    "analytics:migrate": "tsx scripts/analytics-setup.ts --migrate",
+    "analytics:check": "tsx scripts/analytics-setup.ts --check",
+    "test:analytics": "tsx --test tests/analytics.test.ts"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",
