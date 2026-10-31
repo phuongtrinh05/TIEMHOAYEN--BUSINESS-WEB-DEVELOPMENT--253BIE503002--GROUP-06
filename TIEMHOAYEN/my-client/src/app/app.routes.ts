@@ -1,3 +1,4 @@
+import {WebsiteContent} from './pages/website-content/website-content';
 import { Routes } from '@angular/router';
 import { OrderRequest } from './pages/orders/order-request/order-request';
 import { RequestHistory } from './pages/orders/request-history/request-history';
@@ -48,6 +49,7 @@ import { ProductDetailComponent } from './pages/product-detail/product-detail';
 import { PolicyLayoutComponent } from './pages/policy/policy-layout';
 
 export const routes: Routes = [
+ {path:'website/noi-dung/:code',component:WebsiteContent},
   { path: 'order-requests', component: RequestHistory, title: 'Yêu cầu đặt hoa của tôi - Tiệm Hoa Yên' },
   { path: 'order-request/:id', component: OrderRequest, title: 'Yêu cầu đặt hàng - Tiệm Hoa Yên' },
   // =========================

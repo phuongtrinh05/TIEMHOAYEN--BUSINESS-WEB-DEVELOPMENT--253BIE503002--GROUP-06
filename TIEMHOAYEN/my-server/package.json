@@ -18,7 +18,8 @@
     "preview:frontends": "tsx scripts/serve-frontends.ts",
     "analytics:migrate": "tsx scripts/analytics-setup.ts --migrate",
     "analytics:check": "tsx scripts/analytics-setup.ts --check",
-    "test:analytics": "tsx --test tests/analytics.test.ts"
+    "test:analytics": "tsx --test tests/analytics.test.ts",
+    "test:content": "tsx --test tests/content.test.ts"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",
@@ -28,7 +29,8 @@
     "express": "^4.19.2",
     "fast-xml-parser": "^5.11.2",
     "mongodb": "^6.20.0",
-    "multer": "^2.2.0"
+    "multer": "^2.2.0",
+    "sanitize-html": "^2.18.1"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
@@ -36,6 +38,7 @@
     "@types/express": "^4.17.21",
     "@types/multer": "^2.2.0",
     "@types/node": "^22.19.21",
+    "@types/sanitize-html": "^2.16.2",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2"
   }

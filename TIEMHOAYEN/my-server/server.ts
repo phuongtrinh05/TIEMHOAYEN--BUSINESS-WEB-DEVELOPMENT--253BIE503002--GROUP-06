@@ -1,3 +1,5 @@
+import contentRoutes from './routes/content.js';
+import { startContentJobs } from './services/content.service.js';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { connectMongo } from './mongo.js';
@@ -81,6 +83,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '8mb' }));
 app.use('/api/support', supportRoutes);
+app.use('/api/content', contentRoutes);
 app.use('/uploads', express.static('uploads'));
 
 app.use('/api/customers', customerRoutes);
@@ -166,6 +169,8 @@ const PORT = Number(process.env.PORT ?? 3000);
     await ensureSalesRequestIndexes();
     await (await import('./services/order-access.service.js')).ensureOrderAccessIndexes();
     await (await import('./services/support.service.js')).ensureSupportIndexes();
+    await (await import('./mongo.js')).getCollection('NOI_DUNG_WEBSITE').then(c=>c.createIndex({MA_NOI_DUNG:1},{unique:true}));
+    startContentJobs();
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startInventoryJobs();
     if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureNotificationIndexes();
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startNotificationJobs();

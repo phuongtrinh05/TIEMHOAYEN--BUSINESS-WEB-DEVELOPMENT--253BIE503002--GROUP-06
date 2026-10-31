@@ -49,7 +49,7 @@
 
     <section class="features">
 
-        <h2 class="reveal">Điểm nổi bật của chúng tôi</h2>
+        <h2 class="reveal">Điểm khác biệt của Hoa Yên</h2>
 
         <div class="feature-grid">
 
@@ -59,10 +59,9 @@
                 </div>
 
                 <div class="feature-content">
-                    <h3>Giao trong 2 giờ</h3>
+                    <h3>Chuẩn bị theo dịp</h3>
                     <p>
-                        Giao nhanh nội thành chỉ trong 2 giờ,
-                        đúng giờ đúng hẹn
+                        Tư vấn thời điểm chuẩn bị và giao hoa phù hợp với dịp bạn cần.
                     </p>
                 </div>
             </div>
@@ -73,10 +72,9 @@
                 </div>
 
                 <div class="feature-content">
-                    <h3>Hoa tươi đảm bảo</h3>
+                    <h3>Chọn hoa theo phong cách</h3>
                     <p>
-                        100% hoa tươi mỗi ngày,
-                        đảm bảo đẹp - bền - tươi lâu.
+                        Phối loại hoa, sắc màu và kiểu dáng theo thông điệp bạn muốn gửi.
                     </p>
                 </div>
             </div>
@@ -101,10 +99,9 @@
                 </div>
 
                 <div class="feature-content">
-                    <h3>Đổi trả dễ dàng</h3>
+                    <h3>Chăm sóc sau khi nhận</h3>
                     <p>
-                        Đổi trả linh hoạt nếu sản phẩm
-                        không đúng cam kết.
+                        Hướng dẫn bảo quản để bạn tiếp tục tận hưởng vẻ đẹp của hoa.
                     </p>
                 </div>
             </div>
@@ -126,10 +123,9 @@
                 </div>
 
                 <div>
-                    <h4>Hoa tươi 100% mỗi ngày</h4>
+                    <h4>Kiểm tra trước khi giao</h4>
                     <p>
-                        Nhập hoa mới mỗi ngày,
-                        nói không với hoa kém chất lượng.
+                        Kiểm tra tình trạng hoa và thông tin đặt trước khi chuẩn bị giao.
                     </p>
                 </div>
 
@@ -142,10 +138,9 @@
                 </div>
 
                 <div>
-                    <h4>Giao đúng - giao đủ - giao đẹp</h4>
+                    <h4>Xác nhận lịch giao</h4>
                     <p>
-                        Đúng mẫu, đúng thời gian,
-                        đúng thông điệp yêu thương.
+                        Nhân viên xác nhận khả năng chuẩn bị và khung giờ trước khi chốt đơn.
                     </p>
                 </div>
 
@@ -173,9 +168,9 @@
                 </div>
 
                 <div>
-                    <h4>Hỗ trợ tận tâm 24/7</h4>
+                    <h4>Hỗ trợ theo giờ cửa hàng</h4>
                     <p>
-                        Luôn sẵn sàng lắng nghe và hỗ trợ mọi lúc.
+                        Bạn có thể gửi yêu cầu bất cứ lúc nào; nhân viên phản hồi trong giờ làm việc.
                     </p>
                 </div>
 
@@ -213,60 +208,8 @@
 
     </section>
 
-    <!-- PARTNERS -->
-
-    <section class="partners">
-
-        <h2 class="reveal">Đối tác của chúng tôi</h2>
-
-        <div class="partner-grid">
-
-            @for(partner of partners; track partner){
-
-                <div class="partner-item reveal">
-                    <img [src]="partner" alt="Partner">
-                </div>
-
-            }
-
-        </div>
-
-    </section>
-
-    <!-- REVIEWS -->
-    <section class="reviews">
-    <h2 class="reveal">Khách hàng nói gì về Tiệm Hoa Yên</h2>
-        <div class="review-wrapper">
-            <button type="button" class="nav-btn left" (click)="previousReview()" aria-label="Đánh giá trước">
-                <i class="bi bi-chevron-left"></i>
-            </button>
-            <div class="review-list">
-                @for(review of visibleReviews; track review.name){
-                    <div class="review-card reveal">
-                        <div class="review-user">
-                            <i class="bi bi-person-circle"></i>
-                            <div>
-                                <h4>{{ review.name }}</h4>
-                                <span>{{ review.date }}</span>
-                            </div>
-                        </div>
-                        <div class="stars">
-                            <i class="bi bi-star-fill"></i>
-                            <i class="bi bi-star-fill"></i>
-                            <i class="bi bi-star-fill"></i>
-                            <i class="bi bi-star-fill"></i>
-                            <i class="bi bi-star-fill"></i>
-                        </div>
-                        <p>
-                            {{ review.content }}
-                        </p>
-                    </div>
-                }
-            </div>
-            <button type="button" class="nav-btn right" (click)="nextReview()" aria-label="Đánh giá kế tiếp">
-                <i class="bi bi-chevron-right"></i>
-            </button>
-        </div>
-    </section>
+    <!-- Những đối tác chưa xác minh được giữ ngoài trang công khai. -->
+<!-- REVIEWS -->
+    <section class="reviews"><h2>Lắng nghe sau mỗi bó hoa</h2><p>Chia sẻ trải nghiệm của bạn với nhân viên qua Hộp thư hỗ trợ. Những góp ý giúp Hoa Yên chăm chút dịch vụ tốt hơn.</p></section><section class="about-links"><h2>Cùng Hoa Yên gửi một lời thương</h2><a href="/category">Khám phá sản phẩm →</a><a href="/contact">Liên hệ tư vấn →</a><a href="/policy/delivery">Xem chính sách giao hàng →</a></section>
 
 </div>

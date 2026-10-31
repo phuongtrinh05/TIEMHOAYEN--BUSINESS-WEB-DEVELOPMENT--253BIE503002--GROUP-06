@@ -1,17 +1,17 @@
-import express from 'express';
-import {
-  createBlog,
-  deleteBlog,
-  getAllBlogs,
-  getBlogById,
-  updateBlog,
-} from '../controllers/blog.js';
-
-const router = express.Router();
-router.get('/', getAllBlogs);
-router.post('/', createBlog);
-router.get('/:id', getBlogById);
-router.put('/:id', updateBlog);
-router.delete('/:id', deleteBlog);
-
+import { Router } from 'express';
+import * as c from '../controllers/blog.js';
+import { requireContentStaff } from '../services/content.service.js';
+const router = Router();
+router.get('/categories', c.categories);
+router.get('/admin', requireContentStaff, c.list);
+router.get('/admin/:id', requireContentStaff, c.detail);
+router.post('/admin', requireContentStaff, c.save);
+router.put('/admin/:id', requireContentStaff, c.save);
+router.delete('/admin/:id', requireContentStaff, c.remove);
+router.get('/', c.list);
+router.post('/', requireContentStaff, c.save);
+router.put('/:id', requireContentStaff, c.save);
+router.delete('/:id', requireContentStaff, c.remove);
+router.get('/:id/related', c.related);
+router.get('/:id', c.detail);
 export default router;

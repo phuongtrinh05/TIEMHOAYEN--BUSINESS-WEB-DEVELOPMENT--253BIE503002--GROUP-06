@@ -88,6 +88,7 @@ export class ArticleList implements OnInit {
   allArticles: Article[] = [];
 
   ngOnInit(): void {
+    if (this.router.url.includes('/content/website-information')) { this.activeTab = 'Thông tin website'; return; }
     this.allArticles = [];
     this.loadArticles();
   }
@@ -650,6 +651,7 @@ Lưu ý: Đây là file giả lập được tạo ở phía frontend.
   }
 
   setTab(tab: ArticleTab): void {
+    if (tab === 'Blog' && this.router.url.includes('/content/website-information')) { this.router.navigate(['/content/article-list']); return; }
     this.activeTab = tab;
     this.currentPage = 1;
     this.searchKeyword = '';

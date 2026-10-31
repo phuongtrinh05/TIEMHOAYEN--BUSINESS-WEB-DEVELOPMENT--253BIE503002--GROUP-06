@@ -1,3 +1,4 @@
+import {ContentWorkspace} from './pages/content/content-workspace/content-workspace';
 ﻿import { Routes } from '@angular/router';
 
 import { Login } from './pages/login/login';
@@ -244,19 +245,28 @@ export const routes: Routes = [
     },
     {
         path: 'content/article-list',
+        component: ContentWorkspace,
+        canDeactivate: [(component:ContentWorkspace)=>component.canLeave()],
+        canActivate: [adminPermissionGuard],
+        data: { module: 'content' }
+    },
+    {
+        path: 'content/website-information',
         component: ArticleList,
         canActivate: [adminPermissionGuard],
         data: { module: 'content' }
     },
     {
         path: 'content/create-article',
-        component: CreateArticle,
+        component: ContentWorkspace,
+        canDeactivate: [(component:ContentWorkspace)=>component.canLeave()],
         canActivate: [adminPermissionGuard],
         data: { module: 'content' }
     },
     {
         path: 'content/article-detail/:id',
-        component: ArticleDetail,
+        component: ContentWorkspace,
+        canDeactivate: [(component:ContentWorkspace)=>component.canLeave()],
         canActivate: [adminPermissionGuard],
         data: { module: 'content' }
     },

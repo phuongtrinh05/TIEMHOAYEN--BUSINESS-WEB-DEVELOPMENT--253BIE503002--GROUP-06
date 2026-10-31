@@ -23,7 +23,7 @@
         </aside>
 
         <main class="content">
-            <ng-container [ngSwitch]="currentSlug">
+            @if(remoteLoading){<p>Đang tải chính sách…</p>}@else if(remoteError){<p>Chưa tải được chính sách. Vui lòng thử lại.</p>}@else if(remote?.configured){@if(remote.visible){<h1>{{remote.TEN_NOI_DUNG}}</h1><div class="managed-policy" [innerHTML]="remote.NOI_DUNG_HTML"></div>@if(remote.TEP_TIN){<a [href]="fileUrl(remote.TEP_TIN.url)" target="_blank" rel="noopener noreferrer">{{remote.TEP_TIN.name}} ↗</a>}}@else{<p>Nội dung chính sách hiện chưa khả dụng.</p>}}@else{<ng-container [ngSwitch]="currentSlug">
                 <app-order-policy *ngSwitchCase="'order'"></app-order-policy>
 
                 <app-payment-policy *ngSwitchCase="'payment'"></app-payment-policy>
@@ -41,7 +41,7 @@
                 <app-registration-terms-conditions *ngSwitchCase="'registration-terms'"></app-registration-terms-conditions>
 
                 <app-order-policy *ngSwitchDefault></app-order-policy>
-            </ng-container>
+            </ng-container>}
         </main>
     </div>
 </div>
