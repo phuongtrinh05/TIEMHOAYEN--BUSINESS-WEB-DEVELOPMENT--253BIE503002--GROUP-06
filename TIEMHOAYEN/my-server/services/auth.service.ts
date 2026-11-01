@@ -10,7 +10,8 @@ declare global { namespace Express { interface Request { identity?: Identity } }
 export class AuthError extends Error { constructor(public status: number, message: string) { super(message); } }
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 export const accountKey = (type: AccountType) => type === 'KHACH_HANG' ? 'KHACH_HANG_ID' : 'NHAN_VIEN_ID';
-export const active = (row: any) => !!row && !row.DA_XOA && ['hoạt động', 'hoat dong'].includes(String(row.TRANG_THAI || '').toLowerCase());
+// Trạng thái trống được coi là hoạt động (dữ liệu cũ của main không có TRANG_THAI).
+export const active = (row: any) => !!row && !row.DA_XOA && ['', 'hoạt động', 'hoat dong'].includes(String(row.TRANG_THAI || '').trim().toLowerCase());
 const collection = (name: string) => getCollection<any>(name);
 export const endpoint = (handler: (req: Request, res: Response) => Promise<any>) => async (req: Request, res: Response) => {
   try { await handler(req, res); } catch (e) {
@@ -35,9 +36,35 @@ export async function createSession(type: AccountType, account: any) {
   });
   return token;
 }
+const headerValue = (value: string | string[] | undefined) => String(Array.isArray(value) ? value[0] : value || '').trim();
+
+// Phiên Admin của main (x-admin-session = as_...) -> danh tính NHAN_VIEN.
+async function identifyAdminSession(req: Request): Promise<Identity | undefined> {
+  const token = headerValue(req.headers['x-admin-session']);
+  if (!/^as_[a-f0-9]{64}$/.test(token)) return undefined;
+  const row = await (await collection('PHIEN_DANG_NHAP_ADMIN')).findOne({ _id: digest(token), expiresAt: { $gt: new Date() } });
+  if (!row?.employeeId) return undefined;
+  const account = await (await collection('NHAN_VIEN')).findOne({ NHAN_VIEN_ID: row.employeeId });
+  if (!active(account)) return undefined;
+  return { id: account.NHAN_VIEN_ID, type: 'NHAN_VIEN', account, sessionId: row._id };
+}
+
+// Phiên thành viên của main (oa_..., authType member) -> danh tính KHACH_HANG.
+// Phiên tra cứu OTP của khách vãng lai không được coi là đăng nhập.
+async function identifyMemberSession(req: Request): Promise<Identity | undefined> {
+  const bearer = req.headers.authorization?.match(/^Bearer (oa_[a-f0-9]{64})$/)?.[1] || '';
+  const token = bearer || headerValue(req.headers['x-order-access']);
+  if (!/^oa_[a-f0-9]{64}$/.test(token)) return undefined;
+  const row = await (await collection('XAC_THUC_TRA_CUU_DON')).findOne({ _id: digest(token), kind: 'lookup', authType: 'member', expiresAt: { $gt: new Date() } });
+  if (!row?.customerId) return undefined;
+  const account = await (await collection('KHACH_HANG')).findOne({ KHACH_HANG_ID: row.customerId });
+  if (!active(account)) return undefined;
+  return { id: account.KHACH_HANG_ID, type: 'KHACH_HANG', account, sessionId: row._id };
+}
+
 export async function identify(req: Request): Promise<Identity | undefined> {
   const token = req.headers.authorization?.match(/^Bearer ([a-f0-9]{64})$/i)?.[1];
-  if (!token) return undefined;
+  if (!token) return (await identifyAdminSession(req)) || (await identifyMemberSession(req));
   const row = await (await collection('PHIEN_DANG_NHAP')).findOne({ _id: digest(token), DA_THU_HOI: false, HET_HAN: { $gt: new Date() } });
   if (!row || !['KHACH_HANG', 'NHAN_VIEN'].includes(row.LOAI_TAI_KHOAN)) return undefined;
   const account = await (await collection(row.LOAI_TAI_KHOAN)).findOne({ [accountKey(row.LOAI_TAI_KHOAN)]: row.TAI_KHOAN_ID });
@@ -54,6 +81,7 @@ export async function permissions(role: string) {
 }
 export async function allowed(identity: Identity | undefined, module: string, action: string) {
   if (identity?.type !== 'NHAN_VIEN') return false;
+  if (resolveRoleName(identity.account.VAI_TRO) === 'Admin') return true;
   return Boolean((await permissions(identity.account.VAI_TRO))?.[module]?.[action]);
 }
 export async function rateLimit(key: string, max: number, seconds: number) {

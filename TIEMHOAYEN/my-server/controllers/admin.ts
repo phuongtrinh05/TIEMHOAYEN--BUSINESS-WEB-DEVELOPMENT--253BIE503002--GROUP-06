@@ -6,6 +6,7 @@ import { InventoryError, withTransaction } from '../services/inventory/helpers.j
 import { syncCheckoutInventory } from '../services/checkout-payment.service.js';
 import { releaseReservations } from '../services/inventory/stock.service.js';
 import { invalidateAnalyticsCache } from '../services/analytics/cache.js';
+import { audit } from '../services/auth.service.js';
 
 const toDate = (value: unknown): Date | null => {
   if (!value) return null;
@@ -268,17 +269,51 @@ export const createAdminOrder = async (req: Request, res: Response) => {
 
 export const getAdminCustomers = async (_req: Request, res: Response) => {
   try {
-    const customerCollection = await getCollection<any>('KHACH_HANG');
+    const [customerCollection, orderCollection] = await Promise.all([
+      getCollection<any>('KHACH_HANG'),
+      getCollection<any>('DON_HANG'),
+    ]);
+
+    const ordersStats = await orderCollection.aggregate([
+      {
+        $group: {
+          _id: '$KHACH_HANG_ID',
+          totalOrders: { $sum: 1 },
+          totalSpent: { $sum: { $ifNull: ['$TONG_TIEN', 0] } },
+          latestOrderDate: { $max: '$NGAY_TAO' }
+        }
+      }
+    ]).toArray();
+
+    const statsMap = new Map<string, { totalOrders: number; totalSpent: number; latestOrderDate: any }>();
+    for (const stat of ordersStats) {
+      if (stat._id) {
+        statsMap.set(String(stat._id), {
+          totalOrders: Number(stat.totalOrders || 0),
+          totalSpent: Number(stat.totalSpent || 0),
+          latestOrderDate: stat.latestOrderDate
+        });
+      }
+    }
+
     const customers = (await customerCollection.find({}).sort({ KHACH_HANG_ID: 1 }).toArray()).map((customer) => {
       const { MAT_KHAU, ...safe } = customer;
+      const stats = statsMap.get(customer.KHACH_HANG_ID) || { totalOrders: 0, totalSpent: 0, latestOrderDate: null };
       return {
         ...safe,
         id: customer.KHACH_HANG_ID,
+        code: customer.KHACH_HANG_ID,
         name: customer.TEN,
         phone: customer.SDT,
         email: customer.EMAIL,
         memberType: customer.LOAI_THANH_VIEN,
+        membershipTier: customer.LOAI_THANH_VIEN,
         points: Number(customer.DIEM_TICH_LUY || 0),
+        status: customer.TRANG_THAI || 'Hoạt động',
+        totalOrders: stats.totalOrders,
+        totalSpent: stats.totalSpent,
+        latestOrderDate: stats.latestOrderDate ? formatDate(stats.latestOrderDate) : '',
+        createdAt: customer.NGAY_DANG_KY,
         selected: false,
       };
     });
@@ -324,25 +359,57 @@ export const getAdminCustomerDetail = async (req: Request, res: Response) => {
 export const updateAdminCustomer = async (req: Request, res: Response) => {
   try {
     const { customerId } = req.params;
-    const { name, phone, email, birthDate, gender, status } = req.body;
+    const { name, phone, email, birthDate, gender, status, note, ghiChuNoiBo } = req.body;
     const customerCollection = await getCollection<any>('KHACH_HANG');
+    const existing = await customerCollection.findOne({ KHACH_HANG_ID: customerId });
+    if (!existing) return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
+
+    const nextPhone = (phone ?? req.body.SDT ?? existing.SDT)?.trim();
+    const nextEmail = (email ?? req.body.EMAIL ?? existing.EMAIL)?.trim();
+
+    if (nextPhone && nextPhone !== existing.SDT) {
+      const dupPhone = await customerCollection.findOne({ KHACH_HANG_ID: { $ne: customerId }, SDT: nextPhone });
+      if (dupPhone) return res.status(409).json({ message: 'Số điện thoại đã thuộc về khách hàng khác.' });
+    }
+    if (nextEmail && nextEmail !== existing.EMAIL) {
+      const dupEmail = await customerCollection.findOne({ KHACH_HANG_ID: { $ne: customerId }, EMAIL: nextEmail });
+      if (dupEmail) return res.status(409).json({ message: 'Email đã thuộc về khách hàng khác.' });
+    }
+
+    const nextStatus = status ?? req.body.TRANG_THAI;
+    const updateDoc: any = {};
+    if (name || req.body.TEN) updateDoc.TEN = (name ?? req.body.TEN).trim();
+    if (nextPhone) updateDoc.SDT = nextPhone;
+    if (nextEmail !== undefined) updateDoc.EMAIL = nextEmail || null;
+    if (birthDate !== undefined || req.body.DOB !== undefined) updateDoc.DOB = parseOptionalDate(birthDate ?? req.body.DOB);
+    if (gender !== undefined || req.body.GIOI_TINH !== undefined) updateDoc.GIOI_TINH = gender ?? req.body.GIOI_TINH;
+    if (nextStatus) updateDoc.TRANG_THAI = nextStatus;
+    if (note !== undefined || ghiChuNoiBo !== undefined || req.body.GHI_CHU_NOI_BO !== undefined) {
+      updateDoc.GHI_CHU_NOI_BO = note ?? ghiChuNoiBo ?? req.body.GHI_CHU_NOI_BO;
+    }
+
     const result = await customerCollection.findOneAndUpdate(
       { KHACH_HANG_ID: customerId },
-      {
-        $set: {
-          TEN: name ?? req.body.TEN,
-          SDT: phone ?? req.body.SDT,
-          EMAIL: email ?? req.body.EMAIL ?? null,
-          DOB: parseOptionalDate(birthDate ?? req.body.DOB),
-          GIOI_TINH: gender ?? req.body.GIOI_TINH,
-          ...(status ? { TRANG_THAI: status } : {}),
-        },
-      },
+      { $set: updateDoc },
       { returnDocument: 'after' },
     );
     if (!result) return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
+
+    if (nextStatus && ['ngừng hoạt động', 'ngung hoat dong', 'khóa', 'khoa'].includes(String(nextStatus).toLowerCase())) {
+      const sessionCol = await getCollection('PHIEN_DANG_NHAP');
+      await sessionCol.updateMany(
+        { TAI_KHOAN_ID: customerId, LOAI_TAI_KHOAN: 'KHACH_HANG' },
+        { $set: { DA_THU_HOI: true } }
+      );
+    }
+
+    await audit(req, nextStatus && nextStatus !== existing.TRANG_THAI ? 'DOI_TRANG_THAI_KHACH_HANG' : 'CAP_NHAT_KHACH_HANG', customerId, {
+      truoc: { TEN: existing.TEN, SDT: existing.SDT, EMAIL: existing.EMAIL, TRANG_THAI: existing.TRANG_THAI },
+      sau: updateDoc,
+    });
+
     const { MAT_KHAU, ...safeCustomer } = result;
-    return res.status(200).json({ message: 'Customer updated.', customer: safeCustomer });
+    return res.status(200).json({ message: 'Cập nhật khách hàng thành công.', customer: safeCustomer });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot update customer: ' + error.message });
   }

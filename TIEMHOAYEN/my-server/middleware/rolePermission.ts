@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
 import { hasPermission, PermissionAction } from '../services/role-permission.service.js';
+import { identify, allowed } from '../services/auth.service.js';
 
 const actionByMethod: Record<string, PermissionAction> = {
   GET: 'view',
@@ -10,40 +11,13 @@ const actionByMethod: Record<string, PermissionAction> = {
   DELETE: 'delete',
 };
 
-const getHeaderValue = (value: string | string[] | undefined): string => {
-  if (Array.isArray(value)) return value[0] || '';
-  return value || '';
-};
-
-const getEmployeeRoleById = async (employeeId: string): Promise<string> => {
-  const employeeCollection = await getCollection('NHAN_VIEN');
-  const employee = await employeeCollection.findOne(
-    { NHAN_VIEN_ID: employeeId },
-    { projection: { VAI_TRO: 1 } },
-  );
-
-  return employee?.VAI_TRO || '';
-};
-
-const resolveRequestRole = async (req: Request): Promise<string> => {
-  const role = getHeaderValue(req.headers['x-admin-role']);
-  if (role.trim()) return role.trim();
-
-  const employeeId = getHeaderValue(req.headers['x-admin-id']);
-  if (employeeId.trim()) {
-    return getEmployeeRoleById(employeeId.trim());
-  }
-
-  return '';
-};
-
 export const requireAdminPermission = (moduleKey: string, forcedAction?: PermissionAction) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const action = forcedAction || actionByMethod[req.method] || 'view';
-      const role = await resolveRequestRole(req);
-
-      if (!role || !hasPermission(role, moduleKey, action)) {
+      req.identity = await identify(req);
+      if (!req.identity) return res.status(401).json({ message: 'Vui lòng đăng nhập lại.' });
+      if (!await allowed(req.identity, moduleKey, action)) {
         return res.status(403).json({
           message: 'Bạn không có quyền thực hiện chức năng này.',
           required: { module: moduleKey, action },

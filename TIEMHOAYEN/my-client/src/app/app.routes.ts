@@ -48,6 +48,7 @@ import { ProductDetailComponent } from './pages/product-detail/product-detail';
 // POLICY
 // =========================
 import { PolicyLayoutComponent } from './pages/policy/policy-layout';
+import { PageNotFoundComponent } from './pages/page-not-found/page-not-found';
 
 export const routes: Routes = [
   {path:'lucky-wheel',component:LuckyWheel,title:'Vòng quay may mắn - Tiệm Hoa Yên'},
@@ -339,6 +340,7 @@ export const routes: Routes = [
   // =========================
   {
     path: '**',
-    redirectTo: '',
+    component: PageNotFoundComponent,
+    title: 'Không tìm thấy trang - Tiệm Hoa Yên',
   },
 ];

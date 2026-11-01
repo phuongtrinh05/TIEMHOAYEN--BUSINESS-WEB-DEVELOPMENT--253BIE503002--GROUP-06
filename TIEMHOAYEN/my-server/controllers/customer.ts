@@ -2,8 +2,9 @@ import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId } from '../mongo.js';
 import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordHash.js';
 import { createCustomerOrderAccess } from '../services/order-access.service.js';
+import { audit } from '../services/auth.service.js';
 
-const otpStore = new Map<string, string>();
+
 
 const normalizeAddressText = (value: unknown): string => {
   return String(value ?? '').trim().replace(/\s+/g, ' ');
@@ -14,7 +15,7 @@ const sanitizeCustomer = (customer: any) => {
     return customer;
   }
 
-  const { MAT_KHAU, ...safeCustomer } = customer;
+  const { MAT_KHAU, GHI_CHU_NOI_BO, ...safeCustomer } = customer;
   return safeCustomer;
 };
 
@@ -88,7 +89,7 @@ export const registerCustomer = async (req: Request, res: Response) => {
   try {
     const { TEN, GIOI_TINH, SDT, EMAIL, MAT_KHAU } = req.body;
 
-    if (!TEN || !SDT || !MAT_KHAU || !GIOI_TINH) {
+    if (!TEN || !SDT || !MAT_KHAU || !GIOI_TINH || !EMAIL || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(EMAIL)) || String(MAT_KHAU).length < 8 || String(MAT_KHAU).length > 72) {
       return res.status(400).json({ message: 'Thiếu thông tin bắt buộc.' });
     }
 
@@ -124,7 +125,7 @@ export const registerCustomer = async (req: Request, res: Response) => {
       LOAI_THANH_VIEN: 'Thành viên',
       DIEM_TICH_LUY: 0,
       AVATAR: null,
-      TRANG_THAI: 'Hoạt động',
+      TRANG_THAI: 'Chờ xác minh',
       DA_XOA: false,
     };
 
@@ -133,6 +134,7 @@ export const registerCustomer = async (req: Request, res: Response) => {
     return res.status(201).json({
       message: 'Đăng ký thành công',
       customer: sanitizeCustomer(customer),
+      requiresVerification: true,
     });
   } catch (error: any) {
     console.error('Lỗi registerCustomer:', error.message);
@@ -159,6 +161,7 @@ export const loginCustomer = async (req: Request, res: Response) => {
     if (!isValidPassword) {
       return res.status(401).json({ message: 'Mật khẩu không chính xác.' });
     }
+    if (/chờ xác minh/i.test(String(customer.TRANG_THAI || ''))) return res.status(403).json({ message: 'Tài khoản chưa xác minh email. Vui lòng hoàn tất xác minh đăng ký.' });
     if (!isActiveRow(customer) || /khóa|ngừng|inactive/i.test(String(customer.TRANG_THAI || ''))) return res.status(403).json({ message: 'Tài khoản không còn hoạt động.' });
 
     if (!isPasswordHash(customer.MAT_KHAU)) {
@@ -169,73 +172,14 @@ export const loginCustomer = async (req: Request, res: Response) => {
     }
 
     const orderAccess = await createCustomerOrderAccess(customer);
+    req.identity = { id: customer.KHACH_HANG_ID, type: 'KHACH_HANG', account: customer, sessionId: '' };
+    await audit(req, 'DANG_NHAP', customer.KHACH_HANG_ID);
     return res.status(200).json({
       message: 'Đăng nhập thành công.', token: orderAccess.accessToken, orderAccess,
       customer: sanitizeCustomer(customer),
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Lỗi server: ' + error.message });
-  }
-};
-
-export const forgotPassword = async (req: Request, res: Response) => {
-  try {
-    const { SDT, NEW_PASSWORD } = req.body;
-
-    if (!SDT || !NEW_PASSWORD) {
-      return res.status(400).json({ message: 'Thiếu thông tin.' });
-    }
-
-    const customerCollection = await getCustomerCollection();
-    const customer = await customerCollection.findOne({ SDT: String(SDT).trim() });
-
-    if (!customer) {
-      return res.status(404).json({ message: 'Không tìm thấy tài khoản.' });
-    }
-
-    await customerCollection.updateOne(
-      { KHACH_HANG_ID: customer.KHACH_HANG_ID },
-      { $set: { MAT_KHAU: await hashPassword(String(NEW_PASSWORD)) } },
-    );
-
-    return res.status(200).json({ message: 'Đổi mật khẩu thành công.' });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Lỗi server: ' + error.message });
-  }
-};
-
-export const sendOtp = async (req: Request, res: Response) => {
-  try {
-    const { SDT } = req.body;
-    const customerCollection = await getCustomerCollection();
-    const customer = await customerCollection.findOne({ SDT: String(SDT || '').trim() });
-
-    if (!customer) {
-      return res.status(404).json({ message: 'Số điện thoại không tồn tại' });
-    }
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    otpStore.set(String(SDT).trim(), otp);
-    console.log('OTP:', otp);
-
-    return res.status(200).json({ message: 'Đã gửi OTP' });
-  } catch (error: any) {
-    return res.status(500).json({ message: error.message });
-  }
-};
-
-export const verifyOtp = async (req: Request, res: Response) => {
-  try {
-    const { SDT, OTP } = req.body;
-    const savedOtp = otpStore.get(String(SDT || '').trim());
-
-    if (savedOtp !== String(OTP || '').trim()) {
-      return res.status(400).json({ message: 'OTP không đúng' });
-    }
-
-    return res.status(200).json({ message: 'OTP hợp lệ' });
-  } catch (error: any) {
-    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -259,15 +203,19 @@ export const updateCustomerById = async (req: Request, res: Response) => {
     const { TEN, EMAIL, SDT, DOB, GIOI_TINH } = req.body;
     const customerCollection = await getCustomerCollection();
 
+    const existing = await customerCollection.findOne({ KHACH_HANG_ID: id });
+    const same = (a: unknown, b: unknown) => String(a ?? '').trim() === String(b ?? '').trim();
+    if (existing && ((EMAIL !== undefined && !same(EMAIL, existing.EMAIL)) || (SDT !== undefined && !same(SDT, existing.SDT)))) {
+      return res.status(400).json({ message: 'Đổi email hoặc số điện thoại cần được xác minh riêng.' });
+    }
+    if (!String(TEN || '').trim()) return res.status(400).json({ message: 'Vui lòng nhập họ tên.' });
     const result = await customerCollection.findOneAndUpdate(
       { KHACH_HANG_ID: id },
       {
         $set: {
           TEN,
-          EMAIL: EMAIL || null,
-          SDT,
-          DOB: DOB || null,
-          GIOI_TINH,
+          DOB: toDate(DOB),
+          GIOI_TINH: GIOI_TINH ?? existing?.GIOI_TINH,
         },
       },
       { returnDocument: 'after' },
@@ -277,6 +225,7 @@ export const updateCustomerById = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
     }
 
+    await audit(req, 'CAP_NHAT_HO_SO', id, { TRUOC: { TEN: existing?.TEN, DOB: existing?.DOB, GIOI_TINH: existing?.GIOI_TINH }, SAU: { TEN, DOB, GIOI_TINH } });
     return res.status(200).json({
       message: 'Cập nhật thông tin thành công.',
       customer: sanitizeCustomer(result),

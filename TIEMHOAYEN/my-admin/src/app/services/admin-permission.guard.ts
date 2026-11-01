@@ -16,9 +16,13 @@ const getPermissions = (): AdminRolePermissionSet => {
 export const adminPermissionGuard: CanActivateFn = (route) => {
   const router = inject(Router);
 
-  if (localStorage.getItem('adminLoggedIn') !== 'true') {
+  // Phiên đăng nhập cũ (trước khi có adminSessionToken) không còn được backend chấp nhận.
+  if (localStorage.getItem('adminLoggedIn') !== 'true' || !localStorage.getItem('adminSessionToken')) {
     return router.parseUrl('/login');
   }
+
+  const role = localStorage.getItem('adminRole');
+  if (role === 'Admin') return true;
 
   const moduleKey = String(route.data?.['module'] || '');
   if (!moduleKey) return true;

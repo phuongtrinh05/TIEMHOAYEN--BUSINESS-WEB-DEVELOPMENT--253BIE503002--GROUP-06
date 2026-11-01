@@ -1,4 +1,6 @@
-import { HttpInterceptorFn } from '@angular/common/http';
+import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
+import { tap } from 'rxjs';
+import { endSession, memberAccessToken } from './session-auth';
 
 export function apiBaseUrl(): string {
   try {
@@ -13,6 +15,9 @@ export function apiBaseUrl(): string {
 export const apiEndpointInterceptor: HttpInterceptorFn = (request, next) => {
   const prefix = /^https?:\/\/(?:tiem-hoa-yen-api\.onrender\.com|localhost:3000)\/api(?=\/|$)/;
   let target = prefix.test(request.url) ? request.clone({ url: request.url.replace(prefix, apiBaseUrl()) }) : request;
+  // Thành viên đã đăng nhập: gắn phiên cho mọi API để backend kiểm tra quyền sở hữu dữ liệu.
+  const member = target.url.startsWith(`${apiBaseUrl()}/`) ? memberAccessToken() : '';
+  if (member) target = target.clone({ setHeaders: { 'x-order-access': member } });
   if ((target.url.startsWith(`${apiBaseUrl()}/orders`) || target.url.startsWith(`${apiBaseUrl()}/support`) || target.url.startsWith(`${apiBaseUrl()}/lucky`) || target.url.startsWith(`${apiBaseUrl()}/customers/`) && /\/orders(?:\?|$)/.test(target.url)) && typeof sessionStorage !== 'undefined') {
     const session = orderAccessSession();
     if (session) target = target.clone({ setHeaders: { 'x-order-access': session.accessToken } });
@@ -20,7 +25,12 @@ export const apiEndpointInterceptor: HttpInterceptorFn = (request, next) => {
     const checkout = payment ? sessionStorage.getItem(`checkoutOrderAccess:${decodeURIComponent(payment[1])}`) : null;
     if (checkout) target = target.clone({ setHeaders: { 'x-checkout-access': checkout } });
   }
-  return next(target);
+  return next(target).pipe(tap({
+    error: (error: unknown) => {
+      // Phiên thành viên hết hạn/bị thu hồi: đăng xuất để người dùng đăng nhập lại.
+      if (member && error instanceof HttpErrorResponse && error.status === 401 && !target.url.includes('/customers/login')) endSession();
+    },
+  }));
 };
 
 export function currentOrderAccountKey(): string {

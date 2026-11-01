@@ -2,13 +2,13 @@ import express from 'express';
 import { requireCustomerLookup } from '../controllers/order-access.js';
 import multer from 'multer';
 import path from 'path';
+import { customerSendOtp, customerVerifyOtp, customerReset } from './auth.js';
+import { requireIdentity } from '../services/auth.service.js';
+import { customerAccess } from '../middleware/customerAccess.js';
 import {
   getAllCustomers,
   registerCustomer,
   loginCustomer,
-  forgotPassword,
-  sendOtp,
-  verifyOtp,
   getCustomerById,
   updateCustomerById,
   getCustomerAddresses,
@@ -36,7 +36,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-router.get('/', getAllCustomers);
+router.get('/', requireIdentity, customerAccess, getAllCustomers);
 
 // Đăng ký
 router.post('/', registerCustomer);
@@ -45,10 +45,12 @@ router.post('/', registerCustomer);
 router.post('/login', loginCustomer);
 
 // Quên mật khẩu
-router.put('/forgot-password', forgotPassword);
-router.post('/send-otp', sendOtp);
+router.put('/forgot-password', customerReset);
+router.post('/send-otp', customerSendOtp);
 
-router.post('/verify-otp', verifyOtp);
+router.post('/verify-otp', customerVerifyOtp);
+
+router.use(requireIdentity, customerAccess);
 
 // Lấy thông tin khách hàng theo ID
 router.get('/:id/addresses', getCustomerAddresses);

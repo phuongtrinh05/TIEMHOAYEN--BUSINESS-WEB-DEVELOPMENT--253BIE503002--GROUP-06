@@ -1,4 +1,6 @@
 import express from 'express';
+import { ownerAccess, orderAccess, verifiedLookupPhone } from '../middleware/resourceAccess.js';
+import { requireAdminPermission } from '../middleware/rolePermission.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -49,12 +51,12 @@ const upload = multer({
   },
 });
 
-router.get('/customer/:customerId/reviewable-orders', getReviewableOrdersForCustomer);
-router.get('/customer/:customerId/history', getCustomerReviewHistory);
-router.post('/guest/lookup', lookupGuestOrderForReview);
-router.post('/guest/history', getGuestReviewHistory);
+router.get('/customer/:customerId/reviewable-orders', ownerAccess(req => req.params.customerId), getReviewableOrdersForCustomer);
+router.get('/customer/:customerId/history', ownerAccess(req => req.params.customerId), getCustomerReviewHistory);
+router.post('/guest/lookup', orderAccess, lookupGuestOrderForReview);
+router.post('/guest/history', verifiedLookupPhone, getGuestReviewHistory);
 router.get('/product/:productId', getProductReviews);
-router.patch('/:reviewId/reply', replyToReview);
-router.post('/', upload.array('images', 5), createReview);
+router.patch('/:reviewId/reply', requireAdminPermission('customerService', 'update'), (req, _res, next) => { req.body.staffId = req.identity!.id; next(); }, replyToReview);
+router.post('/', upload.array('images', 5), orderAccess, (req, _res, next) => { req.body.actorCustomerId = req.identity?.type === 'KHACH_HANG' ? req.identity.id : ''; next(); }, createReview);
 
 export default router;

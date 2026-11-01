@@ -228,7 +228,14 @@
           Vui lòng đồng ý điều khoản và điều kiện.
         </span>
 
-        <button type="submit" class="btn-register is-ready">Đăng ký</button>
+        <button type="submit" class="btn-register is-ready" [disabled]="busy || needsVerification">{{ busy ? 'Đang xử lý…' : 'Đăng ký' }}</button>
+        <div *ngIf="needsVerification" class="form-group">
+          <p role="status">{{ verificationMessage }}</p>
+          <label for="registration-code">Mã xác minh email</label>
+          <input id="registration-code" class="form-control" name="verificationCode" [ngModel]="verificationCode" (ngModelChange)="onVerificationInput($event)" [class.is-invalid]="verificationInvalid" [disabled]="busy" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+          <p *ngIf="busy" role="status">Đang xác minh…</p>
+          <button type="button" class="terms-link" [disabled]="busy" (click)="sendVerification()">Gửi lại mã</button>
+        </div>
 
         <p class="login-redirect">
           Bạn có tài khoản?
@@ -255,6 +262,6 @@
       Bạn nhận được Voucher ưu đãi cho đơn hàng đầu tiên!
     </p>
     <img class="success-popup__voucher" src="assets/images/register-voucher.png" alt="Voucher YEN20">
-    <button type="button" class="success-popup__button" (click)="closeSuccessPopup()">Bắt đầu mua sắm</button>
+    <button type="button" class="success-popup__button" (click)="closeSuccessPopup()">Đăng nhập</button>
   </div>
 </div>

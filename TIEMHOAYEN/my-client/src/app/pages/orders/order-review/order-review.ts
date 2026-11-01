@@ -2,6 +2,8 @@ import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { ChangeDetectorRef, Component, OnDestroy, OnInit, PLATFORM_ID, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
+import { orderAccessSession } from '../../../services/api-config';
+import { memberAccessToken } from '../../../services/session-auth';
 
 interface ReviewProduct {
   productId: string;
@@ -259,8 +261,14 @@ export class OrderReview implements OnInit, OnDestroy {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
+    // fetch() không đi qua HttpInterceptor: tự gắn phiên tra cứu/đăng nhập để backend xác thực quyền.
+    const headers = new Headers(init.headers || {});
+    const access = memberAccessToken() || orderAccessSession()?.accessToken || '';
+    if (access && !headers.has('x-order-access')) headers.set('x-order-access', access);
+
     return fetch(input, {
       ...init,
+      headers,
       signal: controller.signal,
     }).finally(() => window.clearTimeout(timeoutId));
   }

@@ -1,3 +1,5 @@
+import { apiBaseUrl } from '../../../services/api-config';
+import { memberAccessToken } from '../../../services/session-auth';
 import {LuckyRewardPicker} from '../../../components/lucky-reward-picker/lucky-reward-picker';
 import { Component, OnInit, ViewChild, inject, PLATFORM_ID, HostListener, ChangeDetectorRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
@@ -598,7 +600,7 @@ export class OrderRegistrantComponent implements OnInit {
       return;
     }
 
-    fetch(`https://tiem-hoa-yen-api.onrender.com/api/cart/customer/${customerId}`)
+    fetch(`${apiBaseUrl()}/cart/customer/${customerId}`, { headers: { 'x-order-access': memberAccessToken() } })
       .then(response => {
         if (!response.ok) {
           throw new Error(`Không lấy được giỏ hàng: ${response.status}`);

@@ -56,6 +56,8 @@ import contactRoutes from './routes/contact.js';
 import supportRoutes from './routes/support.js';
 import adminRoutes from './routes/admin.js';
 import { accountAdministration } from './routes/accountAdministration.js';
+import { authRoutes } from './routes/auth.js';
+import { requireAdminPermission } from './middleware/rolePermission.js';
 import { loadRolePermissionOverrides } from './services/role-permission.service.js';
 import rolePermissionRoutes from './routes/rolePermission.js';
 import inventoryRoutes from './routes/inventory.js';
@@ -91,6 +93,14 @@ app.use(express.json({ limit: '8mb' }));
 app.use('/api/support', supportRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/uploads', express.static('uploads'));
+
+app.use('/api/auth', authRoutes);
+// Các API chỉ dành cho nhân viên: bắt buộc phiên Admin hợp lệ và đúng quyền.
+for (const [route, module] of Object.entries({
+  employees: 'permissions', addresses: 'customers', wishlists: 'customers',
+  'cart-details': 'customers', 'order-details': 'orders', payments: 'payments',
+  'order-vouchers': 'orders', 'image-requests': 'customerService',
+})) app.use('/api/' + route, requireAdminPermission(module));
 
 app.use('/api/customers', customerRoutes);
 app.use('/api/employees', employeeRoutes);

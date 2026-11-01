@@ -25,6 +25,7 @@ export class ForgotPasswordComponent {
 }
   
   phone = '';
+  errorMessage = '';
   showNewPassword = false;
   showConfirmPassword = false;
 
@@ -53,6 +54,7 @@ onSubmit(): void {
     .changePassword({
 
       SDT: this.phone,
+      resetToken: sessionStorage.getItem('passwordResetToken'),
 
       NEW_PASSWORD:
         this.formData.newPassword
@@ -61,6 +63,7 @@ onSubmit(): void {
     .subscribe({
 
       next: (res) => {
+        sessionStorage.removeItem('passwordResetToken');
 
         localStorage.removeItem(
           'forgotPhone'
@@ -72,6 +75,7 @@ onSubmit(): void {
       },
 
       error: (err) => {
+        this.errorMessage = err.error?.message || 'Không đổi được mật khẩu. Vui lòng thử lại.';
 
         console.warn(
           err.error?.message
