@@ -11,6 +11,7 @@ import { Router } from '@angular/router';
 import { CreateOrderPayload, CreateOrderResponse, OrderService } from '../../../services/order.service';
 
 export interface OrderItem {
+  requiresReview?: boolean;
   id: string;
   name: string;
   image: string;
@@ -19,6 +20,7 @@ export interface OrderItem {
 }
 
 interface CartStorageItem {
+  requiresReview?: boolean; CAN_SHOP_DUYET?: boolean;
   id: string;
   name: string;
   style?: string;
@@ -222,6 +224,7 @@ export class OrderHauntComponent implements OnInit {
   availableWards: Ward[] = [];
   openAddrDropdown: AddrDropdownType = null;
 
+  get hasDesignReview(): boolean { return this.orderItems.some(i=>!!i.requiresReview); }
   orderItems: OrderItem[] = [];
 
   paymentMethods: PaymentMethod[] = [
@@ -296,7 +299,7 @@ export class OrderHauntComponent implements OnInit {
       : this.readCartArray(this.cartStorageKey).filter(item => item.selected !== false);
 
     this.orderItems = sourceItems.map((item: CartStorageItem) => ({
-      id: String(item.id || ''),
+      id: String(item.id || ''), requiresReview: !!item.requiresReview,
       name: String(item.name || ''),
       image: String(item.image || this.defaultImage),
       qty: Math.max(1, Number(item.quantity || 1)),

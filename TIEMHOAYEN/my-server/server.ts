@@ -1,3 +1,6 @@
+import luckyWheelRoutes from './routes/lucky-wheel.js';
+import {startLuckyJobs} from './services/lucky-wheel-jobs.js';
+import design3dRoutes from './routes/design3d.js';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { connectMongo } from './mongo.js';
@@ -56,6 +59,7 @@ import { getProductAvailability } from './controllers/inventory.js';
 import { ensureInventoryIndexes, startInventoryJobs } from './services/inventory/setup.js';
 
 const app = express();
+
 const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
   .split(',')
   .map((origin) => origin.trim())
@@ -104,6 +108,8 @@ app.use('/api/import-slip-details', importSlipDetailRoutes);
 app.use('/api/export-slips', exportSlipRoutes);
 app.use('/api/export-slip-details', exportSlipDetailRoutes);
 app.use('/api/images-3d', image3dRoutes);
+app.use('/api/designs-3d', design3dRoutes);
+app.use('/api/lucky',luckyWheelRoutes);
 
 
 /**
@@ -164,6 +170,7 @@ const PORT = Number(process.env.PORT ?? 3000);
     await (await import('./services/order-access.service.js')).ensureOrderAccessIndexes();
     await (await import('./services/support.service.js')).ensureSupportIndexes();
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startInventoryJobs();
+    startLuckyJobs();
 
     app.listen(PORT, () => {
       console.log(`\nServer: http://localhost:${PORT}`);

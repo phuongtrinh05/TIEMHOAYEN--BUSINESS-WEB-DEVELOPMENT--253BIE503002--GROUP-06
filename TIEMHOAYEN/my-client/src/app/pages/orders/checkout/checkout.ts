@@ -1,3 +1,4 @@
+import {LuckyOrderSpin} from '../../../components/lucky-order-spin/lucky-order-spin';
 import { orderAccessSession } from '../../../services/api-config';
 ﻿import { CommonModule, isPlatformBrowser } from '@angular/common';
 import {
@@ -80,7 +81,7 @@ interface CheckoutOrderView {
 @Component({
   selector: 'app-checkout',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule,LuckyOrderSpin],
   templateUrl: './checkout.html',
   styleUrl: './checkout.css',
 })
@@ -107,6 +108,8 @@ export class CheckoutComponent implements OnInit, OnDestroy {
   isPaymentSuccess = false;
   isPaymentFailed = false;
   checkoutResultError = '';
+  checkoutResultDismissed = false;
+  luckyCheckPending = false;
   isRetryingPayment = false;
 
   private countdownTimerId: number | null = null;
@@ -573,10 +576,12 @@ export class CheckoutComponent implements OnInit, OnDestroy {
   }
 
   private handlePaymentSuccess(): void {
-    if (!this.order) {
+    if (!this.order || this.isPaymentSuccess) {
       return;
     }
 
+    this.checkoutResultDismissed = false;
+    this.luckyCheckPending = orderAccessSession()?.authType === 'member';
     this.isPaymentSuccess = true;
     this.isPaymentFailed = false;
     this.paymentStatus = 'Thành công';
@@ -603,6 +608,8 @@ export class CheckoutComponent implements OnInit, OnDestroy {
       return;
     }
 
+    this.checkoutResultDismissed = false;
+    this.luckyCheckPending = false;
     this.isPaymentFailed = true;
     this.isPaymentSuccess = false;
     this.paymentStatus = 'Thất bại';
@@ -616,7 +623,7 @@ export class CheckoutComponent implements OnInit, OnDestroy {
   }
 
   closeCheckoutResultPopup(): void {
-    this.router.navigate(['/']);
+    this.checkoutResultDismissed = true;
   }
 
   continueShopping(): void {

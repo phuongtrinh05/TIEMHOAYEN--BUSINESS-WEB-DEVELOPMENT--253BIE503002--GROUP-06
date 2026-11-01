@@ -479,6 +479,7 @@
 
         <div class="or-divider"></div>
 
+        <app-lucky-reward-picker [subtotal]="subtotal" [shippingFee]="shippingFee" [blocked]="!!selectedVoucher" (rewardChange)="onLuckyReward($event)" (codeError)="voucherError=$event"></app-lucky-reward-picker>
         <!-- Tổng tiền -->
         <div class="or-pricing">
           <div class="pricing-row">
@@ -520,6 +521,7 @@
 
         <div class="or-divider"></div>
 
+        <div class="pricing-row" *ngIf="luckyRewardDiscount>0"><span>Ưu đãi vòng quay</span><span>-{{luckyRewardDiscount|number:'1.0-0'}}đ</span></div>
         <div class="pricing-row pricing-total">
           <span>Tổng cộng</span>
 
@@ -560,7 +562,7 @@
           class="btn-order"
           [class.is-ready]="orForm.valid && !isSubmittingOrder && formData.paymentMethod !== 'card' && !isPaymentMethodDisabled(formData.paymentMethod)"
           (click)="onSubmit(orForm)">
-          {{ salesRequestId ? 'Mở khung tư vấn' : (isSubmittingOrder ? 'Đang kiểm tra đơn...' : 'Thanh toán') }}
+          {{ salesRequestId ? 'Mở khung tư vấn' : (isSubmittingOrder ? 'Đang kiểm tra đơn...' : (hasDesignReview ? 'Gửi yêu cầu đặt hàng' : 'Thanh toán')) }}
         </button>
       </div>
     </div>

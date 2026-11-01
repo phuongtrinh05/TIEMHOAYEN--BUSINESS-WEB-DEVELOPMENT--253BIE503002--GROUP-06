@@ -58,6 +58,7 @@ export interface AdminRolePermissionsResponse {
 }
 
 export interface AdminLoginResponse {
+  adminSessionToken?: string; adminSessionExpiresAt?: string;
   employee: {
     id: string;
     name: string;
@@ -279,7 +280,7 @@ export interface AdminChatConversationsResponse {
 }
 
 export interface AdminTransaction {
-  id: number;
+  id: string | number;
   code: string;
   orderCode: string;
   gateway: string;

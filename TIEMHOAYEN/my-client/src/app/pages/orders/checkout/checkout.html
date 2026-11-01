@@ -24,6 +24,8 @@
     </div>
   </div>
 
+  <app-lucky-order-spin *ngIf="isPaymentSuccess" [orderId]="order.orderId" (opened)="checkoutResultDismissed=true" (checked)="luckyCheckPending=false" (viewOrder)="viewOrderDetail()" (shopping)="continueShopping()"></app-lucky-order-spin>
+  <p *ngIf="luckyCheckPending" role="status" style="text-align:center;color:#731919;font-size:14px;padding:12px">Đang kiểm tra lượt quay của đơn…</p>
   <div class="checkout-body">
     <div class="checkout-left">
       <!-- Thông tin người nhận -->
@@ -319,7 +321,7 @@
 
   <div
     class="checkout-result-overlay"
-    *ngIf="isPaymentSuccess || isPaymentFailed"
+    *ngIf="(isPaymentSuccess || isPaymentFailed) && !checkoutResultDismissed && !luckyCheckPending"
     role="dialog"
     aria-modal="true"
     (click)="closeCheckoutResultPopup()">

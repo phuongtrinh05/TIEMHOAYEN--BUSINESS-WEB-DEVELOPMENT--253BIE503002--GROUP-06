@@ -14,6 +14,7 @@ export interface CreateOrderItemPayload {
 }
 
 export interface CreateOrderPayload {
+  luckyRewardId?: string;
   customerId: string | null;
   receiver: {
     name: string;

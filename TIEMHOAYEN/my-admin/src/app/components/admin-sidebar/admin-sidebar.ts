@@ -1,3 +1,4 @@
+import {endAdminSession} from '../../services/api-config';
 import { Component, HostBinding, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive, Router } from '@angular/router';
@@ -110,6 +111,7 @@ export class AdminSidebar implements OnInit, OnDestroy {
   }
 
   logout(): void {
+    endAdminSession();
     [
       'adminLoggedIn',
       'adminEmail',

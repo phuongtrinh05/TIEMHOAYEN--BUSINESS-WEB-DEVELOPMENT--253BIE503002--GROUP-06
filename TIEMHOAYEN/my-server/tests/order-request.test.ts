@@ -111,6 +111,9 @@ if (!uri) {
     const order = results.find(r => r.data.kind === 'order')!.data;
     const request = results.find(r => r.data.kind === 'sales_request')!.data;
     assert.equal(request.paymentId, undefined);
+    assert.equal(order.paymentWindowSeconds,300);
+    const saved:any=await (await mongo.getCollection<any>('DON_HANG_CHI_TIET')).findOne({DON_HANG_ID:order.orderId});
+    assert.ok(Array.isArray(saved.BOM_SNAPSHOT.lines));
     assert.equal(await (await mongo.getCollection<any>('THANH_TOAN')).countDocuments({ DON_HANG_ID: order.orderId }), 1);
     assert.equal(await (await mongo.getCollection<any>(service.REQUESTS)).countDocuments({ requestId: request.requestId }), 1);
   });
@@ -403,4 +406,18 @@ if (!uri) {
     } finally {await new Promise<void>((resolve,reject)=>listener.close((e:any)=>e?reject(e):resolve()));}
   });
 
+
+  test('Admin transaction list returns saveable code; inline payment save preserves response contract', async()=>{
+    const {getAdminTransactions,updateAdminTransaction}=await import('../controllers/admin.js');
+    await (await mongo.getCollection<any>('SAN_PHAM')).insertOne({_id:'TX_CONTRACT',SAN_PHAM_ID:'SP_TX_CONTRACT',TEN_SAN_PHAM:'Test',GIA:400000,TON_THANH_PHAM:1,TP_DANG_GIU:0});
+    const {data:order}=await submit('SP_TX_CONTRACT');
+    const listed=await invoke(getAdminTransactions,{},{});assert.equal(listed.code,200);
+    const row=listed.data.transactions.find((t:any)=>t.orderCode===order.orderId);
+    assert.ok(row.code);assert.notEqual(row.code,'undefined');assert.equal(row.code,row.THANH_TOAN_ID);assert.equal(row.transactionDate.getTime(),row.NGAY_THANH_TOAN.getTime());
+    const saved=await invoke(updateAdminTransaction,{gateway:row.gateway,status:'Đã thanh toán',amount:row.amount},{transactionId:row.code});
+    assert.equal(saved.code,200);assert.equal(saved.data.transaction.code,row.code);assert.equal(saved.data.transaction.orderCode,order.orderId);assert.equal(saved.data.transaction.status,'Thành công');
+    assert.equal((await (await mongo.getCollection<any>('GIU_TON')).findOne({DON_HANG_ID:order.orderId})).TRANG_THAI,'CHINH_THUC');
+    assert.equal((await invoke(updateAdminTransaction,{status:'Đã thanh toán',amount:row.amount},{transactionId:row.code})).code,200);
+    assert.equal((await (await mongo.getCollection<any>('SAN_PHAM')).findOne({SAN_PHAM_ID:'SP_TX_CONTRACT'})).TP_DANG_GIU,1);
+  });
 }

@@ -1,4 +1,5 @@
-import { Component, OnInit, inject, PLATFORM_ID, HostListener, ChangeDetectorRef } from '@angular/core';
+import {LuckyRewardPicker} from '../../../components/lucky-reward-picker/lucky-reward-picker';
+import { Component, OnInit, ViewChild, inject, PLATFORM_ID, HostListener, ChangeDetectorRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule, NgForm } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -16,6 +17,7 @@ import {
 } from '../../../services/order.service';
 
 export interface OrderItem {
+  requiresReview?: boolean;
   id: string;
   name: string;
   image: string;
@@ -24,6 +26,7 @@ export interface OrderItem {
 }
 
 export interface CartStorageItem {
+  requiresReview?: boolean; CAN_SHOP_DUYET?: boolean;
   id?: string;
   SAN_PHAM_ID?: string;
   name?: string;
@@ -107,7 +110,7 @@ export interface WardOption extends Ward {
 @Component({
   selector: 'app-order-registrant',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, PageHeader, PageFooter],
+  imports: [CommonModule, FormsModule, RouterLink, PageHeader, PageFooter, LuckyRewardPicker],
   templateUrl: './order-registrant.html',
   styleUrl: './order-registrant.css',
 })
@@ -278,6 +281,7 @@ export class OrderRegistrantComponent implements OnInit {
   availableVouchers: Voucher[] = [];
 
   // ===== SẢN PHẨM ĐƯỢC CHỌN TỪ GIỎ HÀNG =====
+  get hasDesignReview(): boolean { return this.orderItems.some(i=>!!i.requiresReview); }
   orderItems: OrderItem[] = [];
 
   paymentMethods: PaymentMethod[] = [
@@ -644,6 +648,7 @@ export class OrderRegistrantComponent implements OnInit {
       image,
       qty,
       price,
+      requiresReview: !!(item.requiresReview || item.CAN_SHOP_DUYET),
     };
   }
 
@@ -957,7 +962,7 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   private getMaxLoyaltyDiscountBase(): number {
-    return Math.max(0, this.subtotal - this.productVoucherDiscount);
+    return Math.max(0, this.subtotal - this.productVoucherDiscount - this.luckyRewardDiscount);
   }
 
   get loyaltyPointsToUse(): number {
@@ -976,10 +981,13 @@ export class OrderRegistrantComponent implements OnInit {
     return this.convertPointsToMoney(this.loyaltyPointsToUse);
   }
 
+  @ViewChild(LuckyRewardPicker) private luckyPicker?:LuckyRewardPicker;
+  luckyRewardId='';luckyRewardDiscount=0;
+  onLuckyReward(value:{id:string;discount:number}|null){this.luckyRewardId=value?.id||'';this.luckyRewardDiscount=value?.discount||0;}
   get total(): number {
     return Math.max(
       0,
-      this.subtotal + this.shippingFee - this.productVoucherDiscount - this.loyaltyDiscount
+      this.subtotal + this.shippingFee - this.productVoucherDiscount - this.loyaltyDiscount - this.luckyRewardDiscount
     );
   }
 
@@ -1237,9 +1245,15 @@ export class OrderRegistrantComponent implements OnInit {
 
     if (!code) {
       this.selectedVoucher = null;
+      this.luckyPicker?.choose('');
       return;
     }
 
+    if(/^YEN-[A-F0-9]{12}$/i.test(code)){
+      this.selectedVoucher=null;this.cdr.detectChanges();
+      this.luckyPicker?.applyCode(code);
+      return;
+    }
     const found = this.availableVouchers.find(
       v => v.code.trim().toUpperCase() === code
     );
@@ -1840,6 +1854,7 @@ export class OrderRegistrantComponent implements OnInit {
             value: this.selectedVoucher.value,
           }
         : null,
+      luckyRewardId: this.luckyRewardId || undefined,
       summary: {
         subtotal: this.subtotal,
         shippingFee: this.shippingFee,

@@ -1,3 +1,4 @@
+import {LuckyWheelAdmin} from './pages/promotions/lucky-wheel/lucky-wheel';
 ﻿import { Routes } from '@angular/router';
 
 import { Login } from './pages/login/login';
@@ -44,6 +45,7 @@ import { AdminAccount } from './pages/admin-account/admin-account';
 import { adminPermissionGuard } from './services/admin-permission.guard';
 
 export const routes: Routes = [
+    {path:'promotions/lucky-wheel',component:LuckyWheelAdmin,canActivate:[adminPermissionGuard],data:{module:'promotions'}},
     { path: 'customer-service/legacy-chat', component: CustomerChatComponent, canActivate: [adminPermissionGuard], data: { module: 'customerService' } },
     { path: 'orders/requests', component: OrderRequests, canActivate: [adminPermissionGuard], data: { module: 'orders' } },
     {

@@ -1,3 +1,4 @@
+import {Design3dService} from '../../../services/design3d.service';
 ﻿import { CommonModule, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectorRef,
@@ -30,6 +31,7 @@ import {
 
 
 interface CartItem {
+  designId?: string; requiresReview?: boolean; badges?: string[];
   id: string;
   name: string;
   style: string;
@@ -126,6 +128,7 @@ export class CartComponent implements OnInit {
     private materialService: MaterialService,
     private productDetailService: ProductDetailService,
     private cartService: CartService,
+    private designApi: Design3dService,
     private customerService: CustomerService,
     private router: Router,
     private cdr: ChangeDetectorRef,
@@ -228,6 +231,7 @@ export class CartComponent implements OnInit {
         this.mapStorageItemToCartItem(item)
       );
 
+      this.hydrateDesignItems();
       this.hydrateMissingTopicNames();
       this.cdr.detectChanges();
     } catch (error: unknown) {
@@ -314,7 +318,7 @@ export class CartComponent implements OnInit {
     const topicName = this.getCartTopicName(item.TEN_CHU_DE);
 
     return {
-      id: String(item.SAN_PHAM_ID || ''),
+      id: String(item.SAN_PHAM_ID || ''), designId: item.THIET_KE_3D_ID, requiresReview: !!item.CAN_SHOP_DUYET, badges: item.BADGES || [],
       name: String(item.TEN_SAN_PHAM || ''),
       style: String(item.KIEU_DANG || 'Sản phẩm'),
       occasion: topicName || 'Sản phẩm',
@@ -339,7 +343,7 @@ export class CartComponent implements OnInit {
     const topicName = this.getCartTopicName(data.TEN_CHU_DE || data.topicName || data.occasion);
 
     return {
-      id: String(data.id || ''),
+      id: String(data.id || ''), designId: data.designId, requiresReview: !!data.requiresReview, badges: data.badges || [],
       name: String(data.name || ''),
       style: String(data.style || ''),
       occasion: topicName || 'Sản phẩm',
@@ -358,6 +362,16 @@ export class CartComponent implements OnInit {
           : Number(data.maxQuantity),
     };
   }
+
+  private hydrateDesignItems():void {
+    for(const item of this.cartItems.filter(i=>i.id.startsWith('SP3D_')))this.designApi.get(item.id).subscribe({next:d=>{
+      item.designId=d.designId;item.price=d.price;item.name=d.name;item.image=d.image || item.image;
+      const short=d.materials.some(l=>l.quantity*item.quantity>l.available);
+      item.requiresReview=d.requiresReview || short;item.badges=[...d.badges,...(short?['Số bó vượt NVL khả dụng']:[])];
+      if(this.isLoggedIn)this.saveCustomerCartCache();else this.saveGuestCartToStorage();this.cdr.detectChanges();
+    },error:()=>{item.requiresReview=true;item.badges=['Chưa xác minh được thiết kế; vui lòng tải lại trước khi đặt.'];this.cdr.detectChanges();}});
+  }
+  get hasDesignReview():boolean{return this.cartItems.some(i=>i.selected && i.requiresReview);}
 
   private getCartTopicName(value: unknown): string {
     const text = String(value || '').trim();
@@ -380,7 +394,7 @@ export class CartComponent implements OnInit {
 
   private hydrateMissingTopicNames(): void {
     const itemsMissingTopic = this.cartItems.filter((item: CartItem) =>
-      this.isProductItem(item) && !item.topicName
+      this.isProductItem(item) && !item.id.startsWith('SP3D_') && !item.topicName
     );
 
     itemsMissingTopic.forEach((item: CartItem) => {
@@ -548,6 +562,7 @@ export class CartComponent implements OnInit {
     }
 
     item.quantity++;
+    if(item.id.startsWith('SP3D_'))this.hydrateDesignItems();
     this.saveCustomerCartCache();
     this.cdr.detectChanges();
 
@@ -565,6 +580,7 @@ export class CartComponent implements OnInit {
     }
 
     item.quantity--;
+    if(item.id.startsWith('SP3D_'))this.hydrateDesignItems();
     this.saveCustomerCartCache();
     this.cdr.detectChanges();
 

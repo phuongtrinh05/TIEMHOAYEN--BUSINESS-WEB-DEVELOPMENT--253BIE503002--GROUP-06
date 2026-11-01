@@ -1,8 +1,10 @@
 import type { ClientSession } from 'mongodb';
 import { getCollection } from '../mongo.js';
 import { INVENTORY_CONFIG } from './inventory/constants.js';
-import { confirmReservations } from './inventory/stock.service.js';
+import { confirmReservations,recordOrderDemand } from './inventory/stock.service.js';
 import { createCheckoutAccess } from './order-access.service.js';
+import {holdLuckyReward,syncLuckyOrder} from './lucky-wheel.service.js';
+import {InventoryError} from './inventory/helpers.js';
 
 const dateOnly = (value: unknown): Date | null => {
   const text = String(value || '');
@@ -15,6 +17,22 @@ const bit = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true';
 /** Shared persistence for regular checkout and accepted Sales proposals. Caller validates prices and holds stock in this transaction. */
 export async function writeCheckoutOrder(session: ClientSession, orderId: string, payload: any, options: { voucher?: any; loyaltyPoints?: number; requestId?: string; quote?: any } = {}) {
   const { sender, receiver, delivery, summary, payment, flags } = payload;
+  let frozenProductValue=0;
+  for(const item of payload.items){
+    let price=Number(item.price);
+    if(!item.custom){
+      const p=await (await getCollection<any>('SAN_PHAM')).findOne({SAN_PHAM_ID:item.id},{session});
+      if(p){const sale=Number(p.GIA_KHUYEN_MAI);price=sale>0&&sale<Number(p.GIA)?sale:Number(p.GIA);}
+    }
+    if(payload.luckyRewardId&&price!==Number(item.price))throw new InventoryError(409,'Giá sản phẩm đã đổi. Tải lại giỏ trước khi dùng thưởng.');
+    frozenProductValue+=price*Number(item.qty);
+  }
+  let lucky:any=null;
+  if(payload.luckyRewardId){
+    if(!payload.customerId||Number(summary.subtotal)!==frozenProductValue)throw new InventoryError(400,'Đăng nhập và dùng đúng giá sản phẩm để áp dụng thưởng.');
+    lucky=await holdLuckyReward(session,payload.customerId,String(payload.luckyRewardId),orderId,payload);
+    if(payment?.method==='cod'&&(!(Number(summary.depositAmount)>0)||Number(summary.depositAmount)>Number(summary.total)))throw new InventoryError(400,'Tiền cọc không hợp lệ.');
+  }
   const number = orderId.replace(/^YEN/, '');
   const paymentId = `TT${number}`.slice(0, 20);
   const transactionCode = `GD${number}`.slice(0, 100);
@@ -28,11 +46,13 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
   const orderStatus = paymentAmount <= 0 ? 'Chờ xử lý' : 'Chờ thanh toán';
   const paymentMethodName = String(payment?.methodName || payment?.method || '');
   const order = {
-    _id: orderId, DON_HANG_ID: orderId, KIEM_TRA_TON_KHO: true,
+    _id: orderId, DON_HANG_ID: orderId, KIEM_TRA_TON_KHO: true, KHONG_GIU_TAM_NVL: payload.inventoryMode === 'FUTURE_DEMAND',
     MA_PHIEN_THANH_TOAN: payload.checkoutSessionId,
     TEN_NGUOI_DAT: String(sender.name), SDT_NGUOI_DAT: String(sender.phone), EMAIL_NGUOI_DAT: String(sender.email || ''),
     KHACH_HANG_ID: payload.customerId || null, NGAY_TAO: new Date(), TRANG_THAI: orderStatus,
     TAM_TINH: subtotal, PHI_VAN_CHUYEN: shippingFee, TIEN_COC: depositAmount, TONG_TIEN: total,
+    GIA_TRI_SAN_PHAM_DA_CHOT:frozenProductValue,
+    ...(lucky?{VQ_PHAN_THUONG_ID:lucky.reward.id,VQ_GIAM_GIA:lucky.discount}:{}),
     PHUONG_THUC_THANH_TOAN: paymentMethodName, VAT: 0,
     NGAY_MUON_GIAO: dateOnly(delivery?.date), KHUNG_GIO_MUON_GIAO: String(delivery?.time || ''),
     LOI_NHAN_THIEP: String(delivery?.message || ''), GHI_CHU: String(delivery?.noteShop || ''),
@@ -47,7 +67,8 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
   await (await getCollection<any>('DON_HANG_CHI_TIET')).insertMany(payload.items.map((item: any) => ({
     _id: { DON_HANG_ID: orderId, SAN_PHAM_ID: item.id }, DON_HANG_ID: orderId, SAN_PHAM_ID: item.id,
     SO_LUONG: item.qty, GIA: item.price, ...(item.bom ? { BOM_SNAPSHOT: item.bom } : {}),
-    ...(options.quote ? { TEN_SAN_PHAM_SNAPSHOT: item.name, HINH_ANH_SNAPSHOT: item.image, SAN_PHAM_TUY_CHINH: !!item.custom } : {}),
+    ...(item.designId ? {THIET_KE_3D_ID:item.designId} : {}),
+    ...(options.quote || item.custom ? { TEN_SAN_PHAM_SNAPSHOT: item.name, HINH_ANH_SNAPSHOT: item.image, SAN_PHAM_TUY_CHINH: !!item.custom } : {}),
   })), { session });
   if (options.voucher) {
     await (await getCollection<any>('DON_HANG_VOUCHER')).insertOne({
@@ -59,7 +80,11 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
     _id: paymentId, THANH_TOAN_ID: paymentId, DON_HANG_ID: orderId, CONG_THANH_TOAN: paymentMethodName,
     MA_GIAO_DICH: transactionCode, SO_TIEN: paymentAmount, TRANG_THAI_THANH_TOAN: paymentStatus, NGAY_THANH_TOAN: new Date(),
   }, { session });
-  if (paymentAmount <= 0) await confirmReservations({ paymentSessionId: payload.checkoutSessionId }, orderId, { id: 'PAYMENT', role: 'system' }, session);
+  if (paymentAmount <= 0) {
+    if(order.KHONG_GIU_TAM_NVL)await recordOrderDemand(orderId,{}, {id:'PAYMENT',role:'system'}, {}, session);
+    else await confirmReservations({ paymentSessionId: payload.checkoutSessionId }, orderId, { id: 'PAYMENT', role: 'system' }, session);
+    await syncLuckyOrder(session,orderId);
+  }
   const checkoutAccessToken = await createCheckoutAccess(orderId, session);
   return { message: 'Tạo đơn hàng và mã thanh toán thành công.', checkoutAccessToken, orderId, paymentId, transactionCode,
     paymentAmount, paymentDeadline, orderStatus, paymentStatus, paymentWindowSeconds: INVENTORY_CONFIG.holdMinutes * 60 };
