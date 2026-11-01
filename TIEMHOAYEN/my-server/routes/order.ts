@@ -1,3 +1,4 @@
+import { readAfterSales,createAfterSales } from '../controllers/order.js';
 import express from 'express';
 import { sendLookupOtp, verifyLookupOtp, requireLookup, lookupHistory, endLookup } from '../controllers/order-access.js';
 import { readPublicRequest, customerRespond, listRequestMessages, postRequestMessage, customerUpdateRequest } from '../controllers/order-request.js';
@@ -31,6 +32,8 @@ router.post('/requests/:requestId/respond', requireLookup, customerRespond);
 router.patch('/requests/:requestId', requireLookup, customerUpdateRequest);
 router.get('/requests/:requestId/messages', requireLookup, listRequestMessages);
 router.post('/requests/:requestId/messages', requireLookup, postRequestMessage);
+router.get('/:orderId/after-sales',requireLookup,readAfterSales);
+router.post('/:orderId/after-sales',requireLookup,createAfterSales);
 router.get('/:orderId/detail', requireLookup, getOrderDetail);
 router.get('/:orderId/payment-status', requireLookup, getOrderPaymentStatus);
 router.put('/:orderId/payment-expired', requireLookup, expireOrderPayment);

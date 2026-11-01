@@ -1,4 +1,5 @@
 import {approveDesignFromProposal,designFutureDay,normalizeColorQuantities} from './design3d.service.js';
+import {orderEvent} from './admin-order.service.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { ClientSession } from 'mongodb';
 import { escapeRegex, getCollection } from '../mongo.js';
@@ -14,7 +15,7 @@ import { writeCheckoutOrder } from './checkout-order-writer.service.js';
 
 export const MESSAGES = 'TIN_NHAN_CHAT';
 export const SALES_CHAT_TYPES = ['sales_request_customer', 'sales_request_staff'];
-const inactive = (status: any) => /ngừng|ngưng|ẩn|khóa/i.test(String(status || ''));
+const inactive = (status: any) => /ngừng|ngưng|ẩn|khóa|đã xóa/i.test(String(status || ''));
 const text = (value: unknown, max = 2000) => {
   const result = String(value || '').trim();
   if (!result || result.length > max) throw new InventoryError(400, `Nội dung phải có từ 1–${max} ký tự.`);
@@ -114,8 +115,8 @@ export async function propose(id: string, body: any, employee: any) {
     const shippingFee = amount(body.shippingFee || 0), total = amount(subtotal + shippingFee);
     const method = body.paymentMethod === 'cod' ? 'cod' : body.paymentMethod === 'bank' ? 'bank' : '';
     if (!method) throw new InventoryError(400, 'Chọn chuyển khoản toàn bộ hoặc cọc rồi thanh toán khi nhận hàng.');
-    const depositAmount = method === 'cod' ? amount(body.depositAmount) : 0;
-    if (method === 'cod' && (depositAmount <= 0 || depositAmount > total)) throw new InventoryError(400, 'Tiền cọc thỏa thuận phải lớn hơn 0 và không vượt tổng đơn.');
+    const depositAmount = method === 'cod' && subtotal >= 50000 ? amount(body.depositAmount) : 0;
+    if (method === 'cod' && subtotal >= 50000 && (depositAmount <= 0 || depositAmount > total)) throw new InventoryError(400, 'Tiền cọc thỏa thuận phải lớn hơn 0 và không vượt tổng đơn.');
     const quote = { id: randomUUID(), revision: Math.max(Number(row.quote?.revision || 0), ...(row.quoteHistory || []).map((q: any) => Number(q.revision || 0))) + 1, createdAt: new Date(), createdBy: employee.NHAN_VIEN_ID,
       items, delivery: { ...row.delivery, date: body.date, time: body.time }, deliveryAt: at,
       summary: { subtotal, shippingFee, total, depositAmount, loyaltyDiscount: 0, loyaltyPoints: 0 },
@@ -125,6 +126,7 @@ export async function propose(id: string, body: any, employee: any) {
       $set: { quote, status: REQUEST_STATUS.quoted, acceptedQuoteId: null, acceptedAt: null, acceptance: null, updatedAt: new Date() },
       $inc: { version: 1 }, $push: { quoteHistory: quote, history: { id: randomUUID(), at: new Date(), actor: employee.NHAN_VIEN_ID, action: `Gửi phương án phiên bản ${quote.revision}`, quoteId: quote.id } },
     } as any, { session });
+    await orderEvent(session,quote.id+':sent',row.customerId||null,null,'Phương án đặt hoa mới','Shop đã gửi phương án để bạn xem và xác nhận.','/order-request/'+id);
     return quote;
   });
 }
@@ -145,6 +147,7 @@ export async function respondToProposal(id: string, token: string, body: any) {
       $set: updates, $inc: { version: 1 },
       $push: { history: { id: randomUUID(), at: new Date(), actor: 'CUSTOMER', action: accept ? 'Khách đồng ý phương án' : 'Khách muốn tư vấn lại', quoteId: row.quote.id } },
     } as any, { session });
+    if(accept) await orderEvent(session,row.quote.id+':accepted',row.customerId||null,null,'Đã ghi nhận xác nhận phương án','Shop sẽ kiểm tra tồn lần cuối trước khi tạo đơn.','/order-request/'+id);
     return publicRequest({ ...row, ...updates });
   });
 }
@@ -190,7 +193,7 @@ export async function convertProposal(id: string, body: any, employee: any) {
 
 export async function consultationOptions(id: string, search: string, employee: any) {
   const row = await ownedRequest(id, employee);
-  const query: any = { TRANG_THAI: { $nin: ['Ngừng bán', 'Ẩn'] } };
+  const query: any = { TRANG_THAI: { $nin: ['Ngừng bán', 'Ẩn', 'Đã xóa'] } };
   if (search.trim()) query.$or = [{ TEN_SAN_PHAM: { $regex: escapeRegex(search.slice(0, 100)), $options: 'i' } }, { SAN_PHAM_ID: search.slice(0, 100) }];
   const products = await (await getCollection<any>('SAN_PHAM')).find(query).sort({ TON_THANH_PHAM: -1, SAN_PHAM_ID: 1 }).limit(30).toArray();
   const originalIds = row.items.map((item: any) => item.productId);
@@ -200,6 +203,15 @@ export async function consultationOptions(id: string, search: string, employee: 
   const originalBoms = await (await getCollection<any>('BOM_SAN_PHAM')).find({ SAN_PHAM_ID: { $in: originalIds }, TRANG_THAI: 'Hiệu lực' }).toArray();
   const materials = await (await getCollection<any>('NGUYEN_VAT_LIEU')).find({ TRANG_THAI: { $ne: MATERIAL_STATUS.hidden } }).sort({ TEN_NGUYEN_VAT_LIEU: 1 }).toArray();
   const byId = new Map(materials.map(m => [m.NGUYEN_VAT_LIEU_ID, m]));
+  const sources = await (await getCollection<any>('CHI_TIET_PHIEU_NHAP_NVL')).find({ LA_NGUON_NHAP: true, SL_CON_LAI: { $gt: 0 } }).toArray();
+  const qualityReview = (materialId: string) => {
+    const material = byId.get(materialId);
+    if (material?.NHOM_NVL !== 'DE_HU') return false;
+    const days = Number(material.SO_NGAY_BAO_QUAN || 0);
+    const stock = sources.filter(s => s.NGUYEN_VAT_LIEU_ID === materialId && Number(s.SL_CON_LAI) > Number(s.SL_HONG || 0));
+    return !days || !stock.length || stock.some(s => !s.THOI_DIEM_NHAN ||
+      !Number.isFinite(new Date(s.THOI_DIEM_NHAN).getTime()) || new Date(s.THOI_DIEM_NHAN).getTime() + days * 86400000 <= Date.now());
+  };
   const images = await (await getCollection<any>('HINH_ANH_SAN_PHAM')).find({ SAN_PHAM_ID: { $in: all.map(p => p.SAN_PHAM_ID) } }).sort({ LA_ANH_CHINH: -1 }).toArray();
   const choices = all.map(p => {
     const bom = map.get(p.SAN_PHAM_ID) || [];
@@ -210,12 +222,12 @@ export async function consultationOptions(id: string, search: string, employee: 
       finished: finishedAvailableOf(p), buildable: inactive(p.TRANG_THAI) || computed.perMaterial.some(m => m.inactive) ? 0 : computed.buildable,
       original: originalIds.includes(p.SAN_PHAM_ID), requestedQuantity,
       formulaReview: !!originalBoms.find(b => b.SAN_PHAM_ID === p.SAN_PHAM_ID)?.CAN_RA_SOAT,
-      requirements: computed.perMaterial.map(m => ({ ...m, required: m.perUnit * toMake, missing: Math.max(0, m.perUnit * toMake - m.available) })), active: !inactive(p.TRANG_THAI) };
+      requirements: computed.perMaterial.map(m => ({ ...m, qualityReview: qualityReview(m.materialId), required: m.perUnit * toMake, missing: Math.max(0, m.perUnit * toMake - m.available) })), active: !inactive(p.TRANG_THAI) };
   });
   const shortageIds = [...new Set(choices.filter(c => c.original).flatMap(c => c.requirements.filter(l => l.available < l.required).map(l => l.materialId)))];
   const deadline = row.quote?.deliveryAt ? new Date(row.quote.deliveryAt) : new Date(`${String(row.delivery?.date || '').split('/').reverse().join('-')}T${/^\d{2}:\d{2}$/.test(row.delivery?.time) ? row.delivery.time : '23:59'}:00+07:00`);
   const suppliers = shortageIds.length ? await supplierOptionsFor(shortageIds, Number.isFinite(deadline.getTime()) ? deadline : new Date()) : [];
-  return { products: choices, materials: materials.map(m => ({ id: m.NGUYEN_VAT_LIEU_ID, name: m.TEN_NGUYEN_VAT_LIEU, unit: m.DON_VI_TINH, available: availableOf(m), price: Number(m.GIA_BAN || 0) })), suppliers };
+  return { products: choices, materials: materials.map(m => ({ id: m.NGUYEN_VAT_LIEU_ID, name: m.TEN_NGUYEN_VAT_LIEU, unit: m.DON_VI_TINH, available: availableOf(m), qualityReview: qualityReview(m.NGUYEN_VAT_LIEU_ID), price: Number(m.GIA_BAN || 0) })), suppliers };
 }
 
 export async function ensureSalesRequestIndexes() {
@@ -287,6 +299,7 @@ export async function recordContact(id: string, body: any, employee: any) {
       NOI_DUNG_CAU_HOI: null, NOI_DUNG_TRA_LOI: agreed ? `Đã thống nhất phương án ${row.quote.revision} qua điện thoại: ${note}` : body.outcome === 'unreachable' ? 'Shop đã gọi nhưng chưa liên lạc được. Bạn nhắn giúp thời gian tiện nghe máy nhé.' : note,
       LOAI_TIN_NHAN: SALES_CHAT_TYPES[1], THOI_GIAN_GUI: new Date(), TRANG_THAI: 'completed', TEN_NGUOI_GUI: row.assignedName, KENH_TRAO_DOI: 'phone',
       HINH_ANH: null, TEN_FILE_ANH: null, LOAI_FILE_ANH: null }, { session });
+    if(agreed) await orderEvent(session,row.quote.id+':accepted',row.customerId||null,null,'Đã ghi nhận xác nhận phương án','Shop sẽ kiểm tra tồn lần cuối trước khi tạo đơn.','/order-request/'+id);
     return { status: updates.status || row.status };
   });
 }

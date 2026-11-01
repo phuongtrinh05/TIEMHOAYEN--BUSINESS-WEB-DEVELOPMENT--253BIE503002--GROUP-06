@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
+import { getProductSellableStockMap, sellableStockFields } from '../services/inventory/availability.service.js';
 
 type SearchProductRow = {
   SAN_PHAM_ID: string;
@@ -187,7 +188,7 @@ const getPrimaryImageMap = async (): Promise<Map<string, string | null>> => {
 };
 
 const enrichProducts = async (products: any[], includeTopic = false): Promise<SearchProductRow[]> => {
-  const imageMap = await getPrimaryImageMap();
+  const [imageMap, stockMap] = await Promise.all([getPrimaryImageMap(), getProductSellableStockMap(products)]);
   let topicMap = new Map<string, string>();
 
   if (includeTopic) {
@@ -198,6 +199,7 @@ const enrichProducts = async (products: any[], includeTopic = false): Promise<Se
 
   return products.map((product: any) => ({
     ...product,
+    ...sellableStockFields(stockMap.get(String(product.SAN_PHAM_ID))),
     TEN_CHU_DE: includeTopic ? topicMap.get(String(product.CHU_DE_ID || '')) : undefined,
     HINH_ANH: imageMap.get(String(product.SAN_PHAM_ID || '')) || null,
   }));

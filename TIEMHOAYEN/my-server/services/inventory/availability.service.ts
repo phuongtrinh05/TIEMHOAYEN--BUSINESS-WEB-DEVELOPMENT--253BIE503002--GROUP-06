@@ -47,6 +47,37 @@ export const computeBuildable = (lines: BomLine[], materialsById: Map<string, an
   return { buildable: Number.isFinite(buildable) ? buildable : 0, bottleneck, perMaterial };
 };
 
+export type ProductSellableStock = {
+  finishedAvailable: number;
+  buildable: number;
+  sellable: number;
+};
+
+/** Tính tồn bán được cho nhiều sản phẩm trong một lượt đọc kho/BOM. */
+export const getProductSellableStockMap = async (products: any[]): Promise<Map<string, ProductSellableStock>> => {
+  const ids = [...new Set(products.map((product) => String(product?.SAN_PHAM_ID || '')).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const [materials, bomMap] = await Promise.all([
+    col(COLLECTIONS.material).then((collection) => collection.find({}).toArray()),
+    getActiveBomMap(ids),
+  ]);
+  const materialsById = new Map(materials.map((material: any) => [material.NGUYEN_VAT_LIEU_ID, material]));
+  return new Map(products.map((product) => {
+    const finishedAvailable = Math.floor(finishedAvailableOf(product));
+    const buildable = computeBuildable(bomMap.get(product.SAN_PHAM_ID) || [], materialsById).buildable;
+    return [String(product.SAN_PHAM_ID), { finishedAvailable, buildable, sellable: finishedAvailable + buildable }];
+  }));
+};
+
+/** Trường tương thích cho API cũ; SO_LUONG tạm ánh xạ sang tồn khả dụng. */
+export const sellableStockFields = (stock?: ProductSellableStock) => ({
+  SO_LUONG: stock?.sellable ?? 0,
+  TON_KHA_DUNG: stock?.sellable ?? 0,
+  TON_THANH_PHAM_KHA_DUNG: stock?.finishedAvailable ?? 0,
+  SO_BO_CO_THE_LAM: stock?.buildable ?? 0,
+});
+
+
 /** Hàng đang về từ PO "Đang giao" có ngày dự kiến ≤ deadline (chỉ dùng DỰ BÁO). */
 export const incomingByMaterial = async (deadline: Date | null) => {
   const query: any = { TRANG_THAI: PO_STATUS.shipping };

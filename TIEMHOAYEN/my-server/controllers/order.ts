@@ -1,3 +1,4 @@
+import { afterSalesRead, afterSalesCreate } from '../services/admin-order.service.js';
 import {synchronizeLuckyOrder,syncLuckyOrder,renewLuckyHold} from '../services/lucky-wheel.service.js';
 import {getDesign,isDesignProduct,designFutureDay} from '../services/design3d.service.js';
 import { Request, Response } from 'express';
@@ -916,4 +917,14 @@ export const updateShippingInfo = async (req: Request, res: Response) => {
     console.error('Lỗi updateShippingInfo:', error);
     return res.status(500).json({ message: 'Lỗi server: ' + error.message });
   }
+};
+
+/** Hồ sơ hậu mãi (đổi/trả/hoàn tiền) của đơn — khách xem và tạo yêu cầu. */
+export const readAfterSales = async (req: Request, res: Response) => {
+  try { return res.json({ requests: await afterSalesRead(String(req.params.orderId)) }); }
+  catch (e: any) { return res.status(e instanceof InventoryError ? e.status : 500).json({ message: e instanceof InventoryError ? e.message : 'Không thể tải hồ sơ hậu mãi.' }); }
+};
+export const createAfterSales = async (req: Request, res: Response) => {
+  try { return res.status(201).json({ request: await afterSalesCreate(String(req.params.orderId), req.body) }); }
+  catch (e: any) { return res.status(e instanceof InventoryError ? e.status : 500).json({ message: e instanceof InventoryError ? e.message : 'Không thể tạo yêu cầu hậu mãi.' }); }
 };

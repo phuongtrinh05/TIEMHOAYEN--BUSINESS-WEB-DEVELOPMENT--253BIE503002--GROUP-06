@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
+import { getProductSellableStockMap, sellableStockFields } from '../services/inventory/availability.service.js';
 
 const PUBLIC_PRODUCT_FILTER = { TRANG_THAI: 'Đang bán' };
 const PUBLIC_CATEGORY_FILTER = { AN: { $ne: true }, TRANG_THAI: { $nin: ['Ẩn', 'Đang ẩn', 'Đã xóa'] } };
@@ -63,12 +64,13 @@ const buildNameListMap = async (
 const enrichProducts = async (products: any[], extraByProduct = new Map<string, any>()) => {
   const productIds = products.map((product) => product.SAN_PHAM_ID).filter(Boolean);
   const topicCollection = await getCollection<any>('CHU_DE');
-  const [topics, imageMap, flowerListMap, targetListMap, colorListMap] = await Promise.all([
+  const [topics, imageMap, flowerListMap, targetListMap, colorListMap, stockMap] = await Promise.all([
     topicCollection.find(PUBLIC_CATEGORY_FILTER).toArray(),
     getPrimaryImageMap(productIds),
     buildNameListMap('HOA_TUOI_SAN_PHAM', 'HOA_TUOI', 'HOA_TUOI_ID', 'TEN_HOA_TUOI', productIds),
     buildNameListMap('DOI_TUONG_SAN_PHAM', 'DOI_TUONG', 'DOI_TUONG_ID', 'TEN_DOI_TUONG', productIds),
     buildNameListMap('MAU_SAC_SAN_PHAM', 'MAU_SAC', 'MAU_SAC_ID', 'TEN_MAU_SAC', productIds),
+    getProductSellableStockMap(products),
   ]);
   const topicMap = new Map(topics.map((topic) => [topic.CHU_DE_ID, topic]));
 
@@ -86,7 +88,7 @@ const enrichProducts = async (products: any[], extraByProduct = new Map<string, 
       GIA_KHUYEN_MAI: product.GIA_KHUYEN_MAI,
       TRANG_THAI: product.TRANG_THAI,
       KIEU_DANG: product.KIEU_DANG,
-      SO_LUONG: product.SO_LUONG,
+      ...sellableStockFields(stockMap.get(String(product.SAN_PHAM_ID))),
       DA_BAN: product.DA_BAN,
       HINH_ANH: image?.URL || null,
       TEN_HOA_TUOI_LIST: flowerListMap.get(product.SAN_PHAM_ID) || null,

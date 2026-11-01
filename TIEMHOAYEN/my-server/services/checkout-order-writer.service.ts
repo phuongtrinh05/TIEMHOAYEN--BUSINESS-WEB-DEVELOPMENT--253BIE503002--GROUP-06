@@ -1,3 +1,4 @@
+import {orderEvent} from './admin-order.service.js';
 import type { ClientSession } from 'mongodb';
 import { getCollection } from '../mongo.js';
 import { INVENTORY_CONFIG } from './inventory/constants.js';
@@ -17,6 +18,7 @@ const bit = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true';
 /** Shared persistence for regular checkout and accepted Sales proposals. Caller validates prices and holds stock in this transaction. */
 export async function writeCheckoutOrder(session: ClientSession, orderId: string, payload: any, options: { voucher?: any; loyaltyPoints?: number; requestId?: string; quote?: any } = {}) {
   const { sender, receiver, delivery, summary, payment, flags } = payload;
+  if (String(delivery?.message || '').length > 2000 || String(delivery?.noteShop || '').length > 2000) throw new InventoryError(400, 'Nội dung thiệp và ghi chú tối đa 2.000 ký tự.');
   let frozenProductValue=0;
   for(const item of payload.items){
     let price=Number(item.price);
@@ -43,7 +45,8 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
   const total = Math.max(0, Number(summary?.total || 0));
   if (depositAmount > total) throw new InventoryError(400, 'Tiền cọc không được vượt quá nghĩa vụ thanh toán của đơn hàng.');
   const paymentAmount = payment?.method === 'cod' ? depositAmount : total;
-  const paymentStatus = paymentAmount <= 0 ? 'Thành công' : 'Chờ thanh toán';
+  const requiresPayment = paymentAmount > 0;
+  const paymentStatus = requiresPayment ? 'Chờ thanh toán' : total > 0 ? 'Chưa thanh toán' : 'Không phát sinh thu tiền';
   const orderStatus = paymentAmount <= 0 ? 'Chờ xử lý' : 'Chờ thanh toán';
   const paymentMethodName = String(payment?.methodName || payment?.method || '');
   const order = {
@@ -56,9 +59,12 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
     ...(lucky?{VQ_PHAN_THUONG_ID:lucky.reward.id,VQ_GIAM_GIA:lucky.discount}:{}),
     GIAM_GIA_SAN_PHAM: Math.max(0, Number(summary?.productVoucherDiscount || 0)),
     GIAM_GIA_PHI_SHIP: Math.max(0, Number(summary?.shippingVoucherDiscount || 0)),
+    TINH_TIEN_SNAPSHOT: summary,
+    KHONG_YEU_CAU_COC: payment?.method === 'cod' && depositAmount === 0,
     PHUONG_THUC_THANH_TOAN: paymentMethodName, VAT: 0,
     NGAY_MUON_GIAO: dateOnly(delivery?.date), KHUNG_GIO_MUON_GIAO: String(delivery?.time || ''),
     LOI_NHAN_THIEP: String(delivery?.message || ''), GHI_CHU: String(delivery?.noteShop || ''),
+    GHI_CHU_NOI_BO: String(payload.adminNote || ''),
     AN_THONG_TIN: bit(flags?.hideSender), YEU_CAU_VAT: bit(flags?.requestVAT), GUI_ANH_QUA_ZALO: bit(flags?.sendZaloPhoto),
     TEN_NGUOI_NHAN: receiver.name, SDT_NGUOI_NHAN: receiver.phone, DIA_CHI_GIAO_HANG: receiver.address,
     DA_CHINH_SUA_GIAO_HANG: false, LY_DO_HUY: null, NGAY_HUY: null, LY_DO_HOAN_TIEN_TRA_HANG: null,
@@ -83,9 +89,11 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
     await (await getCollection<any>('DON_HANG_VOUCHER')).insertOne({
       _id: { DON_HANG_ID: orderId, VOUCHER_ID: options.voucher.VOUCHER_ID }, DON_HANG_ID: orderId,
       VOUCHER_ID: options.voucher.VOUCHER_ID, MO_TA: `Áp dụng voucher ${options.voucher.MA_VOUCHER}`,
+      UU_DAI_SNAPSHOT: options.voucher,
+      SO_TIEN_GIAM: Number(summary.productDiscount || 0) + Number(summary.shippingDiscount || 0),
     }, { session });
   }
-  await (await getCollection<any>('THANH_TOAN')).insertOne({
+  if (requiresPayment) await (await getCollection<any>('THANH_TOAN')).insertOne({
     _id: paymentId, THANH_TOAN_ID: paymentId, DON_HANG_ID: orderId, CONG_THANH_TOAN: paymentMethodName,
     MA_GIAO_DICH: transactionCode, SO_TIEN: paymentAmount, TRANG_THAI_THANH_TOAN: paymentStatus, NGAY_THANH_TOAN: new Date(),
   }, { session });
@@ -94,7 +102,10 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
     else await confirmReservations({ paymentSessionId: payload.checkoutSessionId }, orderId, { id: 'PAYMENT', role: 'system' }, session);
     await syncLuckyOrder(session,orderId);
   }
+  await orderEvent(session,orderId+':created',payload.customerId||null,orderId,'Đã tạo đơn hàng',requiresPayment?'Đơn đã được tạo, đang chờ khoản thanh toán trước.':'Đã tiếp nhận đơn không yêu cầu trả trước; chưa ghi nhận đã thu tiền.');
   const checkoutAccessToken = await createCheckoutAccess(orderId, session);
-  return { message: 'Tạo đơn hàng và mã thanh toán thành công.', checkoutAccessToken, orderId, paymentId, transactionCode,
-    paymentAmount, paymentDeadline, orderStatus, paymentStatus, paymentWindowSeconds: INVENTORY_CONFIG.holdMinutes * 60 };
+  return { message: requiresPayment ? 'Đã tạo đơn chờ thanh toán.' : 'Đã tiếp nhận đơn; không yêu cầu thanh toán trước.', checkoutAccessToken, orderId,
+    paymentId: requiresPayment ? paymentId : '', transactionCode: requiresPayment ? transactionCode : '', requiresPayment,
+    paymentAmount, paymentDeadline: requiresPayment ? paymentDeadline : null, orderStatus, paymentStatus, summary, items: payload.items,
+    paymentWindowSeconds: INVENTORY_CONFIG.holdMinutes * 60 };
 }

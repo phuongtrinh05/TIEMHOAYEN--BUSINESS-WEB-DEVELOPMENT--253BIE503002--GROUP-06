@@ -818,7 +818,38 @@ export const sweepExpiredReservations = async () => {
   let released = 0;
   for (const r of rows) {
     try {
-      const ok = await withTransaction((session) => releaseOne(session, r, { id: 'SYSTEM', role: 'system' }, 'Hết hạn giữ tạm chờ thanh toán'));
+      const ok = await withTransaction(async (session) => {
+        const didRelease = await releaseOne(session, r, { id: 'SYSTEM', role: 'system' }, 'Hết hạn giữ tạm chờ thanh toán');
+        if (!didRelease || !r.DON_HANG_ID) return didRelease;
+
+        // Chỉ đồng bộ trạng thái khi toàn bộ lượng giữ của cùng phiên đã hết.
+        // Không được đánh dấu thất bại nếu tiền đã được xác nhận thành công.
+        const remaining = await (await col(COLLECTIONS.reservation)).countDocuments({
+          DON_HANG_ID: r.DON_HANG_ID,
+          ...(r.MA_PHIEN_THANH_TOAN ? { MA_PHIEN_THANH_TOAN: r.MA_PHIEN_THANH_TOAN } : {}),
+          TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES },
+        }, { session });
+        if (remaining === 0) {
+          const payments = await col('THANH_TOAN');
+          const paid = await payments.findOne({
+            DON_HANG_ID: r.DON_HANG_ID,
+            TRANG_THAI_THANH_TOAN: { $in: ['Thành công', 'Thanh toán thành công', 'Đã thanh toán', 'Đã cọc'] },
+          }, { session });
+          if (!paid) {
+            await payments.updateMany(
+              { DON_HANG_ID: r.DON_HANG_ID, TRANG_THAI_THANH_TOAN: 'Chờ thanh toán' },
+              { $set: { TRANG_THAI_THANH_TOAN: 'Thất bại', LY_DO: 'Hết hạn giữ tồn chờ thanh toán' } },
+              { session },
+            );
+            await (await col(COLLECTIONS.order)).updateOne(
+              { DON_HANG_ID: r.DON_HANG_ID, TRANG_THAI: 'Chờ thanh toán' },
+              { $set: { TRANG_THAI: 'Thanh toán thất bại', NGAY_CAP_NHAT: new Date() } },
+              { session },
+            );
+          }
+        }
+        return didRelease;
+      });
       if (ok) released++;
     } catch (error) {
       console.error('[inventory] Không nhả được giữ tồn hết hạn', r.MA_GIU_TON, error);
