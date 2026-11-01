@@ -1,8 +1,6 @@
 <div class="inv-page">
   <div class="inv-card">
     <app-inventory-tabs />
-    <h2 class="inv-title">Tổng quan kho & cảnh báo</h2>
-    <p class="inv-sub">3 tầng cảnh báo: (1) NVL theo khả dụng hiện tại và dự báo theo lịch T, (2) bó hoa trên website, (3) đơn tương lai có nguy cơ thiếu. Hệ thống không tự đặt hàng.</p>
 
     @if (alerts(); as a) {
       <div class="inv-kpis">
@@ -16,10 +14,13 @@
       </div>
     }
 
-    <div class="d-flex flex-wrap gap-2 mb-3">
+    <div class="inv-overview-toolbar">
+    <div class="inv-local-tabs">
       @for (t of [['alerts','Cảnh báo'],['reservations','Đang giữ'],['demands','Nhu cầu theo lịch T'],['finished','Thành phẩm cắm sẵn'],['ledger','Sổ biến động'],['reconcile','Đối soát']]; track t[0]) {
         <button class="inv-btn sm" [class.primary]="tab() === t[0]" (click)="setTab($any(t[0]))">{{ t[1] }}</button>
       }
+    </div>
+    <button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button>
     </div>
     @if (error()) { <div class="inv-alert error">{{ error() }}</div> }
 
@@ -27,7 +28,7 @@
     @if (tab() === 'alerts') {
       @if (loading()) { <div class="inv-empty">Đang tính…</div> }
       @if (alerts(); as a) {
-        <div class="inv-section-title"><i class="bi bi-exclamation-triangle"></i> Tầng 1 — NVL dưới ngưỡng (khả dụng đã trừ giữ & không đạt)</div>
+        <div class="inv-section-title"><i class="bi bi-exclamation-triangle"></i> Nguyên liệu cần bổ sung</div>
         <div class="inv-table-wrap">
           <table class="inv-table">
             <thead><tr><th>NVL</th><th>Tình trạng</th><th class="num">Khả dụng</th><th class="num">Ngưỡng</th><th class="num">Gợi ý nhập tới mức tối đa</th><th></th></tr></thead>
@@ -43,7 +44,7 @@
           </table>
         </div>
 
-        <div class="inv-section-title"><i class="bi bi-calendar-x"></i> Tầng 1b + 3 — Dự kiến thiếu trước lịch chuẩn bị T</div>
+        <div class="inv-section-title"><i class="bi bi-calendar-x"></i> Dự kiến thiếu theo lịch chuẩn bị</div>
         <div class="inv-table-wrap">
           <table class="inv-table">
             <thead><tr><th>Đơn</th><th>T</th><th>NVL</th><th class="num">Cần</th><th class="num">Khả dụng</th><th class="num">PO đang giao kịp</th><th class="num">Thiếu</th><th></th></tr></thead>
@@ -52,7 +53,7 @@
                 <tr class="row-out">
                   <td class="fw-bold">{{ f.orderId }}</td><td>{{ f.neededAt | date: 'dd/MM HH:mm' }}</td><td>{{ f.name }}</td>
                   <td class="num">{{ f.required }}</td><td class="num">{{ f.available }}</td><td class="num">{{ f.incoming }}</td><td class="num fw-bold">{{ f.missing }} {{ f.unit }}</td>
-                  <td><button class="inv-btn sm" (click)="createPo(f.materialId, f.missing)">Lập PO</button></td>
+                  <td><button class="inv-btn sm" (click)="createPo(f.materialId, f.missing)"><i class="bi bi-truck" aria-hidden="true"></i> Lập PO</button></td>
                 </tr>
               } @empty { <tr><td colspan="8" class="inv-empty">Không có đơn tương lai dự kiến thiếu NVL.</td></tr> }
             </tbody>
@@ -62,7 +63,7 @@
           <div class="inv-alert warn mt-2">Đơn đã thanh toán nhưng <b>chưa có T</b> (Chờ xếp lịch): {{ a.ordersWithoutSchedule.join(', ') }} — nhập T ở tab “Nhu cầu theo lịch T”.</div>
         }
 
-        <div class="inv-section-title"><i class="bi bi-flower3"></i> Tầng 2 — Bó hoa trên website hết / sắp hết</div>
+        <div class="inv-section-title"><i class="bi bi-flower3"></i> Bó hoa hết hoặc sắp hết hàng</div>
         <div class="inv-table-wrap" style="max-height:360px;overflow-y:auto">
           <table class="inv-table">
             <thead><tr><th>Sản phẩm</th><th>Nhãn</th><th class="num">Tồn bán được</th><th>NVL chốt chặn</th></tr></thead>
@@ -75,14 +76,14 @@
           </table>
         </div>
 
-        <div class="inv-section-title"><i class="bi bi-thermometer-half"></i> Hoa tươi quá số ngày bảo quản — cần kiểm tra chất lượng</div>
+        <div class="inv-section-title"><i class="bi bi-thermometer-half"></i> Nguồn hoa cần kiểm tra chất lượng</div>
         <div class="inv-table-wrap">
           <table class="inv-table">
             <thead><tr><th>NVL</th><th>Nguồn nhập</th><th>Nhận lúc</th><th class="num">Tuổi / hạn (ngày)</th><th class="num">SL còn</th><th class="num">Đang giữ</th><th></th></tr></thead>
             <tbody>
               @for (q of a.qualityChecks; track q.sourceId + q.materialId) {
                 <tr><td>{{ q.name }}</td><td>{{ q.sourceId }}</td><td>{{ q.receivedAt | date: 'dd/MM HH:mm' }}</td><td class="num">{{ q.ageDays }} / {{ q.shelfDays }}</td><td class="num">{{ q.quantity }}</td><td class="num">{{ q.reserved }}</td>
-                  <td><button class="inv-btn sm" (click)="openMaterial()">Kiểm tra</button></td></tr>
+                  <td><button class="inv-btn sm" (click)="openMaterial(q.materialId, q.sourceId)"><i class="bi bi-eye" aria-hidden="true"></i> Kiểm tra</button></td></tr>
               } @empty { <tr><td colspan="7" class="inv-empty">Không có.</td></tr> }
             </tbody>
           </table>
@@ -92,7 +93,7 @@
 
     <!-- ===== ĐANG GIỮ ===== -->
     @if (tab() === 'reservations') {
-      <div class="inv-alert info">Giữ tạm QR tự nhả khi quá hạn thanh toán. Giữ chính thức kết thúc khi lập phiếu xuất cho đơn, hoặc nhả khi hủy đơn trước khi xuất.</div>
+
       <div class="inv-table-wrap">
         <table class="inv-table">
           <thead><tr><th>Mã giữ</th><th>Đơn / phiên QR</th><th>Loại</th><th>Đối tượng</th><th class="num">SL</th><th>Nguồn PN</th><th>Tạo lúc</th><th>Hết hạn / T</th><th></th></tr></thead>
@@ -117,7 +118,7 @@
         <select class="inv-select" style="width:160px" [(ngModel)]="demandStatus" (ngModelChange)="loadDemands()">
           <option>Chờ giữ</option><option>Đã giữ</option><option>Đã xuất</option><option>Đã hủy</option>
         </select>
-        <span class="muted">Đơn giao ngày khác: sau khi nhận tiền chỉ ghi nhu cầu dự kiến (không giữ hoa). Admin nhập T; đến lịch thì giữ chính thức; khi bắt đầu cắm thì xuất NVL một lần.</span>
+
       </div>
       @for (g of demandGroups(); track g.orderId) {
         <div class="inv-section-title">
@@ -147,7 +148,7 @@
 
     <!-- ===== THÀNH PHẨM ===== -->
     @if (tab() === 'finished') {
-      <div class="inv-alert info">Thành phẩm chỉ tăng khi ghi nhận phiếu xuất “Cắm bó sẵn”. Bán/giao bó cắm sẵn không trừ NVL lần nữa.</div>
+
       <div class="inv-table-wrap">
         <table class="inv-table">
           <thead><tr><th>Sản phẩm</th><th class="num">Tồn thành phẩm</th><th class="num">Đang giữ</th><th class="num">Khả dụng</th><th class="num">Giá vốn / bó</th><th class="num">Giá bán</th><th></th></tr></thead>
@@ -210,3 +211,5 @@
 </div>
 
 @if (toast(); as t) { <div class="inv-toast" [class.error]="t.error">{{ t.text }}</div> }
+
+<app-inventory-dialog />

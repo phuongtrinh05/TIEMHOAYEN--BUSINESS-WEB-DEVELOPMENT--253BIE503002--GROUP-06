@@ -1,11 +1,14 @@
+import { InventoryPagerComponent } from '../inventory-pager';
+import { InventoryDialogComponent } from '../inventory-dialog';
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
 import {
   InvMaterial,
   InvMaterialDetail,
+  InvMaterialHistory,
   InventoryApiService,
   inventoryErrorMessage,
 } from '../../../services/inventory-api.service';
@@ -13,7 +16,7 @@ import {
 type MaterialForm = Partial<InvMaterial> & { code?: string };
 
 const EMPTY_FORM: MaterialForm = {
-  name: '', unit: '', group: 'IT_HU', type: 'Phụ kiện cắm', importPrice: 0, sellPrice: 0, threshold: 10, maxLevel: 30,
+  use3d: false, model3d: '', color3d: '', review3d: false, name: '', unit: '', group: 'IT_HU', type: 'Phụ kiện cắm', importPrice: 0, sellPrice: 0, threshold: 10, maxLevel: 30,
   shelfDays: null, substitutionGroup: '', purchaseUnit: '', conversionRate: 1, description: '', image: '',
 };
 
@@ -24,13 +27,15 @@ const EMPTY_FORM: MaterialForm = {
 @Component({
   selector: 'app-material-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, InventoryTabsComponent],
+  imports: [InventoryPagerComponent, InventoryDialogComponent, CommonModule, FormsModule, InventoryTabsComponent],
   templateUrl: './material-list.html',
   styleUrls: ['../inventory.css', './material-list.css'],
 })
 export class MaterialListComponent implements OnInit {
+  @ViewChild(InventoryDialogComponent) private dialog!: InventoryDialogComponent;
   private readonly api = inject(InventoryApiService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
 
   readonly materials = signal<InvMaterial[]>([]);
   readonly types = signal<string[]>([]);
@@ -43,6 +48,7 @@ export class MaterialListComponent implements OnInit {
   groupFilter = '';
   stockFilter = '';
   includeHidden = false;
+  filtersOpen = false;
   sortKey: keyof InvMaterial = 'code';
   sortAsc = true;
   readonly page = signal(1);
@@ -67,6 +73,17 @@ export class MaterialListComponent implements OnInit {
   });
   readonly paged = computed(() => this.filtered().slice((this.page() - 1) * this.pageSize, this.page() * this.pageSize));
   readonly totalPages = computed(() => Math.max(1, Math.ceil(this.filtered().length / this.pageSize)));
+  readonly pageNumbers = computed(() => {
+    const total = this.totalPages(), current = this.page();
+    const visible = total <= 7 ? Array.from({ length: total }, (_, i) => i + 1)
+      : [...new Set([1, total, ...Array.from({ length: 5 }, (_, i) => Math.max(2, Math.min(current - 2, total - 5)) + i)])].sort((a, b) => a - b);
+    const result: number[] = [];
+    for (const n of visible) {
+      if (result.length && n - result[result.length - 1] > 1) result.push(0);
+      result.push(n);
+    }
+    return result;
+  });
   readonly summary = computed(() => {
     const all = this.materials();
     return {
@@ -78,9 +95,25 @@ export class MaterialListComponent implements OnInit {
     };
   });
 
+  readonly designModels = [{id:'rose',name:'Hoa hồng'},{id:'lily',name:'Hoa ly'},{id:'sunflower',name:'Hướng dương'},{id:'baby',name:'Baby'},{id:'gerbera',name:'Đồng tiền'},{id:'carnation',name:'Cẩm chướng'},{id:'chrysanthemum',name:'Hoa cúc'},{id:'tuberose',name:'Hoa huệ'},{id:'tulip',name:'Tulip'},{id:'lotus',name:'Hoa sen'},{id:'lisianthus',name:'Cát tường'},{id:'orchid',name:'Hoa lan'}];
+  readonly materialColors = ['Đỏ', 'Hồng', 'Trắng', 'Vàng', 'Cam', 'Tím', 'Xanh lá', 'Xanh dương', 'Kem', 'Nâu', 'Đen', 'Nhiều màu'];
+  readonly modelColors: Record<string,string[]> = {rose:['Đỏ','Hồng'],lily:['Hồng'],sunflower:['Vàng'],baby:['Trắng'],gerbera:['Đỏ'],carnation:['Hồng'],chrysanthemum:['Trắng'],tuberose:['Trắng'],tulip:['Hồng','Trắng'],lotus:['Hồng'],lisianthus:['Tím'],orchid:['Tím']};
+  onDesignModelChange(): void { this.form.colors3d = [...(this.modelColors[this.form.model3d || ''] || [])]; }
+  selectedDesignColors(): string[] { return this.form.colors3d?.length ? this.form.colors3d : (this.modelColors[this.form.model3d || ''] || []); }
+  toggleDesignColor(color:string,checked:boolean):void {
+    const selected=this.selectedDesignColors();
+    const next=checked?[...new Set([...selected,color])]:selected.filter(c=>c!==color);
+    if(!next.length && this.form.model3d)return;
+    this.form.colors3d=next;
+  }
   // Form thêm/sửa
   readonly formOpen = signal(false);
   readonly saving = signal(false);
+  readonly uploadingImage = signal(false);
+  readonly defaultMaterialImage = 'assets/images/flower_default.png';
+  hasCustomImage(image?: string): boolean {
+    return !!image && !image.split(/[?#]/)[0].endsWith('/flower_default.png');
+  }
   readonly formError = signal('');
   editingCode: string | null = null;
   form: MaterialForm = { ...EMPTY_FORM };
@@ -88,11 +121,44 @@ export class MaterialListComponent implements OnInit {
   // Chi tiết
   readonly detail = signal<InvMaterialDetail | null>(null);
   readonly detailLoading = signal(false);
+  readonly detailTab = signal<'overview' | 'sources' | 'reservations' | 'suppliers' | 'history'>('overview');
+  readonly sourcePage = signal(1);
+  readonly history = signal<InvMaterialHistory>({kind: 'movements', page: 1, pageSize: 15, total: 0, items: []});
+  readonly historyLoading = signal(false);
+  readonly historyError = signal('');
+  historyKind: 'movements' | 'corrections' = 'movements';
+  historySearch = ''; historyFrom = ''; historyTo = '';
+  private historyVersion = 0;
+  selectDetailTab(tab: 'overview' | 'sources' | 'reservations' | 'suppliers' | 'history'): void {
+    this.detailTab.set(tab);
+    if (tab === 'history') this.loadHistory(1);
+  }
+  loadHistory(page = 1): void {
+    const id = this.detail()?.material.code;
+    if (!id) return;
+    const version = ++this.historyVersion;
+    this.historyLoading.set(true); this.historyError.set('');
+    this.api.materialHistory(id, {kind: this.historyKind, page, search: this.historySearch, from: this.historyFrom, to: this.historyTo}).subscribe({
+      next: result => {
+        if (version !== this.historyVersion || this.detail()?.material.code !== id) return;
+        this.history.set(result); this.historyLoading.set(false);
+      },
+      error: e => {
+        if (version !== this.historyVersion || this.detail()?.material.code !== id) return;
+        this.historyError.set(inventoryErrorMessage(e)); this.historyLoading.set(false);
+      }
+    });
+  }
+  clearHistoryFilters(): void { this.historySearch = ''; this.historyFrom = ''; this.historyTo = ''; this.loadHistory(1); }
+  shortDocId(id: string | null): string { return !id ? '—' : id.length > 16 ? id.slice(0, 7) + '…' + id.slice(-5) : id; }
   damageForm = { sourceId: '', quantity: 0, note: '' };
 
   ngOnInit(): void {
     this.api.meta().subscribe({ next: (m) => this.types.set(m.materialTypes), error: () => {} });
     this.load();
+    const query = this.route.snapshot.queryParamMap;
+    const material = query.get('material');
+    if (material) this.openDetail(material, query.get('source') || '');
   }
 
   load(): void {
@@ -143,15 +209,24 @@ export class MaterialListComponent implements OnInit {
   }
 
   uploadImage(event: Event): void {
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (!file) return;
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || this.uploadingImage()) return;
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      this.notify('Chọn ảnh JPG, PNG, WEBP hoặc GIF, tối đa 5 MB.', true);
+      return;
+    }
+    this.uploadingImage.set(true);
     this.api.uploadMaterialImage(file).subscribe({
-      next: (url) => { this.form = { ...this.form, image: url }; this.notify('Đã tải ảnh lên.'); },
-      error: (e) => this.notify(inventoryErrorMessage(e), true),
+      next: (url) => { this.form = { ...this.form, image: url }; this.uploadingImage.set(false); this.notify('Đã tải ảnh lên.'); },
+      error: (e) => { this.uploadingImage.set(false); this.notify(inventoryErrorMessage(e), true); },
     });
   }
 
   save(): void {
+    this.formError.set('');
+    if (this.uploadingImage()) return;
     if (!this.form.name?.trim() || !this.form.unit?.trim()) {
       this.formError.set('Tên NVL và đơn vị tính là bắt buộc.');
       return;
@@ -162,6 +237,7 @@ export class MaterialListComponent implements OnInit {
     }
     const body: MaterialForm = {
       code: this.editingCode ? undefined : (this.form.code || undefined),
+      colors3d: [...this.selectedDesignColors()], use3d: !!this.form.use3d, model3d: this.form.model3d || '', color3d: this.form.color3d || '', review3d: !!this.form.review3d,
       name: this.form.name, unit: this.form.unit, group: this.form.group, type: this.form.type,
       importPrice: Number(this.form.importPrice || 0), sellPrice: Number(this.form.sellPrice || 0),
       threshold: Number(this.form.threshold || 0), maxLevel: Number(this.form.maxLevel || 0),
@@ -172,8 +248,15 @@ export class MaterialListComponent implements OnInit {
     this.saving.set(true);
     const req = this.editingCode ? this.api.updateMaterial(this.editingCode, body) : this.api.createMaterial(body);
     req.subscribe({
-      next: () => {
+      next: (result) => {
         this.saving.set(false);
+        const saved = result.material;
+        if (!saved || saved.use3d !== body.use3d || saved.review3d !== body.review3d ||
+            saved.model3d !== body.model3d || saved.color3d !== body.color3d?.trim() ||
+            JSON.stringify(saved.colors3d || []) !== JSON.stringify(body.colors3d || [])) {
+          this.formError.set('Backend chưa xác nhận lưu cấu hình 3D. Hãy chạy lại my-server bằng code mới và kiểm tra Admin/khách hàng đang dùng cùng backend. Các thông tin NVL khác có thể đã được lưu.');
+          return;
+        }
         this.formOpen.set(false);
         this.notify(this.editingCode ? 'Đã cập nhật NVL.' : 'Đã thêm NVL. Nhập tồn đầu kỳ bằng phiếu nhập.');
         this.load();
@@ -183,9 +266,9 @@ export class MaterialListComponent implements OnInit {
     });
   }
 
-  toggleActive(m: InvMaterial): void {
+  async toggleActive(m: InvMaterial): Promise<void> {
     if (m.active) {
-      if (!confirm(`Ngừng sử dụng / xóa NVL ${m.name}? NVL đã có giao dịch hoặc nằm trong BOM sẽ chỉ bị ẩn.`)) return;
+      if (!(await this.dialog.confirm(`Ngừng sử dụng / xóa NVL ${m.name}? NVL đã có giao dịch hoặc nằm trong BOM sẽ chỉ bị ẩn.`))) return;
       this.api.deleteMaterial(m.code).subscribe({
         next: (r) => { this.notify(r.message || (r.deleted ? 'Đã xóa NVL.' : 'Đã ẩn NVL.')); this.detail.set(null); this.load(); },
         error: (e) => this.notify(inventoryErrorMessage(e), true),
@@ -199,11 +282,18 @@ export class MaterialListComponent implements OnInit {
   }
 
   /* ---------- Chi tiết ---------- */
-  openDetail(code: string): void {
+  openDetail(code: string, sourceId = ''): void {
+    this.historyVersion++; this.detailTab.set(sourceId ? 'sources' : 'overview'); this.sourcePage.set(1);
+    this.history.set({kind: 'movements', page: 1, pageSize: 15, total: 0, items: []}); this.historyLoading.set(false);
+    this.historyKind = 'movements'; this.historySearch = ''; this.historyFrom = ''; this.historyTo = ''; this.historyError.set('');
     this.detailLoading.set(true);
     this.damageForm = { sourceId: '', quantity: 0, note: '' };
     this.api.materialDetail(code).subscribe({
-      next: (d) => { this.detail.set(d); this.detailLoading.set(false); },
+      next: (d) => {
+        this.damageForm.sourceId = d.sources.some(s => s.sourceId === sourceId) ? sourceId : '';
+        if (sourceId) this.sourcePage.set(Math.floor(Math.max(0, d.sources.findIndex(s => s.sourceId === sourceId)) / 15) + 1);
+        this.detail.set(d); this.detailLoading.set(false);
+      },
       error: (e) => { this.detailLoading.set(false); this.notify(inventoryErrorMessage(e), true); },
     });
   }
@@ -244,7 +334,7 @@ export class MaterialListComponent implements OnInit {
     return Math.max(0, Math.min(100, (v / total) * 100));
   }
   movementLabel(type: string): string {
-    return ({ NHAP: 'Nhập kho', XUAT: 'Xuất kho', GIU: 'Giữ tồn', NHA_GIU: 'Nhả giữ', KET_THUC_GIU: 'Kết thúc giữ', DANH_DAU_KHONG_DAT: 'Đánh dấu không đạt', XUAT_HUY: 'Xuất hủy/hao hụt' } as Record<string, string>)[type] || type;
+    return ({ NHAP: 'Nhập kho', DAO_NHAP: 'Đảo nhập kho', KHOI_PHUC_GIU: 'Khôi phục giữ sau đảo', DAO_CAM_SAN: 'Đảo cắm bó sẵn', DAO_XUAT: 'Đảo xuất kho', DIEU_CHINH_NHAP: 'Điều chỉnh tồn theo PN', XUAT: 'Xuất kho', GIU: 'Giữ tồn', NHA_GIU: 'Nhả giữ', KET_THUC_GIU: 'Kết thúc giữ', DANH_DAU_KHONG_DAT: 'Đánh dấu không đạt', XUAT_HUY: 'Xuất hủy/hao hụt' } as Record<string, string>)[type] || type;
   }
   notify(text: string, error = false): void {
     this.toast.set({ text, error });

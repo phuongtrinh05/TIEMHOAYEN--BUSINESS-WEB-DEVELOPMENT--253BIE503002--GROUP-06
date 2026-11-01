@@ -1,5 +1,9 @@
+import { InventoryDialogComponent } from '../inventory-dialog';
+import { InventoryReversalComponent } from '../inventory-reversal';
+import { exportInventoryCsv } from '../inventory-csv';
+import { InventoryPagerComponent } from '../inventory-pager';
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
@@ -35,11 +39,16 @@ const toLocalInput = (d: Date | string | null | undefined) => {
 @Component({
   selector: 'app-import-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, InventoryTabsComponent],
+  imports: [InventoryDialogComponent, InventoryReversalComponent, CommonModule, FormsModule, InventoryTabsComponent, InventoryPagerComponent],
   templateUrl: './import-list.html',
   styleUrls: ['../inventory.css', './import-list.css'],
 })
 export class ImportListComponent implements OnInit {
+  exportCsv(): void { exportInventoryCsv('import-list', ['Mã phiếu','Loại','NCC','PO','Nhận lúc','Tổng tiền','Trạng thái'], this.filtered().map(d => [d.PHIEU_NHAP_ID, d.LOAI_NHAP, d.TEN_NHA_CUNG_CAP, d.PO_ID, d.THOI_DIEM_NHAN || d.NGAY_NHAP, d.TONG_TIEN, d.TRANG_THAI])); }
+  readonly listPage = signal(1);
+  readonly displayPage = computed(() => Math.min(this.listPage(), Math.max(1, Math.ceil(this.filtered().length / 15))));
+  filtersOpen = false;
+  @ViewChild(InventoryDialogComponent) private dialog!: InventoryDialogComponent;
   private readonly api = inject(InventoryApiService);
   private readonly route = inject(ActivatedRoute);
 
@@ -55,6 +64,8 @@ export class ImportListComponent implements OnInit {
   statusFilter = '';
   typeFilter = '';
   supplierFilter = '';
+  dateFrom = ''; dateTo = ''; createdBy = ''; confirmedBy = '';
+  clearFilters(): void { this.typeFilter=''; this.supplierFilter=''; this.dateFrom=''; this.dateTo=''; this.createdBy=''; this.confirmedBy=''; this.load(); }
   search = '';
   private readonly tick = signal(0);
 
@@ -73,6 +84,8 @@ export class ImportListComponent implements OnInit {
   header = { type: 'Nhập mua NCC', supplierId: '', purchaseOrderId: '', originalExportId: '', receivedAt: toLocalInput(null), note: '' };
   lines: ImportLine[] = [];
 
+  correctionMode: 'reverse' | 'adjustment' = 'reverse';
+  readonly reversing = signal<InvDocument | null>(null);
   readonly viewing = signal<InvDocument | null>(null);
   private pendingPoId: string | null = null;
 
@@ -92,9 +105,9 @@ export class ImportListComponent implements OnInit {
     }
   }
 
-  load(): void {
+  load(): void { this.listPage.set(1);
     this.loading.set(true);
-    this.api.documents('imports', { status: this.statusFilter, type: this.typeFilter, supplierId: this.supplierFilter }).subscribe({
+    this.api.documents('imports', { status: this.statusFilter, type: this.typeFilter, supplierId: this.supplierFilter, from: this.dateFrom, to: this.dateTo, createdBy: this.createdBy, confirmedBy: this.confirmedBy }).subscribe({
       next: (r) => { this.docs.set(r.items); this.loading.set(false); this.error.set(''); },
       error: (e) => { this.error.set(inventoryErrorMessage(e)); this.loading.set(false); },
     });
@@ -111,7 +124,7 @@ export class ImportListComponent implements OnInit {
     });
   }
 
-  refilter(): void { this.tick.update((x) => x + 1); }
+  refilter(): void { this.listPage.set(1); this.tick.update((x) => x + 1); }
 
   /* ---------- Form ---------- */
   newLine(materialId = ''): ImportLine {
@@ -191,13 +204,13 @@ export class ImportListComponent implements OnInit {
     return '';
   }
 
-  save(post: boolean): void {
+  async save(post: boolean): Promise<void> {
     if (this.header.type === 'Nhập mua NCC' && !this.header.supplierId) { this.formError.set('Phiếu nhập mua bắt buộc chọn nhà cung cấp.'); return; }
     const lines = this.lines.filter((l) => l.materialId);
     if (!lines.length) { this.formError.set('Phiếu phải có ít nhất một NVL.'); return; }
     const bad = lines.map((l) => this.lineError(l)).find(Boolean);
     if (bad) { this.formError.set(bad); return; }
-    if (post && !confirm('Ghi nhận phiếu? Sau khi ghi nhận, tồn tăng theo SL đạt và phiếu không sửa được nữa.')) return;
+    if (post && !(await this.dialog.confirm('Ghi nhận phiếu? Sau khi ghi nhận, tồn tăng theo SL đạt và phiếu không sửa được nữa.'))) return;
     const body = {
       ...this.header,
       receivedAt: new Date(this.header.receivedAt).toISOString(),
@@ -218,24 +231,25 @@ export class ImportListComponent implements OnInit {
   }
 
   /* ---------- Hành động trên phiếu ---------- */
-  post(doc: InvDocument): void {
-    if (!confirm(`Ghi nhận ${doc.PHIEU_NHAP_ID}? Tồn sẽ tăng theo SL đạt.`)) return;
+  async post(doc: InvDocument): Promise<void> {
+    if (!(await this.dialog.confirm(`Ghi nhận ${doc.PHIEU_NHAP_ID}? Tồn sẽ tăng theo SL đạt.`))) return;
     this.api.postDocument('imports', doc.PHIEU_NHAP_ID!).subscribe({
       next: (r) => { this.notify(r.alreadyPosted ? 'Phiếu đã được ghi nhận trước đó — không cộng tồn lần 2.' : 'Đã ghi nhận phiếu nhập.'); this.viewing.set(null); this.load(); this.loadPurchaseOrders(); },
       error: (e) => this.notify(inventoryErrorMessage(e), true),
     });
   }
 
-  cancel(doc: InvDocument): void {
-    const reason = prompt('Lý do hủy phiếu nháp?') ?? '';
+  async cancel(doc: InvDocument): Promise<void> {
+    const reason = await this.dialog.prompt('Nhập lý do hủy phiếu nháp.');
+    if (reason === null) return;
     this.api.cancelDocument('imports', doc.PHIEU_NHAP_ID!, reason).subscribe({
       next: () => { this.notify('Đã hủy phiếu nháp.'); this.viewing.set(null); this.load(); },
       error: (e) => this.notify(inventoryErrorMessage(e), true),
     });
   }
 
-  remove(doc: InvDocument): void {
-    if (!confirm(`Xóa hẳn phiếu ${doc.PHIEU_NHAP_ID}?`)) return;
+  async remove(doc: InvDocument): Promise<void> {
+    if (!(await this.dialog.confirm(`Xóa hẳn phiếu ${doc.PHIEU_NHAP_ID}?`))) return;
     this.api.deleteDocument('imports', doc.PHIEU_NHAP_ID!).subscribe({
       next: () => { this.notify('Đã xóa phiếu.'); this.viewing.set(null); this.load(); },
       error: (e) => this.notify(inventoryErrorMessage(e), true),
@@ -243,8 +257,20 @@ export class ImportListComponent implements OnInit {
   }
 
   /* ---------- helpers ---------- */
+  reversalDeadline(doc: InvDocument): Date | null {
+    const postedAt = new Date(doc.NGAY_XAC_NHAN || '').getTime();
+    return Number.isFinite(postedAt) && postedAt <= Date.now() ? new Date(postedAt + 86400000) : null;
+  }
+  reversalExpired(doc: InvDocument): boolean {
+    const deadline = this.reversalDeadline(doc);
+    return !deadline || Date.now() >= deadline.getTime();
+  }
+  sourceDetails(doc: InvDocument) { return doc.details.filter(l => l.SL_CON_LAI !== undefined); }
+  adjustmentQty(doc: InvDocument, materialId: string): number {
+    return Math.round((doc.DIEU_CHINH || []).reduce((total, c) => total + c.CHI_TIET.filter(l => l.NGUYEN_VAT_LIEU_ID === materialId).reduce((sum, l) => sum + l.CHENH_LECH, 0), 0) * 1000) / 1000;
+  }
   materialById(id: string): InvMaterial | undefined { return this.materials().find((m) => m.code === id); }
-  statusClass(s: string): string { return s === 'Nháp' ? 'draft' : s === 'Đã hủy' ? 'cancelled' : 'posted'; }
+  statusClass(s: string): string { return s === 'Nháp' ? 'draft' : (s === 'Đã hủy' || s === 'Đã đảo') ? 'cancelled' : 'posted'; }
   totalAccepted(doc: InvDocument): number { return doc.details.reduce((s, d) => s + Number(d.SL_DAT ?? d.SO_LUONG_NHAP ?? 0), 0); }
   totalRejected(doc: InvDocument): number { return doc.details.reduce((s, d) => s + Number(d.SL_KHONG_DAT || 0), 0); }
   notify(text: string, error = false): void { this.toast.set({ text, error }); setTimeout(() => this.toast.set(null), error ? 7000 : 3500); }

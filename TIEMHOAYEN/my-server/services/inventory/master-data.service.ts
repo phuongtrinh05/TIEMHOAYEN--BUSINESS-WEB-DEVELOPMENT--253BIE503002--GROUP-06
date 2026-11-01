@@ -1,3 +1,4 @@
+import {DESIGN_MODELS,designColorsOf} from '../design3d.service.js';
 import {
   ACTIVE_RESERVATION_STATUSES,
   COLLECTIONS,
@@ -23,6 +24,8 @@ export const mapMaterial = (m: any) => {
     name: m.TEN_NGUYEN_VAT_LIEU || '',
     image: m.URL_HINH_ANH || '',
     unit: m.DON_VI_TINH || '',
+    use3d: !!m.DUNG_CHO_3D, model3d: m.MODEL_3D_KEY || '', color3d: m.MAU_3D || '', review3d: !!m.CAN_DUYET_3D,
+    colors3d: designColorsOf(m),
     description: m.MO_TA || '',
     group: m.NHOM_NVL || MATERIAL_GROUP.durable,
     type: m.LOAI_NVL || '',
@@ -68,6 +71,15 @@ export const listMaterials = async (query: any = {}) => {
 const materialPayload = (body: any, partial: boolean) => {
   const out: Record<string, unknown> = {};
   const set = (key: string, value: unknown) => { if (!partial || value !== undefined) out[key] = value; };
+  set('DUNG_CHO_3D', body.use3d === undefined ? undefined : body.use3d === true);
+  set('CAN_DUYET_3D', body.review3d === undefined ? undefined : body.review3d === true);
+  if(body.model3d !== undefined && body.model3d && !DESIGN_MODELS.includes(body.model3d)) throw new InventoryError(400,'Mẫu mô hình 3D không hợp lệ.');
+  set('MODEL_3D_KEY', body.model3d === undefined ? undefined : String(body.model3d || ''));
+  set('MAU_3D', body.color3d === undefined ? undefined : String(body.color3d || '').trim().slice(0,50));
+  if(body.colors3d!==undefined){
+    if(!Array.isArray(body.colors3d)||body.colors3d.length>20||body.colors3d.some((c:any)=>typeof c!=='string'||!c.trim()||c.length>50))throw new InventoryError(400,'Danh sách màu 3D không hợp lệ.');
+    set('MAU_3D_CHO_PHEP',[...new Set(body.colors3d.map((c:string)=>c.trim()))]);
+  }
   set('TEN_NGUYEN_VAT_LIEU', body.name === undefined ? undefined : String(body.name).trim());
   set('DON_VI_TINH', body.unit === undefined ? undefined : String(body.unit).trim());
   set('MO_TA', body.description === undefined ? undefined : String(body.description || ''));
@@ -116,8 +128,13 @@ export const updateMaterial = async (materialId: string, body: any, actor: Actor
   const current = await materials.findOne({ NGUYEN_VAT_LIEU_ID: materialId });
   if (!current) throw new InventoryError(404, 'Không tìm thấy NVL.');
   const payload = materialPayload(body, true);
-  if (payload.DON_VI_TINH && payload.DON_VI_TINH !== current.DON_VI_TINH && Number(current.TON_THUC || 0) > 0) {
-    throw new InventoryError(409, 'NVL còn tồn, không được đổi đơn vị tính (cần quy đổi có kiểm soát).');
+  if (payload.DON_VI_TINH && payload.DON_VI_TINH !== current.DON_VI_TINH) {
+    const history = await Promise.all([COLLECTIONS.importDetail, COLLECTIONS.exportDetail, COLLECTIONS.movement,
+      COLLECTIONS.reservation, COLLECTIONS.demand, COLLECTIONS.bomLine, COLLECTIONS.legacyRecipe, COLLECTIONS.supplierMaterial, 'THIET_KE_3D_CHI_TIET']
+      .map(async name => (await col(name)).countDocuments({ NGUYEN_VAT_LIEU_ID: materialId }, {limit: 1})));
+    if (Number(current.TON_THUC || 0) > 0 || history.some(n => n > 0)) {
+      throw new InventoryError(409, 'NVL đã có tồn, giao dịch, BOM hoặc nguồn cung; không đổi ĐVT trực tiếp. Cần tạo NVL/đơn vị quy đổi riêng để giữ đúng lịch sử.');
+    }
   }
   if (body.active !== undefined) payload.TRANG_THAI = body.active ? MATERIAL_STATUS.active : MATERIAL_STATUS.hidden;
   const updated = await materials.findOneAndUpdate(
@@ -146,15 +163,62 @@ export const deleteOrHideMaterial = async (materialId: string, actor: Actor) => 
   return { deleted: true };
 };
 
+/** History is paged separately so older records remain accessible without growing the detail dialog. */
+export const getMaterialHistory = async (materialId: string, query: any = {}) => {
+  if (!await (await col(COLLECTIONS.material)).findOne({ NGUYEN_VAT_LIEU_ID: materialId }, { projection: { _id: 1 } })) throw new InventoryError(404, 'Không tìm thấy NVL.');
+  const kind = query.kind || 'movements';
+  if (!['movements', 'corrections'].includes(kind)) throw new InventoryError(400, 'Loại lịch sử không hợp lệ.');
+  const corrections = kind === 'corrections';
+  const dateField = corrections ? 'NGAY_XAC_NHAN' : 'THOI_DIEM';
+  const filter: any = corrections ? { TRANG_THAI: DOC_STATUS.posted, 'CHI_TIET.NGUYEN_VAT_LIEU_ID': materialId } : { NGUYEN_VAT_LIEU_ID: materialId };
+  const day = (v: unknown, end: boolean) => {
+    if (!v) return null;
+    const text = String(v);
+    const parsed = Date.parse(text + 'T00:00:00Z');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || !Number.isFinite(parsed) || new Date(parsed).toISOString().slice(0, 10) !== text) throw new InventoryError(400, 'Ngày lọc không hợp lệ.');
+    return new Date(text + (end ? 'T23:59:59.999+07:00' : 'T00:00:00+07:00'));
+  };
+  const from = day(query.from, false), to = day(query.to, true);
+  if (from && to && from > to) throw new InventoryError(400, 'Ngày bắt đầu phải trước ngày kết thúc.');
+  if (from || to) filter[dateField] = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) };
+  const search = String(query.search || '').trim().slice(0, 200);
+  if (search) {
+    const literal = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    filter.$or = (corrections ? ['DIEU_CHINH_ID', 'PHIEU_GOC_ID', 'LY_DO'] : ['CHUNG_TU_ID', 'PHIEU_NHAP_NGUON', 'GHI_CHU', 'DON_HANG_ID']).map(field => ({ [field]: literal }));
+  }
+  const collection = await col(corrections ? 'DIEU_CHINH_KHO' : COLLECTIONS.movement);
+  const total = await collection.countDocuments(filter);
+  const pageSize = 15;
+  const requestedPage = Number(query.page || 1);
+  if (!Number.isSafeInteger(requestedPage) || requestedPage < 1) throw new InventoryError(400, 'Trang lịch sử không hợp lệ.');
+  const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)));
+  const rows = await collection.find(filter).project({ FINGERPRINT: 0 }).sort({ [dateField]: -1, _id: -1 }).skip((page - 1) * pageSize).limit(pageSize).toArray();
+  const items = rows.map(r => {
+    const lines = (r.CHI_TIET || []).filter((l: any) => l.NGUYEN_VAT_LIEU_ID === materialId);
+    return {
+      id: corrections ? r.DIEU_CHINH_ID : String(r._id), time: r[dateField],
+      type: corrections ? 'DIEU_CHINH_NHAP' : r.LOAI, docId: corrections ? r.DIEU_CHINH_ID : r.CHUNG_TU_ID,
+      sourceId: corrections ? r.PHIEU_GOC_ID : r.PHIEU_NHAP_NGUON,
+      deltaOnHand: corrections ? roundQty(lines.reduce((n: number, l: any) => n + Number(l.CHENH_LECH), 0)) : r.DELTA_TON_THUC || 0,
+      deltaReserved: corrections ? 0 : r.DELTA_DANG_GIU || 0, deltaDamaged: corrections ? 0 : r.DELTA_KHONG_DAT || 0,
+      availableAfter: corrections ? null : r.KHA_DUNG_SAU,
+      unitCost: corrections ? lines[0]?.DON_GIA_VON ?? null : r.DON_GIA_VON ?? null,
+      actor: corrections ? r.NGUOI_XAC_NHAN : r.NGUOI_THUC_HIEN, reason: corrections ? r.LY_DO : r.GHI_CHU,
+    };
+  });
+  return { kind, page, pageSize, total, items };
+};
+
 export const getMaterialDetail = async (materialId: string) => {
   const material = await (await col(COLLECTIONS.material)).findOne({ NGUYEN_VAT_LIEU_ID: materialId });
   if (!material) throw new InventoryError(404, 'Không tìm thấy NVL.');
-  const [sources, reservations, movements, supplierLinks, bomUsage] = await Promise.all([
+  const [sources, reservations, movements, supplierLinks, bomUsage, corrections] = await Promise.all([
     (await col(COLLECTIONS.importDetail)).find({ NGUYEN_VAT_LIEU_ID: materialId, LA_NGUON_NHAP: true, SL_CON_LAI: { $gt: 0 } }).sort({ THOI_DIEM_NHAN: 1, PHIEU_NHAP_ID: 1 }).toArray(),
     (await col(COLLECTIONS.reservation)).find({ NGUYEN_VAT_LIEU_ID: materialId, TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES } }).sort({ TAO_LUC: 1 }).toArray(),
     (await col(COLLECTIONS.movement)).find({ NGUYEN_VAT_LIEU_ID: materialId }).sort({ THOI_DIEM: -1 }).limit(50).toArray(),
     (await col(COLLECTIONS.supplierMaterial)).find({ NGUYEN_VAT_LIEU_ID: materialId }).sort({ UU_TIEN: 1 }).toArray(),
     (await col(COLLECTIONS.bomLine)).countDocuments({ NGUYEN_VAT_LIEU_ID: materialId }),
+    (await col('DIEU_CHINH_KHO')).find({ TRANG_THAI: DOC_STATUS.posted, 'CHI_TIET.NGUYEN_VAT_LIEU_ID': materialId }).project({ FINGERPRINT: 0, _id: 0 }).sort({ NGAY_XAC_NHAN: -1, DIEU_CHINH_ID: -1 }).limit(15).toArray(),
   ]);
   const suppliers = await (await col(COLLECTIONS.supplier)).find({ NHA_CUNG_CAP_ID: { $in: supplierLinks.map((s: any) => s.NHA_CUNG_CAP_ID) } }).toArray();
   return {
@@ -167,6 +231,7 @@ export const getMaterialDetail = async (materialId: string) => {
     reservations,
     movements,
     suppliers: supplierLinks.map((link: any) => ({ ...link, supplier: suppliers.find((s: any) => s.NHA_CUNG_CAP_ID === link.NHA_CUNG_CAP_ID) || null })),
+    corrections: corrections.map(c => ({ DIEU_CHINH_ID: c.DIEU_CHINH_ID, PHIEU_GOC_ID: c.PHIEU_GOC_ID, LY_DO: c.LY_DO, NGAY_XAC_NHAN: c.NGAY_XAC_NHAN, NGUOI_XAC_NHAN: c.NGUOI_XAC_NHAN, CHI_TIET: (c.CHI_TIET || []).filter((l: any) => l.NGUYEN_VAT_LIEU_ID === materialId) })),
     usedInBoms: bomUsage,
   };
 };
@@ -445,17 +510,28 @@ export const listDocuments = async (kind: 'import' | 'export', query: any = {}) 
   const detailName = kind === 'import' ? COLLECTIONS.importDetail : COLLECTIONS.exportDetail;
   const idField = kind === 'import' ? 'PHIEU_NHAP_ID' : 'PHIEU_XUAT_ID';
   const filter: any = {};
-  if (query.status === DOC_STATUS.posted) filter.$or = [{ TRANG_THAI: DOC_STATUS.posted }, { TRANG_THAI: { $exists: false } }];
+  if (query.status === DOC_STATUS.reversed) filter.DA_DAO = true;
+  else if (query.status === DOC_STATUS.posted) { filter.DA_DAO = {$ne: true}; filter.$or = [{ TRANG_THAI: DOC_STATUS.posted }, { TRANG_THAI: { $exists: false } }]; }
   else if (query.status) filter.TRANG_THAI = query.status;
   if (query.type) filter[kind === 'import' ? 'LOAI_NHAP' : 'LOAI_XUAT'] = query.type;
   if (query.supplierId) filter.NHA_CUNG_CAP_ID = query.supplierId;
   if (query.orderId) filter.DON_HANG_ID = query.orderId;
+  const boundary = (value: unknown, end: boolean) => {
+    if (!value) return null;
+    const day = String(value);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(day + 'T00:00:00Z')) || new Date(day + 'T00:00:00Z').toISOString().slice(0, 10) !== day) throw new InventoryError(400, 'Ngày lọc không hợp lệ.');
+    return new Date(day + (end ? 'T23:59:59.999+07:00' : 'T00:00:00+07:00'));
+  };
+  const from = boundary(query.from, false), to = boundary(query.to, true);
+  if (from && to && from > to) throw new InventoryError(400, 'Ngày bắt đầu phải trước ngày kết thúc.');
+  if (from || to) {
+    const date = kind === 'import' ? { $ifNull: ['$THOI_DIEM_NHAN', '$NGAY_NHAP'] } : '$NGAY_XUAT';
+    filter.$expr = { $and: [...(from ? [{ $gte: [date, from] }] : []), ...(to ? [{ $lte: [date, to] }] : [])] };
+  }
   const slips = await (await col(slipName)).find(filter).sort({ [idField]: -1 }).toArray();
   const details = await (await col(detailName)).find({ [idField]: { $in: slips.map((s: any) => s[idField]) } }).toArray();
   const names = await nameMaps();
-  return {
-    total: slips.length,
-    items: slips.map((s: any) => ({
+  const items = slips.map((s: any) => ({
       ...s,
       TRANG_THAI: s.TRANG_THAI || DOC_STATUS.posted,
       LOAI_NHAP: kind === 'import' ? s.LOAI_NHAP || 'Nhập mua NCC' : undefined,
@@ -467,8 +543,9 @@ export const listDocuments = async (kind: 'import' | 'export', query: any = {}) 
         const m: any = names.material.get(d.NGUYEN_VAT_LIEU_ID);
         return { ...d, TEN_NGUYEN_VAT_LIEU: m?.TEN_NGUYEN_VAT_LIEU || '', DON_VI_TINH: m?.DON_VI_TINH || '', NHOM_NVL: m?.NHOM_NVL || '' };
       }),
-    })),
-  };
+    })).filter(s => (!query.createdBy || normalizeText(`${s.NGUOI_LAP || s.NHAN_VIEN_ID || ""} ${s.TEN_NGUOI_LAP}`).includes(normalizeText(query.createdBy)))
+      && (!query.confirmedBy || normalizeText(`${s.NGUOI_XAC_NHAN || ""} ${s.TEN_NGUOI_XAC_NHAN}`).includes(normalizeText(query.confirmedBy))));
+  return { total: items.length, items };
 };
 
 export const listMovements = async (query: any = {}) => {

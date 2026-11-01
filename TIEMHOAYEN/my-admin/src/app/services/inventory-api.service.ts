@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
-import { Observable, map } from 'rxjs';
+import { Observable, map, switchMap, forkJoin, catchError, of } from 'rxjs';
 import { apiBaseUrl } from './api-config';
 
 /* =====================================================================
@@ -18,6 +18,8 @@ export interface InventoryMeta {
 }
 
 export interface InvMaterial {
+  use3d?: boolean; model3d?: string; color3d?: string; review3d?: boolean;
+  colors3d?: string[];
   code: string;
   name: string;
   image: string;
@@ -46,7 +48,18 @@ export interface InvMaterial {
   updatedBy: string | null;
 }
 
+export interface InvMaterialHistoryRow {
+  id: string; time: string; type: string; docId: string | null; sourceId: string | null;
+  deltaOnHand: number; deltaReserved: number; deltaDamaged: number; availableAfter: number | null;
+  unitCost: number | null; actor: string | null; reason: string | null;
+}
+export interface InvMaterialHistory {
+  kind: 'movements' | 'corrections'; page: number; pageSize: number; total: number; items: InvMaterialHistoryRow[];
+}
+
 export interface InvMaterialDetail {
+  corrections?: Array<{DIEU_CHINH_ID: string; PHIEU_GOC_ID: string; LY_DO: string; NGAY_XAC_NHAN: string; NGUOI_XAC_NHAN: string; CHI_TIET: Array<{NGUYEN_VAT_LIEU_ID: string; CHENH_LECH: number; DON_GIA_VON: number}>}>;
+
   material: InvMaterial;
   sources: Array<{ sourceId: string; receivedAt: string; supplierId: string | null; unitCost: number; accepted: number; remaining: number; damaged: number; reserved: number; usable: number }>;
   reservations: any[];
@@ -97,6 +110,7 @@ export interface InvSupplierMaterial {
 }
 
 export interface InvDocDetail {
+  SL_CON_LAI?: number; SL_HONG?: number; SL_DANG_GIU?: number; SL_DIEU_CHINH?: number;
   NGUYEN_VAT_LIEU_ID: string;
   TEN_NGUYEN_VAT_LIEU?: string;
   DON_VI_TINH?: string;
@@ -121,6 +135,10 @@ export interface InvDocDetail {
 }
 
 export interface InvDocument {
+  PX_GOC_ID?: string;
+  DIEU_CHINH?: Array<{ DIEU_CHINH_ID: string; LY_DO: string; NGAY_XAC_NHAN: string; NGUOI_XAC_NHAN: string; CHI_TIET: Array<{NGUYEN_VAT_LIEU_ID: string; CHENH_LECH: number; DON_GIA_VON: number}> }>;
+
+  DA_DAO?: boolean; DIEU_CHINH_ID?: string; LY_DO_DAO?: string; NGAY_DAO?: string; NGUOI_DAO?: string;
   PHIEU_NHAP_ID?: string;
   PHIEU_XUAT_ID?: string;
   LOAI_NHAP?: string;
@@ -183,6 +201,7 @@ export interface InvBom {
 }
 
 export interface InvBomProduct {
+  categories?: Record<string, string[]>;
   SAN_PHAM_ID: string;
   TEN_SAN_PHAM: string;
   KIEU_DANG: string;
@@ -248,6 +267,9 @@ export class InventoryApiService {
   /* NVL */
   materials(query: Record<string, unknown> = {}): Observable<{ total: number; materials: InvMaterial[]; types: string[] }> {
     return this.http.get<any>(`${this.base}/materials`, { params: this.params(query) });
+  }
+  materialHistory(id: string, query: Record<string, unknown> = {}): Observable<InvMaterialHistory> {
+    return this.http.get<InvMaterialHistory>(`${this.base}/materials/${encodeURIComponent(id)}/history`, {params: this.params(query)});
   }
   materialDetail(id: string): Observable<InvMaterialDetail> {
     return this.http.get<InvMaterialDetail>(`${this.base}/materials/${encodeURIComponent(id)}`);
@@ -321,6 +343,12 @@ export class InventoryApiService {
   postDocument(kind: 'imports' | 'exports', id: string): Observable<InvDocument & { alreadyPosted?: boolean }> {
     return this.http.post<any>(`${this.base}/${kind}/${encodeURIComponent(id)}/post`, {});
   }
+  adjustImport(id: string, body: {reason: string; physicallyVerified: boolean; requestId: string; details: Array<{materialId: string; quantity: number}>}): Observable<unknown> {
+    return this.http.post(`${this.base}/imports/${encodeURIComponent(id)}/adjust`, body);
+  }
+  reverseDocument(kind: 'imports' | 'exports', id: string, reason: string): Observable<unknown> {
+    return this.http.post(`${this.base}/${kind}/${encodeURIComponent(id)}/reverse`, { reason, physicallyVerified: true });
+  }
   cancelDocument(kind: 'imports' | 'exports', id: string, reason?: string): Observable<unknown> {
     return this.http.post(`${this.base}/${kind}/${encodeURIComponent(id)}/cancel`, { reason });
   }
@@ -332,8 +360,29 @@ export class InventoryApiService {
   }
 
   /* BOM */
-  bomProducts(search = ''): Observable<{ total: number; items: InvBomProduct[] }> {
-    return this.http.get<any>(`${this.base}/boms/products`, { params: this.params({ search }) });
+  bomProducts(search = ''): Observable<{ total: number; items: InvBomProduct[]; categoryError?: string }> {
+    return this.http.get<{ total: number; items: InvBomProduct[] }>(`${this.base}/boms/products`, { params: this.params({ search }) }).pipe(
+      switchMap(result => {
+        if (!result.items.length || result.items.some(p => Object.values(p.categories || {}).some(values => values.length))) return of(result);
+        // Older inventory endpoints omit category joins. Reuse the catalog's existing data.
+        const root = apiBaseUrl();
+        return forkJoin({
+          catalog: this.http.get<{ products: any[] }>(`${root}/category-products`),
+          collections: this.http.get<any[]>(`${root}/collections`),
+          links: this.http.get<any[]>(`${root}/collection-products`),
+        }).pipe(map(({ catalog, collections, links }) => {
+          const byId = new Map(catalog.products.map(p => [p.SAN_PHAM_ID, p]));
+          const names = (value: unknown) => String(value || '').split('|').map(v => v.trim()).filter(Boolean);
+          return { ...result, items: result.items.map(p => {
+            const row = byId.get(p.SAN_PHAM_ID);
+            return { ...p, categories: {
+              topic: names(row?.TEN_CHU_DE), target: names(row?.TEN_DOI_TUONG_LIST), color: names(row?.TEN_MAU_SAC_LIST),
+              collection: collections.filter(c => links.some(l => l.SAN_PHAM_ID === p.SAN_PHAM_ID && l.BO_SUU_TAP_ID === c.BO_SUU_TAP_ID)).map(c => String(c.TEN_BO_SUU_TAP)),
+            } };
+          }) };
+        }), catchError(() => of({ ...result, categoryError: 'Chưa tải được danh mục sản phẩm. Vui lòng thử lại.' })));
+      }),
+    );
   }
   productBoms(productId: string): Observable<{ boms: InvBom[]; legacyRecipe: InvBomLine[] }> {
     return this.http.get<any>(`${this.base}/boms/products/${encodeURIComponent(productId)}`);

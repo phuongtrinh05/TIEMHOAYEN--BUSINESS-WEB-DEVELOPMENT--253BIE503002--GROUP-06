@@ -1,3 +1,4 @@
+import { eligiblePaidOrderIds } from './order-eligibility.js';
 import {
   ACTIVE_RESERVATION_STATUSES,
   COLLECTIONS,
@@ -35,7 +36,8 @@ export const computeBuildable = (lines: BomLine[], materialsById: Map<string, an
     const m = materialsById.get(l.NGUYEN_VAT_LIEU_ID);
     const available = availableOf(m);
     const perUnit = Number(l.DINH_LUONG || 0);
-    const canMake = perUnit > 0 ? Math.floor(roundQty(available / perUnit) + 1e-9) : Number.POSITIVE_INFINITY;
+    const scale = 10 ** INVENTORY_CONFIG.quantityDecimals;
+    const canMake = perUnit > 0 ? Math.floor(Math.round(available * scale) / Math.round(perUnit * scale)) : Number.POSITIVE_INFINITY;
     if (canMake < buildable) {
       buildable = canMake;
       bottleneck = { materialId: l.NGUYEN_VAT_LIEU_ID, name: m?.TEN_NGUYEN_VAT_LIEU || l.NGUYEN_VAT_LIEU_ID };
@@ -65,7 +67,8 @@ export const pendingDemandByMaterial = async (deadline: Date | null, excludeOrde
   if (excludeOrderId) query.DON_HANG_ID = { $ne: excludeOrderId };
   const rows = await (await col(COLLECTIONS.demand)).find(query).toArray();
   const map = new Map<string, number>();
-  rows.forEach((r: any) => map.set(r.NGUYEN_VAT_LIEU_ID, roundQty((map.get(r.NGUYEN_VAT_LIEU_ID) || 0) + Number(r.SO_LUONG || 0))));
+  const paid = await eligiblePaidOrderIds(rows.map(r => r.DON_HANG_ID));
+  rows.filter(r => paid.has(r.DON_HANG_ID)).forEach((r: any) => map.set(r.NGUYEN_VAT_LIEU_ID, roundQty((map.get(r.NGUYEN_VAT_LIEU_ID) || 0) + Number(r.SO_LUONG || 0))));
   return map;
 };
 
@@ -214,7 +217,8 @@ export const getInventoryAlerts = async () => {
   const demandRows = await (await col(COLLECTIONS.demand)).find({ TRANG_THAI: DEMAND_STATUS.waiting }).sort({ THOI_DIEM_CAN_DUNG: 1, DON_HANG_ID: 1 }).toArray();
   // Gộp theo (đơn, NVL) — một đơn có nhiều sản phẩm dùng chung NVL
   const grouped = new Map<string, any>();
-  demandRows.forEach((d: any) => {
+  const paid = await eligiblePaidOrderIds(demandRows.map(d => d.DON_HANG_ID));
+  demandRows.filter(d => paid.has(d.DON_HANG_ID)).forEach((d: any) => {
     const key = `${d.DON_HANG_ID}|${d.NGUYEN_VAT_LIEU_ID}`;
     const g = grouped.get(key);
     if (g) g.SO_LUONG = roundQty(g.SO_LUONG + Number(d.SO_LUONG || 0));

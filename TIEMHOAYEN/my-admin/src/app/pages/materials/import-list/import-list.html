@@ -2,29 +2,25 @@
   <div class="inv-card">
     <app-inventory-tabs />
 
-    <div class="inv-head">
-      <div>
-        <h2 class="inv-title">Phiếu nhập kho</h2>
-        <p class="inv-sub">Lập khi hàng thực tế về shop. <b>Nháp</b> chưa ảnh hưởng kho; <b>Đã ghi nhận</b> cộng đúng một lần theo SL đạt và không sửa trực tiếp.</p>
-      </div>
-      <button class="inv-btn primary" (click)="openCreate()"><i class="bi bi-plus-lg"></i> Lập phiếu nhập</button>
+<div class="inv-local-tabs" role="group" aria-label="Trạng thái phiếu">
+      @for (s of ['', 'Nháp', 'Đã ghi nhận', 'Đã đảo', 'Đã hủy']; track s) {
+        <button class="inv-btn" type="button" [class.primary]="statusFilter === s" [attr.aria-pressed]="statusFilter === s" (click)="statusFilter = s; load()">{{ s || 'Tất cả' }}</button>
+      }
     </div>
-
-    <div class="inv-toolbar">
-      <div class="grow"><input class="inv-input" placeholder="Tìm mã phiếu, NCC, PO, ghi chú…" [(ngModel)]="search" (ngModelChange)="refilter()"></div>
-      <select class="inv-select" style="width:150px" [(ngModel)]="statusFilter" (ngModelChange)="load()">
-        <option value="">Mọi trạng thái</option><option>Nháp</option><option>Đã ghi nhận</option><option>Đã hủy</option>
-      </select>
-      <select class="inv-select" style="width:170px" [(ngModel)]="typeFilter" (ngModelChange)="load()">
+<div class="inv-toolbar inv-list-tools"><div class="grow"><input class="inv-input" placeholder="Tìm mã phiếu, NCC, PO, ghi chú…" [(ngModel)]="search" (ngModelChange)="refilter()"></div><button class="inv-btn" type="button" [class.inv-filter-active]="filtersOpen || typeFilter || supplierFilter || dateFrom || dateTo || createdBy || confirmedBy" [attr.aria-expanded]="filtersOpen" (click)="filtersOpen = !filtersOpen"><i class="bi bi-funnel"></i> Bộ lọc</button><button class="inv-btn" type="button" title="Tải lại" aria-label="Tải lại" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button><button class="inv-btn inv-add-btn" type="button" (click)="openCreate()" title="Lập phiếu nhập" aria-label="Lập phiếu nhập"><i class="bi bi-plus-circle" aria-hidden="true"></i></button><button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button></div>
+@if (filtersOpen) { <div class="inv-toolbar inv-filter-panel">
+<select class="inv-select" style="width:170px" [(ngModel)]="typeFilter" (ngModelChange)="load()">
         <option value="">Mọi loại nhập</option>
         @for (t of importTypes(); track t) { <option [value]="t">{{ t }}</option> }
       </select>
-      <select class="inv-select" style="width:210px" [(ngModel)]="supplierFilter" (ngModelChange)="load()">
+<select class="inv-select" style="width:210px" [(ngModel)]="supplierFilter" (ngModelChange)="load()">
         <option value="">Mọi nhà cung cấp</option>
         @for (s of suppliers(); track s.NHA_CUNG_CAP_ID) { <option [value]="s.NHA_CUNG_CAP_ID">{{ s.TEN_NHA_CUNG_CAP }}</option> }
-      </select>
-      <button class="inv-btn" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button>
-    </div>
+      </select><label>Từ ngày nhận<input class="inv-input" type="date" [(ngModel)]="dateFrom" (ngModelChange)="load()"></label>
+<label>Đến ngày nhận<input class="inv-input" type="date" [(ngModel)]="dateTo" (ngModelChange)="load()"></label>
+<label>Người lập<input class="inv-input" placeholder="Tên hoặc mã nhân viên" [(ngModel)]="createdBy" (change)="load()" (keyup.enter)="load()"></label>
+<label>Người xác nhận<input class="inv-input" placeholder="Tên hoặc mã nhân viên" [(ngModel)]="confirmedBy" (change)="load()" (keyup.enter)="load()"></label>
+<button class="inv-btn inv-clear-filter" type="button" (click)="clearFilters()">Xóa bộ lọc</button></div> }
 
     @if (error()) { <div class="inv-alert error">{{ error() }}</div> }
 
@@ -33,7 +29,7 @@
         <thead><tr><th>Mã phiếu</th><th>Loại</th><th>Nhà cung cấp</th><th>PO</th><th>Nhận lúc</th><th class="num">SL đạt</th><th class="num">Không đạt</th><th class="num">Tổng tiền</th><th>Trạng thái</th><th>Lập / xác nhận</th><th></th></tr></thead>
         <tbody>
           @if (loading()) { <tr><td colspan="11" class="inv-empty">Đang tải…</td></tr> }
-          @for (d of filtered(); track d.PHIEU_NHAP_ID) {
+          @for (d of filtered().slice((displayPage() - 1) * 15, displayPage() * 15); track d.PHIEU_NHAP_ID) {
             <tr class="clickable" (click)="viewing.set(d)">
               <td class="fw-bold">{{ d.PHIEU_NHAP_ID }} @if (d.DU_LIEU_MAU) { <span class="badge-s gray">mẫu</span> } @if (d.DU_LIEU_CU) { <span class="badge-s gray">cũ</span> }</td>
               <td>{{ d.LOAI_NHAP }}</td>
@@ -43,11 +39,11 @@
               <td class="num">{{ totalAccepted(d) | number: '1.0-3' }}</td>
               <td class="num">{{ totalRejected(d) | number: '1.0-3' }}</td>
               <td class="num">{{ d.TONG_TIEN | number }}đ</td>
-              <td><span class="badge-s" [class]="statusClass(d.TRANG_THAI)">{{ d.TRANG_THAI }}</span></td>
-              <td class="muted">{{ d.TEN_NGUOI_LAP || '—' }}<br>{{ d.TEN_NGUOI_XAC_NHAN }}</td>
+              <td><span class="badge-s" [class]="statusClass(d.TRANG_THAI)">{{ d.DA_DAO ? 'Đã đảo' : d.TRANG_THAI }}</span></td>
+              <td class="muted"><span [title]="'Người lập: ' + (d.TEN_NGUOI_LAP || '—')">{{ d.TEN_NGUOI_LAP || '—' }}</span>@if (d.TEN_NGUOI_XAC_NHAN && d.TEN_NGUOI_XAC_NHAN !== d.TEN_NGUOI_LAP) { <div class="muted" [title]="'Người xác nhận: ' + d.TEN_NGUOI_XAC_NHAN">{{ d.TEN_NGUOI_XAC_NHAN }}</div> }</td>
               <td (click)="$event.stopPropagation()">
                 @if (d.TRANG_THAI === 'Nháp') {
-                  <button class="inv-icon-btn" title="Sửa" (click)="openEdit(d)"><i class="bi bi-pencil"></i></button>
+                  <button class="inv-icon-btn" title="Sửa" (click)="openEdit(d)"><i class="bi bi-pencil-square"></i></button>
                   <button class="inv-btn sm success" (click)="post(d)">Ghi nhận</button>
                 }
               </td>
@@ -56,25 +52,35 @@
         </tbody>
       </table>
     </div>
+    <app-inventory-pager [count]="filtered().length" [page]="displayPage()" (pageChange)="listPage.set($event)" />
   </div>
 </div>
 
 <!-- ============ XEM PHIẾU ============ -->
 @if (viewing(); as d) {
   <div class="inv-backdrop" (click)="viewing.set(null)">
-    <div class="inv-modal" (click)="$event.stopPropagation()">
+    <div class="inv-modal inv-modal-wide" (click)="$event.stopPropagation()">
       <div class="inv-modal-head">
-        <h3>{{ d.PHIEU_NHAP_ID }} · {{ d.LOAI_NHAP }} <span class="badge-s" [class]="statusClass(d.TRANG_THAI)">{{ d.TRANG_THAI }}</span></h3>
-        <button class="inv-icon-btn" (click)="viewing.set(null)"><i class="bi bi-x-lg"></i></button>
+        <h3>{{ d.PHIEU_NHAP_ID }} · {{ d.LOAI_NHAP }} <span class="badge-s" [class]="statusClass(d.TRANG_THAI)">{{ d.DA_DAO ? 'Đã đảo' : d.TRANG_THAI }}</span></h3>
+        <button class="inv-icon-btn" aria-label="Đóng chi tiết" (click)="viewing.set(null)"><i class="bi bi-x-lg"></i></button>
       </div>
       <div class="inv-modal-body">
         <div class="inv-grid mb-3">
           <div><div class="muted">Nhà cung cấp</div><b>{{ d.TEN_NHA_CUNG_CAP || '—' }}</b></div>
           <div><div class="muted">PO liên kết</div><b>{{ d.PO_ID || '—' }}</b></div>
           <div><div class="muted">Thời điểm nhận</div><b>{{ (d.THOI_DIEM_NHAN || d.NGAY_NHAP) | date: 'dd/MM/yyyy HH:mm' }}</b></div>
-          <div><div class="muted">Người lập / xác nhận</div><b>{{ d.TEN_NGUOI_LAP || '—' }} / {{ d.TEN_NGUOI_XAC_NHAN || '—' }}</b></div>
+          <div><div class="muted">Người lập / xác nhận</div><b>{{ d.TEN_NGUOI_LAP || '—' }}@if(d.TEN_NGUOI_XAC_NHAN && d.TEN_NGUOI_XAC_NHAN !== d.TEN_NGUOI_LAP) { / {{d.TEN_NGUOI_XAC_NHAN}} }</b></div>
         </div>
+        @if(d.PX_GOC_ID) {<p>PX gốc: <b>{{d.PX_GOC_ID}}</b></p>}
+        @if(d.DIEU_CHINH?.length) {
+          <details class="mb-3"><summary>Lịch sử điều chỉnh ({{d.DIEU_CHINH!.length}})</summary>
+          @for(c of d.DIEU_CHINH; track c.DIEU_CHINH_ID) {
+            <div class="inv-alert info"><b>{{c.DIEU_CHINH_ID}}</b> · {{c.NGAY_XAC_NHAN | date:'dd/MM/yyyy HH:mm'}} · {{c.NGUOI_XAC_NHAN}}<p>{{c.LY_DO}}</p>
+            @for(l of c.CHI_TIET; track l.NGUYEN_VAT_LIEU_ID) {<div>{{l.NGUYEN_VAT_LIEU_ID}}: {{l.CHENH_LECH > 0 ? '+' : ''}}{{l.CHENH_LECH | number:'1.0-3'}} · Giá vốn {{l.DON_GIA_VON | number}}đ</div>}</div>
+          }</details>
+        }
         @if (d.GHI_CHU) { <div class="inv-alert info">{{ d.GHI_CHU }}</div> }
+        <div class="mb-2 fw-semibold">Số liệu phiếu gốc</div>
         <div class="inv-table-wrap">
           <table class="inv-table">
             <thead><tr><th>NVL</th><th class="num">Dự kiến</th><th class="num">Thực nhận</th><th class="num">Đạt</th><th class="num">Không đạt</th><th class="num">Đơn giá nhập</th><th class="num">Thành tiền</th><th class="num">Giá vốn / đơn vị đạt</th><th>Ghi chú</th></tr></thead>
@@ -95,19 +101,34 @@
             </tbody>
           </table>
         </div>
+        @if(d.TRANG_THAI === 'Đã ghi nhận' && sourceDetails(d).length) {
+          <div class="mt-3 mb-2 fw-semibold">Số dư nguồn hiện tại</div>
+          <div class="inv-table-wrap"><table class="inv-table">
+            <thead><tr><th>NVL</th><th class="num">Điều chỉnh ròng</th><th class="num">Còn tại nguồn</th><th class="num">Đang giữ</th><th class="num">Không đạt</th><th class="num">Khả dụng</th></tr></thead>
+            <tbody>@for(l of sourceDetails(d); track l.NGUYEN_VAT_LIEU_ID) {
+              <tr><td>{{l.NGUYEN_VAT_LIEU_ID}} · {{l.TEN_NGUYEN_VAT_LIEU}}<div class="muted">{{l.DON_VI_TINH}}</div></td>
+                <td class="num">{{adjustmentQty(d, l.NGUYEN_VAT_LIEU_ID) > 0 ? '+' : ''}}{{adjustmentQty(d, l.NGUYEN_VAT_LIEU_ID) | number:'1.0-3'}}</td>
+                <td class="num">{{l.SL_CON_LAI | number:'1.0-3'}}</td><td class="num">{{(l.SL_DANG_GIU || 0) | number:'1.0-3'}}</td><td class="num">{{(l.SL_HONG || 0) | number:'1.0-3'}}</td>
+                <td class="num">{{((l.SL_CON_LAI || 0) - (l.SL_DANG_GIU || 0) - (l.SL_HONG || 0)) | number:'1.0-3'}}</td></tr>
+            }</tbody>
+          </table></div>
+          @if(d.DIEU_CHINH?.length) {<p class="muted mt-2 mb-0">Điều chỉnh kiểm kê thay đổi số dư nguồn; số thực nhận trên phiếu gốc và PO được giữ nguyên.</p>}
+        }
       </div>
       <div class="inv-modal-foot">
         @if (d.TRANG_THAI === 'Nháp') {
           <button class="inv-btn danger" (click)="remove(d)">Xóa nháp</button>
           <button class="inv-btn" (click)="cancel(d)">Hủy phiếu</button>
-          <button class="inv-btn" (click)="openEdit(d)"><i class="bi bi-pencil"></i> Sửa</button>
+          <button class="inv-btn" (click)="openEdit(d)"><i class="bi bi-pencil-square"></i> Sửa</button>
           <button class="inv-btn success" (click)="post(d)"><i class="bi bi-check2-circle"></i> Ghi nhận vào kho</button>
         } @else if (d.TRANG_THAI === 'Đã hủy') {
           <button class="inv-btn danger" (click)="remove(d)">Xóa phiếu đã hủy</button>
-        } @else {
-          <span class="muted me-auto">Phiếu đã ghi nhận chỉ xem. Sai sót → lập phiếu xuất "Điều chỉnh kiểm kê" hoặc phiếu nhập "Điều chỉnh tăng".</span>
         }
-        <button class="inv-btn" (click)="viewing.set(null)">Đóng</button>
+        @if (d.DA_DAO || d.TRANG_THAI === 'Đã ghi nhận') {
+ @if(d.DA_DAO){<span class="muted">Đã đảo · {{d.DIEU_CHINH_ID}} · {{d.LY_DO_DAO}}</span>}
+ @else {<span class="muted">@if(reversalDeadline(d); as deadline){ {{reversalExpired(d) ? 'Đã hết hạn đảo lúc:' : 'Có thể đảo đến:'}} {{deadline | date:'dd/MM/yyyy HH:mm'}} }@else{Thiếu thời điểm ghi nhận; cần đối soát trước khi đảo.}</span><button class="inv-btn" (click)="correctionMode = 'adjustment'; reversing.set(d)"><i class="bi bi-sliders"></i> Điều chỉnh tồn</button><button class="inv-btn danger" [disabled]="reversalExpired(d)" (click)="correctionMode = 'reverse'; reversing.set(d)"><i class="bi bi-arrow-counterclockwise"></i> Đảo phiếu ghi sai</button>}
+ }
+<button class="inv-btn" (click)="viewing.set(null)">Đóng</button>
       </div>
     </div>
   </div>
@@ -116,14 +137,15 @@
 <!-- ============ FORM LẬP / SỬA ============ -->
 @if (formOpen()) {
   <div class="inv-backdrop" (click)="formOpen.set(false)">
-    <div class="inv-modal" style="width:min(1180px,100%)" (click)="$event.stopPropagation()">
+    <div class="inv-modal inv-modal-wide" (click)="$event.stopPropagation()">
       <div class="inv-modal-head">
         <h3>{{ editingId ? 'Sửa phiếu nháp ' + editingId : 'Lập phiếu nhập kho' }}</h3>
-        <button class="inv-icon-btn" (click)="formOpen.set(false)"><i class="bi bi-x-lg"></i></button>
+        <button class="inv-icon-btn" aria-label="Đóng biểu mẫu" (click)="formOpen.set(false)"><i class="bi bi-x-lg"></i></button>
       </div>
       <div class="inv-modal-body">
         @if (formError()) { <div class="inv-alert error">{{ formError() }}</div> }
         <div class="inv-grid">
+          <h4 class="inv-form-section">Thông tin nhận hàng</h4>
           <div class="inv-field"><label class="required">Loại nhập</label>
             <select class="inv-select" [(ngModel)]="header.type">@for (t of importTypes(); track t) { <option [value]="t">{{ t }}</option> }</select>
           </div>
@@ -140,7 +162,7 @@
             </select>
             <div class="hint">Chọn PO sẽ điền sẵn NVL còn chờ giao.</div>
           </div>
-          <div class="inv-field"><label class="required">Thời điểm hàng thực nhận</label><input class="inv-input" type="datetime-local" [(ngModel)]="header.receivedAt"><div class="hint">Dùng xếp thứ tự FIFO.</div></div>
+          <div class="inv-field"><label class="required">Thời điểm hàng thực nhận</label><input class="inv-input" type="datetime-local" [(ngModel)]="header.receivedAt"></div>
           @if (header.type === 'Nhập hoàn') {
             <div class="inv-field"><label>Phiếu xuất gốc</label><input class="inv-input" [(ngModel)]="header.originalExportId" placeholder="PX…"></div>
           }
@@ -192,3 +214,7 @@
 }
 
 @if (toast(); as t) { <div class="inv-toast" [class.error]="t.error">{{ t.text }}</div> }
+
+@if(reversing(); as d) {<app-inventory-reversal kind="imports" [documentId]="d.PHIEU_NHAP_ID!" [document]="d" [mode]="correctionMode" (closed)="reversing.set(null)" (done)="reversing.set(null); viewing.set(null); load(); loadPurchaseOrders()" />}
+
+<app-inventory-dialog />
