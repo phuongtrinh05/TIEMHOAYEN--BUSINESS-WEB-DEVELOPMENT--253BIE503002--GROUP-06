@@ -1,3 +1,4 @@
+import {syncLuckyOrder} from '../services/lucky-wheel.service.js';
 import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId } from '../mongo.js';
 import { getAdminOrderDetailById } from '../services/admin-order.service.js';
@@ -424,20 +425,19 @@ export const deleteAdminCustomerAddress = async (req: Request, res: Response) =>
   }
 };
 
+/** Shared response contract for the list and create/update responses. */
+const adminTransactionView = (row: any) => ({
+  ...row, id: row.THANH_TOAN_ID, code: row.THANH_TOAN_ID,
+  orderId: row.DON_HANG_ID, orderCode: row.DON_HANG_ID,
+  gateway: row.CONG_THANH_TOAN, referenceCode: row.MA_GIAO_DICH || '',
+  amount: Number(row.SO_TIEN || 0), status: row.TRANG_THAI_THANH_TOAN,
+  paidAt: row.NGAY_THANH_TOAN, transactionDate: row.NGAY_THANH_TOAN, selected: false,
+});
+
 export const getAdminTransactions = async (_req: Request, res: Response) => {
   try {
     const paymentCollection = await getCollection<any>('THANH_TOAN');
-    const transactions = (await paymentCollection.find({}).sort({ NGAY_THANH_TOAN: -1 }).toArray()).map((row) => ({
-      id: row.THANH_TOAN_ID,
-      orderId: row.DON_HANG_ID,
-      gateway: row.CONG_THANH_TOAN,
-      referenceCode: row.MA_GIAO_DICH,
-      amount: Number(row.SO_TIEN || 0),
-      status: row.TRANG_THAI_THANH_TOAN,
-      paidAt: row.NGAY_THANH_TOAN,
-      selected: false,
-      ...row,
-    }));
+    const transactions = (await paymentCollection.find({}).sort({ NGAY_THANH_TOAN: -1 }).toArray()).map(adminTransactionView);
     return res.status(200).json({ total: transactions.length, transactions });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot load transactions: ' + error.message });
@@ -454,7 +454,7 @@ export const updateAdminTransaction = async (req: Request, res: Response) => {
     if (current && status !== undefined && ['Thành công', 'Thất bại'].includes(normalizeTransactionStatus(status))) {
       await syncCheckoutInventory(session, current.DON_HANG_ID, normalizeTransactionStatus(status) === 'Thành công');
     }
-    return paymentCollection.findOneAndUpdate(
+    const updated=await paymentCollection.findOneAndUpdate(
       { THANH_TOAN_ID: transactionId },
       {
         $set: {
@@ -467,11 +467,13 @@ export const updateAdminTransaction = async (req: Request, res: Response) => {
       },
       { returnDocument: 'after', session },
     );
+    if(updated)await syncLuckyOrder(session,updated.DON_HANG_ID);
+    return updated;
     });
     if (!result) return res.status(404).json({ message: 'Không tìm thấy giao dịch.' });
-    return res.status(200).json({ message: 'Transaction updated.', transaction: result });
+    return res.status(200).json({ message: 'Transaction updated.', transaction: adminTransactionView(result) });
   } catch (error: any) {
-    return res.status(error instanceof InventoryError ? error.status : 500).json({ message: 'Cannot update transaction: ' + error.message });
+    return res.status(error instanceof InventoryError ? error.status : 500).json({ message: error instanceof InventoryError ? error.message : 'Không thể lưu giao dịch: ' + error.message });
   }
 };
 
@@ -487,13 +489,14 @@ export const createAdminTransaction = async (req: Request, res: Response) => {
       MA_GIAO_DICH: String(req.body.referenceCode || '').trim() || null,
       SO_TIEN: money(req.body.amount),
       TRANG_THAI_THANH_TOAN: normalizeTransactionStatus(req.body.status),
-      NGAY_THANH_TOAN: parseOptionalDate(req.body.paidAt) || new Date(),
+      NGAY_THANH_TOAN: parseOptionalDate(req.body.paidAt ?? req.body.transactionDate) || new Date(),
     };
     await withTransaction(async session => {
       if (['Thành công', 'Thất bại'].includes(transaction.TRANG_THAI_THANH_TOAN)) await syncCheckoutInventory(session, transaction.DON_HANG_ID, transaction.TRANG_THAI_THANH_TOAN === 'Thành công');
       await paymentCollection.insertOne(transaction, { session });
+      await syncLuckyOrder(session,transaction.DON_HANG_ID);
     });
-    return res.status(201).json({ message: 'Transaction created.', transaction });
+    return res.status(201).json({ message: 'Transaction created.', transaction: adminTransactionView(transaction) });
   } catch (error: any) {
     return res.status(error instanceof InventoryError ? error.status : 500).json({ message: 'Cannot create transaction: ' + error.message });
   }
@@ -530,6 +533,7 @@ export const updateAdminOrderPaymentStatus = async (req: Request, res: Response)
       }, { session });
     }
     if (status === 'Thành công') await orderCollection.updateOne({ DON_HANG_ID: orderId }, { $set: { TRANG_THAI: 'Chờ xử lý', TIEN_COC: amount } }, { session });
+    await syncLuckyOrder(session,String(orderId));
     });
     const order = await getAdminOrderDetailById(orderId);
     return res.status(200).json({ message: 'Payment status updated.', order });

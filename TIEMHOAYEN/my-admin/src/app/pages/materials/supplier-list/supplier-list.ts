@@ -1,5 +1,8 @@
+import { InventoryDialogComponent } from '../inventory-dialog';
+import { exportInventoryCsv } from '../inventory-csv';
+import { InventoryPagerComponent } from '../inventory-pager';
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
 import {
@@ -27,11 +30,17 @@ const EMPTY_LINK = {
 @Component({
   selector: 'app-supplier-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, InventoryTabsComponent],
+  imports: [InventoryDialogComponent, CommonModule, FormsModule, InventoryTabsComponent, InventoryPagerComponent],
   templateUrl: './supplier-list.html',
   styleUrls: ['../inventory.css', './supplier-list.css'],
 })
 export class SupplierListComponent implements OnInit {
+  @ViewChild(InventoryDialogComponent) private dialog!: InventoryDialogComponent;
+  readonly sourceFormOpen = signal(false);
+  exportCsv(): void { exportInventoryCsv('supplier-list', ['Mã NCC','Tên','Người đại diện','SĐT','Email','Địa chỉ','Trạng thái'], this.filtered().map(s => [s.NHA_CUNG_CAP_ID, s.TEN_NHA_CUNG_CAP, s.NGUOI_DAI_DIEN, s.SDT, s.EMAIL, s.DIA_CHI, s.TRANG_THAI])); }
+  readonly listPage = signal(1);
+  readonly displayPage = computed(() => Math.min(this.listPage(), Math.max(1, Math.ceil(this.filtered().length / 15))));
+  filtersOpen = false;
   private readonly api = inject(InventoryApiService);
 
   readonly suppliers = signal<InvSupplier[]>([]);
@@ -69,14 +78,14 @@ export class SupplierListComponent implements OnInit {
     this.load();
   }
 
-  load(): void {
+  load(): void { this.listPage.set(1);
     this.loading.set(true);
     this.api.suppliers().subscribe({
       next: (r) => { this.suppliers.set(r.suppliers); if (r.statuses?.length) this.statuses.set(r.statuses); this.loading.set(false); },
       error: (e) => { this.error.set(inventoryErrorMessage(e)); this.loading.set(false); },
     });
   }
-  refilter(): void { this.tick.update((x) => x + 1); }
+  refilter(): void { this.listPage.set(1); this.tick.update((x) => x + 1); }
 
   openCreate(): void {
     this.selected.set(null);
@@ -117,8 +126,8 @@ export class SupplierListComponent implements OnInit {
     });
   }
 
-  remove(s: InvSupplier): void {
-    if (!confirm(`Xóa / ngừng hợp tác với ${s.TEN_NHA_CUNG_CAP}? NCC đã có phiếu, PO hoặc nguồn cung sẽ chỉ chuyển "Ngừng hợp tác".`)) return;
+  async remove(s: InvSupplier): Promise<void> {
+    if (!(await this.dialog.confirm(`Xóa / ngừng hợp tác với ${s.TEN_NHA_CUNG_CAP}? NCC đã có phiếu, PO hoặc nguồn cung sẽ chỉ chuyển "Ngừng hợp tác".`))) return;
     this.api.deleteSupplier(s.NHA_CUNG_CAP_ID).subscribe({
       next: (r) => { this.notify(r.message || 'Đã xóa NCC.'); this.formOpen.set(false); this.load(); },
       error: (e) => this.notify(inventoryErrorMessage(e), true),
@@ -133,6 +142,7 @@ export class SupplierListComponent implements OnInit {
   }
 
   editLink(l: InvSupplierMaterial): void {
+    this.sourceFormOpen.set(true);
     this.editingLinkId = l._id;
     this.linkForm = {
       materialId: l.NGUYEN_VAT_LIEU_ID, supplierSku: l.MA_HANG_NCC || '', purchaseUnit: l.DON_VI_MUA, conversionRate: l.HE_SO_QUY_DOI,
@@ -143,6 +153,7 @@ export class SupplierListComponent implements OnInit {
   }
 
   resetLink(): void {
+    this.sourceFormOpen.set(false);
     this.editingLinkId = null;
     const s = this.selected();
     this.linkForm = { ...EMPTY_LINK, leadDays: s?.SO_NGAY_GIAO_MAC_DINH ?? 1 };
@@ -164,8 +175,8 @@ export class SupplierListComponent implements OnInit {
     });
   }
 
-  removeLink(l: InvSupplierMaterial): void {
-    if (!confirm(`Bỏ ${l.TEN_NGUYEN_VAT_LIEU} khỏi danh sách NCC cung cấp?`)) return;
+  async removeLink(l: InvSupplierMaterial): Promise<void> {
+    if (!(await this.dialog.confirm(`Bỏ ${l.TEN_NGUYEN_VAT_LIEU} khỏi danh sách NCC cung cấp?`))) return;
     this.api.deleteSupplierMaterial(l._id).subscribe({ next: () => { this.loadLinks(); this.load(); }, error: (e) => this.notify(inventoryErrorMessage(e), true) });
   }
 

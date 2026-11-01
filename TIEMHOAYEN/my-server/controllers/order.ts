@@ -1,3 +1,5 @@
+import {synchronizeLuckyOrder,syncLuckyOrder,renewLuckyHold} from '../services/lucky-wheel.service.js';
+import {getDesign,isDesignProduct,designFutureDay} from '../services/design3d.service.js';
 import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
 import { writeCheckoutOrder } from '../services/checkout-order-writer.service.js';
@@ -14,6 +16,7 @@ interface CreateOrderItem {
   id: string;
   qty: number;
   price: number;
+  design?: any;
 }
 
 const CANCEL_REASONS = [
@@ -216,7 +219,7 @@ const removePaidItemsFromCart = async (orderId: string, customerId: string): Pro
 const finalizeSuccessfulPayment = async (orderId: string): Promise<void> => {
   const orderCollection = await getCollection<any>('DON_HANG');
   const current = await orderCollection.findOne({ DON_HANG_ID: orderId });
-  if (current?.KIEM_TRA_TON_KHO && ['Chờ thanh toán', 'Thanh toán thất bại', 'Chờ xử lý'].includes(current.TRANG_THAI)) {
+  if (current?.KIEM_TRA_TON_KHO && !current.KHONG_GIU_TAM_NVL && ['Chờ thanh toán', 'Thanh toán thất bại', 'Chờ xử lý'].includes(current.TRANG_THAI)) {
     await confirmReservations(current.MA_PHIEN_THANH_TOAN ? { paymentSessionId: current.MA_PHIEN_THANH_TOAN } : { orderId }, orderId, { id: 'PAYMENT', role: 'system' });
   }
   const order = await orderCollection.findOneAndUpdate(
@@ -226,6 +229,7 @@ const finalizeSuccessfulPayment = async (orderId: string): Promise<void> => {
   );
 
   if (order) {
+    await synchronizeLuckyOrder(orderId);
     await markVoucherUsed(orderId);
     await removePaidItemsFromCart(orderId, String(order.KHACH_HANG_ID || ''));
   }
@@ -253,6 +257,7 @@ const markPaymentFailed = async (orderId: string): Promise<void> => {
     { $set: { TRANG_THAI: 'Thanh toán thất bại' } },
     { session },
   );
+  await syncLuckyOrder(session,orderId);
   });
 };
 
@@ -309,11 +314,16 @@ export const createOrder = async (req: Request, res: Response) => {
       if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000) {
         return res.status(400).json({ message: 'Số lượng sản phẩm phải là số nguyên từ 1–1000.' });
       }
-      const item = {
+      const item: CreateOrderItem = {
         id: String(rawItem.id || rawItem.SAN_PHAM_ID || ''),
         qty: quantity,
         price: Math.max(0, Number(rawItem.price || rawItem.GIA || 0)),
       };
+      if(isDesignProduct(item.id)) {
+        item.design=await getDesign(item.id);
+        if(!item.design.requiresReview && item.price!==item.design.price)throw new InventoryError(409,'Giá thiết kế đã thay đổi. Tải lại giỏ hàng để xem giá mới.');
+        item.price=item.design.price;
+      }
       if (!item.id.startsWith('SP')) return res.status(400).json({ message: 'Mã sản phẩm không hợp lệ.' });
 
       const current = productItemsById.get(item.id);
@@ -367,9 +377,18 @@ export const createOrder = async (req: Request, res: Response) => {
       });
     }
 
+    const validateDesignTotals = () => { if(req.body.luckyRewardId)return; if(productItems.some(i=>i.design)) {
+      const subtotal=productItems.reduce((n,i)=>n+i.price*i.qty,0);
+      const shipping=Number(summary?.shippingFee),loyalty=loyaltyDiscount;
+      const voucherType=String(checkedVoucher?.LOAI_GIAM_GIA || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+      const discount=/phan tram|percent|%/.test(voucherType)?Math.min(subtotal,Math.round(subtotal*Number(checkedVoucher?.GIA_TRI_GIAM || 0)/100)):0;
+      if(!Number.isSafeInteger(shipping)||shipping<0||Number(summary?.subtotal)!==subtotal||Number(summary?.total)!==Math.max(0,subtotal+shipping-discount-loyalty))throw new InventoryError(400,'Tổng tiền thiết kế không khớp giá backend. Tải lại giỏ hàng để tính lại.');
+      if(paymentMethod==='cod' && (!(Number(summary?.depositAmount)>0)||Number(summary.depositAmount)>Number(summary.total)))throw new InventoryError(400,'Tiền cọc không hợp lệ.');
+    }};
     const outcome = await routeCheckout(String(req.body.checkoutSessionId || ''), req.body,
-      productItems.map(item => ({ productId: item.id, quantity: item.qty })), async (session, orderId) => {
-      return writeCheckoutOrder(session, orderId, { ...req.body, items: productItems }, { voucher: checkedVoucher, loyaltyPoints: loyaltyPointsToUse });
+      productItems.map(item => ({ productId: item.id, quantity: item.qty })), async (session, orderId, snapshots, inventory) => {
+      validateDesignTotals();
+      return writeCheckoutOrder(session, orderId, { ...req.body, inventoryMode: inventory.futureNoHold ? 'FUTURE_DEMAND' : undefined, items: productItems.map(item => ({...item, bom: snapshots[item.id], ...(item.design?{custom:true,designId:item.design.designId,name:item.design.name,image:item.design.image}: {})})) }, { voucher: checkedVoucher, loyaltyPoints: loyaltyPointsToUse });
     });
     if (outcome.kind === 'order' && outcome.paymentAmount <= 0) await finalizeSuccessfulPayment(outcome.orderId);
     return res.status(201).json(outcome);
@@ -476,11 +495,13 @@ export const retryOrderPayment = async (req: Request, res: Response) => {
     await withTransaction(async session => {
     const fresh = await orderCollection.findOne({ DON_HANG_ID: orderId }, { session });
     if (!fresh || !['Chờ thanh toán', 'Thanh toán thất bại'].includes(fresh.TRANG_THAI)) throw new InventoryError(409, 'Đơn vừa thay đổi trạng thái.');
+    await renewLuckyHold(session,String(orderId));
     const newSessionId = randomUUID();
+    const futureNoHold=!!fresh.KHONG_GIU_TAM_NVL && designFutureDay(fresh.NGAY_MUON_GIAO);
     if (fresh.KIEM_TRA_TON_KHO) {
       await releaseReservations({ orderId }, { id: 'PAYMENT', role: 'system' }, 'Tạo phiên thanh toán mới', session);
       const details = await (await getCollection<any>('DON_HANG_CHI_TIET')).find({ DON_HANG_ID: orderId }, { session }).toArray();
-      await reserveOrderLines(session, details.map(item => ({ id: item.SAN_PHAM_ID, qty: item.SO_LUONG, custom: item.SAN_PHAM_TUY_CHINH, bom: item.BOM_SNAPSHOT })), {
+      if(!futureNoHold)await reserveOrderLines(session, details.map(item => ({ id: item.SAN_PHAM_ID, qty: item.SO_LUONG, custom: item.SAN_PHAM_TUY_CHINH, bom: item.BOM_SNAPSHOT })), {
         orderId, paymentSessionId: newSessionId, status: RESERVATION_STATUS.temporary, actor: { id: null, role: 'customer' },
       });
     }
@@ -502,7 +523,7 @@ export const retryOrderPayment = async (req: Request, res: Response) => {
       TRANG_THAI_THANH_TOAN: nextPaymentStatus,
       NGAY_THANH_TOAN: new Date(),
     }, { session });
-    await orderCollection.updateOne({ DON_HANG_ID: orderId }, { $set: { TRANG_THAI: nextOrderStatus, MA_PHIEN_THANH_TOAN: newSessionId } }, { session });
+    await orderCollection.updateOne({ DON_HANG_ID: orderId }, { $set: { TRANG_THAI: nextOrderStatus, MA_PHIEN_THANH_TOAN: newSessionId, KHONG_GIU_TAM_NVL: futureNoHold } }, { session });
     });
 
     if (paymentAmount <= 0) {

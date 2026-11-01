@@ -1,3 +1,4 @@
+import { eligiblePaidOrderIds } from './order-eligibility.js';
 import { ObjectId, type ClientSession } from 'mongodb';
 import {
   ACTIVE_RESERVATION_STATUSES,
@@ -30,7 +31,7 @@ import {
   type Actor,
 } from './helpers.js';
 import { applyFinishedDelta, applyMaterialDelta } from './ledger.js';
-import { getActiveBom } from './bom.service.js';
+import { getActiveBom, getOrderLineBom, resolveBomSnapshot, makeBomSnapshot } from './bom.service.js';
 
 /* =====================================================================
  * NGUỒN NHẬP (dòng PN đã Posted) — FIFO theo thời điểm nhận rồi mã PN
@@ -45,14 +46,10 @@ const loadSourcesFifo = async (session: ClientSession, materialId: string) =>
     .toArray();
 
 /** Phân bổ FIFO một lượng q trên các nguồn theo hàm "free" truyền vào. */
-const allocateFifo = (sources: any[], quantity: number, freeOf: (s: any) => number, preferred: string[] = []) => {
-  const ordered = [
-    ...preferred.map((id) => sources.find((s) => s.PHIEU_NHAP_ID === id)).filter(Boolean),
-    ...sources.filter((s) => !preferred.includes(s.PHIEU_NHAP_ID)),
-  ];
+const allocateFifo = (sources: any[], quantity: number, freeOf: (s: any) => number) => {
   const allocations: { sourceId: string; quantity: number; unitCost: number }[] = [];
   let remaining = roundQty(quantity);
-  for (const s of ordered) {
+  for (const s of sources) {
     if (remaining <= 0) break;
     const take = roundQty(Math.min(remaining, freeOf(s)));
     if (take <= 0) continue;
@@ -219,6 +216,34 @@ export const postImport = async (receiptId: string, actor: Actor) => withTransac
 
   const details = await (await col(COLLECTIONS.importDetail)).find({ PHIEU_NHAP_ID: receiptId }, { session }).toArray();
   if (!details.length) throw new InventoryError(400, 'Phiếu nhập chưa có NVL.');
+  if (current.PO_ID && current.LOAI_NHAP !== IMPORT_TYPES.purchase) throw new InventoryError(400, 'Chỉ PN nhập mua NCC được liên kết PO.');
+  if (current.LOAI_NHAP === IMPORT_TYPES.return) {
+    const original = await (await col(COLLECTIONS.exportSlip)).findOne({ PHIEU_XUAT_ID: current.PX_GOC_ID, TRANG_THAI: DOC_STATUS.posted, DA_DAO: { $ne: true } }, { session });
+    if (!original) throw new InventoryError(400, 'Nhập hoàn phải liên kết phiếu xuất gốc đã ghi nhận.');
+    const exportDetails = await col(COLLECTIONS.exportDetail);
+    for (const d of details) {
+      const source = await exportDetails.findOne({ PHIEU_XUAT_ID: current.PX_GOC_ID, NGUYEN_VAT_LIEU_ID: d.NGUYEN_VAT_LIEU_ID }, { session });
+      let remaining = roundQty(d.SL_THUC_NHAN);
+      const allocations = (source?.PHAN_BO || []).map((a: any) => ({ ...a }));
+      const returned: any[] = [];
+      for (const a of allocations) {
+        const take = roundQty(Math.min(remaining, Number(a.SO_LUONG) - Number(a.SL_DA_HOAN || 0)));
+        if (take <= 0) continue;
+        a.SL_DA_HOAN = roundQty(Number(a.SL_DA_HOAN || 0) + take);
+        returned.push({ PHIEU_NHAP_ID: a.PHIEU_NHAP_ID, SO_LUONG: take, DON_GIA_VON: a.DON_GIA_VON });
+        remaining = roundQty(remaining - take);
+      }
+      if (!source || remaining > 0) throw new InventoryError(409, `NVL ${d.NGUYEN_VAT_LIEU_ID}: lượng nhập hoàn vượt phần đã xuất còn được hoàn.`);
+      const cost = returned.reduce((sum, a) => sum + a.SO_LUONG * a.DON_GIA_VON, 0);
+      d.DON_GIA_VON = d.SL_THUC_NHAN > 0 ? Math.round(cost / d.SL_THUC_NHAN) : 0;
+      d.THANH_TIEN = Math.round(Number(d.SL_DAT) * d.DON_GIA_VON);
+      await exportDetails.updateOne({ _id: source._id }, { $set: { PHAN_BO: allocations } }, { session });
+      await (await col(COLLECTIONS.importDetail)).updateOne({ _id: d._id }, { $set: {
+        DON_GIA_VON: d.DON_GIA_VON, THANH_TIEN: d.THANH_TIEN, PX_GOC_ID: current.PX_GOC_ID, PHAN_BO_NGUON_GOC: returned,
+      } }, { session });
+    }
+    await slips.updateOne({ PHIEU_NHAP_ID: receiptId }, { $set: { TONG_TIEN: details.reduce((sum, d) => sum + Number(d.THANH_TIEN || 0), 0) } }, { session });
+  }
   if (current.LOAI_NHAP === IMPORT_TYPES.purchase) {
     if (!current.NHA_CUNG_CAP_ID) throw new InventoryError(400, 'Phiếu nhập mua bắt buộc chọn nhà cung cấp.');
     const supplier = await (await col(COLLECTIONS.supplier)).findOne({ NHA_CUNG_CAP_ID: current.NHA_CUNG_CAP_ID }, { session });
@@ -282,17 +307,22 @@ export const postImport = async (receiptId: string, actor: Actor) => withTransac
     }
   }
 
-  if (current.PO_ID) await applyReceiptToPurchaseOrder(session, current.PO_ID, details);
+  if (current.PO_ID) await applyReceiptToPurchaseOrder(session, current.PO_ID, details, receiptId);
   return { ...flipped, details, alreadyPosted: false };
 });
 
-const applyReceiptToPurchaseOrder = async (session: ClientSession, poId: string, details: any[]) => {
+const applyReceiptToPurchaseOrder = async (session: ClientSession, poId: string, details: any[], receiptId: string) => {
   const pos = await col(COLLECTIONS.purchaseOrder);
   const po = await pos.findOne({ PO_ID: poId }, { session });
   if (!po) throw new InventoryError(400, `Không tìm thấy PO ${poId}.`);
   if (![PO_STATUS.shipping, PO_STATUS.waiting].includes(po.TRANG_THAI)) {
     throw new InventoryError(400, `PO ${poId} đang "${po.TRANG_THAI}", không nhận hàng được.`);
   }
+  if (po.NHA_CUNG_CAP_ID !== (await (await col(COLLECTIONS.importSlip)).findOne({ PHIEU_NHAP_ID: receiptId }, { session }))?.NHA_CUNG_CAP_ID
+    || details.some(d => !(po.CHI_TIET || []).some((l: any) => l.NGUYEN_VAT_LIEU_ID === d.NGUYEN_VAT_LIEU_ID))) {
+    throw new InventoryError(400, 'Nhà cung cấp hoặc NVL của PN không khớp PO.');
+  }
+  await (await col(COLLECTIONS.importSlip)).updateOne({ PHIEU_NHAP_ID: receiptId }, { $set: { PO_TRANG_THAI_TRUOC_NHAN: po.TRANG_THAI } }, { session });
   const lines = (po.CHI_TIET || []).map((line: any) => {
     const d = details.find((x) => x.NGUYEN_VAT_LIEU_ID === line.NGUYEN_VAT_LIEU_ID);
     if (!d) return line;
@@ -305,7 +335,7 @@ const applyReceiptToPurchaseOrder = async (session: ClientSession, poId: string,
   const complete = lines.every((l: any) => Number(l.SL_DA_NHAN || 0) >= Number(l.SL_DAT || 0));
   await pos.updateOne(
     { PO_ID: poId },
-    { $set: { CHI_TIET: lines, ...(complete ? { TRANG_THAI: PO_STATUS.done, NGAY_HOAN_TAT: new Date() } : {}) } },
+    { $set: { CHI_TIET: lines, ...(complete ? { TRANG_THAI: PO_STATUS.done, TRANG_THAI_TRUOC_HOAN_TAT: po.TRANG_THAI, NGAY_HOAN_TAT: new Date() } : {}) } },
     { session },
   );
 };
@@ -325,7 +355,7 @@ const mapExportDetailInput = (receiptId: string, raw: any, index: number) => {
     NGUYEN_VAT_LIEU_ID: materialId,
     SL_THEO_BOM: raw.bomQty === undefined || raw.bomQty === null || raw.bomQty === '' ? null : roundQty(raw.bomQty ?? raw.SL_THEO_BOM),
     SO_LUONG_XUAT: toNonNegativeQty(raw.quantity ?? raw.SO_LUONG_XUAT, `Dòng ${index + 1}: SL xuất`),
-    PHIEU_NHAP_CHI_DINH: String(raw.sourceId ?? raw.PHIEU_NHAP_CHI_DINH ?? '').trim() || null,
+    PHIEU_NHAP_CHI_DINH: null, // Always FIFO; ignore legacy/client source preferences.
     GHI_CHU: String(raw.note ?? raw.GHI_CHU ?? '').trim() || null,
   };
 };
@@ -411,7 +441,7 @@ export const suggestExportLines = async (params: { type?: string; orderId?: stri
         const held = finishedHeld.filter((r: any) => r.SAN_PHAM_ID === line.SAN_PHAM_ID).reduce((s: number, r: any) => s + Number(r.SO_LUONG || 0), 0);
         const toMake = Math.max(0, Number(line.SO_LUONG || 0) - held);
         if (!toMake) continue;
-        const { lines: bom } = await getActiveBom(line.SAN_PHAM_ID);
+        const { lines: bom } = await getOrderLineBom(line);
         bom.forEach((b) => add(b.NGUYEN_VAT_LIEU_ID, ceilQty(b.DINH_LUONG * toMake)));
       }
     }
@@ -443,6 +473,10 @@ export const postExport = async (receiptId: string, actor: Actor) => withTransac
     if (!current.DON_HANG_ID) throw new InventoryError(400, 'Xuất làm hoa theo đơn phải chọn mã đơn hàng.');
     const order = await (await col(COLLECTIONS.order)).findOne({ DON_HANG_ID: current.DON_HANG_ID }, { session });
     if (!order) throw new InventoryError(400, `Không tìm thấy đơn ${current.DON_HANG_ID}.`);
+    const held = await (await col(COLLECTIONS.reservation)).find({ DON_HANG_ID: current.DON_HANG_ID,
+      LOAI_DOI_TUONG: ITEM_KIND.material, TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES } }, { session }).toArray();
+    const missing = held.filter((r: any) => !details.some((d: any) => d.NGUYEN_VAT_LIEU_ID === r.NGUYEN_VAT_LIEU_ID));
+    if (missing.length) throw new InventoryError(409, `Phiếu xuất còn thiếu NVL đã giữ: ${[...new Set(missing.map((r: any) => r.NGUYEN_VAT_LIEU_ID))].join(', ')}. Bổ sung dòng xuất và số thực lấy trước khi ghi nhận.`);
     // Một đơn cắm chỉ xuất NVL một lần
     const existed = await slips.findOne(
       { DON_HANG_ID: current.DON_HANG_ID, LOAI_XUAT: EXPORT_TYPES.order, TRANG_THAI: DOC_STATUS.posted },
@@ -486,7 +520,7 @@ export const postExport = async (receiptId: string, actor: Actor) => withTransac
         throw new InventoryError(409, `${material.TEN_NGUYEN_VAT_LIEU}: chỉ còn ${material.TON_KHONG_DAT || 0} ${material.DON_VI_TINH} đang cách ly.`);
       }
       const sources = (await loadSourcesFifo(session, d.NGUYEN_VAT_LIEU_ID)).filter((s) => Number(s.SL_HONG || 0) > 0);
-      const result = allocateFifo(sources, x, (s) => roundQty(s.SL_HONG), d.PHIEU_NHAP_CHI_DINH ? [d.PHIEU_NHAP_CHI_DINH] : []);
+      const result = allocateFifo(sources, x, (s) => roundQty(s.SL_HONG));
       if (result.missing > 0) throw new InventoryError(409, `${material.TEN_NGUYEN_VAT_LIEU}: không đủ lượng cách ly theo nguồn nhập.`);
       allocations = result.allocations;
       for (const a of allocations) {
@@ -503,7 +537,6 @@ export const postExport = async (receiptId: string, actor: Actor) => withTransac
           TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES },
         }, { session }).toArray()
         : [];
-      const preferred: string[] = [];
       for (const r of own) {
         await applyMaterialDelta(session, {
           ...ctx, materialId: d.NGUYEN_VAT_LIEU_ID, sourceId: r.PHIEU_NHAP_NGUON || null, dReserved: -Number(r.SO_LUONG),
@@ -511,7 +544,6 @@ export const postExport = async (receiptId: string, actor: Actor) => withTransac
         });
         await reservationsCol.updateOne({ _id: r._id }, { $set: { TRANG_THAI: RESERVATION_STATUS.finished, KET_THUC_LUC: new Date(), PHIEU_XUAT_ID: receiptId } }, { session });
         endedReserved = roundQty(endedReserved + Number(r.SO_LUONG));
-        if (r.PHIEU_NHAP_NGUON) preferred.push(r.PHIEU_NHAP_NGUON);
       }
       if (x > 0) {
         const fresh = await materials.findOne({ NGUYEN_VAT_LIEU_ID: d.NGUYEN_VAT_LIEU_ID }, { session });
@@ -522,7 +554,7 @@ export const postExport = async (receiptId: string, actor: Actor) => withTransac
           });
         }
         const sources = await loadSourcesFifo(session, d.NGUYEN_VAT_LIEU_ID);
-        const result = allocateFifo(sources, x, sourceFree, d.PHIEU_NHAP_CHI_DINH ? [d.PHIEU_NHAP_CHI_DINH, ...preferred] : preferred);
+        const result = allocateFifo(sources, x, sourceFree);
         if (result.missing > 0) {
           throw new InventoryError(409, `${material.TEN_NGUYEN_VAT_LIEU}: nguồn nhập không đủ để phân bổ ${x}.`);
         }
@@ -627,7 +659,7 @@ export const reserveMaterialNeeds = async (session: ClientSession, needs: Map<st
   for (const [id, qty] of needs) {
     const m: any = docs.find((x: any) => x.NGUYEN_VAT_LIEU_ID === id);
     const available = availableOf(m);
-    if (!m || available + 1e-9 < qty) {
+    if (!m || m.TRANG_THAI === MATERIAL_STATUS.hidden || available + 1e-9 < qty) {
       shortages.push({ materialId: id, name: m?.TEN_NGUYEN_VAT_LIEU || id, unit: m?.DON_VI_TINH, required: qty, available, missing: roundQty(qty - available) });
     }
   }
@@ -667,15 +699,23 @@ export const reserveMaterialNeeds = async (session: ClientSession, needs: Map<st
  * Giữ tồn cho danh sách sản phẩm: ưu tiên thành phẩm cắm sẵn còn khả dụng, phần còn lại quy đổi BOM → NVL.
  * Dùng cho: tạo QR đơn giao trong ngày (TAM_CHO_QR), hoặc Admin giữ chính thức.
  */
-export const reserveProducts = async (items: { productId: string; quantity: number }[], ctx: ReserveContext, outerSession?: ClientSession) => {
+export const reserveProducts = async (items: { productId: string; quantity: number; bomSnapshot?: any }[], ctx: ReserveContext, outerSession?: ClientSession) => {
   if (!Array.isArray(items) || !items.length) throw new InventoryError(400, 'Chưa có sản phẩm cần giữ.');
-  if (ctx.paymentSessionId) {
-    const existing = await (await col(COLLECTIONS.reservation)).find({
-      MA_PHIEN_THANH_TOAN: ctx.paymentSessionId, TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES },
-    }, { session: outerSession }).toArray();
-    if (existing.length) return { reservations: existing, idempotent: true };
-  }
+  const fingerprint = JSON.stringify({ items: [...items].sort((a, b) => a.productId.localeCompare(b.productId)), orderId: ctx.orderId || null });
   const work = async (session: ClientSession) => {
+    if (ctx.paymentSessionId) {
+      // Serialize the same key in the database, including transaction retries.
+      const locks = await col(COLLECTIONS.counter);
+      const key = `RESERVE:${ctx.paymentSessionId}`;
+      const firstProduct = [...items].sort((a, b) => a.productId.localeCompare(b.productId))[0].productId;
+      await (await col(COLLECTIONS.product)).updateOne({ SAN_PHAM_ID: firstProduct }, { $inc: { PHIEN_GIU_TON: 1 } }, { session });
+      await locks.updateOne({ _id: key as any }, { $inc: { revision: 1 }, $setOnInsert: { fingerprint } }, { upsert: true, session });
+      const lock = await locks.findOne({ _id: key as any }, { session });
+      if (lock?.fingerprint !== fingerprint) throw new InventoryError(409, 'Mã phiên giữ đã được dùng cho nội dung khác.');
+      const existing = await (await col(COLLECTIONS.reservation)).find({ MA_PHIEN_THANH_TOAN: ctx.paymentSessionId }, { session }).toArray();
+      if (existing.length) return { reservations: existing, idempotent: true };
+    }
+    const snapshots: Record<string, any> = {};
     const created: any[] = [];
     const needs = new Map<string, number>();
     const shortages: Shortage[] = [];
@@ -688,6 +728,8 @@ export const reserveProducts = async (items: { productId: string; quantity: numb
       if (!productId || quantity <= 0) throw new InventoryError(400, 'Sản phẩm / số lượng không hợp lệ.');
       const product = await products.findOne({ SAN_PHAM_ID: productId }, { session });
       if (!product) throw new InventoryError(404, `Không tìm thấy sản phẩm ${productId}.`);
+      const resolved = raw.bomSnapshot != null ? resolveBomSnapshot(raw.bomSnapshot) : await getActiveBom(productId, session);
+      snapshots[productId] = makeBomSnapshot(resolved);
       const finished = Math.min(quantity, Math.floor(finishedAvailableOf(product)));
       if (finished > 0) {
         const doc = newReservationDoc(ctx, { LOAI_DOI_TUONG: ITEM_KIND.finishedGood, SAN_PHAM_ID: productId, NGUYEN_VAT_LIEU_ID: null, PHIEU_NHAP_NGUON: null, SO_LUONG: finished });
@@ -700,7 +742,7 @@ export const reserveProducts = async (items: { productId: string; quantity: numb
       }
       const toMake = quantity - finished;
       if (toMake > 0) {
-        const { lines } = await getActiveBom(productId, session);
+        const { lines } = resolved;
         if (!lines.length) {
           shortages.push({ productId, name: product.TEN_SAN_PHAM, required: toMake, available: 0, missing: toMake, reason: 'Sản phẩm chưa có BOM và hết thành phẩm.' });
           continue;
@@ -710,7 +752,7 @@ export const reserveProducts = async (items: { productId: string; quantity: numb
     }
     if (shortages.length) throw new InventoryError(409, 'Không đủ hàng để giữ.', { shortages });
     created.push(...(await reserveMaterialNeeds(session, needs, ctx)));
-    return { reservations: created, idempotent: false };
+    return { reservations: created, idempotent: false, snapshots };
   };
   return outerSession ? work(outerSession) : withTransaction(work);
 };
@@ -789,37 +831,37 @@ export const sweepExpiredReservations = async () => {
  * NHU CẦU NVL DỰ KIẾN (đơn giao ngày khác) & lịch chuẩn bị T
  * ===================================================================== */
 
-export const recordOrderDemand = async (orderId: string, body: { items?: { productId: string; quantity: number }[]; neededAt?: string }, actor: Actor, options: { demo?: boolean } = {}) => {
-  const order = await (await col(COLLECTIONS.order)).findOne({ DON_HANG_ID: orderId });
+export const recordOrderDemand = async (orderId: string, body: { items?: { productId: string; quantity: number }[]; neededAt?: string }, actor: Actor, options: { demo?: boolean; paymentConfirmed?: boolean } = {}, outerSession?: ClientSession) => {
+  const work=async(session:ClientSession)=>{
+  const orders = await col(COLLECTIONS.order);
+  const order = await orders.findOne({ DON_HANG_ID: orderId }, {session});
   if (!order) throw new InventoryError(404, 'Không tìm thấy đơn hàng.');
-  const items = body.items?.length
-    ? body.items
-    : (await (await col(COLLECTIONS.orderDetail)).find({ DON_HANG_ID: orderId }).toArray()).map((d: any) => ({ productId: d.SAN_PHAM_ID, quantity: d.SO_LUONG }));
+  if (!options.paymentConfirmed && !(await eligiblePaidOrderIds([orderId], session)).has(orderId)) throw new InventoryError(409, 'Chỉ lập nhu cầu cho đơn đã thanh toán/cọc hợp lệ và chưa hủy.');
+  await orders.updateOne({_id: order._id}, {$inc: {PHIEN_NHU_CAU: 1}}, {session});
+  const items = await (await col(COLLECTIONS.orderDetail)).find({ DON_HANG_ID: orderId }, {session}).toArray();
+  if (!items.length) throw new InventoryError(409, 'Đơn chưa có chi tiết sản phẩm đã chốt.');
+  if (body.items?.length && (body.items.length !== items.length || body.items.some(i => !items.some(d => d.SAN_PHAM_ID === i.productId && Number(d.SO_LUONG) === Number(i.quantity))))) throw new InventoryError(409, 'Nhu cầu phải dùng đúng sản phẩm và số lượng trên đơn đã chốt.');
   const demandCol = await col(COLLECTIONS.demand);
-  const existing = await demandCol.countDocuments({ DON_HANG_ID: orderId, TRANG_THAI: { $ne: DEMAND_STATUS.cancelled } });
-  if (existing) throw new InventoryError(409, 'Đơn đã có nhu cầu NVL. Hủy nhu cầu cũ trước khi ghi lại.');
-  const neededAt = parseDate(body.neededAt);
+  if (await demandCol.countDocuments({ DON_HANG_ID: orderId, TRANG_THAI: {$ne: DEMAND_STATUS.cancelled} }, {session})) throw new InventoryError(409, 'Đơn đã có nhu cầu NVL. Hủy nhu cầu cũ trước khi ghi lại.');
+  const neededAt = parseDate(body.neededAt ?? order.THOI_DIEM_BAT_DAU_CHUAN_BI);
+  if (body.neededAt && !neededAt) throw new InventoryError(400, 'Thời điểm chuẩn bị không hợp lệ.');
+  const finished = await (await col(COLLECTIONS.reservation)).find({DON_HANG_ID: orderId, LOAI_DOI_TUONG: ITEM_KIND.finishedGood, TRANG_THAI: {$in: ACTIVE_RESERVATION_STATUSES}}, {session}).toArray();
   const rows: any[] = [];
   for (const item of items) {
-    const { bom, lines } = await getActiveBom(item.productId);
-    lines.forEach((l) => rows.push({
-      _id: new ObjectId(),
-      DON_HANG_ID: orderId,
-      SAN_PHAM_ID: item.productId,
-      BOM_ID: bom?.BOM_ID || null,
-      BOM_PHIEN_BAN: bom?.PHIEN_BAN || null,
-      NGUYEN_VAT_LIEU_ID: l.NGUYEN_VAT_LIEU_ID,
-      SO_LUONG: ceilQty(l.DINH_LUONG * Number(item.quantity || 1)),
-      DON_VI_TINH: l.DON_VI_TINH,
-      THOI_DIEM_CAN_DUNG: neededAt,
-      TRANG_THAI: DEMAND_STATUS.waiting,
-      TAO_LUC: new Date(),
-      NGUOI_TAO: actor.id,
-      ...(options.demo ? { DU_LIEU_MAU: true } : {}),
-    }));
+    const quantity = Number(item.SO_LUONG);
+    if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new InventoryError(409, 'Số lượng trên đơn không hợp lệ.');
+    const toMake = Math.max(0, quantity - finished.filter(r => r.SAN_PHAM_ID === item.SAN_PHAM_ID).reduce((n,r) => n + Number(r.SO_LUONG), 0));
+    if (!toMake) continue;
+    const {bom, lines} = await getOrderLineBom(item, session);
+    lines.forEach(l => rows.push({ _id: new ObjectId(), DON_HANG_ID: orderId, SAN_PHAM_ID: item.SAN_PHAM_ID,
+      BOM_ID: bom?.BOM_ID || null, BOM_PHIEN_BAN: bom?.PHIEN_BAN || null, NGUYEN_VAT_LIEU_ID: l.NGUYEN_VAT_LIEU_ID,
+      SO_LUONG: ceilQty(l.DINH_LUONG * toMake), DON_VI_TINH: l.DON_VI_TINH, THOI_DIEM_CAN_DUNG: neededAt,
+      TRANG_THAI: DEMAND_STATUS.waiting, TAO_LUC: new Date(), NGUOI_TAO: actor.id, ...(options.demo ? {DU_LIEU_MAU: true} : {}) }));
   }
-  if (rows.length) await demandCol.insertMany(rows);
-  return { created: rows.length, rows };
+  if (rows.length) await demandCol.insertMany(rows, {session});
+  return {created: rows.length, rows};
+  };
+  return outerSession?work(outerSession):withTransaction(work);
 };
 
 /** Admin nhập/đổi T (thời điểm bắt đầu chuẩn bị) — không tự xếp lịch. */
@@ -834,15 +876,21 @@ export const setOrderPrepTime = async (orderId: string, neededAtRaw: unknown, ac
 
 /** Sự kiện 6: đến lịch trước T → giữ chính thức phần nhu cầu dự kiến. */
 export const reserveOrderDemand = async (orderId: string, actor: Actor, options: { demo?: boolean } = {}) => withTransaction(async (session) => {
+  if (!(await eligiblePaidOrderIds([orderId], session)).has(orderId)) throw new InventoryError(409, 'Đơn chưa thanh toán/cọc hợp lệ hoặc đã hủy.');
   const demandCol = await col(COLLECTIONS.demand);
   const rows = await demandCol.find({ DON_HANG_ID: orderId, TRANG_THAI: DEMAND_STATUS.waiting }, { session }).toArray();
   if (!rows.length) throw new InventoryError(404, 'Đơn không có nhu cầu NVL đang chờ giữ.');
   const needs = new Map<string, number>();
-  rows.forEach((r: any) => needs.set(r.NGUYEN_VAT_LIEU_ID, roundQty((needs.get(r.NGUYEN_VAT_LIEU_ID) || 0) + Number(r.SO_LUONG))));
+  rows.filter(r=>!String(r.SAN_PHAM_ID).startsWith('SPGIFT_')).forEach((r: any) => needs.set(r.NGUYEN_VAT_LIEU_ID, roundQty((needs.get(r.NGUYEN_VAT_LIEU_ID) || 0) + Number(r.SO_LUONG))));
   const neededAt = rows.find((r: any) => r.THOI_DIEM_CAN_DUNG)?.THOI_DIEM_CAN_DUNG || null;
   const reservations = await reserveMaterialNeeds(session, needs, {
     status: RESERVATION_STATUS.official, orderId, neededAt, actor, demo: options.demo,
   });
+  for(const gift of rows.filter(r=>String(r.SAN_PHAM_ID).startsWith('SPGIFT_'))){
+    const held=await reserveMaterialNeeds(session,new Map([[gift.NGUYEN_VAT_LIEU_ID,Number(gift.SO_LUONG)]]),{status:RESERVATION_STATUS.official,orderId,neededAt,actor,demo:options.demo});
+    await (await col(COLLECTIONS.reservation)).updateMany({_id:{$in:held.map(h=>h._id)}},{$set:{VQ_PHAN_THUONG_ID:String(gift.SAN_PHAM_ID).slice(7)}},{session});
+    reservations.push(...held);
+  }
   await demandCol.updateMany({ _id: { $in: rows.map((r: any) => r._id) } }, { $set: { TRANG_THAI: DEMAND_STATUS.reserved, GIU_LUC: new Date() } }, { session });
   return { reservations };
 });

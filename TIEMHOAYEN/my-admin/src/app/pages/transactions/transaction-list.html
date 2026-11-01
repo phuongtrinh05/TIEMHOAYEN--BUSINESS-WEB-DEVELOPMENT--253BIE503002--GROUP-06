@@ -396,3 +396,11 @@
         Thêm
     </button>
 </div>
+
+@if(errorMessage){
+  <div class="transaction-error-backdrop"><section class="transaction-error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="transaction-error-title">
+    <h2 id="transaction-error-title"><i class="bi bi-exclamation-circle"></i> Chưa lưu được giao dịch</h2>
+    <p>{{errorMessage}}</p>
+    <button type="button" (click)="errorMessage=''">Đã hiểu</button>
+  </section></div>
+}

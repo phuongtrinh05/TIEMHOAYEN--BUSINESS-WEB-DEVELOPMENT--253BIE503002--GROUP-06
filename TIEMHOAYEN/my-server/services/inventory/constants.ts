@@ -12,8 +12,8 @@ const envNumber = (key: string, fallback: number): number => {
 };
 
 export const INVENTORY_CONFIG = {
-  /** [ĐỀ XUẤT] Thời gian giữ tạm chờ thanh toán QR (phút). Stage plan 26/10: 15'; tài liệu Tồn kho 22/10: 5'. */
-  holdMinutes: envNumber('INVENTORY_HOLD_MINUTES', 15),
+  /** D01/D04: QR và giữ tạm dùng cùng thời hạn 5 phút. */
+  holdMinutes: envNumber('INVENTORY_HOLD_MINUTES', 5),
   /** [ĐỀ XUẤT] Giờ cutoff đơn giao trong ngày (giờ VN, HH:mm). Sau giờ này đơn giao hôm nay cần Sales kiểm tra. */
   sameDayCutoff: process.env.INVENTORY_SAME_DAY_CUTOFF || '14:00',
   /** Ngưỡng "Sắp hết" của sản phẩm trên website: 1–3 bó (D01.7 tầng 2). */
@@ -72,7 +72,7 @@ export const SUPPLIER_STATUSES = ['Hoạt động', 'Đang hợp tác', 'Tạm n
 export const SUPPLIER_ACTIVE_STATUSES = ['Hoạt động', 'Đang hợp tác'];
 
 /** D01.3 — Trạng thái chứng từ kho */
-export const DOC_STATUS = { draft: 'Nháp', posted: 'Đã ghi nhận', cancelled: 'Đã hủy' } as const;
+export const DOC_STATUS = { draft: 'Nháp', posted: 'Đã ghi nhận', reversed: 'Đã đảo', cancelled: 'Đã hủy' } as const;
 
 export const IMPORT_TYPES = {
   purchase: 'Nhập mua NCC',

@@ -1,5 +1,9 @@
+import { InventoryDialogComponent } from '../inventory-dialog';
+import { InventoryReversalComponent } from '../inventory-reversal';
+import { exportInventoryCsv } from '../inventory-csv';
+import { InventoryPagerComponent } from '../inventory-pager';
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
@@ -7,6 +11,7 @@ import {
   InvBomProduct,
   InvDocument,
   InvMaterial,
+  InvMaterialDetail,
   InventoryApiService,
   inventoryErrorMessage,
 } from '../../../services/inventory-api.service';
@@ -15,7 +20,6 @@ interface ExportLine {
   materialId: string;
   bomQty: number | null;
   quantity: number;
-  sourceId: string;
   note: string;
 }
 
@@ -34,11 +38,16 @@ const TYPE_HELP: Record<string, string> = {
 @Component({
   selector: 'app-export-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, InventoryTabsComponent],
+  imports: [InventoryDialogComponent, InventoryReversalComponent, CommonModule, FormsModule, InventoryTabsComponent, InventoryPagerComponent],
   templateUrl: './export-list.html',
   styleUrls: ['../inventory.css', './export-list.css'],
 })
 export class ExportListComponent implements OnInit {
+  exportCsv(): void { exportInventoryCsv('export-list', ['Mã phiếu','Loại','Đơn','Sản phẩm','Ngày xuất','Giá vốn','Trạng thái'], this.filtered().map(d => [d.PHIEU_XUAT_ID, d.LOAI_XUAT, d.DON_HANG_ID, d.SAN_PHAM_ID, d.NGAY_XUAT, d.TONG_GIA_VON, d.TRANG_THAI])); }
+  readonly listPage = signal(1);
+  readonly displayPage = computed(() => Math.min(this.listPage(), Math.max(1, Math.ceil(this.filtered().length / 15))));
+  filtersOpen = false;
+  @ViewChild(InventoryDialogComponent) private dialog!: InventoryDialogComponent;
   private readonly api = inject(InventoryApiService);
   private readonly route = inject(ActivatedRoute);
 
@@ -68,6 +77,7 @@ export class ExportListComponent implements OnInit {
   editingId: string | null = null;
   header = { type: 'Làm hoa theo đơn', orderId: '', productId: '', bundles: 1, exportedAt: '', note: '' };
   lines: ExportLine[] = [];
+  readonly reversing = signal<InvDocument | null>(null);
   readonly viewing = signal<InvDocument | null>(null);
 
   ngOnInit(): void {
@@ -83,16 +93,16 @@ export class ExportListComponent implements OnInit {
     }
   }
 
-  load(): void {
+  load(): void { this.listPage.set(1);
     this.loading.set(true);
     this.api.documents('exports', { status: this.statusFilter, type: this.typeFilter }).subscribe({
       next: (r) => { this.docs.set(r.items); this.loading.set(false); this.error.set(''); },
       error: (e) => { this.error.set(inventoryErrorMessage(e)); this.loading.set(false); },
     });
   }
-  refilter(): void { this.tick.update((x) => x + 1); }
+  refilter(): void { this.listPage.set(1); this.tick.update((x) => x + 1); }
 
-  newLine(materialId = ''): ExportLine { return { materialId, bomQty: null, quantity: 0, sourceId: '', note: '' }; }
+  newLine(materialId = ''): ExportLine { return { materialId, bomQty: null, quantity: 0, note: '' }; }
 
   openCreate(): void {
     this.editingId = null;
@@ -105,7 +115,7 @@ export class ExportListComponent implements OnInit {
   openEdit(doc: InvDocument): void {
     this.editingId = doc.PHIEU_XUAT_ID!;
     this.header = { type: doc.LOAI_XUAT || 'Khác', orderId: doc.DON_HANG_ID || '', productId: doc.SAN_PHAM_ID || '', bundles: doc.SO_BO || 1, exportedAt: '', note: doc.GHI_CHU || '' };
-    this.lines = doc.details.map((d) => ({ materialId: d.NGUYEN_VAT_LIEU_ID, bomQty: d.SL_THEO_BOM ?? null, quantity: d.SO_LUONG_XUAT || 0, sourceId: (d as any).PHIEU_NHAP_CHI_DINH || '', note: d.GHI_CHU || '' }));
+    this.lines = doc.details.map((d) => ({ materialId: d.NGUYEN_VAT_LIEU_ID, bomQty: d.SL_THEO_BOM ?? null, quantity: d.SO_LUONG_XUAT || 0, note: d.GHI_CHU || '' }));
     this.viewing.set(null);
     this.formError.set('');
     this.formOpen.set(true);
@@ -129,8 +139,8 @@ export class ExportListComponent implements OnInit {
       next: (rows) => {
         this.suggesting.set(false);
         if (!rows.length) { this.formError.set('Không tìm thấy BOM / lượng giữ cho lựa chọn này.'); return; }
-        this.lines = rows.map((r) => ({ materialId: r.materialId, bomQty: r.bomQty, quantity: r.quantity, sourceId: '', note: '' }));
-      },
+        this.lines = rows.map((r) => ({ materialId: r.materialId, bomQty: r.bomQty, quantity: r.quantity, note: '' }));
+          },
       error: (e) => { this.suggesting.set(false); this.formError.set(inventoryErrorMessage(e)); },
     });
   }
@@ -145,7 +155,7 @@ export class ExportListComponent implements OnInit {
     return '';
   }
 
-  save(post: boolean): void {
+  async save(post: boolean): Promise<void> {
     const t = this.header.type;
     if (t === 'Làm hoa theo đơn' && !this.header.orderId) { this.formError.set('Xuất theo đơn phải có mã đơn hàng.'); return; }
     if (t === 'Cắm bó sẵn' && (!this.header.productId || !(this.header.bundles > 0))) { this.formError.set('Cắm bó sẵn phải chọn sản phẩm và số bó.'); return; }
@@ -153,11 +163,11 @@ export class ExportListComponent implements OnInit {
     const lines = this.lines.filter((l) => l.materialId);
     if (!lines.length) { this.formError.set('Phiếu phải có ít nhất một NVL.'); return; }
     if (lines.some((l) => this.lines.filter((x) => x.materialId === l.materialId).length > 1)) { this.formError.set('NVL bị trùng.'); return; }
-    if (post && !confirm('Ghi nhận phiếu xuất? Tồn thực bị trừ ngay và phiếu không sửa được nữa.')) return;
+    if (post && !(await this.dialog.confirm('Ghi nhận phiếu xuất? Tồn thực bị trừ ngay và phiếu không sửa được nữa.'))) return;
     const body = {
       type: t, orderId: this.header.orderId, productId: this.header.productId, bundles: this.header.bundles, note: this.header.note,
       exportedAt: this.header.exportedAt ? new Date(this.header.exportedAt).toISOString() : undefined,
-      details: lines.map((l) => ({ materialId: l.materialId, bomQty: l.bomQty, quantity: Number(l.quantity || 0), sourceId: l.sourceId, note: l.note })),
+      details: lines.map((l) => ({ materialId: l.materialId, bomQty: l.bomQty, quantity: Number(l.quantity || 0), note: l.note })),
       post,
     };
     this.saving.set(true);
@@ -173,22 +183,23 @@ export class ExportListComponent implements OnInit {
     });
   }
 
-  post(doc: InvDocument): void {
-    if (!confirm(`Ghi nhận ${doc.PHIEU_XUAT_ID}? Tồn thực bị trừ ngay.`)) return;
+  async post(doc: InvDocument): Promise<void> {
+    if (!(await this.dialog.confirm(`Ghi nhận ${doc.PHIEU_XUAT_ID}? Tồn thực bị trừ ngay.`))) return;
     this.api.postDocument('exports', doc.PHIEU_XUAT_ID!).subscribe({
       next: (r) => { this.notify(r.alreadyPosted ? 'Phiếu đã ghi nhận trước đó — không trừ lần 2.' : 'Đã ghi nhận phiếu xuất.'); this.viewing.set(null); this.load(); },
       error: (e) => this.notify(inventoryErrorMessage(e), true),
     });
   }
-  cancel(doc: InvDocument): void {
-    const reason = prompt('Lý do hủy phiếu nháp?') ?? '';
+  async cancel(doc: InvDocument): Promise<void> {
+    const reason = await this.dialog.prompt('Nhập lý do hủy phiếu nháp.');
+    if (reason === null) return;
     this.api.cancelDocument('exports', doc.PHIEU_XUAT_ID!, reason).subscribe({
       next: () => { this.notify('Đã hủy phiếu.'); this.viewing.set(null); this.load(); },
       error: (e) => this.notify(inventoryErrorMessage(e), true),
     });
   }
-  remove(doc: InvDocument): void {
-    if (!confirm(`Xóa hẳn phiếu ${doc.PHIEU_XUAT_ID}?`)) return;
+  async remove(doc: InvDocument): Promise<void> {
+    if (!(await this.dialog.confirm(`Xóa hẳn phiếu ${doc.PHIEU_XUAT_ID}?`))) return;
     this.api.deleteDocument('exports', doc.PHIEU_XUAT_ID!).subscribe({
       next: () => { this.notify('Đã xóa phiếu.'); this.viewing.set(null); this.load(); },
       error: (e) => this.notify(inventoryErrorMessage(e), true),
@@ -197,7 +208,7 @@ export class ExportListComponent implements OnInit {
 
   materialById(id: string): InvMaterial | undefined { return this.materials().find((m) => m.code === id); }
   productName(id: string | null | undefined): string { return this.products().find((p) => p.SAN_PHAM_ID === id)?.TEN_SAN_PHAM || id || ''; }
-  statusClass(s: string): string { return s === 'Nháp' ? 'draft' : s === 'Đã hủy' ? 'cancelled' : 'posted'; }
+  statusClass(s: string): string { return s === 'Nháp' ? 'draft' : (s === 'Đã hủy' || s === 'Đã đảo') ? 'cancelled' : 'posted'; }
   totalQty(doc: InvDocument): number { return doc.details.reduce((s, d) => s + Number(d.SO_LUONG_XUAT || 0), 0); }
   notify(text: string, error = false): void { this.toast.set({ text, error }); setTimeout(() => this.toast.set(null), error ? 7000 : 3500); }
 }

@@ -106,6 +106,7 @@ export class Login implements AfterViewInit {
     this.adminApi.loginAdmin(email, password).subscribe({
       next: (response) => {
         localStorage.setItem('adminLoggedIn', 'true');
+        if(response.adminSessionToken)localStorage.setItem('adminSessionToken',response.adminSessionToken);
         localStorage.setItem('adminEmail', response.employee.email);
         localStorage.setItem('adminEmployeeId', response.employee.id);
         localStorage.setItem('adminRole', response.employee.role);
@@ -122,6 +123,7 @@ export class Login implements AfterViewInit {
   private clearStoredAdminSession(): void {
     [
       'adminLoggedIn',
+      'adminSessionToken',
       'adminEmail',
       'adminEmployeeId',
       'adminRole',

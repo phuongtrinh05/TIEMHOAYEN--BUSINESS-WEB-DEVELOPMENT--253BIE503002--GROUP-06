@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 export interface CartApiItem {
+  THIET_KE_3D_ID?: string; CAN_SHOP_DUYET?: boolean; BADGES?: string[];
   SAN_PHAM_ID: string;
   TEN_SAN_PHAM: string;
   KIEU_DANG?: string | null;

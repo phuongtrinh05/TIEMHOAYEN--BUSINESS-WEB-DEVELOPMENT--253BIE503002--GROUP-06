@@ -1,3 +1,4 @@
+import { adjustImportDocument, reverseInventoryDocument } from '../services/inventory/reversal.service.js';
 import { Request, Response } from 'express';
 import { actorFromRequest, col, InventoryError, normalizeText } from '../services/inventory/helpers.js';
 import { BOM_STATUS, COLLECTIONS, EXPORT_TYPES, IMPORT_TYPES, INVENTORY_CONFIG, MATERIAL_TYPES, PO_STATUS, RESERVATION_STATUS, SUPPLIER_STATUSES } from '../services/inventory/constants.js';
@@ -84,7 +85,17 @@ export const deleteExport = handle((req) => stock.deleteDraftDocument('export', 
 /* ---------- BOM ---------- */
 export const listBomProducts = handle(async (req) => {
   const search = normalizeText(req.query.search || '');
-  const products = await (await col(COLLECTIONS.product)).find({}).project({ SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1, KIEU_DANG: 1, GIA: 1, GIA_KHUYEN_MAI: 1, TRANG_THAI: 1, TON_THANH_PHAM: 1, TP_DANG_GIU: 1 }).sort({ SAN_PHAM_ID: 1 }).toArray();
+  const products = await (await col(COLLECTIONS.product)).find({}).project({ SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1, CHU_DE_ID: 1, KIEU_DANG: 1, GIA: 1, GIA_KHUYEN_MAI: 1, TRANG_THAI: 1, TON_THANH_PHAM: 1, TP_DANG_GIU: 1 }).sort({ SAN_PHAM_ID: 1 }).toArray();
+  const categorySpecs = [
+    ['topic', 'CHU_DE', 'CHU_DE_ID', 'TEN_CHU_DE', ''],
+    ['target', 'DOI_TUONG', 'DOI_TUONG_ID', 'TEN_DOI_TUONG', 'DOI_TUONG_SAN_PHAM'],
+    ['color', 'MAU_SAC', 'MAU_SAC_ID', 'TEN_MAU', 'MAU_SAC_SAN_PHAM'],
+    ['collection', 'BO_SUU_TAP', 'BO_SUU_TAP_ID', 'TEN_BO_SUU_TAP', 'BO_SUU_TAP_SAN_PHAM'],
+  ];
+  const categoryData = await Promise.all(categorySpecs.map(async ([key, collection, id, name, link]) => ({
+    key, id, name, values: await (await col(collection)).find({}).toArray(),
+    links: link ? await (await col(link)).find({}).toArray() : [],
+  })));
   const filtered = search ? products.filter((x: any) => normalizeText(`${x.SAN_PHAM_ID} ${x.TEN_SAN_PHAM}`).includes(search)) : products;
   const boms = await (await col(COLLECTIONS.bom)).find({}).project({ SAN_PHAM_ID: 1, TRANG_THAI: 1, PHIEN_BAN: 1, BOM_ID: 1, CAN_RA_SOAT: 1 }).toArray();
   const bomMap = await bom.getActiveBomMap(filtered.map((x: any) => x.SAN_PHAM_ID));
@@ -99,6 +110,10 @@ export const listBomProducts = handle(async (req) => {
       const { buildable, bottleneck } = computeBuildable(lines, byId);
       return {
         ...x,
+        categories: Object.fromEntries(categoryData.map(c => [c.key, c.values.filter(v => c.key === 'topic'
+          ? v[c.id] === x.CHU_DE_ID
+          : c.links.some(l => l.SAN_PHAM_ID === x.SAN_PHAM_ID && l[c.id] === v[c.id]))
+          .map(v => String(v[c.name] || v.TEN_MAU_SAC || v[c.id]))])),
         activeBomId: active?.BOM_ID || null,
         activeVersion: active?.PHIEN_BAN || null,
         needsReview: Boolean(active?.CAN_RA_SOAT),
@@ -152,3 +167,11 @@ export const reconcile = handle((req) => stock.reconcileInventory(req.body?.fix 
 
 /* ---------- Public: kiểm tra khả năng đáp ứng ---------- */
 export const getProductAvailability = handle((req) => checkProductAvailability(p(req, 'id'), req.query.qty, req.query.deliveryAt));
+
+export const reverseImport = handle(req => reverseInventoryDocument('import', p(req, 'receiptId'), req.body, actorFromRequest(req)));
+
+export const reverseExport = handle(req => reverseInventoryDocument('export', p(req, 'receiptId'), req.body, actorFromRequest(req)));
+
+export const adjustImport = handle(req => adjustImportDocument(p(req, 'receiptId'), req.body, actorFromRequest(req)));
+
+export const getMaterialHistory = handle(req => master.getMaterialHistory(p(req, 'materialId'), req.query));

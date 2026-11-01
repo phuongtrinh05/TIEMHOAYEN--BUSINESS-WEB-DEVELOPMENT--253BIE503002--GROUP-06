@@ -4,6 +4,8 @@
     <div class="canvas-area">
         
         <div #threeCanvas class="three-canvas"></div>
+        <div class="model-load-status" *ngIf="modelsLoading()" role="status">Đang dựng mô hình hoa…</div>
+        <div class="model-load-status model-load-error" *ngIf="modelError()" role="alert">{{modelError()}} <button type="button" (click)="retryModels()">Thử lại</button></div>
 
         <!-- Tool dưới -->
         <div class="bottom-toolbar">
@@ -135,35 +137,55 @@
             </div>            
             <!-- Tổng quan -->
             <div class="summary-section">
-                <small>TỔNG QUAN THIẾT KẾ</small>
-                
-                <h5 *ngIf="selectedFlowers.length > 0">
-                {{ getTotalFlowers() }} bông / {{ getTotalTypes() }} loại
-                </h5>
-
-                <h5 *ngIf="selectedFlowers.length === 0">
-                Chưa có hoa nào
-                </h5>
-
-                <button class="update-btn">
-                    <i class="bi bi-arrow-repeat"></i> Cập nhật
-                </button>
-                <button class="save-btn" (click)="captureImage()">
-                    <i class="bi bi-camera"></i> Chụp ảnh
-                </button>
+                <div class="design-summary-card">
+                  <div class="design-summary-heading">
+                    <span class="design-summary-icon"><i class="bi bi-flower1" aria-hidden="true"></i></span>
+                    <div><h5>Tổng quan thiết kế</h5><span class="design-material-count">{{selectedFlowers.length ? getTotalTypes() + ' loại nguyên liệu đã chọn' : 'Chưa chọn nguyên liệu'}}</span></div>
+                  </div>
+                <p *ngIf="loadingMaterials">Đang tải nguyên vật liệu…</p>
+                <div *ngIf="materialLoadError" class="design-error" role="alert">{{materialLoadError}} <button class="save-btn" type="button" (click)="loadDesignMaterials()" [disabled]="loadingMaterials">Thử tải lại</button></div>
+                <p class="design-error" *ngIf="rendererError" role="alert">{{rendererError}}</p>
+                <p class="design-error" *ngIf="designError" role="alert">{{designError}}</p>
+                <div class="design-price" *ngIf="quote">
+                  <div class="design-cost-panel">
+                    <div class="design-price-row"><span>Giá tạm tính</span><strong>{{quote.price | number:'1.0-0'}}<span class="design-currency">đ</span></strong></div>
+                    <p class="design-price-note"><i class="bi bi-info-circle" aria-hidden="true"></i> Giá có thể thay đổi theo mùa vụ.</p>
+                  </div>
+                  <div class="design-review">
+                    <span class="design-review-badge" *ngIf="quote.requiresReview"><i class="bi bi-clock-history" aria-hidden="true"></i> Cần shop duyệt</span>
+                    <span class="design-review-badge approved" *ngIf="!quote.requiresReview"><i class="bi bi-check-circle" aria-hidden="true"></i> Mẫu đã được duyệt</span>
+                    <p *ngIf="quote.requiresReview">Shop xác nhận mẫu và phí trước khi thanh toán.</p>
+                    <details class="design-review-details" *ngIf="quote.requiresReview && quote.badges.length > 1"><summary><span>Xem lý do cần duyệt</span><i class="bi bi-chevron-down" aria-hidden="true"></i></summary><ul><li *ngFor="let badge of quote.badges">{{badge}}</li></ul></details>
+                  </div>
+                </div>
+                <p class="design-price-note" *ngIf="quoteLoading">Đang tính giá…</p>
+                </div>
+                <div class="design-actions">
+                  <button class="design-order-btn" type="button" (click)="orderDesign()" [disabled]="savingDesign || quoteLoading || !quote || !selectedFlowers.length || !rendererReady || modelsLoading() > 0 || !!modelError()"><i class="bi bi-cart-plus" aria-hidden="true"></i> {{savingDesign ? 'Đang lưu…' : 'Đặt mẫu này'}}</button>
+                  <div class="design-secondary-actions">
+                    <button class="save-btn" type="button" (click)="refreshQuote()" [disabled]="quoteLoading || !selectedFlowers.length"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Cập nhật</button>
+                    <button class="save-btn" type="button" (click)="captureImage()" [disabled]="!rendererReady"><i class="bi bi-camera" aria-hidden="true"></i> Chụp ảnh</button>
+                  </div>
+                </div>
             </div>
 
             <!-- Loại hoa -->
             <div class="flower-library">
                 <small>CÁC LOẠI HOA</small>
+                <p *ngIf="!loadingMaterials && !materialLoadError && !flowers.length">Chưa có NVL dùng cho 3D. Shop cần bật “Dùng cho thiết kế 3D” trong danh mục nguyên vật liệu.</p>
                 <div class="flower-grid">
                     <div
                         class="flower-item"
                         *ngFor="let flower of flowers"
-                        (click)="addFlower(flower)"
+                        (click)="addFlower(flower)" [class.design-unavailable]="!flower.available"
                     >
                         <img [src]="flower.image" [alt]="flower.name">
-                        <p>{{ flower.name }}</p>
+                        <p class="flower-name">{{ flower.name }}</p>
+                        <div class="flower-price">{{flower.price | number:'1.0-0'}}đ / {{flower.unit}}</div>
+                        <span class="flower-stock-badge out" *ngIf="!flower.available">Hết hàng</span>
+                        <span class="flower-stock-badge low" *ngIf="flower.available && flower.available! <= (flower.threshold || 0)">Sắp hết</span>
+                        <div class="flower-availability" *ngIf="flower.available">Còn {{flower.available}} {{flower.unit}}</div>
+                        <span class="flower-stock-badge neutral" *ngIf="!flower.modelPath && !flower.modelPathsByColor">Chưa có mô hình</span>
 
                         <div
                             class="flower-swatches"
@@ -174,7 +196,7 @@
                                 *ngFor="let color of getAvailableColors(flower)"
                                 class="swatch-dot"
                                 [style.background]="getColorSwatch(color)"
-                                [title]="color"
+                                [title]="color" [attr.aria-label]="'Thêm ' + flower.name + ' màu ' + color"
                                 (click)="addFlowerWithColor(flower, color)"
                             ></button>
                         </div>

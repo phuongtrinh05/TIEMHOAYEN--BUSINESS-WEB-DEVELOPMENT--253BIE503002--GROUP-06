@@ -1,7 +1,9 @@
+import { InventoryDialogComponent } from '../inventory-dialog';
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
+import { exportInventoryCsv } from '../inventory-csv';
 import {
   InvBom,
   InvBomLine,
@@ -20,11 +22,44 @@ interface EditLine { materialId: string; quantity: number; role: string; substit
 @Component({
   selector: 'app-bom-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, InventoryTabsComponent],
+  imports: [InventoryDialogComponent, CommonModule, FormsModule, InventoryTabsComponent],
   templateUrl: './bom-list.html',
   styleUrls: ['../inventory.css'],
 })
 export class BomListComponent implements OnInit {
+  @ViewChild(InventoryDialogComponent) private dialog!: InventoryDialogComponent;
+  recipeFilter = '';
+  readonly productError = signal('');
+  readonly categoryError = signal('');
+  setRecipeFilter(value: string): void {
+    this.recipeFilter = value; this.onlyReview = value === 'review'; this.onlyNoBom = value === 'missing'; this.refilter();
+  }
+  clearSearch(): void {
+    this.search = ''; this.categoryValue = ''; this.setRecipeFilter('');
+  }
+  categoryFiltersOpen = false;
+  readonly categoryTabs = [['topic', 'Chủ đề'], ['target', 'Đối tượng'], ['style', 'Kiểu dáng'], ['color', 'Màu sắc'], ['collection', 'Bộ sưu tập']];
+  categoryType = 'topic';
+  categoryValue = '';
+  readonly categoryOptions = computed(() => {
+    this.tick();
+    return [...new Set(this.products().flatMap(p => this.categoryType === 'style' ? (p.KIEU_DANG ? [p.KIEU_DANG] : []) : p.categories?.[this.categoryType] || []))].sort((a, b) => a.localeCompare(b, 'vi'));
+  });
+  changeCategory(type: string): void { this.categoryType = type; this.categoryValue = ''; this.refilter(); }
+  exportCsv(): void {
+    const product = this.selected();
+    if (product) {
+      exportInventoryCsv('cong-thuc-' + product.SAN_PHAM_ID, ['Sản phẩm', 'BOM', 'Phiên bản', 'Trạng thái', 'NVL', 'Định lượng', 'ĐVT', 'Vai trò'],
+        this.boms().flatMap(b => b.lines.map(l => [product.SAN_PHAM_ID, b.BOM_ID, b.PHIEN_BAN, b.TRANG_THAI, l.NGUYEN_VAT_LIEU_ID, l.DINH_LUONG, l.DON_VI_TINH, l.VAI_TRO])));
+    } else {
+      exportInventoryCsv('danh-muc-cong-thuc', ['Mã SP', 'Tên', 'BOM', 'Cắm sẵn', 'Có thể cắm', 'Bán được'], this.filtered().map(p => [p.SAN_PHAM_ID, p.TEN_SAN_PHAM, p.activeBomId, p.finishedAvailable, p.buildable, p.sellable]));
+    }
+  }
+  readonly pickerOpen = signal(true);
+  chooseProduct(id: string): void {
+    const product = this.products().find(p => p.SAN_PHAM_ID === id);
+    if (product) this.select(product);
+  }
   private readonly api = inject(InventoryApiService);
 
   readonly products = signal<InvBomProduct[]>([]);
@@ -39,6 +74,7 @@ export class BomListComponent implements OnInit {
     this.tick();
     const q = this.search.trim().toLowerCase();
     return this.products().filter((p) => (!q || `${p.SAN_PHAM_ID} ${p.TEN_SAN_PHAM}`.toLowerCase().includes(q))
+      && (!this.categoryValue || (this.categoryType === 'style' ? p.KIEU_DANG === this.categoryValue : p.categories?.[this.categoryType]?.includes(this.categoryValue)))
       && (!this.onlyReview || p.needsReview) && (!this.onlyNoBom || !p.activeBomId));
   });
 
@@ -64,14 +100,17 @@ export class BomListComponent implements OnInit {
 
   loadProducts(): void {
     this.loading.set(true);
+    this.productError.set('');
+    this.categoryError.set('');
     this.api.bomProducts().subscribe({
       next: (r) => {
         this.products.set(r.items);
+        this.categoryError.set(r.categoryError || '');
         this.loading.set(false);
         const sel = this.selected();
         if (sel) this.selected.set(r.items.find((p) => p.SAN_PHAM_ID === sel.SAN_PHAM_ID) || sel);
       },
-      error: (e) => { this.loading.set(false); this.notify(inventoryErrorMessage(e), true); },
+      error: (e) => { this.loading.set(false); this.productError.set(inventoryErrorMessage(e)); },
     });
   }
   refilter(): void { this.tick.update((x) => x + 1); }
@@ -146,13 +185,13 @@ export class BomListComponent implements OnInit {
     this.loadProducts();
   }
 
-  activate(b: InvBom): void {
-    if (!confirm(`Kích hoạt ${b.BOM_ID} (v${b.PHIEN_BAN})?`)) return;
+  async activate(b: InvBom): Promise<void> {
+    if (!(await this.dialog.confirm(`Kích hoạt ${b.BOM_ID} (v${b.PHIEN_BAN})?`))) return;
     this.api.activateBom(b.BOM_ID).subscribe({ next: () => this.done('Đã kích hoạt.'), error: (e) => this.notify(inventoryErrorMessage(e), true) });
   }
 
-  retire(b: InvBom): void {
-    if (!confirm(b.TRANG_THAI === 'Nháp' ? `Xóa bản nháp ${b.BOM_ID}?` : `Ngừng sử dụng ${b.BOM_ID}? Sản phẩm sẽ không còn BOM hiệu lực.`)) return;
+  async retire(b: InvBom): Promise<void> {
+    if (!(await this.dialog.confirm(b.TRANG_THAI === 'Nháp' ? `Xóa bản nháp ${b.BOM_ID}?` : `Ngừng sử dụng ${b.BOM_ID}? Sản phẩm sẽ không còn BOM hiệu lực.`))) return;
     this.api.retireBom(b.BOM_ID).subscribe({ next: () => this.done('Đã cập nhật.'), error: (e) => this.notify(inventoryErrorMessage(e), true) });
   }
 

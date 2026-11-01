@@ -632,7 +632,7 @@
           class="btn-order"
           [class.is-ready]="orderForm.valid && !isSubmitting && formData.provinceCode && formData.districtCode && formData.wardCode && !isUnsupportedCardPayment && !isPaymentMethodDisabled(formData.paymentMethod)"
           (click)="onSubmit(orderForm)">
-          {{ salesRequestId ? 'Mở khung tư vấn' : (isSubmitting ? 'Đang kiểm tra đơn...' : 'Thanh toán') }}
+          {{ salesRequestId ? 'Mở khung tư vấn' : (isSubmitting ? 'Đang kiểm tra đơn...' : (hasDesignReview ? 'Gửi yêu cầu đặt hàng' : 'Thanh toán')) }}
         </button>
 
         <p *ngIf="salesRequestId" role="status" style="background:#fff2cc;color:#604913;padding:14px;border-radius:8px;margin-top:12px">

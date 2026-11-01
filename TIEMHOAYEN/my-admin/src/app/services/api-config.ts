@@ -32,3 +32,9 @@ export function switchApiBaseUrl(target: 'local' | 'render'): void {
   }
   location.reload();
 }
+
+export function endAdminSession():void {
+  const token=localStorage.getItem('adminSessionToken');
+  localStorage.removeItem('adminSessionToken');
+  if(token)void fetch(`${apiBaseUrl()}/admin/auth/logout`,{method:'POST',headers:{'x-admin-session':token}}).catch(()=>{});
+}

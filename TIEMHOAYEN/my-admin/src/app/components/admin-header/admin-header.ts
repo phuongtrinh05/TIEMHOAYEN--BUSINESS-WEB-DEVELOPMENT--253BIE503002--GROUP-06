@@ -1,3 +1,4 @@
+import {endAdminSession} from '../../services/api-config';
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { apiBaseUrl } from '../../services/api-config';
@@ -177,6 +178,7 @@ export class AdminHeader implements OnInit, OnDestroy {
   }
 
   logout(): void {
+    endAdminSession();
     [
       'adminLoggedIn',
       'adminEmail',

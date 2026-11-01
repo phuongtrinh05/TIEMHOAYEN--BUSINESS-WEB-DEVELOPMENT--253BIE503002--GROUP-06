@@ -1,9 +1,11 @@
+import {getActiveBom,makeBomSnapshot} from './inventory/bom.service.js';
+import {getDesign,isDesignProduct,designFutureDay} from './design3d.service.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { ClientSession } from 'mongodb';
 import { getCollection } from '../mongo.js';
 import { InventoryError, withTransaction } from './inventory/helpers.js';
 import { INVENTORY_CONFIG, RESERVATION_STATUS } from './inventory/constants.js';
-import { reserveProducts, sweepExpiredReservations } from './inventory/stock.service.js';
+import { reserveProducts, reserveMaterialNeeds, sweepExpiredReservations } from './inventory/stock.service.js';
 import { requestWorkflow } from './request-workflow.js';
 import { requestByVerifiedPhone } from './order-access.service.js';
 
@@ -16,7 +18,7 @@ export async function routeCheckout(
   key: string,
   payload: any,
   items: { productId: string; quantity: number }[],
-  create: (session: ClientSession, orderId: string) => Promise<any>,
+  create: (session: ClientSession, orderId: string, snapshots: Record<string, any>, inventory: {futureNoHold:boolean}) => Promise<any>,
 ) {
   if (!/^[\w-]{16,100}$/.test(key)) throw new InventoryError(400, 'Thiếu mã phiên đặt hàng hợp lệ. Vui lòng tải lại trang.');
   const fingerprint = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
@@ -36,16 +38,40 @@ export async function routeCheckout(
   try {
     return await withTransaction(async session => {
       await sessions.insertOne({ _id: key, fingerprint, createdAt: new Date() }, { session });
+      let snapshots: Record<string, any> = {};
+      let futureNoHold=false;
       try {
-        await reserveProducts(items, {
-          orderId, paymentSessionId: key, status: RESERVATION_STATUS.temporary,
-          actor: { id: payload.customerId || null, role: 'customer' },
-        }, session);
+        const context = {orderId,paymentSessionId:key,status:RESERVATION_STATUS.temporary,actor:{id:payload.customerId || null,role:'customer'}};
+        const designs=[];
+        for(const item of items.filter(i=>isDesignProduct(i.productId))) {
+          const design=await getDesign(item.productId,session);
+          if(design.requiresReview)throw new InventoryError(409,'Thiết kế cần shop duyệt trước thanh toán.',{badges:design.badges});
+          const requested=payload.items?.find((i:any)=>i.id===item.productId);
+          if(Number(requested?.price)!==design.price)throw new InventoryError(400,'Giá thiết kế đã thay đổi. Tải lại giỏ hàng để xác nhận giá mới.');
+          designs.push({item,design});
+        }
+        const catalog=items.filter(i=>!isDesignProduct(i.productId));
+        futureNoHold=designs.length>0 && designFutureDay(payload.delivery?.date);
+        if(catalog.length) {
+          if(futureNoHold)for(const item of catalog)snapshots[item.productId]=makeBomSnapshot(await getActiveBom(item.productId,session));
+          else {const held=await reserveProducts(catalog,context,session);snapshots=held.snapshots || {};}
+        }
+        const needs=new Map<string,number>();
+        for(const {item,design} of designs) {
+          snapshots[item.productId]={materials:design.materials,designFee:design.designFee,extraFee:design.extraFee,designId:design.designId};
+          for(const l of design.materials)needs.set(l.materialId,(needs.get(l.materialId)||0)+l.quantity*item.quantity);
+        }
+        // A reviewed single bouquet does not approve an arbitrary number of bouquets.
+        // Check the complete design quantity even when a future order creates no hold yet.
+        for(const {design} of designs)for(const line of design.materials) {
+          if((needs.get(line.materialId) || 0)>line.available)throw new InventoryError(409,'Số bó thiết kế vượt nguyên liệu khả dụng; cần shop kiểm tra.',{materialId:line.materialId});
+        }
+        if(needs.size && !futureNoHold)await reserveMaterialNeeds(session,needs,context);
       } catch (error) {
         if (error instanceof InventoryError && error.status === 409) shortage = error;
         throw error;
       }
-      const result = { kind: 'order', ...await create(session, orderId) };
+      const result = { kind: 'order', ...await create(session, orderId, snapshots, {futureNoHold}) };
       await sessions.updateOne({ _id: key }, { $set: { result } }, { session });
       return result;
     });
@@ -60,15 +86,21 @@ export async function routeCheckout(
   // Reservation transaction has rolled back ALL lines. A request creates no payment.
   const requestId = `YC${randomBytes(8).toString('hex').toUpperCase()}`;
   const result = { kind: 'sales_request', requestId, status: REQUEST_STATUS.waiting,
-    message: 'Số lượng khả dụng đã thay đổi. Yêu cầu đã được chuyển đến nhân viên Sales; shop sẽ liên hệ xác nhận trước khi thanh toán.' };
+    message: items.some(i=>isDesignProduct(i.productId)) ? 'Thiết kế đã gửi đến shop để kiểm tra và trao đổi phương án trước khi thanh toán.' : 'Số lượng khả dụng đã thay đổi. Yêu cầu đã được chuyển đến nhân viên Sales; shop sẽ liên hệ xác nhận trước khi thanh toán.' };
   try {
     return await withTransaction(async session => {
       await sessions.insertOne({ _id: key, fingerprint, result, createdAt: new Date() }, { session });
       const products = await getCollection<any>('SAN_PHAM');
       const snapshot = [];
       for (const item of items) {
-        const product = await products.findOne({ SAN_PHAM_ID: item.productId }, { session });
-        snapshot.push({ ...item, name: product?.TEN_SAN_PHAM || item.productId, price: Number(product?.GIA || 0) });
+        if(isDesignProduct(item.productId)) {
+          const d=await getDesign(item.productId,session);
+          snapshot.push({...item,name:d.name,price:d.price,image:d.image,custom:true,designId:d.designId,
+            badges:d.badges,bom:{materials:d.materials,designFee:d.designFee,extraFee:d.extraFee}});
+        } else {
+          const product = await products.findOne({ SAN_PHAM_ID: item.productId }, { session });
+          snapshot.push({ ...item, name: product?.TEN_SAN_PHAM || item.productId, price: Number(product?.GIA || 0) });
+        }
       }
       await (await getCollection<any>(REQUESTS)).insertOne({
         _id: requestId, requestId,
@@ -78,7 +110,7 @@ export async function routeCheckout(
         customerId: payload.customerId || null, items: snapshot,
         reason: shortage!.message, shortages: shortage!.details || null,
         createdAt: new Date(), updatedAt: new Date(), version: 0,
-        history: [{ id: randomUUID(), at: new Date(), action: 'Tạo yêu cầu do thiếu tồn khả dụng' }],
+        history: [{ id: randomUUID(), at: new Date(), action: items.some(i=>isDesignProduct(i.productId)) ? 'Gửi thiết kế để shop kiểm tra' : 'Tạo yêu cầu do thiếu tồn khả dụng' }],
       }, { session });
       return result;
     });
@@ -93,7 +125,7 @@ export async function routeCheckout(
 
 export function publicRequest(row: any) {
   return { requestId: row.requestId, status: row.status, items: row.items, delivery: row.delivery,
-    reviewReason: 'Mẫu bạn chọn hiện chưa đủ thành phẩm hoặc nguyên vật liệu khả dụng để đáp ứng toàn bộ yêu cầu. Lượng hàng có thể đã được giữ cho đơn khác trong lúc bạn đặt.',
+    reviewReason: row.items?.some((i:any)=>i.designId) ? 'Thiết kế cần shop kiểm tra khả năng thực hiện, nguyên vật liệu và giá. Shop sẽ trao đổi phương án trước khi mở thanh toán.' : 'Mẫu bạn chọn hiện chưa đủ thành phẩm hoặc nguyên vật liệu khả dụng để đáp ứng toàn bộ yêu cầu. Lượng hàng có thể đã được giữ cho đơn khác trong lúc bạn đặt.',
     createdAt: row.createdAt, updatedAt: row.updatedAt, customerMessage: row.customerMessage || '',
     assignedName: row.assignedName || null, originalTotal: row.originalSummary?.total ?? null, quote: row.quote || null, acceptedQuoteId: row.acceptedQuoteId || null,
     workflow: requestWorkflow(row), orderSummary: row.orderSummary || null,

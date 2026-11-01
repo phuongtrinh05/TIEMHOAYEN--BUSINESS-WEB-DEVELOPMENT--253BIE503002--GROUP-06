@@ -53,6 +53,34 @@ export const getActiveBom = async (productId: string, session?: ClientSession): 
   return { bom: null, lines: legacy.map(mapLegacyRecipe), legacy: true };
 };
 
+/** Resolve a committed snapshot; never silently replace malformed snapshots with the current BOM. */
+export const resolveBomSnapshot = (snapshot: any): ResolvedBom => {
+  const raw = snapshot?.lines ?? snapshot?.materials;
+  if (!Array.isArray(raw)) throw new InventoryError(409, 'Đơn thiếu BOM snapshot hợp lệ; cần đối soát công thức đã chốt.');
+  const seen = new Set<string>();
+  const lines: BomLine[] = raw.map((l: any) => {
+    const id = String(l.NGUYEN_VAT_LIEU_ID ?? l.materialId ?? '');
+    const quantity = Number(l.DINH_LUONG ?? l.quantity);
+    if (!id || seen.has(id) || !Number.isFinite(quantity) || quantity <= 0) throw new InventoryError(409, 'BOM snapshot có dòng không hợp lệ.');
+    seen.add(id);
+    return { NGUYEN_VAT_LIEU_ID: id, DINH_LUONG: quantity, DON_VI_TINH: l.DON_VI_TINH ?? l.unit ?? '',
+      VAI_TRO: l.VAI_TRO ?? l.role ?? 'Chính', DS_THAY_THE: l.DS_THAY_THE ?? l.substitutes ?? [], GHI_CHU: l.GHI_CHU ?? l.note ?? '' };
+  });
+  return { bom: { BOM_ID: snapshot.id ?? snapshot.BOM_ID ?? null, PHIEN_BAN: snapshot.version ?? null }, lines, legacy: false };
+};
+export const makeBomSnapshot = (resolved: ResolvedBom) => ({ id: resolved.bom?.BOM_ID || null, version: resolved.bom?.PHIEN_BAN || null,
+  lines: resolved.lines.map(l => ({...l, DS_THAY_THE: [...(l.DS_THAY_THE || [])]})) });
+export const getOrderLineBom = async (line: any, session?: ClientSession): Promise<ResolvedBom> => {
+  if(line.VQ_QUA_DA_HUY && String(line.SAN_PHAM_ID).startsWith('SPGIFT_'))return {bom:null,lines:[],legacy:false};
+  if (line.BOM_SNAPSHOT != null) return resolveBomSnapshot(line.BOM_SNAPSHOT);
+  // Old orders with an explicit historic version can still use their own version.
+  if (line.BOM_ID) {
+    const bom = await (await col(COLLECTIONS.bom)).findOne({BOM_ID: line.BOM_ID}, {session});
+    if (bom) return {bom, lines: await (await col(COLLECTIONS.bomLine)).find({BOM_ID: bom.BOM_ID}, {session}).toArray() as any, legacy: false};
+  }
+  throw new InventoryError(409, 'Đơn cũ chưa có BOM snapshot; cần đối soát công thức gốc trước khi lập nhu cầu/xuất.');
+};
+
 /** Lấy BOM hiệu lực của nhiều sản phẩm một lần (dùng cho cảnh báo tầng 2). */
 export const getActiveBomMap = async (productIds?: string[]): Promise<Map<string, BomLine[]>> => {
   const filter: any = { TRANG_THAI: BOM_STATUS.active };

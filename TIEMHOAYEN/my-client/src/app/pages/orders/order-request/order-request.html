@@ -41,7 +41,7 @@
           <p>{{item.qty}} bó × {{item.price | number:'1.0-0'}}đ</p><small>{{item.imageDescription || 'Ảnh mẫu sản phẩm'}}</small>
           @if (item.description) { <p>{{item.description}}</p> }
           @if (item.custom) { <details><summary>Thành phần và giá một bó</summary>
-            @for (m of item.bom.materials; track m.materialId) { <p>{{m.name}}: {{m.quantity}} {{m.unit}} × {{m.price | number:'1.0-0'}}đ</p> }
+            @for (m of item.bom.materials; track m.materialId) { <p>{{m.name}}: {{m.quantity}} {{m.unit}} × {{m.price | number:'1.0-0'}}đ @for(c of m.colors || [];track c.color){<span> · {{c.color}}: {{c.quantity}} {{m.unit}}</span>}</p> }
             <p>Phí cắm: {{item.bom.designFee | number:'1.0-0'}}đ · Chi phí bổ sung: {{item.bom.extraFee | number:'1.0-0'}}đ</p>
           </details> }</div></div>
         }

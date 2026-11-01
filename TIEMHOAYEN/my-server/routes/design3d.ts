@@ -1,0 +1,10 @@
+import express from 'express';
+import {createDesign,getDesign,listDesignMaterials,estimateDesign} from '../services/design3d.service.js';
+import {InventoryError} from '../services/inventory/helpers.js';
+const router=express.Router();
+const handle=(fn:any)=>async(req:any,res:any)=>{try{res.json(await fn(req));}catch(e:any){res.status(e instanceof InventoryError?e.status:500).json({message:e instanceof InventoryError?e.message:'Không xử lý được thiết kế.'});}};
+router.get('/materials',handle(()=>listDesignMaterials()));
+router.post('/estimate',handle((req:any)=>estimateDesign(req.body)));
+router.post('/',handle((req:any)=>createDesign(req.body)));
+router.get('/:designId',handle((req:any)=>getDesign(String(req.params.designId))));
+export default router;

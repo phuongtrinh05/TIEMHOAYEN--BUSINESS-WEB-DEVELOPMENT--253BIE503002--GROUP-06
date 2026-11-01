@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import {randomBytes,createHash} from 'node:crypto';
 import { getCollection } from '../mongo.js';
 import {
   defaultRolePermissions,
@@ -73,7 +74,11 @@ export const loginAdminEmployee = async (req: Request, res: Response) => {
     }
 
     const role = resolveRoleName(employee.VAI_TRO);
+    const adminSessionToken='as_'+randomBytes(32).toString('hex');
+    const adminSessionExpiresAt=new Date(Date.now()+8*3600000);
+    await (await getCollection<any>('PHIEN_DANG_NHAP_ADMIN')).insertOne({_id:createHash('sha256').update(adminSessionToken).digest('hex'),employeeId:employee.NHAN_VIEN_ID,expiresAt:adminSessionExpiresAt,createdAt:new Date()});
     return res.status(200).json({
+      adminSessionToken,adminSessionExpiresAt,
       employee: {
         id: employee.NHAN_VIEN_ID,
         name: employee.HO_TEN,
