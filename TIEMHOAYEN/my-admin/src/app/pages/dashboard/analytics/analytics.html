@@ -11,11 +11,7 @@
     </div>
     <div class="db-actions no-print">
       <button class="btn-ghost" (click)="load(true)" [disabled]="loading()" title="Tải lại số liệu"><i class="bi bi-arrow-clockwise" [class.spin]="loading()"></i></button>
-      <div class="page-links">
-        <a class="page-link" routerLink="/dashboard" [queryParams]="rangeParams()"><i class="bi bi-house"></i> Tổng quan</a>
-        <a class="page-link" routerLink="/dashboard/reports" [queryParams]="rangeParams()"><i class="bi bi-journal-text"></i> Danh sách báo cáo</a>
-        <button class="page-link" (click)="print()"><i class="bi bi-printer"></i> In / PDF</button>
-      </div>
+      <app-export-menu [disabled]="!data()" (export)="onExport($event)"></app-export-menu>
     </div>
   </header>
 

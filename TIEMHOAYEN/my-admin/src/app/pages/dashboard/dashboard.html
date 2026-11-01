@@ -18,10 +18,7 @@
       <button class="btn-ghost" (click)="refresh()" [disabled]="loading()" title="Tải lại số liệu">
         <i class="bi bi-arrow-clockwise" [class.spin]="loading()"></i>
       </button>
-      <div class="page-links">
-        <a class="page-link" routerLink="/dashboard/analytics" [queryParams]="rangeParams()"><i class="bi bi-bar-chart-line"></i> Bảng phân tích</a>
-        <a class="page-link" routerLink="/dashboard/reports" [queryParams]="rangeParams()"><i class="bi bi-journal-text"></i> Danh sách báo cáo</a>
-      </div>
+      <app-export-menu [disabled]="!overview()" (export)="onExport($event)"></app-export-menu>
     </div>
   </header>
 

@@ -4,11 +4,16 @@
       <h1>Danh sách báo cáo</h1>
       <p class="db-range muted">Tra cứu & đối soát: mỗi báo cáo có bộ lọc ngày, tìm kiếm, sắp xếp và xuất Excel / CSV / PDF.</p>
     </div>
-    <div class="page-links no-print">
-      <a class="page-link" routerLink="/dashboard" [queryParams]="rangeParams()"><i class="bi bi-house"></i> Tổng quan</a>
-      <a class="page-link" routerLink="/dashboard/analytics" [queryParams]="rangeParams()"><i class="bi bi-bar-chart-line"></i> Bảng phân tích</a>
+    <div class="db-actions no-print">
+      <app-export-menu [disabled]="!catalog()" [busy]="exporting()" excelHint="mỗi báo cáo 1 sheet" csvHint="gộp 1 file" (export)="onExport($event)"></app-export-menu>
     </div>
   </header>
+
+  <section class="card range-card no-print">
+    <app-range-filter [value]="range()" [showCompare]="false" (changed)="onRange($event)"></app-range-filter>
+    <p class="muted small">Khoảng ngày này được dùng khi mở từng báo cáo và khi xuất file. Xuất file sẽ gộp <b>{{ filtered().length }}</b> báo cáo đang hiển thị trong bảng bên dưới (lọc theo danh mục / tìm kiếm / yêu thích).</p>
+  </section>
+  @if (exportError()) {<div class="alert-box no-print"><i class="bi bi-exclamation-triangle"></i><span>{{ exportError() }}</span></div>}
 
   @if (error()) {
     <div class="alert-box">
@@ -56,7 +61,8 @@
           <button class="chip" [class.active]="category() === cat" (click)="category.set(category() === cat ? '' : cat)">{{ cat }} <span class="muted">{{ countBy()[cat] || 0 }}</span></button>
         }
       </div>
-      <div class="table-wrap">
+      <!-- Khung bảng cố định chiều cao: đổi danh mục không làm trang nhảy lên đầu -->
+      <div class="table-wrap list-scroll">
         <table class="tbl report-table">
           <thead>
             <tr>

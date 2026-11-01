@@ -1,6 +1,6 @@
 import { getCollection } from '../../mongo.js';
 import { ORDER_STATUS, ORDER_VOID_STATUSES } from './constants.js';
-import { Dataset, getDataset, normalizeKey } from './dataset.js';
+import { Dataset, getDataset, normalizeKey, OrderRow } from './dataset.js';
 import { CACHE_TTL, swr } from './cache.js';
 import { Bucket, bucketKey, enumerateBuckets, inRange, compareRange, parseCompare, resolveRange } from './period.js';
 import { computeKpis, getProductImages, getSalesRequestCount } from './dashboard.service.js';
@@ -63,8 +63,11 @@ export const getTopics = () =>
   swr('topics', { ttlMs: CACHE_TTL.heavyMs * 5, maxStaleMs: CACHE_TTL.heavyMaxStaleMs * 6 }, async () => (await getCollection<any>('CHU_DE')).find({}).toArray().catch(() => [] as any[]));
 
 /** Làm nóng các cache phụ (gọi ngầm sau mỗi lượt quét thông báo) → lần mở Dashboard kế tiếp không phải chờ DB. */
-export const warmAnalyticsCaches = () =>
-  Promise.allSettled([getCostModel(), getTopics(), getSalesRequestCount(), getProductImages()]);
+export const warmAnalyticsCaches = async () => {
+  // import động để tránh vòng phụ thuộc khi khởi động
+  const { getInventoryFlows } = await import('./inventory-flows.js');
+  return Promise.allSettled([getCostModel(), getTopics(), getSalesRequestCount(), getProductImages(), getInventoryFlows()]);
+};
 
 /** Giá vốn từng dòng đơn đã hoàn thành. */
 export type CostModel = Awaited<ReturnType<typeof buildCostModel>>;
@@ -267,16 +270,17 @@ const computeReconciliation = async ({ fresh, allowStale }: { fresh?: boolean; a
   // Dữ liệu
   add('NO_DETAILS', 'Dữ liệu', 'Trung bình', 'Đơn không có dòng sản phẩm', 'Không tính được sản phẩm bán chạy / giá vốn.',
     ds.orders.filter((o) => !(ds.detailsByOrder.get(o.id) || []).length).map((o) => ({ orderId: o.id, status: o.status, total: o.total, link: link(o.id) })));
-  add('TOTAL_MISMATCH', 'Dữ liệu', 'Thấp', 'Tổng tiền đơn khác Σ dòng sản phẩm + ship (chênh > 1.000đ)', 'Có thể do voucher / điểm thưởng — kiểm tra lại cách lưu.',
-    ds.orders.filter((o) => {
-      const lines = ds.detailsByOrder.get(o.id) || [];
-      if (!lines.length) return false;
-      const sum = lines.reduce((s, l) => s + l.amount, 0) + o.shipping;
-      return Math.abs(sum - o.total) > 1000 && !o.raw.DIEM_THUONG_SU_DUNG;
-    }).map((o) => {
-      const sum = (ds.detailsByOrder.get(o.id) || []).reduce((s, l) => s + l.amount, 0) + o.shipping;
-      return { orderId: o.id, total: o.total, linesPlusShipping: sum, diff: o.total - sum, link: link(o.id) };
-    }));
+  // Có TAM_TINH: so Σ dòng hàng với tạm tính (giảm giá voucher/điểm là hợp lệ). Không có: so với tổng − ship như cũ.
+  const mismatch = (o: OrderRow) => {
+    const lines = ds.detailsByOrder.get(o.id) || [];
+    if (!lines.length) return null;
+    const goods = lines.reduce((s, l) => s + l.amount, 0);
+    const expected = o.subtotal > 0 ? o.subtotal : o.total - o.shipping;
+    if (o.subtotal <= 0 && o.raw.DIEM_THUONG_SU_DUNG) return null;
+    return Math.abs(goods - expected) > 1000 ? { goods, expected } : null;
+  };
+  add('TOTAL_MISMATCH', 'Dữ liệu', 'Thấp', 'Tạm tính của đơn khác Σ dòng sản phẩm (chênh > 1.000đ)', 'Kiểm tra giá dòng hàng hoặc cách lưu TAM_TINH / tổng tiền.',
+    ds.orders.map((o) => ({ o, m: mismatch(o) })).filter((x) => x.m).map(({ o, m }) => ({ orderId: o.id, total: o.total, linesPlusShipping: m!.goods + o.shipping, diff: m!.expected - m!.goods, link: link(o.id) })));
   add('NO_COMPLETION_DATE', 'Dữ liệu', 'Thấp', 'Đơn hoàn thành chưa có ngày hoàn thành (đang ước tính)', 'Chạy npm run analytics:migrate để ghi NGAY_HOAN_THANH ước tính; từ nay hệ thống tự ghi khi chuyển "Hoàn thành".',
     ds.orders.filter((o) => o.completedAtEstimated).map((o) => ({ orderId: o.id, estimatedAt: o.completedAt, link: link(o.id) })));
 
@@ -284,7 +288,7 @@ const computeReconciliation = async ({ fresh, allowStale }: { fresh?: boolean; a
   const goLive: Date | null = marker?.at ? new Date(marker.at) : null;
   if (goLive) {
     add('NO_MATERIAL_ISSUE', 'Kho', 'Trung bình', 'Đơn đang giao/hoàn thành (sau ngày áp dụng kho mới) chưa có phiếu xuất NVL', 'Lập phiếu xuất "Làm hoa theo đơn" hoặc "Cắm bó sẵn" để tồn kho khớp.',
-      ds.orders.filter((o) => [ORDER_STATUS.shipping, ORDER_STATUS.delivered, ORDER_STATUS.completed].includes(o.status as any) && o.createdAt && o.createdAt >= goLive && !o.materialIssued
+      ds.orders.filter((o) => [ORDER_STATUS.shipping, ORDER_STATUS.delivered, ORDER_STATUS.completed].includes(o.status as any) && o.createdAt && o.createdAt >= goLive && !o.materialIssued && !o.isSample
         && (ds.detailsByOrder.get(o.id) || []).some((d) => (bomMap.get(d.productId) || []).length))
         .map((o) => ({ orderId: o.id, status: o.status, createdAt: o.createdAt, link: link(o.id) })));
   }

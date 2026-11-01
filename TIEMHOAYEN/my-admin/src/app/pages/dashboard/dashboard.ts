@@ -17,6 +17,7 @@ import {
 import { switchApiBaseUrl } from '../../services/api-config';
 import { RangeFilter, RangeValue } from './shared/range-filter';
 import * as F from './shared/format';
+import { ExportKind, ExportMenu, ExportSheet, exportCsv, exportExcel, printPdf } from './shared/export';
 
 type ChartMetric = 'revenue' | 'cash' | 'orders';
 
@@ -35,7 +36,7 @@ const memoRange: { value: RangeValue | null } = { value: null };
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, BaseChartDirective, RangeFilter],
+  imports: [CommonModule, RouterLink, BaseChartDirective, RangeFilter, ExportMenu],
   templateUrl: './dashboard.html',
   styleUrls: ['./shared/dashboard-shared.css', './dashboard.css'],
 })
@@ -252,6 +253,30 @@ export class Dashboard implements OnInit {
       return;
     }
     this.router.navigate([path], { queryParams: Object.keys(params).length ? params : undefined });
+  }
+
+  /* ---------------- xuất file ---------------- */
+
+  onExport(kind: ExportKind): void {
+    if (kind === 'pdf') return printPdf();
+    const ov = this.overview();
+    if (!ov) return;
+    const head = [`Tổng quan — Tiệm Hoa Yên`, `Khoảng ngày: ${ov.range.label} · so với ${ov.range.previous.label}`, `Số liệu lúc ${F.dateTime(ov.generatedAt)}`];
+    const sheets: ExportSheet[] = [
+      { name: 'Kết quả kinh doanh', title: head, rows: ov.kpis.map((k) => ({ 'Chỉ số': k.label, 'Giá trị': k.value, [this.compareShort()]: k.previous, 'Thay đổi': F.changeText(k.change, k.unit), 'Đơn vị': k.unit, 'Ghi chú': k.snapshot ? `Tại thời điểm xem · ${k.extra || ''}` : '' })) },
+      { name: 'Cần xử lý', rows: ov.needAction.map((n) => ({ 'Việc': n.label, 'Số lượng': n.count })) },
+      { name: 'Tình trạng đơn', rows: ov.statusBreakdown.map((x) => ({ 'Trạng thái': x.status, 'Số đơn': x.count })) },
+      { name: ov.series.bucket === 'hour' ? 'Theo giờ' : 'Theo ngày', rows: ov.series.labels.map((l, i) => ({
+        'Mốc': l, 'Doanh thu thuần': ov.series.current.revenue[i], [`DT ${this.compareShort().toLowerCase()}`]: ov.series.previous.revenue[i] ?? null,
+        'Tiền đã thu': ov.series.current.cash[i], 'Đơn mới': ov.series.current.orders[i] })) },
+      { name: 'Lịch giao', rows: this.deliveries().map((d) => ({ 'Mã đơn': d.orderId, 'Giờ giao': F.dateTime(d.deliveryAt), 'Tình trạng': this.urgencyLabel(d), 'Người nhận': d.recipient, 'Địa chỉ': d.address, 'Sản phẩm': d.items.map((i) => `${i.name} ×${i.quantity}`).join(', '), 'Trạng thái đơn': d.status })) },
+      { name: 'Đơn cần chú ý', rows: ov.attentionOrders.map((o) => ({ 'Mã đơn': o.orderId, 'Trạng thái': o.status, 'Giờ giao': F.dateTime(o.deliveryAt), 'Tổng tiền': o.total, 'Đã thu': o.paid, 'Lý do': o.reasons.map((r) => `${r.label} (${r.detail})`).join('; ') })) },
+      { name: 'Cảnh báo NVL', rows: (ov.inventory?.materials || []).map((m) => ({ 'NVL': m.name, 'Mã': m.materialId, 'Tình trạng': m.label, 'Khả dụng': m.available, 'Ngưỡng': m.threshold, 'Gợi ý nhập': m.suggestedOrder, 'ĐVT': m.unit })) },
+      { name: 'Bán chạy', rows: ov.bestProducts.map((p) => ({ 'Hạng': p.rank, 'Sản phẩm': p.name, 'Kiểu dáng': p.style, 'SL': p.quantity, 'Doanh thu hàng': p.revenue, 'Số đơn': p.orders })) },
+    ];
+    const file = `TongQuan_${this.range().from}_${this.range().to}`;
+    if (kind === 'excel') exportExcel(file, sheets);
+    else exportCsv(file, sheets);
   }
 
   useLocalBackend(): void {

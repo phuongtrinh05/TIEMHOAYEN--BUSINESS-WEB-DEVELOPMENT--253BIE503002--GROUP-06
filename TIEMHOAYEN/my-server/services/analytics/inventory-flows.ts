@@ -41,12 +41,12 @@ const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const loadInventoryFlows = async (): Promise<InventoryFlows> => {
   const col = (name: string) => getCollection<any>(name);
   const [px, pxLines, pn, pnLines, materials, suppliers] = await Promise.all([
-    col('PHIEU_XUAT_NVL').then((c) => c.find({ TRANG_THAI: POSTED }).project({ PHIEU_XUAT_ID: 1, LOAI_XUAT: 1, DON_HANG_ID: 1, NGAY_XUAT: 1, TONG_GIA_VON: 1 }).toArray()).catch(() => [] as any[]),
-    col('CHI_TIET_PHIEU_XUAT_NVL').then((c) => c.find({}).project({ PHIEU_XUAT_ID: 1, NGUYEN_VAT_LIEU_ID: 1, SO_LUONG_XUAT: 1, THANH_TIEN_VON: 1 }).toArray()).catch(() => [] as any[]),
-    col('PHIEU_NHAP_NVL').then((c) => c.find({ TRANG_THAI: POSTED }).project({ PHIEU_NHAP_ID: 1, NHA_CUNG_CAP_ID: 1, THOI_DIEM_NHAN: 1, NGAY_NHAP: 1, TONG_TIEN: 1 }).toArray()).catch(() => [] as any[]),
-    col('CHI_TIET_PHIEU_NHAP_NVL').then((c) => c.find({}).project({ PHIEU_NHAP_ID: 1, NGUYEN_VAT_LIEU_ID: 1, SO_LUONG_NHAP: 1, SL_THUC_NHAN: 1, SL_KHONG_DAT: 1, THANH_TIEN: 1 }).toArray()).catch(() => [] as any[]),
-    col('NGUYEN_VAT_LIEU').then((c) => c.find({}).project({ NGUYEN_VAT_LIEU_ID: 1, TEN_NGUYEN_VAT_LIEU: 1, DON_VI_TINH: 1, NHOM_NVL: 1 }).toArray()).catch(() => [] as any[]),
-    col('NHA_CUNG_CAP').then((c) => c.find({}).project({ NHA_CUNG_CAP_ID: 1, TEN_NHA_CUNG_CAP: 1 }).toArray()).catch(() => [] as any[]),
+    col('PHIEU_XUAT_NVL').then((c) => c.find({ TRANG_THAI: POSTED }).project({ PHIEU_XUAT_ID: 1, LOAI_XUAT: 1, DON_HANG_ID: 1, NGAY_XUAT: 1, TONG_GIA_VON: 1 }).batchSize(20_000).toArray()).catch(() => [] as any[]),
+    col('CHI_TIET_PHIEU_XUAT_NVL').then((c) => c.find({}).project({ PHIEU_XUAT_ID: 1, NGUYEN_VAT_LIEU_ID: 1, SO_LUONG_XUAT: 1, THANH_TIEN_VON: 1 }).batchSize(20_000).toArray()).catch(() => [] as any[]),
+    col('PHIEU_NHAP_NVL').then((c) => c.find({ TRANG_THAI: POSTED }).project({ PHIEU_NHAP_ID: 1, NHA_CUNG_CAP_ID: 1, THOI_DIEM_NHAN: 1, NGAY_NHAP: 1, TONG_TIEN: 1 }).batchSize(20_000).toArray()).catch(() => [] as any[]),
+    col('CHI_TIET_PHIEU_NHAP_NVL').then((c) => c.find({}).project({ PHIEU_NHAP_ID: 1, NGUYEN_VAT_LIEU_ID: 1, SO_LUONG_NHAP: 1, SL_THUC_NHAN: 1, SL_KHONG_DAT: 1, THANH_TIEN: 1 }).batchSize(20_000).toArray()).catch(() => [] as any[]),
+    col('NGUYEN_VAT_LIEU').then((c) => c.find({}).project({ NGUYEN_VAT_LIEU_ID: 1, TEN_NGUYEN_VAT_LIEU: 1, DON_VI_TINH: 1, NHOM_NVL: 1 }).batchSize(20_000).toArray()).catch(() => [] as any[]),
+    col('NHA_CUNG_CAP').then((c) => c.find({}).project({ NHA_CUNG_CAP_ID: 1, TEN_NHA_CUNG_CAP: 1 }).batchSize(20_000).toArray()).catch(() => [] as any[]),
   ]);
   const group = <T>(rows: any[], key: string, map: (r: any) => T) => {
     const m = new Map<string, T[]>();

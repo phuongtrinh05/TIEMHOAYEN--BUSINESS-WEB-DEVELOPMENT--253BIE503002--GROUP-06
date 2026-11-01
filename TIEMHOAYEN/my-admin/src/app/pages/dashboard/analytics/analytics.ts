@@ -8,6 +8,7 @@ import { switchApiBaseUrl } from '../../../services/api-config';
 import { RangeFilter, RangeValue } from '../shared/range-filter';
 import * as F from '../shared/format';
 import * as C from '../shared/charts';
+import { ExportKind, ExportMenu, ExportSheet, exportCsv, exportExcel, printPdf } from '../shared/export';
 
 const memo = new Map<string, AnalysisPage>();
 const memoState: { range: RangeValue | null; groupBy: GroupBy | null } = { range: null, groupBy: null };
@@ -20,7 +21,7 @@ const memoState: { range: RangeValue | null; groupBy: GroupBy | null } = { range
 @Component({
   selector: 'app-analytics',
   standalone: true,
-  imports: [CommonModule, RouterLink, BaseChartDirective, RangeFilter],
+  imports: [CommonModule, RouterLink, BaseChartDirective, RangeFilter, ExportMenu],
   templateUrl: './analytics.html',
   styleUrls: ['../shared/dashboard-shared.css', './analytics.css'],
 })
@@ -102,8 +103,40 @@ export class Analytics implements OnInit {
     return { from: r.from, to: r.to, compare: r.compare, ...extra };
   }
 
-  print(): void {
-    window.print();
+  /* ======================= Xuất file ======================= */
+
+  onExport(kind: ExportKind): void {
+    if (kind === 'pdf') return printPdf();
+    const d = this.data();
+    if (!d) return;
+    const cmp = this.compareShort();
+    const kpiRows = (rows: AnalysisKpi[]) => rows.map((k) => ({ 'Chỉ số': k.label, 'Giá trị': k.value, [cmp]: k.previous, 'Thay đổi': F.changeText(k.change, k.unit), 'Đơn vị': k.unit }));
+    const s = d.revenue.series;
+    const sheets: ExportSheet[] = [
+      { name: '1. Doanh thu - KPI', title: ['Bảng phân tích — Tiệm Hoa Yên', `Khoảng ngày: ${d.range.label} · so với ${cmp.toLowerCase()} (${d.range.previous.label})`, `Số liệu lúc ${F.dateTime(d.generatedAt)}`], rows: kpiRows(d.revenue.kpis) },
+      { name: '1. Doanh thu - Diễn biến', rows: s.labels.map((l, i) => ({ 'Kỳ': l, 'Doanh thu thuần': s.netRevenue[i], [`DT ${cmp.toLowerCase()}`]: s.netRevenuePrev[i] ?? null, 'LN gộp': s.grossProfit[i], 'Tiền đã thu': s.cashCollected[i], 'Đơn hoàn thành': s.completedOrders[i] })) },
+      { name: '1. Doanh thu - Thứ', rows: d.revenue.byWeekday.map((w) => ({ 'Thứ': w.label, 'Doanh thu thuần': w.revenue, 'Đơn hoàn thành': w.orders })) },
+      { name: '2. Dịp tặng', rows: d.occasions.byTopic.map((t) => ({ 'Dịp tặng': t.name, 'Số mẫu': t.products, 'SL': t.quantity, 'Số đơn': t.orders, 'Doanh thu hàng': t.revenue, 'Tỷ trọng %': t.share, [cmp]: t.previous ?? null, 'Thay đổi': F.changeText(t.change ?? null), 'LN gộp': t.grossProfit ?? 'Chưa đủ dữ liệu', 'Biên %': t.margin })) },
+      { name: '2. Kiểu dáng', rows: d.occasions.byStyle.map((t) => ({ 'Kiểu dáng': t.name, 'SL': t.quantity, 'Doanh thu hàng': t.revenue, 'Tỷ trọng %': t.share, 'LN gộp': t.grossProfit ?? 'Chưa đủ dữ liệu', 'Biên %': t.margin })) },
+      { name: '2. Dịp x kiểu dáng', rows: d.occasions.matrix.topics.map((t, i) => ({ 'Dịp tặng': t, ...Object.fromEntries(d.occasions.matrix.styles.map((st, j) => [st, d.occasions.matrix.cells[i][j]])) })) },
+      { name: '2. Top sản phẩm', rows: d.occasions.topProducts.map((p, i) => ({ '#': i + 1, 'Sản phẩm': p.name, 'Dịp tặng': p.topic, 'Kiểu dáng': p.style, 'SL': p.quantity, 'Doanh thu hàng': p.revenue, 'LN gộp': p.grossProfit ?? 'Chưa đủ dữ liệu', 'Biên %': p.margin, 'Cách tính giá vốn': p.costMethod })) },
+      { name: '3. Khách hàng - KPI', rows: kpiRows(d.customers.kpis) },
+      { name: '3. Khách mới - quay lại', rows: d.customers.series.labels.map((l, i) => ({ 'Kỳ': l, 'Mua lần đầu': d.customers.series.newBuyers[i], 'Quay lại': d.customers.series.returningBuyers[i] })) },
+      { name: '3. Nhóm khách', rows: d.customers.revenueSplit.map((x) => ({ 'Nhóm': x.label, 'Doanh thu thuần': x.value })) },
+      { name: '3. Top khách', rows: d.customers.topCustomers.map((c) => ({ 'Khách hàng': c.name, 'SĐT': c.phone, 'Loại': c.type, 'Số đơn': c.orders, 'Doanh thu thuần': c.revenue, 'Mua gần nhất': F.dateOnly(c.lastOrderAt) })) },
+      { name: '3. Đánh giá', rows: d.customers.ratingDist.map((r) => ({ 'Số sao': r.stars, 'Số đánh giá': r.count })) },
+      { name: '4. Kết quả kinh doanh', rows: d.costs.statement.map((x) => ({ 'Chỉ tiêu': x.label, 'Kỳ này': x.value, [cmp]: x.previous, 'Thay đổi': F.changeText(x.change), 'Ghi chú': x.note || '' })) },
+      { name: '4. Chi phí - tỷ lệ', rows: [...kpiRows(d.costs.ratios), ...d.costs.breakdown.map((b) => ({ 'Chỉ số': b.label, 'Giá trị': b.value, [cmp]: null, 'Thay đổi': '', 'Đơn vị': 'đ' }))] },
+      { name: '4. Chi phí theo kỳ', rows: d.costs.series.labels.map((l, i) => ({ 'Kỳ': l, 'Doanh thu thuần': d.costs.series.revenue[i], 'Giá vốn NVL': d.costs.series.cogs[i], 'Hao hụt / hủy': d.costs.series.loss[i], 'Tiền nhập NVL': d.costs.series.purchases[i] })) },
+      { name: '5. Vận hành - KPI', rows: kpiRows(d.operations.kpis) },
+      { name: '5. Phễu đơn', rows: d.operations.funnel.map((f) => ({ 'Bước': f.label, 'Số đơn': f.count, 'Tỷ lệ %': f.rate })) },
+      { name: '5. Giờ giao', rows: d.operations.deliveryByHour.map((h) => ({ 'Giờ': h.label, 'Số đơn': h.orders })) },
+      { name: '5. Lý do hủy', rows: d.operations.cancelReasons.map((c) => ({ 'Lý do': c.reason, 'Số đơn': c.count })) },
+      { name: '5. Thanh toán', rows: d.operations.paymentMethods.map((m) => ({ 'Phương thức': m.method, 'Tiền đã thu': m.amount })) },
+    ];
+    const file = `BangPhanTich_${this.range().from}_${this.range().to}`;
+    if (kind === 'excel') exportExcel(file, sheets);
+    else exportCsv(file, sheets);
   }
 
   useLocalBackend(): void {

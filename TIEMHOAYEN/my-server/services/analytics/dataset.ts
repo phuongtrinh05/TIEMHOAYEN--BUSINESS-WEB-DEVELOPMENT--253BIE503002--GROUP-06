@@ -65,6 +65,8 @@ export interface OrderRow {
   address: string;
   prepStartAt: Date | null;
   materialIssued: boolean;
+  /** Đơn do scripts/analytics-seed.ts tạo (DU_LIEU_MAU) — không có phiếu kho */
+  isSample: boolean;
   stockChecked: boolean;
   raw: any;
 }
@@ -133,10 +135,14 @@ export const mapOrder = (o: any): OrderRow => {
     address: String(o.DIA_CHI_GIAO_HANG || ''),
     prepStartAt: toDate(o.THOI_DIEM_BAT_DAU_CHUAN_BI),
     materialIssued: Boolean(o.DA_XUAT_NVL),
+    isSample: Boolean(o.DU_LIEU_MAU),
     stockChecked: Boolean(o.KIEM_TRA_TON_KHO),
     raw: o,
   };
 };
+
+/** Lấy trọn collection trong 1 lượt (mặc định driver tách 101 dòng đầu + getMore → thêm 1 vòng mạng tới Atlas). */
+const BATCH = 20_000;
 
 export const loadDataset = async (): Promise<Dataset> => {
   const [orders, details, payments, customers, products] = await Promise.all([
@@ -144,12 +150,12 @@ export const loadDataset = async (): Promise<Dataset> => {
       DON_HANG_ID: 1, KHACH_HANG_ID: 1, TRANG_THAI: 1, NGAY_TAO: 1, NGAY_HOAN_THANH: 1, NGAY_HOAN_THANH_UOC_TINH: 1, LY_DO_HOAN_TIEN_TRA_HANG: 1, DIEM_THUONG_SU_DUNG: 1, TAM_TINH: 1, NGAY_CAP_NHAT: 1, NGAY_HUY: 1, LY_DO_HUY: 1,
       NGAY_YEU_CAU_HOAN_TIEN_TRA_HANG: 1, TONG_TIEN: 1, PHI_VAN_CHUYEN: 1, VAT: 1, TIEN_COC: 1, PHUONG_THUC_THANH_TOAN: 1,
       NGAY_MUON_GIAO: 1, KHUNG_GIO_MUON_GIAO: 1, TEN_NGUOI_NHAN: 1, DIA_CHI_GIAO_HANG: 1, SDT_NGUOI_NHAN: 1,
-      THOI_DIEM_BAT_DAU_CHUAN_BI: 1, DA_XUAT_NVL: 1, KIEM_TRA_TON_KHO: 1,
-    }).toArray(),
-    (await getCollection<any>('DON_HANG_CHI_TIET')).find({}).project({ DON_HANG_ID: 1, SAN_PHAM_ID: 1, SO_LUONG: 1, GIA: 1 }).toArray(),
-    (await getCollection<any>('THANH_TOAN')).find({}).project({ THANH_TOAN_ID: 1, DON_HANG_ID: 1, SO_TIEN: 1, CONG_THANH_TOAN: 1, TRANG_THAI_THANH_TOAN: 1, NGAY_THANH_TOAN: 1, MA_GIAO_DICH: 1 }).toArray(),
-    (await getCollection<any>('KHACH_HANG')).find({}).project({ KHACH_HANG_ID: 1, TEN: 1, SDT: 1, NGAY_DANG_KY: 1, NGAY_TAO: 1 }).toArray(),
-    (await getCollection<any>('SAN_PHAM')).find({}).project({ SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1, KIEU_DANG: 1, CHU_DE_ID: 1, GIA: 1, GIA_KHUYEN_MAI: 1, TRANG_THAI: 1 }).toArray(),
+      THOI_DIEM_BAT_DAU_CHUAN_BI: 1, DA_XUAT_NVL: 1, DU_LIEU_MAU: 1, KIEM_TRA_TON_KHO: 1,
+    }).batchSize(BATCH).toArray(),
+    (await getCollection<any>('DON_HANG_CHI_TIET')).find({}).project({ DON_HANG_ID: 1, SAN_PHAM_ID: 1, SO_LUONG: 1, GIA: 1 }).batchSize(BATCH).toArray(),
+    (await getCollection<any>('THANH_TOAN')).find({}).project({ THANH_TOAN_ID: 1, DON_HANG_ID: 1, SO_TIEN: 1, CONG_THANH_TOAN: 1, TRANG_THAI_THANH_TOAN: 1, NGAY_THANH_TOAN: 1, MA_GIAO_DICH: 1 }).batchSize(BATCH).toArray(),
+    (await getCollection<any>('KHACH_HANG')).find({}).project({ KHACH_HANG_ID: 1, TEN: 1, SDT: 1, NGAY_DANG_KY: 1, NGAY_TAO: 1 }).batchSize(BATCH).toArray(),
+    (await getCollection<any>('SAN_PHAM')).find({}).project({ SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1, KIEU_DANG: 1, CHU_DE_ID: 1, GIA: 1, GIA_KHUYEN_MAI: 1, TRANG_THAI: 1 }).batchSize(BATCH).toArray(),
   ]);
 
   const orderRows = orders.map(mapOrder);

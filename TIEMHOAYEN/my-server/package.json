@@ -17,6 +17,7 @@
     "test:support": "tsx --test tests/support.test.ts",
     "preview:frontends": "tsx scripts/serve-frontends.ts",
     "analytics:migrate": "tsx scripts/analytics-setup.ts --migrate",
+    "analytics:seed": "tsx scripts/analytics-seed.ts",
     "analytics:check": "tsx scripts/analytics-setup.ts --check",
     "test:analytics": "tsx --test tests/analytics.test.ts",
     "test:content": "tsx --test tests/content.test.ts"

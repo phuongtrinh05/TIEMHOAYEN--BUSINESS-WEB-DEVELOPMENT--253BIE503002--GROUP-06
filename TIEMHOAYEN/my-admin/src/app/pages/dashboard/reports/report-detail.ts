@@ -14,6 +14,9 @@ import { markViewed, readStore, writeStore } from './report-store';
 
 type Col = ReportRun['columns'][number];
 
+/** Bộ nhớ đệm trong phiên: mở lại báo cáo cùng bộ lọc hiện ngay, rồi tải lại ngầm. */
+const memo = new Map<string, ReportRun>();
+
 /** Báo cáo ↔ khối tương ứng trên Bảng phân tích (để quay lại xem xu hướng). */
 const ANALYSIS_SECTION: Record<string, string> = {
   'sales-by-time': 'doanh-thu', 'business-result': 'chi-phi', 'sales-by-product': 'dip-tang', 'sales-by-occasion': 'dip-tang', 'sales-by-style': 'dip-tang',
@@ -144,8 +147,12 @@ export class ReportDetail implements OnInit {
     this.loading.set(true);
     this.error.set('');
     const r = this.range();
+    const k = `${this.key()}|${r.from}|${r.to}|${this.groupBy() || ''}|${this.status()}`;
+    const cached = memo.get(k);
+    if (cached && !fresh) this.report.set(cached);
+    else if (this.report()?.key !== this.key()) this.report.set(null);
     this.api.runReport(this.key(), { preset: 'custom', from: r.from, to: r.to }, { groupBy: this.groupBy() || undefined, status: this.status(), fresh }).subscribe({
-      next: (rep) => { this.report.set(rep); this.loading.set(false); this.page.set(1); },
+      next: (rep) => { memo.set(k, rep); this.report.set(rep); this.loading.set(false); if (!cached) this.page.set(1); },
       error: (e: Error) => { this.error.set(e.message); this.loading.set(false); },
     });
   }

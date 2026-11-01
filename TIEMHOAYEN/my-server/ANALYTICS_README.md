@@ -31,6 +31,19 @@ Biến môi trường (tùy chọn, có giá trị mặc định):
 | `DASHBOARD_DELIVERY_WINDOW_MINUTES` | 120 | Cửa sổ "giao trong 2h tới" |
 | `DASHBOARD_PENDING_MINUTES` | 30 | Mốc "Chờ xử lý quá lâu" |
 
+### Dữ liệu mẫu cho Dashboard (01/01/2026 → hôm nay)
+
+```bash
+npm run analytics:seed -- --dry-run      # xem trước: số đơn, trạng thái, doanh thu sẽ tạo
+npm run analytics:seed                   # ghi vào MongoDB trong .env
+npm run analytics:seed -- --reset        # xóa toàn bộ dữ liệu mẫu do script tạo
+# tùy chọn: --from=2026-01-01 --to=2026-11-01 --per-day=3 --seed=20260101
+```
+
+- Dựa trên sản phẩm, giá, chủ đề (dịp tặng) và phương thức thanh toán đang có trong DB; có mùa vụ (14/02, 08/03, Ngày của Mẹ, 20/10, 20/11, Noel, sau Tết nhiều khai trương), cuối tuần đông hơn, tăng trưởng nhẹ theo tháng.
+- Mọi bản ghi gắn `DU_LIEU_MAU: true`, `NGUON_DU_LIEU: 'analytics-seed'`; mã riêng `MAUyymmddNNN` (đơn), `KHMAUnnnn` (khách) → không ảnh hưởng dãy mã đơn/khách thật, xóa sạch bằng `--reset`.
+- Không gắn đơn vào khách thật, không tạo đánh giá (đánh giá hiển thị công khai trên web), không tạo phiếu kho/giữ tồn (sổ kho giữ nguyên); đối chiếu bỏ qua kiểm tra "thiếu phiếu xuất NVL" cho đơn mẫu.
+
 ## 2. API (mount tại `/api/admin`)
 
 | Method | Path | Quyền | Mục |
@@ -116,6 +129,13 @@ Ví dụ: đơn 1.000.000đ đã cọc 300.000đ nhưng chưa giao thì K05 = 30
 | Bấm Tải lại (đọc thẳng DB) | – | ~0,9 s |
 
 Biến môi trường: `DASHBOARD_CACHE_SECONDS` (30), `DASHBOARD_CACHE_MAX_STALE_SECONDS` (300), `DASHBOARD_HEAVY_CACHE_SECONDS` (60), `DASHBOARD_HEAVY_MAX_STALE_SECONDS` (600).
+
+### Tối ưu đọc MongoDB (đợt 2)
+
+- `mongo.ts`: chỉ tạo **1** kết nối khi nhiều request đến cùng lúc lúc khởi động (trước đây mỗi request tạo 1 MongoClient); bật nén `zlib` giữa server và Atlas (`MONGO_COMPRESSORS`, tắt bằng `none`); giữ sẵn kết nối (`MONGO_MIN_POOL_SIZE`, mặc định 3).
+- Các truy vấn quét toàn bộ (đơn, dòng hàng, thanh toán, kho) dùng `batchSize` lớn → 1 vòng mạng thay vì 2+.
+- Phản hồi JSON lớn của Dashboard / báo cáo được nén gzip (zlib có sẵn của Node, không thêm thư viện).
+- Làm nóng thêm cache giá vốn, dòng kho; trang chi tiết báo cáo nhớ kết quả trong phiên (mở lại hiện ngay).
 
 ## 8. Việc nhóm cần chốt
 

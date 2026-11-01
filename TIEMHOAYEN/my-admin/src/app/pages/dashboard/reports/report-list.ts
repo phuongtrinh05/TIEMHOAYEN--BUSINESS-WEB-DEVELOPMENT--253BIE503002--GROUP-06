@@ -2,7 +2,10 @@ import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { Component, OnInit, PLATFORM_ID, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { AnalyticsApiService, ReportCatalog, ReportMeta } from '../../../services/analytics-api.service';
+import { forkJoin } from 'rxjs';
+import { AnalyticsApiService, ReportCatalog, ReportMeta, ReportRun } from '../../../services/analytics-api.service';
+import { RangeFilter, RangeValue } from '../shared/range-filter';
+import { ExportKind, ExportMenu, ExportSheet, exportCsv, exportExcel, printPdf } from '../shared/export';
 import { switchApiBaseUrl } from '../../../services/api-config';
 import * as F from '../shared/format';
 import { readStore, writeStore } from './report-store';
@@ -16,7 +19,7 @@ type SortKey = 'name' | 'category' | 'viewed';
 @Component({
   selector: 'app-report-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, RangeFilter, ExportMenu],
   templateUrl: './report-list.html',
   styleUrls: ['../shared/dashboard-shared.css', './reports.css'],
 })
@@ -34,7 +37,10 @@ export class ReportList implements OnInit {
   sortKey = signal<SortKey>('category');
   favorites = signal<string[]>(readStore().favorites);
   viewed = signal<Record<string, string>>(readStore().viewed);
-  rangeParams = signal<Record<string, string>>({});
+  range = signal<RangeValue>({ from: F.isoDate(-29), to: F.isoDate(0), compare: 'previous' });
+  rangeParams = computed<Record<string, string>>(() => ({ from: this.range().from, to: this.range().to }));
+  exporting = signal(false);
+  exportError = signal('');
 
   popular = computed(() => (this.catalog()?.reports || []).filter((r) => r.popular));
   recent = computed(() => {
@@ -66,9 +72,43 @@ export class ReportList implements OnInit {
   ngOnInit(): void {
     if (!this.isBrowser) return;
     const q = this.route.snapshot.queryParamMap;
-    if (q.get('from') && q.get('to')) this.rangeParams.set({ from: q.get('from')!, to: q.get('to')!, ...(q.get('compare') ? { compare: q.get('compare')! } : {}) });
+    if (q.get('from') && q.get('to')) this.range.set({ from: q.get('from')!, to: q.get('to')!, compare: 'previous' });
     if (q.get('category')) this.category.set(q.get('category')!);
     this.api.reportCatalog().subscribe({ next: (c) => this.catalog.set(c), error: (e: Error) => this.error.set(e.message) });
+  }
+
+  onRange(v: RangeValue): void {
+    this.range.set(v);
+  }
+
+  /** Xuất: chạy lần lượt các báo cáo đang hiển thị (cùng khoảng ngày) → Excel nhiều sheet / CSV gộp / PDF trang danh sách. */
+  onExport(kind: ExportKind): void {
+    if (kind === 'pdf') return printPdf();
+    const list = this.filtered();
+    if (!list.length) return;
+    this.exporting.set(true);
+    this.exportError.set('');
+    const r = this.range();
+    forkJoin(list.map((m) => this.api.runReport(m.key, { preset: 'custom', from: r.from, to: r.to }))).subscribe({
+      next: (runs: ReportRun[]) => {
+        const toRows = (run: ReportRun) => {
+          const rows = run.rows.map((row) => Object.fromEntries(run.columns.map((c) => [c.label, c.type === 'date' ? F.dateOnly(row[c.key]) : c.type === 'datetime' ? F.dateTime(row[c.key]) : row[c.key] ?? ''])));
+          if (run.columns.some((c) => c.sum)) rows.push(Object.fromEntries(run.columns.map((c, i) => [c.label, c.sum ? run.totals[c.key] : i === 0 ? 'TỔNG' : ''])));
+          return rows;
+        };
+        const index: ExportSheet = {
+          name: 'Mục lục',
+          title: ['Danh sách báo cáo — Tiệm Hoa Yên', `Khoảng ngày: ${r.from} → ${r.to}`, `Xuất lúc ${F.dateTime(new Date())}`],
+          rows: runs.map((run, i) => ({ 'STT': i + 1, 'Báo cáo': run.name, 'Danh mục': run.category, 'Phạm vi': run.snapshot ? 'Tại thời điểm xem' : run.range.label, 'Số dòng': run.totalRows, 'Mô tả': run.description })),
+        };
+        const sheets: ExportSheet[] = [index, ...runs.map((run) => ({ name: run.name, title: [run.name, run.snapshot ? `Tại thời điểm ${F.dateTime(run.generatedAt)}` : `Khoảng ngày: ${run.range.label}`, ...(run.note ? [run.note] : [])], rows: toRows(run) }))];
+        const file = `DanhSachBaoCao_${r.from}_${r.to}`;
+        if (kind === 'excel') exportExcel(file, sheets);
+        else exportCsv(file, sheets);
+        this.exporting.set(false);
+      },
+      error: (e: Error) => { this.exportError.set(e.message); this.exporting.set(false); },
+    });
   }
 
   toggleFavorite(r: ReportMeta, ev?: Event): void {
