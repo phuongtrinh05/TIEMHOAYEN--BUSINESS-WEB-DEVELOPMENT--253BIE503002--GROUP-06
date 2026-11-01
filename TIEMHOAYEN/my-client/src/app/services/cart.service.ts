@@ -15,6 +15,13 @@ export interface CartApiItem {
   TEN_CHU_DE?: string | null;
   SO_LUONG: number;
   SO_LUONG_TON?: number | null;
+  LINE_KEY?: string;
+  BIEN_THE_ID?: string | null;
+  THIET_KE_ID?: string | null;
+  CAU_HINH?: Record<string, unknown>;
+  GIA_DA_THAY_DOI?: boolean;
+  GIA_LUC_THEM?: number;
+  QUYET_DINH_KHA_DUNG?: string;
 }
 
 export interface CartResponse {
@@ -36,27 +43,30 @@ export class CartService {
     );
   }
 
-  addItem(customerId: string, productId: string, quantity: number): Observable<any> {
+  addItem(customerId: string, productId: string, quantity: number, line?: { lineKey?: string; variantId?: string | null; designId?: string | null; configuration?: Record<string, unknown> }): Observable<any> {
     return this.http.post(`${this.apiUrl}/add`, {
       customerId,
       productId,
       quantity,
+      ...line,
     });
   }
 
-  updateItem(customerId: string, productId: string, quantity: number): Observable<any> {
+  updateItem(customerId: string, productId: string, quantity: number, lineKey?: string): Observable<any> {
     return this.http.put(`${this.apiUrl}/update`, {
       customerId,
       productId,
       quantity,
+      lineKey,
     });
   }
 
-  removeItem(customerId: string, productId: string): Observable<any> {
+  removeItem(customerId: string, productId: string, lineKey?: string): Observable<any> {
     return this.http.delete(`${this.apiUrl}/remove`, {
       body: {
         customerId,
         productId,
+        lineKey,
       },
     });
   }

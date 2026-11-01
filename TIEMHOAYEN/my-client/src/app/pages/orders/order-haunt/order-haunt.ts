@@ -9,10 +9,15 @@ import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule, NgForm } from '@angular/forms';
 import { Router } from '@angular/router';
 import { CreateOrderPayload, CreateOrderResponse, OrderService } from '../../../services/order.service';
+import { PricingService, ServerQuote } from '../../../services/pricing.service';
 
 export interface OrderItem {
   requiresReview?: boolean;
   id: string;
+  lineKey: string;
+  variantId?: string | null;
+  designId?: string | null;
+  configuration?: Record<string, unknown>;
   name: string;
   image: string;
   qty: number;
@@ -31,6 +36,10 @@ interface CartStorageItem {
   image: string;
   selected?: boolean;
   maxQuantity?: number;
+  lineKey?: string;
+  variantId?: string | null;
+  designId?: string | null;
+  configuration?: Record<string, unknown>;
 }
 
 export interface Voucher {
@@ -94,6 +103,7 @@ export class OrderHauntComponent implements OnInit {
   private platformId = inject(PLATFORM_ID);
   private router = inject(Router);
   private orderService = inject(OrderService);
+  private pricingService = inject(PricingService);
 
   private static publicVouchersCache: Voucher[] | null = null;
   private static provincesCache: Province[] | null = null;
@@ -299,12 +309,17 @@ export class OrderHauntComponent implements OnInit {
       : this.readCartArray(this.cartStorageKey).filter(item => item.selected !== false);
 
     this.orderItems = sourceItems.map((item: CartStorageItem) => ({
-      id: String(item.id || ''), requiresReview: !!item.requiresReview,
+      id: String(item.id || ''),
+      lineKey: String(item.lineKey || item.id || ''),
+      variantId: item.variantId || null,
+      designId: item.designId || null,
+      configuration: item.configuration || {},
       name: String(item.name || ''),
       image: String(item.image || this.defaultImage),
       qty: Math.max(1, Number(item.quantity || 1)),
       price: Number(item.price || 0),
     }));
+    this.refreshServerQuote();
 
     if (this.orderItems.length === 0) {
       this.router.navigate(['/cart']);
@@ -687,6 +702,7 @@ export class OrderHauntComponent implements OnInit {
 
     if (!voucherCode) {
       this.selectedVoucher = null;
+      this.refreshServerQuote();
       return;
     }
 
@@ -702,6 +718,23 @@ export class OrderHauntComponent implements OnInit {
 
     this.selectedVoucher = found;
     this.formData.voucherCode = found.code;
+    this.refreshServerQuote();
+  }
+
+  serverQuote: ServerQuote | null = null;
+  private quoteVersion = 0;
+  private refreshServerQuote(): void {
+    if (!this.orderItems.length) return;
+    const version = ++this.quoteVersion;
+    this.pricingService.quote({
+      items: this.orderItems.map(item => ({ id: item.id, quantity: item.qty, lineKey: item.lineKey, variantId: item.variantId, designId: item.designId, configuration: item.configuration, displayedUnitPrice: item.price })),
+      shippingFee: this.shippingFee,
+      voucher: this.selectedVoucher ? { id: this.selectedVoucher.id, code: this.selectedVoucher.code } : null,
+      customerId: null,
+    }).subscribe({
+      next: quote => { if (version === this.quoteVersion) this.serverQuote = quote; },
+      error: error => { if (version === this.quoteVersion) { this.serverQuote = null; this.voucherError = error?.error?.message || 'Không thể kiểm tra báo giá.'; } },
+    });
   }
 
   onVoucherCodeChange(): void {
@@ -758,6 +791,7 @@ export class OrderHauntComponent implements OnInit {
   }
 
   get subtotal(): number {
+    if (this.serverQuote) return this.serverQuote.subtotal;
     return this.orderItems.reduce(
       (sum, item) => sum + item.price * item.qty,
       0
@@ -885,6 +919,7 @@ export class OrderHauntComponent implements OnInit {
   }
 
   get productVoucherDiscount(): number {
+    if (this.serverQuote) return this.serverQuote.productDiscount;
     if (!this.selectedVoucher || !this.isPercentVoucherType(this.selectedVoucher.type)) {
       return 0;
     }
@@ -893,6 +928,7 @@ export class OrderHauntComponent implements OnInit {
   }
 
   get shippingVoucherDiscount(): number {
+    if (this.serverQuote) return this.serverQuote.shippingDiscount;
     if (!this.selectedVoucher || !this.isCashVoucherType(this.selectedVoucher.type)) {
       return 0;
     }
@@ -905,6 +941,7 @@ export class OrderHauntComponent implements OnInit {
   }
 
   get total(): number {
+    if (this.serverQuote) return this.serverQuote.total;
     return Math.max(0, this.subtotal + this.shippingFee - this.discount);
   }
 
@@ -1252,6 +1289,10 @@ export class OrderHauntComponent implements OnInit {
       },
       items: this.orderItems.map(item => ({
         id: item.id,
+        lineKey: item.lineKey,
+        variantId: item.variantId,
+        designId: item.designId,
+        configuration: item.configuration,
         name: item.name,
         qty: item.qty,
         price: item.price,

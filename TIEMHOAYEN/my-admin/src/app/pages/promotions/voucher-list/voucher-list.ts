@@ -2,7 +2,7 @@ import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { AdminApiService, AdminCustomer, AdminVoucher } from '../../../services/admin-api.service';
+import { AdminApiService, AdminCategory, AdminCustomer, AdminVoucher } from '../../../services/admin-api.service';
 
 interface VoucherItem {
     id: number;
@@ -13,6 +13,16 @@ interface VoucherItem {
     customerName: string;
     discountType: string;
     discountValue: number;
+    maxDiscount: number;
+    minimumOrder: number;
+    productScopeText: string;
+    categoryIds: string[];
+    audience: string;
+    membershipTierText: string;
+    totalLimit: number;
+    perUserLimit: number;
+    firstOrderOnly: boolean;
+    active: boolean;
     startDate: Date;
     endDate: Date;
     used: boolean;
@@ -66,14 +76,19 @@ export class VoucherListComponent implements OnInit {
     newVoucherQuantity = 1;
 
     campaignOptions: CampaignOption[] = [];
+    categoryOptions: AdminCategory[] = [];
+    categoryOptionsError = false;
+    isCategoryMenuOpen = false;
     customerOptions: CustomerOption[] = [];
     selectedCustomerIds: string[] = [];
     customerSearchKeyword = '';
 
     discountTypes = [
         'Phần trăm',
-        'Tiền'
+        'Tiền',
+        'Phí vận chuyển'
     ];
+    audienceOptions = ['Tất cả', 'Guest', 'Member', 'Hạng thành viên', 'Tài khoản được cấp'];
 
     vouchers: VoucherItem[] = [];
     filteredVouchers: VoucherItem[] = [];
@@ -114,6 +129,7 @@ export class VoucherListComponent implements OnInit {
         }
 
         this.loadCampaignOptions();
+        this.loadCategoryOptions();
         this.loadCustomerOptions();
         this.loadVouchers();
     }
@@ -155,7 +171,7 @@ export class VoucherListComponent implements OnInit {
             },
             error: (error) => {
                 console.error('Cannot load vouchers:', error);
-                alert('Không tải được danh sách voucher.');
+                alert(error?.error?.message || 'Không tải được danh sách voucher.');
                 this.cdr.detectChanges();
             }
         });
@@ -173,6 +189,22 @@ export class VoucherListComponent implements OnInit {
             error: (error) => {
                 console.error('Cannot load campaign options:', error);
                 this.campaignOptions = [];
+                this.cdr.detectChanges();
+            }
+        });
+    }
+
+    loadCategoryOptions(): void {
+        this.adminApi.getCategories('topic').subscribe({
+            next: (response) => {
+                this.categoryOptions = response.categories;
+                this.categoryOptionsError = false;
+                this.cdr.detectChanges();
+            },
+            error: (error) => {
+                console.error('Cannot load category options:', error);
+                this.categoryOptions = [];
+                this.categoryOptionsError = true;
                 this.cdr.detectChanges();
             }
         });
@@ -277,6 +309,7 @@ export class VoucherListComponent implements OnInit {
     }
 
     editVoucher(voucher: VoucherItem): void {
+        this.isCategoryMenuOpen = false;
         this.editingVoucher = {
             ...voucher,
             startDate: new Date(voucher.startDate),
@@ -339,17 +372,29 @@ export class VoucherListComponent implements OnInit {
         this.isSortMenuOpen = false;
         this.isExportMenuOpen = false;
         this.isEditModalOpen = false;
+        this.isCategoryMenuOpen = false;
         this.editingVoucher = null;
 
+        const nextVoucherId = this.calculateNextVoucherId();
         this.newVoucher = {
             id: nextId,
-            code: 'Tự tạo',
+            code: nextVoucherId,
             voucherCode: '',
             campaignCode: this.campaignOptions[0]?.code || '',
             customerId: '',
             customerName: '',
             discountType: 'Phần trăm',
             discountValue: 0,
+            maxDiscount: 0,
+            minimumOrder: 0,
+            productScopeText: '',
+            categoryIds: [],
+            audience: 'Tất cả',
+            membershipTierText: '',
+            totalLimit: 0,
+            perUserLimit: 0,
+            firstOrderOnly: false,
+            active: false,
             startDate: today,
             endDate: endDate,
             used: false,
@@ -363,6 +408,19 @@ export class VoucherListComponent implements OnInit {
         this.customerSearchKeyword = '';
 
         this.isAddModalOpen = true;
+
+        // Xác nhận lại bằng dữ liệu mới nhất trên server để không lệch khi có người khác vừa tạo voucher.
+        this.adminApi.getNextVoucherId().subscribe({
+            next: ({ voucherId }) => {
+                if (this.newVoucher && this.isAddModalOpen) {
+                    this.newVoucher.code = voucherId;
+                    this.cdr.detectChanges();
+                }
+            },
+            error: (error) => {
+                console.error('Cannot load next voucher ID:', error);
+            }
+        });
     }
 
     saveNewVoucher(): void {
@@ -383,7 +441,8 @@ export class VoucherListComponent implements OnInit {
         this.adminApi.createVoucher({
             ...payload,
             customerIds: this.selectedCustomerIds,
-            quantity
+            quantity,
+            expectedVoucherId: this.newVoucher.code
         }).subscribe({
             next: () => {
                 this.searchKeyword = '';
@@ -393,13 +452,27 @@ export class VoucherListComponent implements OnInit {
             },
             error: (error) => {
                 console.error('Cannot create voucher:', error);
+                if (error?.status === 409 && error?.error?.voucherId && this.newVoucher) {
+                    this.newVoucher.code = String(error.error.voucherId);
+                    this.cdr.detectChanges();
+                }
                 alert(error?.error?.message || 'Không thêm được voucher.');
             }
         });
     }
 
+    private calculateNextVoucherId(): string {
+        const maxNumber = this.vouchers.reduce((max, voucher) => {
+            const match = String(voucher.code || '').match(/^VC(\d+)$/i);
+            return match ? Math.max(max, Number(match[1])) : max;
+        }, 0);
+
+        return `VC${String(maxNumber + 1).padStart(4, '0')}`;
+    }
+
     closeAddModal(): void {
         this.isAddModalOpen = false;
+        this.isCategoryMenuOpen = false;
         this.newVoucher = null;
         this.newStartDateText = '';
         this.newEndDateText = '';
@@ -410,6 +483,7 @@ export class VoucherListComponent implements OnInit {
 
     closeEditModal(): void {
         this.isEditModalOpen = false;
+        this.isCategoryMenuOpen = false;
         this.editingVoucher = null;
     }
 
@@ -554,6 +628,16 @@ export class VoucherListComponent implements OnInit {
             customerId: item.customerId || '',
             customerName: item.customerName || '',
             discountType: this.toDisplayDiscountType(item.discountType),
+            maxDiscount: Number(item.maxDiscount || 0),
+            minimumOrder: Number(item.minimumOrder || 0),
+            productScopeText: (item.productIds || []).join(', '),
+            categoryIds: [...(item.categoryIds || [])],
+            audience: item.audience || 'Tất cả',
+            membershipTierText: (item.membershipTiers || []).join(', '),
+            totalLimit: Number(item.totalLimit || 0),
+            perUserLimit: Number(item.perUserLimit || 0),
+            firstOrderOnly: Boolean(item.firstOrderOnly),
+            active: Boolean(item.active),
             startDate: this.toDate(item.startDate),
             endDate: this.toDate(item.endDate),
             used: Boolean(item.used),
@@ -575,8 +659,14 @@ export class VoucherListComponent implements OnInit {
             return null;
         }
 
-        if (endDate < startDate) {
+        if (endDate <= startDate) {
             alert('Ngày kết thúc phải sau ngày bắt đầu.');
+            return null;
+        }
+
+        const discountValue = Number(voucher.discountValue || 0);
+        if (discountValue <= 0 || (voucher.discountType === 'Phần trăm' && discountValue > 100)) {
+            alert('Giá trị giảm không hợp lệ.');
             return null;
         }
 
@@ -584,10 +674,54 @@ export class VoucherListComponent implements OnInit {
             voucherCode: voucher.voucherCode.trim(),
             campaignCode: voucher.campaignCode,
             discountType: voucher.discountType,
-            discountValue: Number(voucher.discountValue || 0),
+            discountValue,
+            maxDiscount: Number(voucher.maxDiscount || 0),
+            minimumOrder: Number(voucher.minimumOrder || 0),
+            productIds: this.parseList(voucher.productScopeText),
+            categoryIds: [...voucher.categoryIds],
+            audience: voucher.audience,
+            membershipTiers: this.parseList(voucher.membershipTierText),
+            totalLimit: Number(voucher.totalLimit || 0),
+            perUserLimit: Number(voucher.perUserLimit || 0),
+            firstOrderOnly: voucher.firstOrderOnly,
+            active: voucher.active,
             startDate: this.toPayloadDate(startDate),
             endDate: this.toPayloadDate(endDate)
         };
+    }
+
+    private parseList(value: string): string[] {
+        return [...new Set(String(value || '').split(',').map(item => item.trim()).filter(Boolean))];
+    }
+
+    toggleCategoryMenu(): void {
+        this.isCategoryMenuOpen = !this.isCategoryMenuOpen;
+    }
+
+    isCategorySelected(voucher: VoucherItem, categoryId: string): boolean {
+        return voucher.categoryIds.includes(categoryId);
+    }
+
+    toggleCategorySelection(voucher: VoucherItem, categoryId: string, event: Event): void {
+        const checked = (event.target as HTMLInputElement).checked;
+        voucher.categoryIds = checked
+            ? [...new Set([...voucher.categoryIds, categoryId])]
+            : voucher.categoryIds.filter((id) => id !== categoryId);
+    }
+
+    clearCategorySelection(voucher: VoucherItem): void {
+        voucher.categoryIds = [];
+    }
+
+    getCategorySelectionLabel(voucher: VoucherItem): string {
+        if (voucher.categoryIds.length === 0) {
+            return 'Tất cả danh mục';
+        }
+
+        const names = voucher.categoryIds.map((id) =>
+            this.categoryOptions.find((category) => category.code === id)?.name || id
+        );
+        return names.join(', ');
     }
 
     private normalizeNewVoucherQuantity(): number | null {
@@ -640,7 +774,11 @@ export class VoucherListComponent implements OnInit {
     private toDisplayDiscountType(value: string): string {
         const normalized = this.removeVietnameseTones(String(value || '').toLowerCase());
 
-        if (normalized.includes('tien')) {
+        if (normalized.includes('phi van chuyen') || normalized.includes('ship')) {
+            return 'Phí vận chuyển';
+        }
+
+        if (normalized.includes('tien') || normalized.includes('so tien')) {
             return 'Tiền';
         }
 

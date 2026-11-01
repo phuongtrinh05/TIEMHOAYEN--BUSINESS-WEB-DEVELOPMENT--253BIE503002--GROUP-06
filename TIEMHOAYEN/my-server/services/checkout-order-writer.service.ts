@@ -41,6 +41,7 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
   const shippingFee = Math.max(0, Number(summary?.shippingFee || 0));
   const depositAmount = payment?.method === 'cod' ? Math.max(0, Number(summary?.depositAmount || 0)) : 0;
   const total = Math.max(0, Number(summary?.total || 0));
+  if (depositAmount > total) throw new InventoryError(400, 'Tiền cọc không được vượt quá nghĩa vụ thanh toán của đơn hàng.');
   const paymentAmount = payment?.method === 'cod' ? depositAmount : total;
   const paymentStatus = paymentAmount <= 0 ? 'Thành công' : 'Chờ thanh toán';
   const orderStatus = paymentAmount <= 0 ? 'Chờ xử lý' : 'Chờ thanh toán';
@@ -51,8 +52,10 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
     TEN_NGUOI_DAT: String(sender.name), SDT_NGUOI_DAT: String(sender.phone), EMAIL_NGUOI_DAT: String(sender.email || ''),
     KHACH_HANG_ID: payload.customerId || null, NGAY_TAO: new Date(), TRANG_THAI: orderStatus,
     TAM_TINH: subtotal, PHI_VAN_CHUYEN: shippingFee, TIEN_COC: depositAmount, TONG_TIEN: total,
-    GIA_TRI_SAN_PHAM_DA_CHOT:frozenProductValue,
+    GIA_TRI_SAN_PHAM_DA_CHOT: frozenProductValue,
     ...(lucky?{VQ_PHAN_THUONG_ID:lucky.reward.id,VQ_GIAM_GIA:lucky.discount}:{}),
+    GIAM_GIA_SAN_PHAM: Math.max(0, Number(summary?.productVoucherDiscount || 0)),
+    GIAM_GIA_PHI_SHIP: Math.max(0, Number(summary?.shippingVoucherDiscount || 0)),
     PHUONG_THUC_THANH_TOAN: paymentMethodName, VAT: 0,
     NGAY_MUON_GIAO: dateOnly(delivery?.date), KHUNG_GIO_MUON_GIAO: String(delivery?.time || ''),
     LOI_NHAN_THIEP: String(delivery?.message || ''), GHI_CHU: String(delivery?.noteShop || ''),
@@ -65,10 +68,16 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
   };
   await (await getCollection<any>('DON_HANG')).insertOne(order, { session });
   await (await getCollection<any>('DON_HANG_CHI_TIET')).insertMany(payload.items.map((item: any) => ({
-    _id: { DON_HANG_ID: orderId, SAN_PHAM_ID: item.id }, DON_HANG_ID: orderId, SAN_PHAM_ID: item.id,
-    SO_LUONG: item.qty, GIA: item.price, ...(item.bom ? { BOM_SNAPSHOT: item.bom } : {}),
+    _id: { DON_HANG_ID: orderId, LINE_KEY: item.lineKey || item.id },
+    DON_HANG_ID: orderId, SAN_PHAM_ID: item.id, LINE_KEY: item.lineKey || item.id,
+    BIEN_THE_ID: item.variantId || null, THIET_KE_ID: item.designId || null,
+    CAU_HINH_SNAPSHOT: item.configuration || {},
+    SO_LUONG: item.qty, GIA: item.price,
+    GIA_NIEM_YET_SNAPSHOT: Number(item.regularPrice ?? item.price),
+    THANH_TIEN_SNAPSHOT: Number(item.lineTotal ?? item.price * item.qty),
     ...(item.designId ? {THIET_KE_3D_ID:item.designId} : {}),
-    ...(options.quote || item.custom ? { TEN_SAN_PHAM_SNAPSHOT: item.name, HINH_ANH_SNAPSHOT: item.image, SAN_PHAM_TUY_CHINH: !!item.custom } : {}),
+    TEN_SAN_PHAM_SNAPSHOT: String(item.name || item.id), HINH_ANH_SNAPSHOT: String(item.image || ''),
+    ...(item.bom ? { BOM_SNAPSHOT: item.bom } : {}), SAN_PHAM_TUY_CHINH: !!item.custom,
   })), { session });
   if (options.voucher) {
     await (await getCollection<any>('DON_HANG_VOUCHER')).insertOne({

@@ -3,7 +3,7 @@ import { getCollection, getNextPrefixedId } from '../mongo.js';
 import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordHash.js';
 import { createCustomerOrderAccess } from '../services/order-access.service.js';
 import { audit } from '../services/auth.service.js';
-
+import { derivePromotionStatus } from '../services/pricing-voucher.service.js';
 
 
 const normalizeAddressText = (value: unknown): string => {
@@ -419,14 +419,16 @@ export const getCustomerVouchers = async (req: Request, res: Response) => {
     const today = new Date();
     const vouchers = await voucherCollection.find({
       $or: [{ KHACH_HANG_ID: id }, { KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }],
-      DA_DUNG: { $ne: true },
     }).toArray();
+    const usageRows = await (await getCollection<any>('VOUCHER_SU_DUNG')).find({ DINH_DANH: `member:${id}` }).toArray();
+    const usageCount = new Map<string, number>();
+    usageRows.forEach(row => usageCount.set(String(row.VOUCHER_ID), (usageCount.get(String(row.VOUCHER_ID)) || 0) + 1));
 
     const available = vouchers.filter((voucher) => {
-      const start = toDate(voucher.NGAY_BAT_DAU);
-      const end = toDate(voucher.NGAY_KET_THUC);
-      return (!start || today >= start) && (!end || today <= end);
-    });
+      const perUserLimit = Number(voucher.GIOI_HAN_MOI_NGUOI || (voucher.KHACH_HANG_ID ? 1 : 0));
+      const used = usageCount.get(String(voucher.VOUCHER_ID)) || 0;
+      return derivePromotionStatus(voucher, today) === 'Đang diễn ra' && (!perUserLimit || used < perUserLimit);
+    }).map(voucher => ({ ...voucher, DA_DUNG: (usageCount.get(String(voucher.VOUCHER_ID)) || 0) > 0 }));
     const byCode = new Map<string, any>();
 
     for (const voucher of available.sort((left, right) => {

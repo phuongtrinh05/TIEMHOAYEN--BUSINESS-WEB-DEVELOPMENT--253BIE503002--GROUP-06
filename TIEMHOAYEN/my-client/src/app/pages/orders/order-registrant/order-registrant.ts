@@ -17,10 +17,15 @@ import {
   CreateOrderPayload,
   CreateOrderResponse,
 } from '../../../services/order.service';
+import { PricingService, ServerQuote } from '../../../services/pricing.service';
 
 export interface OrderItem {
   requiresReview?: boolean;
   id: string;
+  lineKey: string;
+  variantId?: string | null;
+  designId?: string | null;
+  configuration?: Record<string, unknown>;
   name: string;
   image: string;
   qty: number;
@@ -42,6 +47,14 @@ export interface CartStorageItem {
   GIA?: number;
   GIA_KHUYEN_MAI?: number | null;
   selected?: boolean;
+  lineKey?: string;
+  LINE_KEY?: string;
+  variantId?: string | null;
+  BIEN_THE_ID?: string | null;
+  designId?: string | null;
+  THIET_KE_ID?: string | null;
+  configuration?: Record<string, unknown>;
+  CAU_HINH?: Record<string, unknown>;
 }
 
 export interface SavedAddress {
@@ -118,6 +131,7 @@ export interface WardOption extends Ward {
 })
 export class OrderRegistrantComponent implements OnInit {
   private readonly platformId = inject(PLATFORM_ID);
+  private readonly pricingService = inject(PricingService);
   private readonly router = inject(Router);
   private readonly customerService = inject(CustomerService);
   private readonly orderService = inject(OrderService);
@@ -545,6 +559,7 @@ export class OrderRegistrantComponent implements OnInit {
 
     if (checkoutItems.length > 0) {
       this.orderItems = checkoutItems;
+      this.refreshServerQuote();
       return;
     }
 
@@ -556,6 +571,7 @@ export class OrderRegistrantComponent implements OnInit {
 
     if (legacyItems.length > 0) {
       this.orderItems = legacyItems;
+      this.refreshServerQuote();
       return;
     }
 
@@ -618,6 +634,7 @@ export class OrderRegistrantComponent implements OnInit {
         this.orderItems = items
           .map((item: CartStorageItem) => this.mapCartItemToOrderItem(item))
           .filter((item: OrderItem) => !!item.id && item.qty > 0);
+        this.refreshServerQuote();
       })
       .catch(error => {
         console.error('Lỗi lấy giỏ hàng database:', error);
@@ -646,6 +663,10 @@ export class OrderRegistrantComponent implements OnInit {
 
     return {
       id,
+      lineKey: String(item.lineKey || item.LINE_KEY || id),
+      variantId: item.variantId || item.BIEN_THE_ID || null,
+      designId: item.designId || item.THIET_KE_ID || null,
+      configuration: item.configuration || item.CAU_HINH || {},
       name,
       image,
       qty,
@@ -830,6 +851,7 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   get subtotal(): number {
+    if (this.serverQuote) return this.serverQuote.subtotal;
     return this.orderItems.reduce((sum, item) => sum + item.price * item.qty, 0);
   }
 
@@ -932,6 +954,7 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   get productVoucherDiscount(): number {
+    if (this.serverQuote) return this.serverQuote.productDiscount;
     if (!this.selectedVoucher || !this.isPercentVoucher(this.selectedVoucher)) {
       return 0;
     }
@@ -940,6 +963,7 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   get shippingVoucherDiscount(): number {
+    if (this.serverQuote) return this.serverQuote.shippingDiscount;
     if (!this.selectedVoucher || !this.isCashVoucher(this.selectedVoucher)) {
       return 0;
     }
@@ -948,6 +972,7 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   get shippingFee(): number {
+    if (this.serverQuote) return Math.max(0, this.serverQuote.shippingFee - this.serverQuote.shippingDiscount);
     return Math.max(0, this.baseShippingFee - this.shippingVoucherDiscount);
   }
 
@@ -987,6 +1012,7 @@ export class OrderRegistrantComponent implements OnInit {
   luckyRewardId='';luckyRewardDiscount=0;
   onLuckyReward(value:{id:string;discount:number}|null){this.luckyRewardId=value?.id||'';this.luckyRewardDiscount=value?.discount||0;}
   get total(): number {
+    if (this.serverQuote) return Math.max(0, this.serverQuote.total - this.loyaltyDiscount);
     return Math.max(
       0,
       this.subtotal + this.shippingFee - this.productVoucherDiscount - this.loyaltyDiscount - this.luckyRewardDiscount
@@ -1235,6 +1261,7 @@ export class OrderRegistrantComponent implements OnInit {
     this.formData.voucherCode = this.selectedVoucher ? v.code : '';
     this.voucherError = '';
     this.showVoucherDropdown = false;
+    this.refreshServerQuote();
   }
 
   onVoucherCodeChange(): void {
@@ -1248,6 +1275,7 @@ export class OrderRegistrantComponent implements OnInit {
     if (!code) {
       this.selectedVoucher = null;
       this.luckyPicker?.choose('');
+      this.refreshServerQuote();
       return;
     }
 
@@ -1264,7 +1292,25 @@ export class OrderRegistrantComponent implements OnInit {
 
     if (!found) {
       this.voucherError = 'Voucher không hợp lệ.';
+    } else {
+      this.refreshServerQuote();
     }
+  }
+
+  serverQuote: ServerQuote | null = null;
+  private quoteVersion = 0;
+  private refreshServerQuote(): void {
+    if (!this.orderItems.length) return;
+    const version = ++this.quoteVersion;
+    this.pricingService.quote({
+      items: this.orderItems.map(item => ({ id: item.id, quantity: item.qty, lineKey: item.lineKey, variantId: item.variantId, designId: item.designId, configuration: item.configuration, displayedUnitPrice: item.price })),
+      shippingFee: this.baseShippingFee,
+      voucher: this.selectedVoucher ? { id: this.selectedVoucher.id, code: this.selectedVoucher.code } : null,
+      customerId: this.getCustomerId() || null,
+    }).subscribe({
+      next: quote => { if (version === this.quoteVersion) { this.serverQuote = quote; this.cdr.detectChanges(); } },
+      error: error => { if (version === this.quoteVersion) { this.serverQuote = null; this.voucherError = error?.error?.message || 'Không thể kiểm tra báo giá.'; this.cdr.detectChanges(); } },
+    });
   }
 
   // ====================================================================
@@ -1844,6 +1890,10 @@ export class OrderRegistrantComponent implements OnInit {
       },
       items: this.orderItems.map(item => ({
         id: item.id,
+        lineKey: item.lineKey,
+        variantId: item.variantId,
+        designId: item.designId,
+        configuration: item.configuration,
         name: item.name,
         qty: item.qty,
         price: item.price,

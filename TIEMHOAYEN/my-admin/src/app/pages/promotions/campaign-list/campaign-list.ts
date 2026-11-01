@@ -12,6 +12,13 @@ interface CampaignItem {
     startDate: Date;
     endDate: Date;
     status: string;
+    active: boolean;
+    approved: boolean;
+    audience: string;
+    membershipTierText: string;
+    totalLimit: number;
+    perUserLimit: number;
+    firstOrderOnly: boolean;
     selected: boolean;
 }
 
@@ -55,6 +62,7 @@ export class CampaignListComponent implements OnInit {
         'Tạm dừng',
         'Đã kết thúc'
     ];
+    audienceOptions = ['Tất cả', 'Guest', 'Member', 'Hạng thành viên'];
 
     campaigns: CampaignItem[] = [];
     filteredCampaigns: CampaignItem[] = [];
@@ -110,7 +118,7 @@ export class CampaignListComponent implements OnInit {
             },
             error: (error) => {
                 console.error('Cannot load campaigns:', error);
-                alert('Không tải được danh sách chiến dịch.');
+                alert(error?.error?.message || 'Không tải được danh sách chiến dịch.');
                 this.cdr.detectChanges();
             }
         });
@@ -260,6 +268,13 @@ export class CampaignListComponent implements OnInit {
             startDate: today,
             endDate: endDate,
             status: 'Chưa bắt đầu',
+            active: false,
+            approved: false,
+            audience: 'Tất cả',
+            membershipTierText: '',
+            totalLimit: 0,
+            perUserLimit: 0,
+            firstOrderOnly: false,
             selected: false
         };
 
@@ -409,6 +424,13 @@ export class CampaignListComponent implements OnInit {
     private mapCampaign(item: AdminCampaign): CampaignItem {
         return {
             ...item,
+            active: Boolean(item.active),
+            approved: Boolean(item.approved),
+            audience: item.audience || 'Tất cả',
+            membershipTierText: (item.membershipTiers || []).join(', '),
+            totalLimit: Number(item.totalLimit || 0),
+            perUserLimit: Number(item.perUserLimit || 0),
+            firstOrderOnly: Boolean(item.firstOrderOnly),
             startDate: this.toDate(item.startDate),
             endDate: this.toDate(item.endDate),
             selected: false
@@ -429,7 +451,7 @@ export class CampaignListComponent implements OnInit {
             return null;
         }
 
-        if (endDate < startDate) {
+        if (endDate <= startDate) {
             alert('Ngày kết thúc phải sau ngày bắt đầu.');
             return null;
         }
@@ -440,7 +462,18 @@ export class CampaignListComponent implements OnInit {
             startDate: this.toPayloadDate(startDate),
             endDate: this.toPayloadDate(endDate),
             status: campaign.status
+            ,active: campaign.active
+            ,approved: campaign.approved
+            ,audience: campaign.audience
+            ,membershipTiers: this.parseList(campaign.membershipTierText)
+            ,totalLimit: Number(campaign.totalLimit || 0)
+            ,perUserLimit: Number(campaign.perUserLimit || 0)
+            ,firstOrderOnly: campaign.firstOrderOnly
         };
+    }
+
+    private parseList(value: string): string[] {
+        return [...new Set(String(value || '').split(',').map(item => item.trim()).filter(Boolean))];
     }
 
     private toDate(value: string): Date {

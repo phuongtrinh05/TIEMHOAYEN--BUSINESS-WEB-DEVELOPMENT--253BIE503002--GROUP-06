@@ -11,12 +11,17 @@ import { confirmReservations, releaseReservations, reserveProducts } from '../se
 import { randomUUID } from 'node:crypto';
 import { reserveOrderLines } from '../services/order-stock.service.js';
 import { lookupAccess } from '../services/order-access.service.js';
+import { calculateCheckoutQuote, claimVoucherUsage, derivePromotionStatus, type VoucherIdentity } from '../services/pricing-voucher.service.js';
 
 interface CreateOrderItem {
   id: string;
   qty: number;
   price: number;
   design?: any;
+  lineKey?: string;
+  variantId?: string | null;
+  designId?: string | null;
+  configuration?: any;
 }
 
 const CANCEL_REASONS = [
@@ -187,17 +192,6 @@ const resolveVoucherForOrder = async (voucher: any, customerId: string | null) =
   return available[0] || null;
 };
 
-const markVoucherUsed = async (orderId: string): Promise<void> => {
-  const orderVoucherCollection = await getCollection<any>('DON_HANG_VOUCHER');
-  const voucherCollection = await getCollection<any>('VOUCHER');
-  const orderVouchers = await orderVoucherCollection.find({ DON_HANG_ID: orderId }).toArray();
-  const voucherIds = orderVouchers.map((item) => item.VOUCHER_ID).filter(Boolean);
-
-  if (voucherIds.length > 0) {
-    await voucherCollection.updateMany({ VOUCHER_ID: { $in: voucherIds } }, { $set: { DA_DUNG: true } });
-  }
-};
-
 const removePaidItemsFromCart = async (orderId: string, customerId: string): Promise<void> => {
   if (!customerId) return;
 
@@ -230,7 +224,6 @@ const finalizeSuccessfulPayment = async (orderId: string): Promise<void> => {
 
   if (order) {
     await synchronizeLuckyOrder(orderId);
-    await markVoucherUsed(orderId);
     await removePaidItemsFromCart(orderId, String(order.KHACH_HANG_ID || ''));
   }
 };
@@ -266,9 +259,9 @@ export const getPublicVouchers = async (_req: Request, res: Response) => {
     const voucherCollection = await getCollection<any>('VOUCHER');
     const vouchers = (await voucherCollection.find({
       $or: [{ KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }],
-      DA_DUNG: { $ne: true },
     }).toArray())
-      .filter(isVoucherDateActive)
+      .filter(item => derivePromotionStatus(item) === 'Đang diễn ra')
+      .filter(item => /guest|tất cả|tat ca/i.test(String(item.DOI_TUONG || 'Tất cả')))
       .sort((left, right) => String(left.MA_VOUCHER || '').localeCompare(String(right.MA_VOUCHER || ''), 'vi'));
 
     return res.status(200).json({
@@ -308,7 +301,7 @@ export const createOrder = async (req: Request, res: Response) => {
       });
     }
 
-    const productItemsById = new Map<string, CreateOrderItem>();
+    const productItems: CreateOrderItem[] = [];
     for (const rawItem of items) {
       const quantity = Number(rawItem.qty ?? rawItem.quantity ?? rawItem.SO_LUONG ?? 1);
       if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000) {
@@ -318,6 +311,10 @@ export const createOrder = async (req: Request, res: Response) => {
         id: String(rawItem.id || rawItem.SAN_PHAM_ID || ''),
         qty: quantity,
         price: Math.max(0, Number(rawItem.price || rawItem.GIA || 0)),
+        lineKey: String(rawItem.lineKey || rawItem.LINE_KEY || ''),
+        variantId: rawItem.variantId || rawItem.BIEN_THE_ID || null,
+        designId: rawItem.designId || rawItem.THIET_KE_ID || null,
+        configuration: rawItem.configuration || rawItem.CAU_HINH || {},
       };
       if(isDesignProduct(item.id)) {
         item.design=await getDesign(item.id);
@@ -326,10 +323,8 @@ export const createOrder = async (req: Request, res: Response) => {
       }
       if (!item.id.startsWith('SP')) return res.status(400).json({ message: 'Mã sản phẩm không hợp lệ.' });
 
-      const current = productItemsById.get(item.id);
-      productItemsById.set(item.id, current ? { ...current, qty: current.qty + item.qty, price: item.price } : item);
+      productItems.push(item);
     }
-    const productItems = Array.from(productItemsById.values());
 
     if (productItems.length === 0) {
       return res.status(400).json({
@@ -341,6 +336,13 @@ export const createOrder = async (req: Request, res: Response) => {
     const inferredLoyaltyPoints = convertRewardMoneyToPoints(loyaltyDiscount);
     const loyaltyPointsToUse = normalizeRewardPoints(summary?.loyaltyPoints ?? inferredLoyaltyPoints);
     const expectedLoyaltyDiscount = convertRewardPointsToMoney(loyaltyPointsToUse);
+
+    if (loyaltyPointsToUse > 0) {
+      return res.status(409).json({
+        code: 'LOYALTY_POLICY_PENDING_APPROVAL',
+        message: 'Chức năng sử dụng điểm đang tạm khóa cho đến khi chính sách điểm và kết hợp voucher được phê duyệt.',
+      });
+    }
 
     if (loyaltyDiscount !== expectedLoyaltyDiscount) {
       return res.status(400).json({
@@ -368,27 +370,48 @@ export const createOrder = async (req: Request, res: Response) => {
       }
     }
 
-    const checkedVoucher = await resolveVoucherForOrder(voucher, normalizedCustomerId);
-    if ((voucher?.id || voucher?.code) && !checkedVoucher) {
-      return res.status(400).json({
-        message: normalizedCustomerId
-          ? 'Voucher không hợp lệ, đã hết hạn hoặc không thuộc tài khoản này.'
-          : 'Voucher không hợp lệ, đã hết hạn, đã được sử dụng hoặc không dành cho khách vãng lai.',
-      });
-    }
+    let access: any = null;
+    if (req.headers?.['x-order-access']) access = await lookupAccess(req.headers['x-order-access']);
+    const identity: VoucherIdentity = { customerId: normalizedCustomerId, verifiedGuestPhone: !normalizedCustomerId ? access?.phone || null : null };
+    const quote = await calculateCheckoutQuote({
+      items: productItems.map(item => ({ id: item.id, quantity: item.qty, lineKey: item.lineKey, variantId: item.variantId, designId: item.designId, configuration: item.configuration, displayedUnitPrice: item.price })),
+      shippingFee: summary?.shippingFee,
+      voucher,
+      identity,
+    });
+    const authoritativeItems = quote.items.map(item => ({
+      id: item.id, lineKey: item.lineKey, variantId: item.variantId, designId: item.designId, configuration: item.configuration,
+      qty: item.quantity, price: item.unitPrice, regularPrice: item.regularPrice, lineTotal: item.lineTotal,
+      name: item.name, image: item.image, custom: item.custom, design: item.design,
+    }));
+    const authoritativeSummary = {
+      ...summary,
+      subtotal: quote.subtotal,
+      shippingFee: quote.shippingFee,
+      productVoucherDiscount: quote.productDiscount,
+      shippingVoucherDiscount: quote.shippingDiscount,
+      voucherDiscount: quote.productDiscount + quote.shippingDiscount,
+      loyaltyDiscount,
+      loyaltyPoints: loyaltyPointsToUse,
+      total: Math.max(0, quote.total - loyaltyDiscount),
+    };
 
-    const validateDesignTotals = () => { if(req.body.luckyRewardId)return; if(productItems.some(i=>i.design)) {
-      const subtotal=productItems.reduce((n,i)=>n+i.price*i.qty,0);
-      const shipping=Number(summary?.shippingFee),loyalty=loyaltyDiscount;
-      const voucherType=String(checkedVoucher?.LOAI_GIAM_GIA || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-      const discount=/phan tram|percent|%/.test(voucherType)?Math.min(subtotal,Math.round(subtotal*Number(checkedVoucher?.GIA_TRI_GIAM || 0)/100)):0;
-      if(!Number.isSafeInteger(shipping)||shipping<0||Number(summary?.subtotal)!==subtotal||Number(summary?.total)!==Math.max(0,subtotal+shipping-discount-loyalty))throw new InventoryError(400,'Tổng tiền thiết kế không khớp giá backend. Tải lại giỏ hàng để tính lại.');
-      if(paymentMethod==='cod' && (!(Number(summary?.depositAmount)>0)||Number(summary.depositAmount)>Number(summary.total)))throw new InventoryError(400,'Tiền cọc không hợp lệ.');
-    }};
+    const reserveQuantities = new Map<string, number>();
+    authoritativeItems.forEach(item => reserveQuantities.set(item.id, (reserveQuantities.get(item.id) || 0) + item.qty));
     const outcome = await routeCheckout(String(req.body.checkoutSessionId || ''), req.body,
-      productItems.map(item => ({ productId: item.id, quantity: item.qty })), async (session, orderId, snapshots, inventory) => {
-      validateDesignTotals();
-      return writeCheckoutOrder(session, orderId, { ...req.body, inventoryMode: inventory.futureNoHold ? 'FUTURE_DEMAND' : undefined, items: productItems.map(item => ({...item, bom: snapshots[item.id], ...(item.design?{custom:true,designId:item.design.designId,name:item.design.name,image:item.design.image}: {})})) }, { voucher: checkedVoucher, loyaltyPoints: loyaltyPointsToUse });
+      [...reserveQuantities.entries()].map(([productId, quantity]) => ({ productId, quantity })), async (session, orderId, snapshots, inventory) => {
+      await claimVoucherUsage(session, quote.voucherResult, orderId);
+      const checkoutItems = authoritativeItems.map(item => ({
+        ...item,
+        bom: snapshots[item.id],
+        ...(item.design ? { custom: true, designId: item.design.designId, name: item.design.name, image: item.design.image } : {}),
+      }));
+      return writeCheckoutOrder(session, orderId, {
+        ...req.body,
+        inventoryMode: inventory.futureNoHold ? 'FUTURE_DEMAND' : undefined,
+        items: checkoutItems,
+        summary: authoritativeSummary,
+      }, { voucher: quote.voucherResult?.voucher || null, loyaltyPoints: loyaltyPointsToUse });
     });
     if (outcome.kind === 'order' && outcome.paymentAmount <= 0) await finalizeSuccessfulPayment(outcome.orderId);
     return res.status(201).json(outcome);
@@ -396,6 +419,30 @@ export const createOrder = async (req: Request, res: Response) => {
     console.error('Lỗi tạo đơn hàng:', error);
     if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({ message: 'Không thể tạo đơn hàng: ' + error.message });
+  }
+};
+
+export const quoteOrder = async (req: Request, res: Response) => {
+  try {
+    const customerId = req.body?.customerId ? String(req.body.customerId) : null;
+    let access: any = null;
+    if (req.headers?.['x-order-access']) access = await lookupAccess(req.headers['x-order-access']);
+    if (customerId && access?.customerId !== customerId) throw new InventoryError(403, 'Phiên đăng nhập không khớp tài khoản.');
+    const quote = await calculateCheckoutQuote({
+      items: (req.body?.items || []).map((item: any) => ({ id: item.id || item.SAN_PHAM_ID, quantity: Number(item.quantity ?? item.qty ?? item.SO_LUONG) })),
+      shippingFee: req.body?.shippingFee,
+      voucher: req.body?.voucher,
+      identity: { customerId, verifiedGuestPhone: !customerId ? access?.phone || null : null },
+    });
+    return res.status(200).json({ ...quote, voucherResult: quote.voucherResult ? {
+      voucher: { id: quote.voucherResult.voucher.VOUCHER_ID, code: quote.voucherResult.voucher.MA_VOUCHER },
+      eligibleSubtotal: quote.voucherResult.eligibleSubtotal,
+      productDiscount: quote.voucherResult.productDiscount,
+      shippingDiscount: quote.voucherResult.shippingDiscount,
+    } : null });
+  } catch (error: any) {
+    if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message, details: error.details });
+    return res.status(500).json({ message: 'Không thể tính giá: ' + error.message });
   }
 };
 

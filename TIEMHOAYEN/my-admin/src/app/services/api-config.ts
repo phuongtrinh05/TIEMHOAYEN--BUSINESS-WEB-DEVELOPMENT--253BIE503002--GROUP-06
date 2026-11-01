@@ -1,6 +1,7 @@
 /**
  * Địa chỉ backend dùng chung cho toàn Admin.
- * - Mặc định: backend đã deploy trên Render.
+ * - Localhost: backend local trên cổng 3000.
+ * - Môi trường đã deploy: backend trên Render.
  * - Muốn trỏ backend chạy local (để test chức năng kho mới trước khi deploy), mở DevTools Console:
  *     localStorage.setItem('API_BASE_URL', 'http://localhost:3000/api'); location.reload();
  *   Bỏ trỏ local: localStorage.removeItem('API_BASE_URL').
@@ -16,7 +17,9 @@ export function apiBaseUrl(): string {
   } catch {
     /* SSR / private mode */
   }
-  if (typeof location !== 'undefined' && ['localhost', '127.0.0.1'].includes(location.hostname)) return LOCAL_API_BASE_URL;
+  if (typeof location !== 'undefined' && ['localhost', '127.0.0.1'].includes(location.hostname)) {
+    return LOCAL_API_BASE_URL;
+  }
   return DEFAULT_API_BASE_URL;
 }
 

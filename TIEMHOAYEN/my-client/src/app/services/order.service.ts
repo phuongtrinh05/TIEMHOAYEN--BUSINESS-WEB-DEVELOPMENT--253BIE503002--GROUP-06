@@ -8,6 +8,10 @@ import { Router } from '@angular/router';
 
 export interface CreateOrderItemPayload {
   id: string;
+  lineKey?: string;
+  variantId?: string | null;
+  designId?: string | null;
+  configuration?: Record<string, unknown>;
   name?: string;
   qty: number;
   price: number;

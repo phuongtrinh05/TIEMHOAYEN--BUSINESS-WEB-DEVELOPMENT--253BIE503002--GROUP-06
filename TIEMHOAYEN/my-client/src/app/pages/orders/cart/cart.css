@@ -244,6 +244,19 @@
   width: 328px;
 }
 
+.cart-line-warning,
+.cart-summary-error {
+  color: #a83227;
+  font-size: 0.78rem;
+  margin: 5px 0 0;
+  line-height: 1.35;
+}
+
+.btn-order:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .summary-title {
   font-family: var(--font-body);
   font-size: 1rem;

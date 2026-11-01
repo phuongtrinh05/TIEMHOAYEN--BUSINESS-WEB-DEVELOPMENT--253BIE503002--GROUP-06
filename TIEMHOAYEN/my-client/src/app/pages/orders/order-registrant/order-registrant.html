@@ -391,9 +391,9 @@
               type="button"
               class="loyalty-toggle"
               role="switch"
-              [attr.aria-checked]="useLoyaltyPoints"
-              [class.is-on]="useLoyaltyPoints"
-              (click)="toggleLoyaltyPoints()">
+              aria-disabled="true"
+              [attr.aria-checked]="false"
+              disabled>
               <span class="loyalty-toggle__knob"></span>
             </button>
           </div>

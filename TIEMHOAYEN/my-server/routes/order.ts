@@ -5,6 +5,7 @@ import { requireAdminPermission } from '../middleware/rolePermission.js';
 import {
   getPublicVouchers,
   createOrder,
+  quoteOrder,
   getOrderDetail,
   getOrderPaymentStatus,
   expireOrderPayment,
@@ -23,6 +24,7 @@ router.get('/lookup', requireLookup, lookupHistory);
 router.post('/lookup/logout', requireLookup, endLookup);
 router.get('/', requireLookup, lookupHistory);
 router.get('/public-vouchers', getPublicVouchers);
+router.post('/quote', quoteOrder);
 router.post('/', createOrder);
 router.get('/requests/:requestId', requireLookup, readPublicRequest);
 router.post('/requests/:requestId/respond', requireLookup, customerRespond);

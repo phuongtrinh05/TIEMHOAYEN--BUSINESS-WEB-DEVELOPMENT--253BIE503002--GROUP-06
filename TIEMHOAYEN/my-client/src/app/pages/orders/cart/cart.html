@@ -58,6 +58,8 @@
               <p class="item-meta item-topic">
                 Chủ đề: <span>{{ getCartTopicLabel(item) }}</span>
               </p>
+              <p class="cart-line-warning" *ngIf="item.priceChanged">Giá sản phẩm đã được cập nhật theo giá hiện tại.</p>
+              <p class="cart-line-warning" *ngIf="item.availabilityDecision === 'unavailable'">Sản phẩm hiện không đủ khả dụng. Vui lòng giảm số lượng hoặc liên hệ nhân viên.</p>
             </div>
           </div>
 
@@ -127,11 +129,13 @@
         <span>Tổng cộng</span>
         <span class="total-value">{{ formatPrice(getTotal()) }}</span>
       </div>
+      <p class="cart-summary-error" *ngIf="quoteError || cartError">{{ quoteError || cartError }}</p>
 
       <p *ngIf="hasDesignReview" class="design-review-note">Mẫu thiết kế cần shop kiểm tra. Bạn sẽ gửi yêu cầu trao đổi trước khi thanh toán.</p>
       <button
         type="button"
         class="btn-order"
+        [disabled]="!canCheckout()"
         (click)="goToCheckout()">
         {{ hasDesignReview ? 'Tiếp tục gửi yêu cầu' : 'Đặt hàng' }}
       </button>

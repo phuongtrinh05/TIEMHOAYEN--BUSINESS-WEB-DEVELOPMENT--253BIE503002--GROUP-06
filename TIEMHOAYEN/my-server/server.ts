@@ -191,6 +191,7 @@ const PORT = Number(process.env.PORT ?? 3000);
     await (await import('./services/support.service.js')).ensureSupportIndexes();
     await (await import('./mongo.js')).getCollection('NOI_DUNG_WEBSITE').then(c=>c.createIndex({MA_NOI_DUNG:1},{unique:true}));
     startContentJobs();
+    await (await import('./services/loyalty-policy.service.js')).ensureLoyaltyIndexes();
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startInventoryJobs();
     startLuckyJobs();
     if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureNotificationIndexes();
