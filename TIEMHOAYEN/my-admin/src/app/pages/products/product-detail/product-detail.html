@@ -49,7 +49,7 @@
 
       <div class="form-group">
         <label>Mã sản phẩm</label>
-        <input type="text" [(ngModel)]="product.code" [disabled]="!isEditing">
+        <input type="text" [(ngModel)]="product.code" disabled title="Mã do server tự sinh">
       </div>
 
     </div>
@@ -60,6 +60,7 @@
 
       <textarea rows="5" [(ngModel)]="product.note" [disabled]="!isEditing">
       </textarea>
+      <div class="description-preview" *ngIf="isEditing" [innerHTML]="product.note"></div>
 
     </div>
 
@@ -67,26 +68,30 @@
 
       <div class="form-group">
         <label>Màu sắc</label>
+        <div class="assigned-values" *ngIf="!isEditing"><span *ngFor="let color of product.colors">{{ color }}</span><em *ngIf="!product.colors.length">Chưa gán</em></div>
         <select
-            [(ngModel)]="product.color"
-            [disabled]="!isEditing">
+            *ngIf="isEditing"
+            multiple size="4"
+            [(ngModel)]="product.colors"
+            >
 
             <option
                 *ngFor="let color of colors"
-                [value]="color">
+                [ngValue]="color">
 
                 {{ color }}
 
             </option>
-
         </select>
       </div>
 
       <div class="form-group">
         <label>Kiểu dáng</label>
+        <div class="assigned-values" *ngIf="!isEditing"><span *ngIf="product.style">{{ product.style }}</span><em *ngIf="!product.style">Chưa gán</em></div>
         <select
+            *ngIf="isEditing"
             [(ngModel)]="product.style"
-            [disabled]="!isEditing">
+            >
 
             <option
                 *ngFor="let style of styles"
@@ -101,26 +106,30 @@
 
       <div class="form-group">
         <label>Đối tượng</label>
+        <div class="assigned-values" *ngIf="!isEditing"><span *ngFor="let target of product.targets">{{ target }}</span><em *ngIf="!product.targets.length">Chưa gán</em></div>
         <select
-            [(ngModel)]="product.target"
-            [disabled]="!isEditing">
+            *ngIf="isEditing"
+            multiple size="4"
+            [(ngModel)]="product.targets"
+            >
 
             <option
                 *ngFor="let target of targets"
-                [value]="target">
+                [ngValue]="target">
 
                 {{ target }}
 
             </option>
-
         </select>
       </div>
 
       <div class="form-group">
         <label>Chủ đề</label>
+        <div class="assigned-values" *ngIf="!isEditing"><span *ngIf="product.topic">{{ product.topic }}</span><em *ngIf="!product.topic">Chưa gán</em></div>
         <select
+            *ngIf="isEditing"
             [(ngModel)]="product.topic"
-            [disabled]="!isEditing">
+            >
 
             <option
                 *ngFor="let topic of topics"
@@ -135,24 +144,34 @@
 
       <div class="form-group">
         <label>Hoa tươi</label>
+        <div class="assigned-values" *ngIf="!isEditing"><span *ngFor="let flower of product.flowers">{{ flower }}</span><em *ngIf="!product.flowers.length">Chưa gán</em></div>
         <select
-            [(ngModel)]="product.flower"
-            [disabled]="!isEditing">
+            *ngIf="isEditing"
+            multiple size="4"
+            [(ngModel)]="product.flowers"
+            >
 
             <option
                 *ngFor="let flower of flowers"
-                [value]="flower">
+                [ngValue]="flower">
 
                 {{ flower }}
 
             </option>
-
         </select>
       </div>
 
       <div class="form-group">
-        <label>Số lượng</label>
-        <input type="number" [(ngModel)]="product.quantity" [disabled]="!isEditing">
+        <label>Bộ sưu tập</label>
+        <div class="assigned-values" *ngIf="!isEditing"><span *ngFor="let collection of product.collections">{{ collection }}</span><em *ngIf="!product.collections.length">Chưa gán</em></div>
+        <select *ngIf="isEditing" multiple size="4" [(ngModel)]="product.collections">
+          <option *ngFor="let collection of collections" [ngValue]="collection">{{ collection }}</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Tồn kho</label>
+        <input type="number" [(ngModel)]="product.quantity" disabled title="Không thể sửa tồn trực tiếp tại sản phẩm">
       </div>
     </div>
 
@@ -166,7 +185,14 @@
         <div
             class="image-box"
             *ngFor="let img of product.images; let i=index">
-            <img [src]="img">
+            <img [src]="img.url" [alt]="'Ảnh sản phẩm ' + product.name" referrerpolicy="no-referrer">
+            <span *ngIf="img.isPrimary" class="primary-badge">Ảnh đại diện</span>
+
+            <div *ngIf="isEditing" class="image-order-actions">
+              <button type="button" (click)="moveImage(i, -1)" [disabled]="i === 0">←</button>
+              <button type="button" (click)="moveImage(i, 1)" [disabled]="i === product.images.length - 1">→</button>
+              <button type="button" (click)="setPrimaryImage(i)" [disabled]="img.isPrimary">Đặt đại diện</button>
+            </div>
 
             <button
                 class="remove-btn"
@@ -200,7 +226,7 @@
 
       <div class="price-item">
         <div class="price-head">GIÁ NHẬP</div>
-        <input type="number" [(ngModel)]="product.importPrice" [disabled]="!isEditing">
+        <input type="number" [(ngModel)]="product.importPrice" disabled title="Được tính từ công thức nguyên vật liệu">
       </div>
 
       <div class="price-item">
@@ -329,6 +355,13 @@
               <option value="2">2 sao</option>
               <option value="1">1 sao</option>
           </select>
+
+          <select [(ngModel)]="selectedPeriod" (change)="filterReview()">
+              <option value="all">Mọi thời gian</option>
+              <option value="7">7 ngày gần đây</option>
+              <option value="30">30 ngày gần đây</option>
+              <option value="90">90 ngày gần đây</option>
+          </select>
       </div>
     </div>
 
@@ -393,7 +426,7 @@
                         <span>(5.0)</span>
                     </div>
                     <p>{{review.content}}</p>
-                    <small>{{review.date}}</small>
+                    <small>{{ formatReviewDate(review.date) }}</small>
 
                     <div
                         class="review-images"

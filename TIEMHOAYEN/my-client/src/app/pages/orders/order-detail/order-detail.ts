@@ -51,6 +51,8 @@ interface OrderDetailView {
   returnRefundReason: string;
   rejectReason: string;
   hasReviewed: boolean;
+  reviewedCount: number;
+  reviewableProductCount: number;
 }
 
 interface OrderDetailProduct {
@@ -61,6 +63,8 @@ interface OrderDetailProduct {
   quantity: number;
   style: string;
   status: string;
+  reviewed: boolean;
+  rating: number;
 }
 
 interface OrderDetailVoucher {
@@ -239,6 +243,8 @@ export class OrderDetail implements OnInit, OnDestroy {
       returnRefundReason: String(row.LY_DO_HOAN_TIEN_TRA_HANG || ''),
       rejectReason: String(row.LY_DO_TU_CHOI || ''),
       hasReviewed: Number(row.DA_DANH_GIA || 0) > 0,
+      reviewedCount: Number(row.DANH_GIA_DA_GUI || 0),
+      reviewableProductCount: Number(row.DANH_GIA_TONG_SAN_PHAM || 0),
     };
   }
 
@@ -253,6 +259,8 @@ export class OrderDetail implements OnInit, OnDestroy {
       quantity: Math.max(1, Number(item.SO_LUONG || 1)),
       style: String(item.KIEU_DANG || ''),
       status: String(item.TRANG_THAI_SAN_PHAM || ''),
+      reviewed: Number(item.DA_DANH_GIA || 0) > 0,
+      rating: Number(item.SO_SAO_DANH_GIA || 0),
     }));
   }
 
@@ -919,7 +927,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     const hasRejectedReturnRefund = !!String(this.order.rejectReason || '').trim();
     const returnRefundAllowsReview = !this.order.returnRefundReason || hasRejectedReturnRefund;
 
-    return !this.order.hasReviewed &&
+    return this.order.reviewedCount < this.order.reviewableProductCount &&
       returnRefundAllowsReview &&
       (status === 'delivered' || status === 'completed');
   }
@@ -1089,6 +1097,8 @@ export class OrderDetail implements OnInit, OnDestroy {
       returnRefundReason: '',
       rejectReason: '',
       hasReviewed: false,
+      reviewedCount: 0,
+      reviewableProductCount: 0,
     };
   }
   isEditingShipping = false;

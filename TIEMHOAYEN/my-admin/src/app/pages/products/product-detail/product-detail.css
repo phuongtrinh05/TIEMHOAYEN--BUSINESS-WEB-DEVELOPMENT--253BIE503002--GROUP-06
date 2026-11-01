@@ -608,3 +608,42 @@ select:focus{
 .detail-back i{
     font-size:18px;
 }
+.description-preview { margin-top: 10px; padding: 12px; border: 1px dashed #d8b5b5; border-radius: 8px; background: #fffafa; }
+.image-box { position: relative; }
+.primary-badge { position: absolute; left: 7px; bottom: 7px; padding: 3px 7px; border-radius: 12px; background: #8b1e1e; color: #fff; font-size: 11px; }
+.image-order-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.image-order-actions button { border: 1px solid #ddd; border-radius: 5px; background: #fff; padding: 3px 7px; font-size: 11px; }
+.form-group select[multiple] {
+  min-height: 120px;
+  height: auto;
+  appearance: auto;
+  background-image: none;
+  padding: 6px;
+}
+.form-group select[multiple] option {
+  color: #333;
+  padding: 7px 9px;
+}
+.assigned-values {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fafafa;
+}
+.assigned-values span {
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: #f4e3e3;
+  color: #731919;
+  font-size: 13px;
+}
+.assigned-values em {
+  color: #888;
+  font-style: normal;
+  font-size: 13px;
+}

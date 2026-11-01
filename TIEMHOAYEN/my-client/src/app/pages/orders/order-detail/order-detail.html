@@ -245,6 +245,7 @@
                 <th>Đơn giá</th>
                 <th>Số lượng</th>
                 <th>Thành tiền</th>
+                <th>Đánh giá</th>
               </tr>
             </thead>
 
@@ -262,6 +263,10 @@
                 <td data-label="Đơn giá">{{ product.price | number:'1.0-0' }}đ</td>
                 <td data-label="Số lượng">{{ product.quantity }}</td>
                 <td data-label="Thành tiền">{{ product.price * product.quantity | number:'1.0-0' }}đ</td>
+                <td data-label="Đánh giá">
+                  <span *ngIf="!product.reviewed">Chưa đánh giá</span>
+                  <span *ngIf="product.reviewed">Đã đánh giá {{ product.rating }}/5 ★</span>
+                </td>
               </tr>
               }
             </tbody>

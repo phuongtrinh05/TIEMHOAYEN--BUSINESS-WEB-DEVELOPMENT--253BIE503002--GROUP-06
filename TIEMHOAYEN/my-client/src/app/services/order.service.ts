@@ -99,6 +99,9 @@ export interface OrderDetailProductResponse {
   KIEU_DANG?: string | null;
   TRANG_THAI_SAN_PHAM?: string | null;
   HINH_ANH?: string | null;
+  DA_DANH_GIA?: number;
+  SO_SAO_DANH_GIA?: number;
+  DANH_GIA_ID?: string | null;
 }
 
 export interface OrderDetailVoucherResponse {

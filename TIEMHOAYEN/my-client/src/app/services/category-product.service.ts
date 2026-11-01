@@ -1,7 +1,8 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, of } from 'rxjs';
 import { shareReplay, tap } from 'rxjs/operators';
+import { apiBaseUrl } from './api-config';
 
 export interface CategoryTopic {
   CHU_DE_ID: string;
@@ -42,6 +43,7 @@ export interface CategoryProduct {
   SO_LUONG: number;
   DA_BAN: number;
   HINH_ANH: string | null;
+  BADGES?: { NEW?: boolean; DISCOUNT?: boolean; SOLD?: number | null; FAST_DELIVERY?: boolean };
 }
 
 export interface ProductsByTopicResponse {
@@ -102,6 +104,25 @@ export interface BestSellerProductsResponse {
 export interface AllCategoryProductsResponse {
   total: number;
   products: CategoryProduct[];
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
+  sort?: string;
+}
+
+export interface ProductSearchQuery {
+  search?: string;
+  topics?: string[];
+  styles?: string[];
+  flowers?: string[];
+  targets?: string[];
+  colors?: string[];
+  collections?: string[];
+  minPrice?: number;
+  maxPrice?: number;
+  sort?: 'newest' | 'oldest' | 'bestSeller' | 'priceAsc' | 'priceDesc' | 'nameAsc' | 'nameDesc';
+  page?: number;
+  pageSize?: number;
 }
 
 
@@ -118,6 +139,15 @@ export class CategoryProductService {
 
   getAllProducts(): Observable<AllCategoryProductsResponse> {
     return this.cachedGet<AllCategoryProductsResponse>('all-products', this.apiUrl);
+  }
+
+  searchProducts(query: ProductSearchQuery): Observable<AllCategoryProductsResponse> {
+    let params = new HttpParams();
+    Object.entries(query).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length)) return;
+      params = params.set(key, Array.isArray(value) ? value.join(',') : String(value));
+    });
+    return this.http.get<AllCategoryProductsResponse>(this.apiUrl, { params });
   }
 
   getProductsByTopic(id: string): Observable<ProductsByTopicResponse> {
@@ -179,28 +209,29 @@ export class CategoryProductService {
   }
 
   private cachedGet<T>(key: string, url: string): Observable<T> {
-    const cached = this.responseCache.get(key) as Observable<T> | undefined;
+    const scopedKey = `${apiBaseUrl()}:${key}`;
+    const cached = this.responseCache.get(scopedKey) as Observable<T> | undefined;
 
     if (cached) {
       return cached;
     }
 
-    const stored = this.readStoredResponse<T>(key);
+    const stored = this.readStoredResponse<T>(scopedKey);
 
     if (stored !== null) {
       const stored$ = of(stored).pipe(
         shareReplay({ bufferSize: 1, refCount: false })
       );
-      this.responseCache.set(key, stored$);
+      this.responseCache.set(scopedKey, stored$);
       return stored$;
     }
 
     const request$ = this.http.get<T>(url).pipe(
-      tap((response) => this.storeResponse(key, response)),
+      tap((response) => this.storeResponse(scopedKey, response)),
       shareReplay({ bufferSize: 1, refCount: false })
     );
 
-    this.responseCache.set(key, request$);
+    this.responseCache.set(scopedKey, request$);
     return request$;
   }
 

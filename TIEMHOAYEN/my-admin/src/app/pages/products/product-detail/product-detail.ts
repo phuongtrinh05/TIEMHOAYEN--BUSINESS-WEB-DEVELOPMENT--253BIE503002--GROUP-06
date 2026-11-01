@@ -2,6 +2,7 @@ import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+import { forkJoin } from 'rxjs';
 import {
   AdminApiService,
   AdminProductDetailForm,
@@ -19,12 +20,14 @@ import {
 export class ProductDetail implements OnInit {
   private readonly publishedStatus = '\u0110ang b\u00e1n';
   private readonly unpublishedStatus = 'Ng\u1eebng b\u00e1n';
+  private readonly deletedStatus = 'Đã xóa';
 
   isPublished = true;
   isEditing = false;
   statusSaving = false;
   productImages: string[] = [];
   selectedRating = 'all';
+  selectedPeriod = 'all';
   sortType = 'newest';
   currentReviewPage = 1;
   currentPage = 1;
@@ -37,6 +40,7 @@ export class ProductDetail implements OnInit {
   targets: string[] = [];
   topics: string[] = [];
   flowers: string[] = [];
+  collections: string[] = [];
   materialOptions: AdminProductRecipeItem[] = [];
 
   materials: AdminProductRecipeItem[] = [];
@@ -83,10 +87,14 @@ export class ProductDetail implements OnInit {
       code: '',
       note: '',
       color: '',
+      colors: [],
       style: '',
       target: '',
+      targets: [],
       topic: '',
       flower: '',
+      flowers: [],
+      collections: [],
       quantity: 1,
       status: 'Đang bán',
       isPublished: true,
@@ -119,31 +127,45 @@ export class ProductDetail implements OnInit {
 
   private loadProductDetail(productId: string): void {
     this.loading = true;
-    this.adminApi.getProductDetail(productId).subscribe({
-      next: (data) => {
+    forkJoin({
+      detail: this.adminApi.getProductDetail(productId),
+      colors: this.adminApi.getCategories('color'),
+      styles: this.adminApi.getCategories('style'),
+      targets: this.adminApi.getCategories('target'),
+      topics: this.adminApi.getCategories('topic'),
+      flowers: this.adminApi.getCategories('flower'),
+      collections: this.adminApi.getCategories('collection')
+    }).subscribe({
+      next: (result) => {
+        const data = result.detail;
+        const names = (items: Array<{ name: string; status?: string }>) => items
+          .filter((item) => item.status !== 'Đang ẩn')
+          .map((item) => item.name).filter(Boolean);
         const loadedProduct = data.product || this.emptyProduct();
         this.product = {
           ...this.emptyProduct(),
           ...loadedProduct,
-          images: [...(loadedProduct.images || [])]
+          colors: [...(loadedProduct.colors || (loadedProduct.color ? [loadedProduct.color] : []))],
+          targets: [...(loadedProduct.targets || (loadedProduct.target ? [loadedProduct.target] : []))],
+          flowers: [...(loadedProduct.flowers || (loadedProduct.flower ? [loadedProduct.flower] : []))],
+          collections: [...(loadedProduct.collections || [])],
+          images: this.normalizeProductImages(loadedProduct.images || [])
         };
         this.product.status = this.normalizeProductStatus(this.product.status);
         this.product.isPublished = this.product.status === this.publishedStatus;
 
-        this.colors = this.withCurrentValue(data.options?.colors || [], this.product.color);
-        this.styles = this.withCurrentValue(data.options?.styles || [], this.product.style);
-        this.targets = this.withCurrentValue(data.options?.targets || [], this.product.target);
-        this.topics = this.withCurrentValue(data.options?.topics || [], this.product.topic);
-        this.flowers = this.withCurrentValue(data.options?.flowers || [], this.product.flower);
+        this.colors = this.withCurrentValues(names(result.colors.categories), this.product.colors);
+        this.styles = this.withCurrentValue(names(result.styles.categories), this.product.style);
+        this.targets = this.withCurrentValues(names(result.targets.categories), this.product.targets);
+        this.topics = this.withCurrentValue(names(result.topics.categories), this.product.topic);
+        this.flowers = this.withCurrentValues(names(result.flowers.categories), this.product.flowers);
+        this.collections = this.withCurrentValues(names(result.collections.categories), this.product.collections);
         this.materialOptions = data.options?.materials || [];
 
         this.materials = data.materials || [];
         this.filteredMaterials = [...this.materials];
 
-        this.reviews = (data.reviews || []).map((review) => ({
-          ...review,
-          date: this.formatReviewDate(review.date)
-        }));
+        this.reviews = data.reviews || [];
         this.filteredReviews = [...this.reviews];
         this.ratingSummary = data.ratingSummary || this.ratingSummary;
         this.averageRating = Number(data.averageRating || 0);
@@ -151,6 +173,33 @@ export class ProductDetail implements OnInit {
         this.currentPage = 1;
         this.loading = false;
         this.cdr.detectChanges();
+
+        this.adminApi.getProductClassifications(productId).subscribe({
+          next: (classification) => {
+            if (!classification.found) return;
+            this.product.colors = [...classification.colors];
+            this.product.targets = [...classification.targets];
+            this.product.flowers = [...classification.flowers];
+            this.product.collections = [...classification.collections];
+            this.product.topic = classification.topic;
+            if (classification.primaryImage) {
+              const images = this.normalizeProductImages(this.product.images);
+              const primaryIndex = images.findIndex((image) => image.url === classification.primaryImage);
+              if (primaryIndex < 0) images.unshift({ url: classification.primaryImage, isPrimary: true, sortOrder: 0 });
+              this.product.images = images.map((image, index) => ({
+                ...image,
+                isPrimary: image.url === classification.primaryImage,
+                sortOrder: index
+              })).sort((left, right) => Number(right.isPrimary) - Number(left.isPrimary) || left.sortOrder - right.sortOrder);
+            }
+            this.colors = this.withCurrentValues(this.colors, this.product.colors);
+            this.targets = this.withCurrentValues(this.targets, this.product.targets);
+            this.flowers = this.withCurrentValues(this.flowers, this.product.flowers);
+            this.collections = this.withCurrentValues(this.collections, this.product.collections);
+            this.topics = this.withCurrentValue(this.topics, this.product.topic);
+            this.cdr.detectChanges();
+          }
+        });
       },
       error: (error) => {
         console.error('Cannot load product detail', error);
@@ -170,7 +219,22 @@ export class ProductDetail implements OnInit {
     return cleanList;
   }
 
-  private formatReviewDate(value: string): string {
+  private normalizeProductImages(images: AdminProductDetailForm['images']): AdminProductDetailForm['images'] {
+    const unique = new Map<string, AdminProductDetailForm['images'][number]>();
+    for (const image of images || []) {
+      const url = String(image?.url || '').trim();
+      if (!url || unique.has(url)) continue;
+      unique.set(url, { url, isPrimary: Boolean(image.isPrimary), sortOrder: Number(image.sortOrder || 0) });
+    }
+    return [...unique.values()].sort((left, right) => Number(right.isPrimary) - Number(left.isPrimary) || left.sortOrder - right.sortOrder);
+  }
+
+  private withCurrentValues(list: string[], values: string[]): string[] {
+    return Array.from(new Set([...(list || []), ...(values || [])].filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'vi'));
+  }
+
+  formatReviewDate(value: string): string {
     if (!value) return '';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
@@ -230,16 +294,38 @@ export class ProductDetail implements OnInit {
     if (!input.files) return;
 
     Array.from(input.files).forEach((file) => {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+        alert('Chỉ chấp nhận ảnh JPG, PNG, WEBP và tối đa 5 MB mỗi ảnh.');
+        return;
+      }
       const reader = new FileReader();
       reader.onload = () => {
-        this.product.images.push(reader.result as string);
+        this.product.images.push({
+          url: reader.result as string,
+          isPrimary: this.product.images.length === 0,
+          sortOrder: this.product.images.length
+        });
       };
       reader.readAsDataURL(file);
     });
   }
 
   removeImage(index: number): void {
+    const wasPrimary = this.product.images[index]?.isPrimary;
     this.product.images.splice(index, 1);
+    if (wasPrimary && this.product.images.length) this.product.images[0].isPrimary = true;
+    this.product.images.forEach((image, imageIndex) => image.sortOrder = imageIndex);
+  }
+
+  setPrimaryImage(index: number): void {
+    this.product.images.forEach((image, imageIndex) => image.isPrimary = imageIndex === index);
+  }
+
+  moveImage(index: number, direction: -1 | 1): void {
+    const target = index + direction;
+    if (target < 0 || target >= this.product.images.length) return;
+    [this.product.images[index], this.product.images[target]] = [this.product.images[target], this.product.images[index]];
+    this.product.images.forEach((image, imageIndex) => image.sortOrder = imageIndex);
   }
 
   searchMaterial(): void {
@@ -296,6 +382,12 @@ export class ProductDetail implements OnInit {
       return;
     }
 
+    const validationError = this.validateProduct();
+    if (validationError) {
+      alert(validationError);
+      return;
+    }
+
     this.recalculateImportPrice();
     this.product.status = this.product.isPublished
       ? this.publishedStatus
@@ -313,6 +405,16 @@ export class ProductDetail implements OnInit {
         alert('Không thể lưu chi tiết sản phẩm. Vui lòng thử lại.');
       }
     });
+  }
+
+  private validateProduct(): string | null {
+    if (!this.product.name.trim()) return 'Tên sản phẩm là bắt buộc.';
+    if (!(Number(this.product.salePrice) > 0)) return 'Giá bán phải lớn hơn 0.';
+    if (Number(this.product.discountPrice) > 0 && Number(this.product.discountPrice) >= Number(this.product.salePrice)) return 'Giá khuyến mãi phải nhỏ hơn giá bán.';
+    if (!this.product.topic && !this.product.colors.length && !this.product.targets.length && !this.product.flowers.length && !this.product.collections.length) return 'Sản phẩm phải có ít nhất một danh mục.';
+    if (!this.product.images.length) return 'Sản phẩm phải có ít nhất một ảnh.';
+    if (this.product.images.filter((image) => image.isPrimary).length !== 1) return 'Sản phẩm phải có đúng một ảnh đại diện.';
+    return null;
   }
 
   private recalculateImportPrice(): void {
@@ -363,6 +465,11 @@ export class ProductDetail implements OnInit {
       );
     }
 
+    if (this.selectedPeriod !== 'all') {
+      const threshold = Date.now() - Number(this.selectedPeriod) * 24 * 60 * 60 * 1000;
+      this.filteredReviews = this.filteredReviews.filter((review) => new Date(review.date).getTime() >= threshold);
+    }
+
     this.sortReviews(false);
     this.currentPage = 1;
   }
@@ -393,6 +500,7 @@ export class ProductDetail implements OnInit {
 
   private normalizeProductStatus(status: string): string {
     const key = this.removeVietnameseTones(String(status || '').trim()).toLowerCase();
+    if (key.includes('xoa') || key.includes('deleted')) return this.deletedStatus;
     return key.includes('ngung') || key.includes('stop')
       ? this.unpublishedStatus
       : this.publishedStatus;

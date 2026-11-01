@@ -6,9 +6,14 @@
   <section class="selected-filter-row" id="selectedFilterRow">
     <span class="selected-filter-title">Bộ lọc đang chọn:</span>
     <div class="selected-filter-list" id="selectedFilterList"></div>
+    <button class="clear-all-filters" id="clearAllFilters" type="button">Xóa tất cả bộ lọc</button>
   </section>
 
   <section class="mobile-filter-row" aria-label="Bộ lọc rút gọn">
+    <button class="open-filter-drawer" id="openFilterDrawer" type="button">
+      <i class="bi bi-funnel" aria-hidden="true"></i>
+      Bộ lọc
+    </button>
     <div class="mobile-filter-field">
       <label for="mobileFilterSelect">Lọc sản phẩm:</label>
       <select id="mobileFilterSelect">
@@ -20,41 +25,39 @@
       <label class="mobile-price-title">Khoảng giá</label>
 
       <div class="filter-content price-filter-content">
-        <div class="price-range-labels">
-          <span>0đ</span>
-          <span>7tr</span>
-        </div>
-
-        <div class="price-range-control">
-          <div class="price-range-track"></div>
-          <div class="price-range-fill price-range-fill-sync"></div>
-          <input
-            class="price-min-range"
-            type="range"
-            min="0"
-            max="7000000"
-            step="50000"
-            value="0"
-            aria-label="Giá thấp nhất trên điện thoại">
-          <input
-            class="price-max-range"
-            type="range"
-            min="0"
-            max="7000000"
-            step="50000"
-            value="7000000"
-            aria-label="Giá cao nhất trên điện thoại">
-        </div>
-
-        <div class="price-range-value price-range-value-sync">
-          0đ - 7.000.000đ
+        <div class="price-range-options">
+          <label class="price-range-option">
+            <input type="radio" name="mobilePriceRange" class="price-range-option-input" data-price-min="0" data-price-max="7000000" data-price-label="Tất cả khoảng giá">
+            <span>Tất cả khoảng giá</span>
+          </label>
+          <label class="price-range-option">
+            <input type="radio" name="mobilePriceRange" class="price-range-option-input" data-price-min="0" data-price-max="499999" data-price-label="Dưới 500.000đ">
+            <span>Dưới 500.000đ</span>
+          </label>
+          <label class="price-range-option">
+            <input type="radio" name="mobilePriceRange" class="price-range-option-input" data-price-min="500000" data-price-max="999999" data-price-label="500.000đ - dưới 1.000.000đ">
+            <span>500.000đ - dưới 1.000.000đ</span>
+          </label>
+          <label class="price-range-option">
+            <input type="radio" name="mobilePriceRange" class="price-range-option-input" data-price-min="1000000" data-price-max="3000000" data-price-label="1.000.000đ - 3.000.000đ">
+            <span>1.000.000đ - 3.000.000đ</span>
+          </label>
+          <label class="price-range-option">
+            <input type="radio" name="mobilePriceRange" class="price-range-option-input" data-price-min="3000001" data-price-max="7000000" data-price-label="Trên 3.000.000đ">
+            <span>Trên 3.000.000đ</span>
+          </label>
         </div>
       </div>
     </div>
   </section>
 
   <section class="category-layout">
-    <aside class="filter-sidebar" aria-label="Bộ lọc sản phẩm">
+    <div class="filter-drawer-overlay" id="filterDrawerOverlay" hidden></div>
+    <aside class="filter-sidebar" id="filterSidebar" aria-label="Bộ lọc sản phẩm">
+      <div class="filter-drawer-header">
+        <strong>Bộ lọc sản phẩm</strong>
+        <button id="closeFilterDrawer" type="button" aria-label="Đóng bộ lọc">×</button>
+      </div>
 
       <div class="filter-group">
         <button class="filter-title" type="button" aria-expanded="true">
@@ -122,36 +125,27 @@
         </button>
 
         <div class="filter-content price-filter-content">
-          <div class="price-range-labels">
-            <span>0đ</span>
-            <span>7tr</span>
-          </div>
-
-          <div class="price-range-control" id="priceRangeControl">
-            <div class="price-range-track"></div>
-            <div class="price-range-fill price-range-fill-sync" id="priceRangeFill"></div>
-            <input
-              id="priceMinRange"
-              class="price-min-range"
-              type="range"
-              min="0"
-              max="7000000"
-              step="50000"
-              value="0"
-              aria-label="Giá thấp nhất">
-            <input
-              id="priceMaxRange"
-              class="price-max-range"
-              type="range"
-              min="0"
-              max="7000000"
-              step="50000"
-              value="7000000"
-              aria-label="Giá cao nhất">
-          </div>
-
-          <div class="price-range-value price-range-value-sync" id="priceRangeValue">
-            0đ - 7.000.000đ
+          <div class="price-range-options">
+            <label class="price-range-option">
+              <input type="radio" name="priceRange" class="price-range-option-input" data-price-min="0" data-price-max="7000000" data-price-label="Tất cả khoảng giá">
+              <span>Tất cả khoảng giá</span>
+            </label>
+            <label class="price-range-option">
+              <input type="radio" name="priceRange" class="price-range-option-input" data-price-min="0" data-price-max="499999" data-price-label="Dưới 500.000đ">
+              <span>Dưới 500.000đ</span>
+            </label>
+            <label class="price-range-option">
+              <input type="radio" name="priceRange" class="price-range-option-input" data-price-min="500000" data-price-max="999999" data-price-label="500.000đ - dưới 1.000.000đ">
+              <span>500.000đ - dưới 1.000.000đ</span>
+            </label>
+            <label class="price-range-option">
+              <input type="radio" name="priceRange" class="price-range-option-input" data-price-min="1000000" data-price-max="3000000" data-price-label="1.000.000đ - 3.000.000đ">
+              <span>1.000.000đ - 3.000.000đ</span>
+            </label>
+            <label class="price-range-option">
+              <input type="radio" name="priceRange" class="price-range-option-input" data-price-min="3000001" data-price-max="7000000" data-price-label="Trên 3.000.000đ">
+              <span>Trên 3.000.000đ</span>
+            </label>
           </div>
         </div>
       </div>
@@ -253,7 +247,9 @@
             id="sortDropdownMenu"
             role="listbox"
             aria-labelledby="sortDropdownToggle">
-            <button class="sort-option is-selected" type="button" role="option" aria-selected="true" data-sort-value="default">Mặc định</button>
+            <button class="sort-option is-selected" type="button" role="option" aria-selected="true" data-sort-value="newest">Mới nhất</button>
+            <button class="sort-option" type="button" role="option" aria-selected="false" data-sort-value="oldest">Cũ nhất</button>
+            <button class="sort-option" type="button" role="option" aria-selected="false" data-sort-value="bestSeller">Bán chạy</button>
             <button class="sort-option" type="button" role="option" aria-selected="false" data-sort-value="priceAsc">Giá thấp đến cao</button>
             <button class="sort-option" type="button" role="option" aria-selected="false" data-sort-value="priceDesc">Giá cao đến thấp</button>
             <button class="sort-option" type="button" role="option" aria-selected="false" data-sort-value="nameAsc">Tên A - Z</button>
@@ -262,7 +258,9 @@
         </div>
 
         <select id="sortSelect" class="native-sort-select" aria-hidden="true" tabindex="-1">
-          <option value="default">Mặc định</option>
+          <option value="newest">Mới nhất</option>
+          <option value="oldest">Cũ nhất</option>
+          <option value="bestSeller">Bán chạy</option>
           <option value="priceAsc">Giá thấp đến cao</option>
           <option value="priceDesc">Giá cao đến thấp</option>
           <option value="nameAsc">Tên A - Z</option>

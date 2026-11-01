@@ -17,6 +17,7 @@ import { CollectionService, Collection } from '../../services/collection.service
 import { CartService } from '../../services/cart.service';
 import { BlogService, Blog } from '../../services/blog.service';
 import { CustomerService } from '../../services/customer.service';
+import { CampaignService, PublicCampaign } from '../../services/campaign.service';
 
 import {
   CategoryProductService,
@@ -63,6 +64,8 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
 
   newCollection: HomeProduct[] = [];
   saleProducts: HomeProduct[] = [];
+  hotDealProducts: HomeProduct[] = [];
+  activeCampaign: PublicCampaign | null = null;
 
   allNewCollection: HomeProduct[] = [];
   allSaleProducts: HomeProduct[] = [];
@@ -96,6 +99,8 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
   private bestSellerProductFadeTimer: ReturnType<typeof setTimeout> | null = null;
 
   wishlistIds = new Set<string>();
+  private readonly authChangedHandler = () => this.loadCustomerWishlist();
+  private readonly wishlistChangedHandler = () => this.loadCustomerWishlist();
 
   customerReviews = [
     {
@@ -130,12 +135,17 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
     private categoryProductService: CategoryProductService,
     private cartService: CartService,
     private customerService: CustomerService,
+    private campaignService: CampaignService,
     private blogService: BlogService,
     private router: Router,
     private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
+    if (isPlatformBrowser(this.platformId)) {
+      window.addEventListener('auth-changed', this.authChangedHandler);
+      window.addEventListener('wishlist-changed', this.wishlistChangedHandler);
+    }
     this.groupSize = this.computeGroupSize();
 
     this.routerEventsSub = this.router.events
@@ -147,6 +157,7 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
     this.loadCollections();
     this.loadNewCollectionProducts(this.newCollectionId);
     this.loadSaleProducts();
+    this.loadActiveCampaign();
     this.loadBestSellerProducts();
     this.loadLatestBlogs();
     this.loadCustomerWishlist();
@@ -248,6 +259,10 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
 
 
   ngOnDestroy(): void {
+    if (isPlatformBrowser(this.platformId)) {
+      window.removeEventListener('auth-changed', this.authChangedHandler);
+      window.removeEventListener('wishlist-changed', this.wishlistChangedHandler);
+    }
     if (this.newCollectionTimer) {
       clearInterval(this.newCollectionTimer);
     }
@@ -327,6 +342,27 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
+  private loadActiveCampaign(): void {
+    this.campaignService.getPublicCampaigns().subscribe({
+      next: (campaigns) => {
+        const now = Date.now();
+        this.activeCampaign = (Array.isArray(campaigns) ? campaigns : [])
+          .filter((item) => {
+            const status = String(item.TRANG_THAI || '').toLowerCase();
+            const start = item.NGAY_BAT_DAU ? new Date(item.NGAY_BAT_DAU).getTime() : Number.NEGATIVE_INFINITY;
+            const end = item.NGAY_KET_THUC ? new Date(item.NGAY_KET_THUC).getTime() : Number.POSITIVE_INFINITY;
+            return !status.includes('ngừng') && !status.includes('ẩn') && !status.includes('xóa') && start <= now && end >= now;
+          })
+          .sort((a, b) => new Date(b.NGAY_BAT_DAU || 0).getTime() - new Date(a.NGAY_BAT_DAU || 0).getTime())[0] || null;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.activeCampaign = null;
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
   private loadNewCollectionProducts(collectionId: string): void {
     this.categoryProductService.getProductsByCollection(collectionId).subscribe({
       next: (res) => {
@@ -334,7 +370,7 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
 
         this.allNewCollection = products.map((item) =>
           this.mapProductToHomeProduct(item)
-        );
+        ).filter((item) => this.isValidHomeProduct(item));
 
         this.startNewCollectionAutoSlide();
 
@@ -356,7 +392,11 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
 
         this.allSaleProducts = products.map((item) =>
           this.mapProductToHomeProduct(item)
-        );
+        ).filter((item) => this.isValidHomeProduct(item) && item.discountPercent !== null && item.discountPercent > 0);
+
+        this.hotDealProducts = [...this.allSaleProducts]
+          .sort((a, b) => (b.discountPercent || 0) - (a.discountPercent || 0))
+          .slice(0, 5);
 
         console.log('Tổng sản phẩm giảm giá:', this.allSaleProducts.length);
 
@@ -368,6 +408,7 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
         console.error('Lỗi load sản phẩm giảm giá:', err);
         this.allSaleProducts = [];
         this.saleProducts = [];
+        this.hotDealProducts = [];
         this.cdr.detectChanges();
       }
     });
@@ -380,7 +421,7 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
 
       this.allBestSellerProducts = products.map((item) =>
         this.mapProductToHomeProduct(item)
-      );
+      ).filter((item) => this.isValidHomeProduct(item));
 
       console.log('Tổng sản phẩm bán chạy:', this.allBestSellerProducts.length);
 
@@ -704,6 +745,7 @@ private startBestSellerProductAutoSlide(): void {
   }
 
   private mapProductToHomeProduct(item: CategoryProduct): HomeProduct {
+    const productId = String(item.SAN_PHAM_ID || '').trim();
     const originalPrice = Number(item.GIA ?? 0);
 
     const salePrice =
@@ -725,12 +767,12 @@ private startBestSellerProductAutoSlide(): void {
         : null;
 
     return {
-      id: item.SAN_PHAM_ID,
+      id: productId,
       name: item.TEN_SAN_PHAM,
       oldPrice: hasSalePrice ? this.formatPrice(originalPrice) : undefined,
       price: this.formatPrice(finalPrice),
       image: this.getProductImage(item.TEN_SAN_PHAM, item.HINH_ANH),
-      link: `/product-detail/${item.SAN_PHAM_ID}`,
+      link: `/product-detail/${encodeURIComponent(productId)}`,
       priceValue: finalPrice,
       originalPriceValue: originalPrice,
       salePriceValue: hasSalePrice && salePrice !== null ? salePrice : null,
@@ -739,6 +781,10 @@ private startBestSellerProductAutoSlide(): void {
       occasion: item.TEN_CHU_DE || 'Đang bán',
       maxQuantity: Number(item.SO_LUONG || 0) > 0 ? Number(item.SO_LUONG) : undefined
     };
+  }
+
+  private isValidHomeProduct(item: HomeProduct): boolean {
+    return Boolean(item.id.trim() && item.name.trim() && item.priceValue > 0 && item.image);
   }
 
   goToProductDetail(product: HomeProduct, event?: Event): void {
@@ -899,7 +945,8 @@ private startBestSellerProductAutoSlide(): void {
     }
 
     this.customerService.getWishlist(customerId).subscribe({
-      next: (items) => {
+      next: (response) => {
+        const items = response.items;
         this.wishlistIds = new Set(
           (Array.isArray(items) ? items : [])
             .map((item: any) => String(item?.SAN_PHAM_ID || item?.sanPhamId || item?.id || '').trim())
@@ -932,8 +979,8 @@ private startBestSellerProductAutoSlide(): void {
       return;
     }
 
-    if (!String(product.id).startsWith('SP')) {
-      alert('Sản phẩm này chưa đồng bộ với database nên chưa thể thêm vào yêu thích.');
+    if (!String(product.id || '').trim()) {
+      alert('Không xác định được sản phẩm cần lưu vào danh sách yêu thích.');
       return;
     }
 
@@ -943,12 +990,11 @@ private startBestSellerProductAutoSlide(): void {
       this.customerService.removeWishlistItem(customerId, product.id).subscribe({
         next: () => {
           this.wishlistIds.delete(product.id);
-          this.dispatchWishlistChanged();
           this.cdr.detectChanges();
         },
         error: (err) => {
           console.error('Lỗi xóa sản phẩm yêu thích:', err);
-          alert('Chưa xóa được sản phẩm khỏi danh sách yêu thích. Vui lòng thử lại.');
+          alert(err?.error?.message || 'Chưa xóa được sản phẩm khỏi danh sách yêu thích. Vui lòng thử lại.');
         }
       });
 
@@ -958,22 +1004,13 @@ private startBestSellerProductAutoSlide(): void {
     this.customerService.addWishlistItem(customerId, product.id).subscribe({
       next: () => {
         this.wishlistIds.add(product.id);
-        this.dispatchWishlistChanged();
         this.cdr.detectChanges();
       },
       error: (err) => {
         console.error('Lỗi thêm sản phẩm yêu thích:', err);
-        alert('Chưa thêm được sản phẩm vào danh sách yêu thích. Vui lòng thử lại.');
+        alert(err?.error?.message || 'Chưa thêm được sản phẩm vào danh sách yêu thích. Vui lòng thử lại.');
       }
     });
-  }
-
-  private dispatchWishlistChanged(): void {
-    if (!this.isBrowser) {
-      return;
-    }
-
-    window.dispatchEvent(new Event('wishlist-changed'));
   }
 
   private get isBrowser(): boolean {

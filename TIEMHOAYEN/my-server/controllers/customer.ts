@@ -38,6 +38,30 @@ const isActiveRow = (row: any): boolean => row?.DA_XOA !== true && row?.DA_XOA !
 const getCustomerCollection = () => getCollection<any>('KHACH_HANG');
 const getAddressCollection = () => getCollection<any>('DIA_CHI_GIAO_HANG');
 
+let wishlistIndexReady: Promise<string> | null = null;
+const ensureWishlistIndex = () => {
+  if (!wishlistIndexReady) {
+    wishlistIndexReady = getCollection<any>('YEU_THICH').then(async (collection) => {
+      const duplicates = await collection.aggregate([
+        { $group: { _id: { customerId: '$KHACH_HANG_ID', productId: '$SAN_PHAM_ID' }, ids: { $push: '$_id' }, count: { $sum: 1 } } },
+        { $match: { count: { $gt: 1 } } },
+      ]).toArray();
+      for (const duplicate of duplicates) {
+        const [, ...redundantIds] = duplicate.ids;
+        if (redundantIds.length) await collection.deleteMany({ _id: { $in: redundantIds } });
+      }
+      return collection.createIndex(
+        { KHACH_HANG_ID: 1, SAN_PHAM_ID: 1 },
+        { unique: true, name: 'uniq_wishlist_customer_product' },
+      );
+    }).catch((error) => {
+      wishlistIndexReady = null;
+      throw error;
+    });
+  }
+  return wishlistIndexReady;
+};
+
 const readCustomerById = async (customerId: string) => {
   const customerCollection = await getCustomerCollection();
   return customerCollection.findOne({ KHACH_HANG_ID: customerId });
@@ -395,6 +419,19 @@ export const getCustomerOrders = async (req: Request, res: Response) => {
   try {
     const orderCollection = await getCollection<any>('DON_HANG');
     const orders = await orderCollection.find({ KHACH_HANG_ID: req.params.id }).toArray();
+    const orderIds = orders.map(order => order.DON_HANG_ID);
+    const [details, reviews] = await Promise.all([
+      (await getCollection<any>('DON_HANG_CHI_TIET')).find({ DON_HANG_ID: { $in: orderIds } }).toArray(),
+      (await getCollection<any>('DANH_GIA')).find({ DON_HANG_ID: { $in: orderIds } }).toArray(),
+    ]);
+    const productsByOrder = new Map<string, Set<string>>();
+    details.forEach(row => {
+      const set = productsByOrder.get(row.DON_HANG_ID) || new Set<string>(); set.add(String(row.SAN_PHAM_ID)); productsByOrder.set(row.DON_HANG_ID, set);
+    });
+    const reviewsByOrder = new Map<string, Set<string>>();
+    reviews.forEach(row => {
+      const set = reviewsByOrder.get(row.DON_HANG_ID) || new Set<string>(); set.add(String(row.SAN_PHAM_ID)); reviewsByOrder.set(row.DON_HANG_ID, set);
+    });
 
     return res.status(200).json(
       orders
@@ -405,6 +442,8 @@ export const getCustomerOrders = async (req: Request, res: Response) => {
           TAM_TINH: order.TAM_TINH,
           TONG_TIEN: order.TONG_TIEN,
           TRANG_THAI: order.TRANG_THAI,
+          DANH_GIA_DA_GUI: reviewsByOrder.get(order.DON_HANG_ID)?.size || 0,
+          DANH_GIA_TONG_SAN_PHAM: productsByOrder.get(order.DON_HANG_ID)?.size || 0,
         })),
     );
   } catch (error: any) {
@@ -462,14 +501,23 @@ export const getCustomerVouchers = async (req: Request, res: Response) => {
 
 export const getCustomerWishlist = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = String(res.locals.customerId || '');
+    const page = Math.max(1, Math.floor(Number(req.query.page) || 1));
+    const pageSize = Math.max(1, Math.min(500, Math.floor(Number(req.query.pageSize) || 12)));
+    await ensureWishlistIndex();
     const wishlistCollection = await getCollection<any>('YEU_THICH');
     const productCollection = await getCollection<any>('SAN_PHAM');
-    const wishlist = await wishlistCollection.find({ KHACH_HANG_ID: id }).toArray();
-    const productIds = wishlist.map((item) => item.SAN_PHAM_ID).filter(Boolean);
+    const allWishlist = await wishlistCollection
+      .find({ KHACH_HANG_ID: id })
+      .sort({ NGAY_TAO: -1, SAN_PHAM_ID: 1 })
+      .toArray();
+    const total = allWishlist.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const productIds = allWishlist.map((item) => item.SAN_PHAM_ID).filter(Boolean);
 
     if (productIds.length === 0) {
-      return res.status(200).json([]);
+      return res.status(200).json({ items: [], page: safePage, pageSize, total, totalPages });
     }
 
     const [products, imageMap] = await Promise.all([
@@ -478,24 +526,51 @@ export const getCustomerWishlist = async (req: Request, res: Response) => {
     ]);
     const productMap = new Map(products.map((product) => [product.SAN_PHAM_ID, product]));
 
-    const result = wishlist
-      .sort((left, right) => compareDateDesc(left.NGAY_TAO, right.NGAY_TAO))
-      .map((item) => {
+    const result = allWishlist.map((item) => {
         const product = productMap.get(item.SAN_PHAM_ID);
         const image = imageMap.get(item.SAN_PHAM_ID);
-        return product
-          ? {
+        if (!product) {
+          return {
+            SAN_PHAM_ID: item.SAN_PHAM_ID,
+            TEN_SAN_PHAM: 'Sản phẩm không còn tồn tại',
+            GIA: 0,
+            GIA_KHUYEN_MAI: null,
+            HINH_ANH: null,
+            TRANG_THAI_HIEN_THI: 'Không còn truy cập được',
+            CO_THE_MUA: false,
+            DA_XOA: true,
+            LIEN_KET_CON_HIEU_LUC: false,
+            _WISHLIST_CREATED_AT: item.NGAY_TAO,
+          };
+        }
+        const deleted = product.DA_XOA === true || product.DA_XOA === 1;
+        const selling = String(product.TRANG_THAI || '').trim() === 'Đang bán';
+        const stock = Number(product.TON_THANH_PHAM ?? product.SO_LUONG_TON ?? 0);
+        return {
               SAN_PHAM_ID: item.SAN_PHAM_ID,
               TEN_SAN_PHAM: product.TEN_SAN_PHAM,
               GIA: product.GIA,
               GIA_KHUYEN_MAI: product.GIA_KHUYEN_MAI,
               HINH_ANH: image?.URL || null,
-            }
-          : null;
-      })
-      .filter(Boolean);
+              TRANG_THAI_HIEN_THI: deleted ? 'Đã xóa' : !selling ? 'Ngừng bán' : stock <= 0 ? 'Hết hàng' : 'Đang bán',
+              CO_THE_MUA: !deleted && selling && stock > 0,
+              DA_XOA: deleted,
+              LIEN_KET_CON_HIEU_LUC: !deleted,
+              _WISHLIST_CREATED_AT: item.NGAY_TAO,
+            };
+      });
 
-    return res.status(200).json(result);
+    result.sort((left, right) => {
+      const purchaseCompare = Number(right.CO_THE_MUA) - Number(left.CO_THE_MUA);
+      if (purchaseCompare !== 0) return purchaseCompare;
+      const dateCompare = compareDateDesc(left._WISHLIST_CREATED_AT, right._WISHLIST_CREATED_AT);
+      return dateCompare || String(left.SAN_PHAM_ID).localeCompare(String(right.SAN_PHAM_ID), 'vi');
+    });
+    const pageItems = result
+      .slice((safePage - 1) * pageSize, safePage * pageSize)
+      .map(({ _WISHLIST_CREATED_AT, ...item }) => item);
+
+    return res.status(200).json({ items: pageItems, page: safePage, pageSize, total, totalPages });
   } catch (error: any) {
     return res.status(500).json({ message: 'Lỗi server: ' + error.message });
   }
@@ -556,23 +631,23 @@ export const removeCustomerAvatar = async (req: Request, res: Response) => {
 
 export const addWishlistItem = async (req: Request, res: Response) => {
   try {
-    const { customerId, productId } = req.params;
+    const customerId = String(res.locals.customerId || '');
+    const productId = String(req.params.productId || '').trim();
 
     if (!customerId || !productId) {
       return res.status(400).json({ message: 'Thiếu mã khách hàng hoặc mã sản phẩm.' });
     }
 
-    const [customerCollection, productCollection, wishlistCollection] = await Promise.all([
-      getCustomerCollection(),
+    await ensureWishlistIndex();
+    const [productCollection, wishlistCollection] = await Promise.all([
       getCollection<any>('SAN_PHAM'),
       getCollection<any>('YEU_THICH'),
     ]);
 
-    if (!await customerCollection.findOne({ KHACH_HANG_ID: customerId }, { projection: { KHACH_HANG_ID: 1 } })) {
-      return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
-    }
-
-    if (!await productCollection.findOne({ SAN_PHAM_ID: productId }, { projection: { SAN_PHAM_ID: 1 } })) {
+    if (!await productCollection.findOne(
+      { SAN_PHAM_ID: productId, DA_XOA: { $nin: [true, 1] } },
+      { projection: { SAN_PHAM_ID: 1 } },
+    )) {
       return res.status(404).json({ message: 'Không tìm thấy sản phẩm.' });
     }
 
@@ -589,7 +664,7 @@ export const addWishlistItem = async (req: Request, res: Response) => {
       { upsert: true },
     );
 
-    return res.status(201).json({ message: 'Đã thêm vào danh sách yêu thích' });
+    return res.status(200).json({ message: 'Đã thêm vào danh sách yêu thích' });
   } catch (error: any) {
     return res.status(500).json({ message: error.message });
   }
@@ -597,7 +672,8 @@ export const addWishlistItem = async (req: Request, res: Response) => {
 
 export const removeWishlistItem = async (req: Request, res: Response) => {
   try {
-    const { customerId, productId } = req.params;
+    const customerId = String(res.locals.customerId || '');
+    const productId = String(req.params.productId || '').trim();
     const wishlistCollection = await getCollection<any>('YEU_THICH');
     await wishlistCollection.deleteOne({ KHACH_HANG_ID: customerId, SAN_PHAM_ID: productId });
 
