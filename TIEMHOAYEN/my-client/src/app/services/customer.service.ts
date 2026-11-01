@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { Observable, tap } from 'rxjs';
+import { apiBaseUrl, getCustomerOrderAccessToken } from './api-config';
 
 export interface Customer {
   KHACH_HANG_ID: string;
@@ -46,6 +47,8 @@ export interface CustomerOrder {
   TAM_TINH: number;
   TONG_TIEN: number;
   TRANG_THAI: string;
+  DANH_GIA_DA_GUI?: number;
+  DANH_GIA_TONG_SAN_PHAM?: number;
 }
 
 export interface CustomerVoucher {
@@ -65,6 +68,18 @@ export interface CustomerWishlistItem {
   GIA: number;
   GIA_KHUYEN_MAI: number | null;
   HINH_ANH: string | null;
+  TRANG_THAI_HIEN_THI: string;
+  CO_THE_MUA: boolean;
+  DA_XOA: boolean;
+  LIEN_KET_CON_HIEU_LUC: boolean;
+}
+
+export interface CustomerWishlistPage {
+  items: CustomerWishlistItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 }
 
 @Injectable({
@@ -136,10 +151,11 @@ export class CustomerService {
     );
   }
 
-  getWishlist(id: string): Observable<CustomerWishlistItem[]> {
-    return this.http.get<CustomerWishlistItem[]>(
-      `${this.apiUrl}/${id}/wishlist`
-    );
+  getWishlist(id: string, page = 1, pageSize = 500): Observable<CustomerWishlistPage> {
+    return this.http.get<CustomerWishlistPage>(`${apiBaseUrl()}/customers/${encodeURIComponent(id)}/wishlist`, {
+      params: { page, pageSize },
+      headers: this.getWishlistHeaders(),
+    });
   }
 
   updateAvatar(
@@ -167,9 +183,10 @@ export class CustomerService {
     productId: string
   ): Observable<{ message: string }> {
     return this.http.post<{ message: string }>(
-      `${this.apiUrl}/${customerId}/wishlist/${productId}`,
-      {}
-    );
+      `${apiBaseUrl()}/customers/${encodeURIComponent(customerId)}/wishlist/${encodeURIComponent(productId)}`,
+      {},
+      { headers: this.getWishlistHeaders() }
+    ).pipe(tap(() => this.notifyWishlistChanged(productId, true)));
   }
 
   removeWishlistItem(
@@ -177,7 +194,19 @@ export class CustomerService {
     productId: string
   ): Observable<{ message: string }> {
     return this.http.delete<{ message: string }>(
-      `${this.apiUrl}/${customerId}/wishlist/${productId}`
-    );
+      `${apiBaseUrl()}/customers/${encodeURIComponent(customerId)}/wishlist/${encodeURIComponent(productId)}`,
+      { headers: this.getWishlistHeaders() }
+    ).pipe(tap(() => this.notifyWishlistChanged(productId, false)));
+  }
+
+  private getWishlistHeaders(): HttpHeaders {
+    const token = getCustomerOrderAccessToken();
+    return token ? new HttpHeaders({ 'x-order-access': token }) : new HttpHeaders();
+  }
+
+  private notifyWishlistChanged(productId: string, favorite: boolean): void {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('wishlist-changed', { detail: { productId, favorite } }));
+    }
   }
 }

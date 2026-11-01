@@ -78,6 +78,161 @@
 .main-image-wrap {
     position: relative;
     width: 100%;
+    overflow: hidden;
+}
+
+.gallery-expand,
+.gallery-position {
+  position: absolute;
+  z-index: 3;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(25, 18, 18, .68);
+  color: #fff;
+}
+
+.gallery-expand {
+  top: 14px;
+  right: 14px;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+}
+
+.gallery-position {
+  right: 14px;
+  bottom: 14px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.main-image {
+    cursor: zoom-in;
+    transform: scale(1);
+    transition: transform .18s ease;
+}
+
+.main-image.is-zoomed {
+    transform: scale(2.4);
+}
+
+.add-cart-btn:disabled,
+.buy-now-btn:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+  filter: grayscale(.35);
+  animation: none;
+  box-shadow: none;
+}
+
+.add-cart-btn:disabled:hover,
+.buy-now-btn:disabled:hover {
+  transform: none;
+}
+
+.product-image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(10, 8, 8, .92);
+}
+
+.product-image-viewer__panel {
+  position: relative;
+  width: min(1100px, 100%);
+  height: min(820px, 92vh);
+  overflow: hidden;
+  border-radius: 16px;
+  background: #161313;
+  touch-action: pan-y;
+}
+
+.viewer-image-stage {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+}
+
+.viewer-image-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: center;
+  transition: transform .18s ease;
+}
+
+.viewer-close,
+.viewer-tools,
+.viewer-nav,
+.viewer-counter {
+  position: absolute;
+  z-index: 2;
+}
+
+.viewer-close {
+  top: 12px;
+  right: 12px;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,.16);
+  color: #fff;
+  font-size: 28px;
+  cursor: pointer;
+}
+
+.viewer-tools {
+  top: 12px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+}
+
+.viewer-tools button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,.16);
+  color: #fff;
+  cursor: pointer;
+}
+
+.viewer-nav {
+  top: 50%;
+  width: 48px;
+  height: 58px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(0,0,0,.48);
+  color: #fff;
+  font-size: 38px;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.viewer-nav--prev { left: 12px; }
+.viewer-nav--next { right: 12px; }
+.viewer-counter { left: 50%; bottom: 14px; transform: translateX(-50%); padding: 6px 11px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff; }
+
+@media (max-width: 640px) {
+  .product-image-viewer { padding: 0; }
+  .product-image-viewer__panel { width: 100%; height: 100%; border-radius: 0; }
+  .viewer-tools { top: auto; bottom: 50px; }
+  .viewer-counter { bottom: 12px; }
+  .viewer-nav { width: 42px; height: 52px; }
 }
 
 .main-image {
@@ -266,12 +421,16 @@
     min-height: 28px;
     padding: 4px 12px;
     border-radius: 999px;
-    background: linear-gradient(135deg, #b11226, #731919);
-    color: #fff7df;
+    border: 1px solid rgba(255, 224, 172, 0.78);
+    background: linear-gradient(135deg, #a73535 0%, #861c24 55%, #68151b 100%);
+    color: #fff8eb;
     font-size: 14px;
     font-weight: 900;
     letter-spacing: 0.2px;
-    box-shadow: 0 8px 18px rgba(115, 25, 25, 0.18);
+    text-shadow: 0 1px 2px rgba(65, 12, 16, 0.3);
+    box-shadow:
+        0 4px 10px rgba(85, 20, 24, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
 .stock {
@@ -1093,13 +1252,17 @@
     height: 26px;
     padding: 0 10px;
     border-radius: 999px;
-    background: #8b1e1e;
-    color: #fff3e9;
+    border: 1px solid rgba(255, 224, 172, 0.78);
+    background: linear-gradient(135deg, #a73535 0%, #861c24 55%, #68151b 100%);
+    color: #fff8eb;
     font-size: 13px;
     font-weight: 900;
     line-height: 26px;
     text-align: center;
-    box-shadow: 0 6px 14px rgba(115, 25, 25, 0.22);
+    text-shadow: 0 1px 2px rgba(65, 12, 16, 0.3);
+    box-shadow:
+        0 4px 10px rgba(85, 20, 24, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
 .related-card .related-wishlist-btn {

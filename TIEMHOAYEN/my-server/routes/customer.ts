@@ -58,16 +58,18 @@ router.delete('/addresses/:addressId', deleteCustomerAddress);
 router.put('/addresses/:addressId', updateCustomerAddress);
 router.put('/addresses/:addressId/default', setDefaultCustomerAddress);
 router.get('/:id/orders', requireCustomerLookup, getCustomerOrders);
-router.get('/:id/vouchers', getCustomerVouchers);
-router.get('/:id/wishlist', getCustomerWishlist);
+router.get('/:id/vouchers', requireCustomerLookup, getCustomerVouchers);
+router.get('/:id/wishlist', requireCustomerLookup, getCustomerWishlist);
 router.put('/:id/avatar', upload.single('avatar'), updateCustomerAvatar);
 router.put('/:id/avatar/remove', removeCustomerAvatar);
 router.post(
   '/:customerId/wishlist/:productId',
+  requireCustomerLookup,
   addWishlistItem
 );
 router.delete(
   '/:customerId/wishlist/:productId',
+  requireCustomerLookup,
   removeWishlistItem
 );
 router.get('/:id', getCustomerById);

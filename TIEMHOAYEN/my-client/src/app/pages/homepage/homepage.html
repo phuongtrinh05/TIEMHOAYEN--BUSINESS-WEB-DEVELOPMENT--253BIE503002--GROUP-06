@@ -23,10 +23,10 @@
     <!-- BENEFIT -->
     <section class="benefits reveal">
         <div class="benefit-item">
-            <i class="bi bi-truck"></i>
+            <i class="bi bi-bag-heart"></i>
             <div class="benefit-text">
-                <h4>GIAO HÀNG NHANH</h4>
-                <p>Giao hỏa tốc</p>
+                <h4>ĐẶT HOA DỄ DÀNG</h4>
+                <p>Chọn mẫu và đặt hàng trực tuyến</p>
             </div>
         </div>
         <div class="benefit-item">
@@ -83,7 +83,7 @@
         </div>
     </section>
 
-    <section class="collection reveal">
+    <section class="collection reveal new-collection-section">
         <h2>BỘ SƯU TẬP MỚI</h2>
 
         <div
@@ -151,14 +151,16 @@
     </section>
 
     <!-- SALE BANNER -->
-    <section class="sale-banner reveal">
-        <img
-            src="assets/images/homepage-banner-sale.png"
-            alt="sale banner">
+    <section class="sale-banner promotion-banner" *ngIf="activeCampaign">
+        <div class="campaign-banner-content">
+            <span>ƯU ĐÃI ĐANG DIỄN RA</span>
+            <h2>{{ activeCampaign.TEN_CHIEN_DICH }}</h2>
+            <p *ngIf="activeCampaign.MO_TA">{{ activeCampaign.MO_TA }}</p>
+        </div>
     </section>
 
     <!-- SALE PRODUCTS -->
-    <section class="collection reveal">
+    <section class="collection promotion-products-section" *ngIf="allSaleProducts.length">
         <h2>SẢN PHẨM GIẢM GIÁ</h2>
 
         <div class="product-carousel">
@@ -251,7 +253,7 @@
     </section>
 
     <!-- BEST SELLER -->
-    <section class="collection reveal">
+    <section class="collection best-seller-section" *ngIf="allBestSellerProducts.length">
         <h2>SẢN PHẨM BÁN CHẠY</h2>
 
         <div class="product-carousel">
@@ -343,11 +345,27 @@
         </div>
     </section>
 
+    <section class="collection hot-deal-section" *ngIf="hotDealProducts.length">
+        <h2>HOT DEAL</h2>
+        <div class="product-grid">
+            @for(item of hotDealProducts; track item.id) {
+                <div class="product-card" role="link" tabindex="0" (click)="goToProductDetail(item, $event)" (keydown.enter)="goToProductDetail(item, $event)" [attr.aria-label]="'Xem chi tiết ' + item.name">
+                    <div class="product-card-media">
+                        <img [src]="item.image" [alt]="item.name" loading="lazy">
+                        <span class="badge-sale" *ngIf="item.discountPercent">-{{ item.discountPercent }}%</span>
+                        <button class="btn-wishlist" type="button" [class.active]="isInWishlist(item.id)" (click)="toggleWishlist(item, $event)" [attr.aria-label]="'Lưu ' + item.name + ' vào yêu thích'"><i class="bi" [class.bi-heart-fill]="isInWishlist(item.id)" [class.bi-heart]="!isInWishlist(item.id)"></i></button>
+                    </div>
+                    <div class="product-card-body"><h3>{{ item.name }}</h3><div class="price-row"><span class="price">{{ item.price }}</span><span class="old-price" *ngIf="item.oldPrice">{{ item.oldPrice }}</span></div><div class="product-action"><button class="btn-buy" type="button" (click)="buyNow(item, $event)">MUA NGAY</button><button class="btn-cart" type="button" (click)="addProductToCart(item, $event)" [attr.aria-label]="'Thêm ' + item.name + ' vào giỏ hàng'"><i class="bi bi-cart3"></i></button></div></div>
+                </div>
+            }
+        </div>
+    </section>
+
     <!-- MEMBERSHIP POLICY -->
     <section class="membership-section reveal">
         <div class="membership-heading">
             <H2>CHÍNH SÁCH KHÁCH HÀNG THÂN THIẾT</H2>
-            <span>Mỗi 10.000đ thanh toán = 1 điểm thưởng. Dùng điểm để giảm đơn hàng hoặc đổi voucher phí vận chuyển.</span>
+            <span>Chính sách tích điểm và quy đổi đang được hoàn thiện.</span>
         </div>
 
         <div class="membership-grid">
@@ -370,7 +388,7 @@
                     <div class="member-benefits">
                         <p><i class="bi bi-check-circle"></i> Nhận tin khuyến mãi sớm</p>
                         <p><i class="bi bi-check-circle"></i> Quà sinh nhật nhỏ từ shop</p>
-                        <p><i class="bi bi-check-circle"></i> Đổi điểm: 2 điểm = 1.000đ</p>
+                        <p><i class="bi bi-info-circle"></i> Quy đổi điểm sẽ được công bố sau khi chính sách được phê duyệt.</p>
                     </div>
                 </div>
             </article>
@@ -441,7 +459,7 @@
 
                     <div class="member-benefits">
                         <p><i class="bi bi-check-circle"></i> Miễn phí tất cả đơn hàng nội thành</p>
-                        <p><i class="bi bi-check-circle"></i> Ưu tiên giao hỏa tốc</p>
+                        <p><i class="bi bi-check-circle"></i> Ưu tiên hỗ trợ thiết kế theo yêu cầu</p>
                         <p><i class="bi bi-check-circle"></i> Quà sinh nhật siêu VIP & voucher đặc biệt</p>
                         <p><i class="bi bi-check-circle"></i> Tư vấn thiết kế riêng cho đơn lớn</p>
                     </div>

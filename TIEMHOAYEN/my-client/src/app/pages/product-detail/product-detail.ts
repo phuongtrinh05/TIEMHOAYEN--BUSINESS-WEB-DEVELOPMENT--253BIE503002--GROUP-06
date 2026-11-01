@@ -130,6 +130,11 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   relatedProducts: RelatedProduct[] = [];
   private readonly relatedProductsTargetCount = 6;
   activeImageViewer: ReviewImageViewer | null = null;
+  productImageViewer: ReviewImageViewer | null = null;
+  productImageZoom = 1;
+  isProductImageZoomed = false;
+  productImageZoomOrigin = '50% 50%';
+  private galleryTouchStartX = 0;
   breadcrumbGroupLabel = 'Chủ đề';
   breadcrumbReturnUrl = '/category';
   isFavorite = false;
@@ -141,6 +146,8 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   private wishlistSubscription?: Subscription;
   private revealObserver?: IntersectionObserver;
   private wishlistProductIds = new Set<string>();
+  private readonly authChangedHandler = () => this.loadWishlistState(this.product.id);
+  private readonly wishlistChangedHandler = () => this.loadWishlistState(this.product.id);
 
   constructor(
     private route: ActivatedRoute,
@@ -179,6 +186,10 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   ngOnInit(): void {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('auth-changed', this.authChangedHandler);
+      window.addEventListener('wishlist-changed', this.wishlistChangedHandler);
+    }
     this.routeSubscription = this.route.paramMap.subscribe((params) => {
       const productId = params.get('id');
 
@@ -201,6 +212,10 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   ngOnDestroy(): void {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('auth-changed', this.authChangedHandler);
+      window.removeEventListener('wishlist-changed', this.wishlistChangedHandler);
+    }
     this.routeSubscription?.unsubscribe();
     this.productRequestSubscription?.unsubscribe();
     this.relatedProductsSubscription?.unsubscribe();
@@ -209,7 +224,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   get maxQuantity(): number {
-    return Math.max(1, Number(this.product.quantity || 1));
+    return 1000;
   }
 
   private loadProductDetail(productId: string): void {
@@ -306,13 +321,16 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
 
     this.wishlistSubscription?.unsubscribe();
     this.isFavorite = false;
+    this.wishlistProductIds.clear();
+    this.syncRelatedWishlistState();
 
-    if (!customerId || !productId || !productId.startsWith('SP')) {
+    if (!customerId || !productId) {
       return;
     }
 
     this.wishlistSubscription = this.customerService.getWishlist(customerId).subscribe({
-      next: (items) => {
+      next: (response) => {
+        const items = response.items;
         this.wishlistProductIds = new Set(
           (Array.isArray(items) ? items : [])
             .map((item) => String(item.SAN_PHAM_ID || '').trim())
@@ -493,6 +511,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     images: ProductDetailImage[],
     stats?: ProductReviewStats | null
   ): ProductView {
+    const productId = String(item.SAN_PHAM_ID || '').trim();
     const originalPrice = Number(item.GIA ?? 0);
 
     const salePriceRaw =
@@ -517,13 +536,8 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       .map((image) => this.normalizeImageUrl(image.URL))
       .filter((url) => !!url);
 
-    const customImage = this.getCustomProductImage(item.TEN_SAN_PHAM);
     const fallbackImage = this.normalizeImageUrl(item.HINH_ANH);
-    const finalImages = customImage
-      ? [customImage]
-      : imageList.length > 0
-        ? imageList
-        : [fallbackImage];
+    const finalImages = imageList.length > 0 ? imageList : [fallbackImage || this.defaultImage];
 
     const reviewCount = Math.max(0, Number(stats?.reviewCount ?? 0));
     const averageRating = reviewCount > 0
@@ -531,9 +545,9 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       : 0;
 
     return {
-      id: item.SAN_PHAM_ID,
+      id: productId,
       name: item.TEN_SAN_PHAM,
-      sku: item.SAN_PHAM_ID,
+      sku: productId,
       image: finalImages[0],
       images: finalImages,
       rating: averageRating,
@@ -630,6 +644,68 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     this.selectedImage = image;
   }
 
+  get selectedImageIndex(): number {
+    const index = this.product.images.indexOf(this.selectedImage || this.product.image);
+    return index >= 0 ? index : 0;
+  }
+
+  onProductImagePointerMove(event: PointerEvent): void {
+    if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+
+    const bounds = event.currentTarget instanceof HTMLElement
+      ? event.currentTarget.getBoundingClientRect()
+      : null;
+    if (!bounds || !bounds.width || !bounds.height) return;
+
+    const x = Math.min(100, Math.max(0, ((event.clientX - bounds.left) / bounds.width) * 100));
+    const y = Math.min(100, Math.max(0, ((event.clientY - bounds.top) / bounds.height) * 100));
+    this.productImageZoomOrigin = `${x}% ${y}%`;
+    this.isProductImageZoomed = true;
+  }
+
+  onProductImagePointerLeave(event: PointerEvent): void {
+    if (event.pointerType === 'mouse' || event.pointerType === 'pen') {
+      this.isProductImageZoomed = false;
+      this.productImageZoomOrigin = '50% 50%';
+    }
+  }
+
+  openProductImageViewer(): void {
+    this.productImageViewer = { images: this.product.images, index: this.selectedImageIndex };
+    this.productImageZoom = 1;
+  }
+
+  closeProductImageViewer(): void {
+    this.productImageViewer = null;
+    this.productImageZoom = 1;
+  }
+
+  changeProductViewerImage(step: -1 | 1): void {
+    if (!this.productImageViewer) return;
+    const total = this.productImageViewer.images.length;
+    this.productImageViewer.index = (this.productImageViewer.index + step + total) % total;
+    this.selectedImage = this.productImageViewer.images[this.productImageViewer.index];
+    this.productImageZoom = 1;
+  }
+
+  changeProductImageZoom(delta: number): void {
+    this.productImageZoom = Math.min(4, Math.max(1, Math.round((this.productImageZoom + delta) * 10) / 10));
+  }
+
+  toggleProductImageFullscreen(element: HTMLElement): void {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void element.requestFullscreen?.();
+  }
+
+  onGalleryTouchStart(event: TouchEvent): void {
+    this.galleryTouchStartX = event.changedTouches[0]?.clientX || 0;
+  }
+
+  onGalleryTouchEnd(event: TouchEvent): void {
+    const delta = (event.changedTouches[0]?.clientX || 0) - this.galleryTouchStartX;
+    if (Math.abs(delta) > 45) this.changeProductViewerImage(delta > 0 ? -1 : 1);
+  }
+
   showPreviousImage(): void {
     this.showImageByStep(-1);
   }
@@ -684,13 +760,19 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   buyRelatedProduct(item: RelatedProduct): void {
+    const lineKey = String(item.id);
     const checkoutItem = {
       id: item.id,
+      lineKey,
+      variantId: null,
+      designId: null,
+      configuration: {},
       name: item.name,
       style: item.topicName || 'Sản phẩm liên quan',
       occasion: item.status || 'Sản phẩm',
       price: item.price,
       originalPrice: item.originalPrice,
+      qty: 1,
       quantity: 1,
       image: item.image || this.defaultImage,
       selected: true,
@@ -702,7 +784,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     const customerId = this.getCustomerId();
 
     if (customerId && item.id.startsWith('SP')) {
-      this.cartService.addItem(customerId, item.id, 1).subscribe({
+      this.cartService.addItem(customerId, item.id, 1, { lineKey, variantId: null, designId: null, configuration: {} }).subscribe({
         next: () => {
           this.dispatchCartChanged();
           this.router.navigate(['/order-registrant']);
@@ -812,6 +894,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     request$.subscribe({
       error: (err) => {
         console.error('Lỗi cập nhật yêu thích sản phẩm liên quan:', err);
+        alert(err?.error?.message || 'Chưa thể cập nhật danh sách yêu thích. Vui lòng thử lại.');
         item.isFavorite = previousFavorite;
 
         if (previousFavorite) {
@@ -863,7 +946,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       return;
     }
 
-    if (value < 1) {
+    if (!Number.isSafeInteger(value) || value < 1) {
       this.quantity = 1;
       input.value = '1';
       return;
@@ -879,9 +962,12 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   validateQuantity(): void {
-    if (!this.quantity || this.quantity < 1) {
+    this.normalizeQuantity();
+  }
+
+  private normalizeQuantity(): void {
+    if (!Number.isSafeInteger(this.quantity) || this.quantity < 1) {
       this.quantity = 1;
-      return;
     }
 
     if (this.quantity > this.maxQuantity) {
@@ -893,11 +979,13 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     const customerId = this.getCustomerId();
 
     if (!customerId) {
+      alert('Vui lòng đăng nhập để lưu sản phẩm vào danh sách yêu thích.');
       this.router.navigate(['/login']);
       return;
     }
 
-    if (!this.product.id || !this.product.id.startsWith('SP')) {
+    if (!String(this.product.id || '').trim()) {
+      alert('Không xác định được sản phẩm cần lưu vào danh sách yêu thích.');
       return;
     }
 
@@ -925,6 +1013,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     request$.subscribe({
       error: (err) => {
         console.error('Lỗi cập nhật yêu thích:', err);
+        alert(err?.error?.message || 'Chưa thể cập nhật danh sách yêu thích. Vui lòng thử lại.');
         this.isFavorite = previousFavorite;
         if (previousFavorite) {
           this.wishlistProductIds.add(this.product.id);
@@ -942,6 +1031,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   addToCart(event?: Event): void {
+    this.normalizeQuantity();
     event?.stopPropagation();
     event?.preventDefault();
     this.playFlyToCartEffect(event);
@@ -1058,13 +1148,20 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   buyNow(): void {
+    this.normalizeQuantity();
+    const lineKey = String(this.product.id);
     const checkoutItem = {
       id: this.product.id,
+      lineKey,
+      variantId: null,
+      designId: null,
+      configuration: {},
       name: this.product.name,
       style: this.product.topicName || 'Sản phẩm',
       occasion: this.product.status || 'Sản phẩm',
       price: this.product.salePrice,
       originalPrice: this.product.oldPrice,
+      qty: this.quantity,
       quantity: this.quantity,
       image: this.selectedImage || this.product.image,
       selected: true,
@@ -1074,7 +1171,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     localStorage.setItem('tiemHoaYenCheckoutItems', JSON.stringify([checkoutItem]));
 
     if (this.getCustomerId()) {
-      this.cartService.addItem(this.getCustomerId(), this.product.id, this.quantity).subscribe({
+      this.cartService.addItem(this.getCustomerId(), this.product.id, this.quantity, { lineKey, variantId: null, designId: null, configuration: {} }).subscribe({
         next: () => {
           this.dispatchCartChanged();
           this.router.navigate(['/order-registrant']);
@@ -1092,14 +1189,20 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
 
   private saveProductToCart(): void {
     const customerId = this.getCustomerId();
+    const lineKey = String(this.product.id);
 
     const cartItem = {
       id: this.product.id,
+      lineKey,
+      variantId: null,
+      designId: null,
+      configuration: {},
       name: this.product.name,
       style: this.product.topicName || 'Sản phẩm',
       occasion: this.product.status || 'Sản phẩm',
       price: this.product.salePrice,
       originalPrice: this.product.oldPrice,
+      qty: this.quantity,
       quantity: this.quantity,
       image: this.selectedImage || this.product.image,
       selected: true,
@@ -1107,7 +1210,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     };
 
     if (customerId && this.product.id.startsWith('SP')) {
-      this.cartService.addItem(customerId, this.product.id, this.quantity).subscribe({
+      this.cartService.addItem(customerId, this.product.id, this.quantity, { lineKey, variantId: null, designId: null, configuration: {} }).subscribe({
         next: () => {
           this.dispatchCartChanged();
         },
@@ -1124,13 +1227,15 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     const rawCart = localStorage.getItem(cartStorageKey);
     const cart = rawCart ? JSON.parse(rawCart) : [];
 
-    const existingItem = cart.find((item: any) => item.id === cartItem.id);
+    const existingItem = cart.find((item: any) => (item.lineKey || item.id) === lineKey);
 
     if (existingItem) {
-      const currentQuantity = Number(existingItem.quantity || 1);
+      const currentQuantity = Number(existingItem.quantity || existingItem.qty || 1);
       const nextQuantity = currentQuantity + this.quantity;
 
       existingItem.quantity = Math.min(nextQuantity, this.product.quantity);
+      existingItem.qty = existingItem.quantity;
+      existingItem.lineKey = lineKey;
       existingItem.name = cartItem.name;
       existingItem.style = cartItem.style;
       existingItem.occasion = cartItem.occasion;

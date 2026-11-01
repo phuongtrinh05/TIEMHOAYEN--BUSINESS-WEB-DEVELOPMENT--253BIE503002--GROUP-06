@@ -13,13 +13,14 @@ import { combineLatest, Subscription } from 'rxjs';
 
 import {
   CategoryProductService,
-  CategoryProduct
+  CategoryProduct,
+  ProductSearchQuery
 } from '../../services/category-product.service';
 import { CartService } from '../../services/cart.service';
 import { CustomerService } from '../../services/customer.service';
 
 type FilterGroup = 'chuDe' | 'kieuDang' | 'hoaTuoi' | 'doiTuong' | 'mauSac';
-type SortValue = 'default' | 'priceAsc' | 'priceDesc' | 'nameAsc' | 'nameDesc';
+type SortValue = 'newest' | 'oldest' | 'bestSeller' | 'priceAsc' | 'priceDesc' | 'nameAsc' | 'nameDesc';
 
 interface Product {
   id: string;
@@ -32,6 +33,7 @@ interface Product {
   filters: Record<FilterGroup, string[]>;
   maxQuantity?: number;
   breadcrumbGroup?: string;
+  badges?: { new: boolean; discount: boolean; sold: number | null; fastDelivery: boolean };
 }
 
 @Component({
@@ -53,7 +55,12 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   private readonly PRODUCT_IMAGES = 'assets/images/category/';
 
   private currentPage = 1;
-  private currentSort: SortValue = 'default';
+  private currentSort: SortValue = 'newest';
+  private serverTotal = 0;
+  private serverTotalPages = 1;
+  private serverPaged = false;
+  private requestVersion = 0;
+  private currentCollectionId = '';
   private breadcrumbFallbackLabels: string[] = [];
 
   private categoryBreadcrumb!: HTMLElement;
@@ -69,10 +76,12 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   private sortDropdownLabel!: HTMLSpanElement;
   private sortDropdownMenu!: HTMLDivElement;
   private mobileFilterSelect!: HTMLSelectElement;
-  private priceMinRanges: HTMLInputElement[] = [];
-  private priceMaxRanges: HTMLInputElement[] = [];
-  private priceRangeFills: HTMLDivElement[] = [];
-  private priceRangeValues: HTMLDivElement[] = [];
+  private clearAllFiltersButton!: HTMLButtonElement;
+  private filterSidebar!: HTMLElement;
+  private filterDrawerOverlay!: HTMLElement;
+  private openFilterDrawerButton!: HTMLButtonElement;
+  private closeFilterDrawerButton!: HTMLButtonElement;
+  private priceRangeOptions: HTMLInputElement[] = [];
 
   private routeSubscription?: Subscription;
   private productRequestSubscription?: Subscription;
@@ -81,9 +90,11 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   private readonly pendingWishlistProductIds = new Set<string>();
   private readonly priceMinLimit = 0;
   private readonly priceMaxLimit = 7000000;
-  private readonly priceStep = 50000;
   private selectedPriceMin = 0;
   private selectedPriceMax = 7000000;
+  private readonly popStateHandler = () => this.restoreServerStateFromLocation();
+  private readonly authChangedHandler = () => this.loadCustomerWishlist();
+  private readonly wishlistChangedHandler = () => this.loadCustomerWishlist();
 
   private readonly selectedFilters: Record<FilterGroup, Set<string>> = {
     chuDe: new Set<string>(),
@@ -159,10 +170,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         !this.resultCount ||
         !this.emptyMessage ||
         !this.sortSelect ||
-        this.priceMinRanges.length === 0 ||
-        this.priceMaxRanges.length === 0 ||
-        this.priceRangeFills.length === 0 ||
-        this.priceRangeValues.length === 0 ||
+        this.priceRangeOptions.length === 0 ||
         !this.mobileFilterSelect
       ) {
         return;
@@ -173,6 +181,11 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       this.initSort();
       this.initPriceFilter();
       this.initMobileFilterControls();
+      this.initClearAllFilters();
+      this.initFilterDrawer();
+      window.addEventListener('popstate', this.popStateHandler);
+      window.addEventListener('auth-changed', this.authChangedHandler);
+      window.addEventListener('wishlist-changed', this.wishlistChangedHandler);
       this.loadCustomerWishlist();
       this.loadDataFromRoute();
     });
@@ -182,6 +195,11 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.routeSubscription?.unsubscribe();
     this.productRequestSubscription?.unsubscribe();
     this.revealObserver?.disconnect();
+    if (isPlatformBrowser(this.platformId)) {
+      window.removeEventListener('popstate', this.popStateHandler);
+      window.removeEventListener('auth-changed', this.authChangedHandler);
+      window.removeEventListener('wishlist-changed', this.wishlistChangedHandler);
+    }
   }
 
   private loadCustomerWishlist(): void {
@@ -194,11 +212,13 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.wishlistProductIds.clear();
 
     if (!customerId) {
+      if (this.productGrid && this.products.length > 0) this.syncWishlistButtons();
       return;
     }
 
     this.customerService.getWishlist(customerId).subscribe({
-      next: (items) => {
+      next: (response) => {
+        const items = response.items;
         this.wishlistProductIds = new Set(
           (Array.isArray(items) ? items : [])
             .map((item) => String(item.SAN_PHAM_ID || '').trim())
@@ -234,43 +254,70 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       this.uncheckAllCheckboxes();
       this.productRequestSubscription?.unsubscribe();
       this.currentPage = 1;
+      this.serverPaged = false;
+      this.currentCollectionId = path.startsWith('bo-suu-tap') ? String(id || '') : '';
 
-      if (!id) {
-        const selectedTopicIds = this.getTopicIdsFromQuery(queryParams.get('topics'));
-
-        this.loadAllProducts(selectedTopicIds);
-        return;
-      }
-
-      if (path.startsWith('chu-de')) {
-        this.loadProductsByTopic(id);
-        return;
-      }
-      if (path.startsWith('hoa-tuoi')) {
-        this.loadProductsByFlower(id);
-        return;
-      }
-      if (path.startsWith('kieu-dang')) {
-        this.loadProductsByStyle(id);
-        return;
-      }
-      if (path.startsWith('doi-tuong')) {
-        this.loadProductsByTarget(id);
-        return;
-      }
-      if (path.startsWith('mau-sac')) {
-        this.loadProductsByColor(id);
-        return;
-      }
-      if (path.startsWith('bo-suu-tap')) {
-        this.loadProductsByCollection(id);
+      if (queryParams.get('view') === 'server') {
+        (Object.keys(this.selectedFilters) as FilterGroup[]).forEach((group) => {
+          String(queryParams.get(`f_${group}`) || '').split('|').map((value) => value.trim()).filter(Boolean)
+            .forEach((value) => this.selectedFilters[group].add(value));
+        });
+        this.selectedPriceMin = Math.max(this.priceMinLimit, Number(queryParams.get('minPrice') || this.priceMinLimit));
+        this.selectedPriceMax = Math.min(this.priceMaxLimit, Number(queryParams.get('maxPrice') || this.priceMaxLimit));
+        this.currentSort = (queryParams.get('sort') as SortValue) || 'newest';
+        this.currentPage = Math.max(1, Number(queryParams.get('page') || 1));
+        this.currentCollectionId = path.startsWith('bo-suu-tap') ? String(id || '') : '';
+        this.syncPriceFilterUi();
+        this.requestServerProducts(false);
         return;
       }
 
-      this.pageTitle = 'Sản phẩm';
-      this.setBreadcrumb();
-      this.loadAllProducts();
+      const selectedTopicIds = this.getTopicIdsFromQuery(queryParams.get('topics'));
+      selectedTopicIds.forEach((topicId) => {
+        const topicName = this.topicNameById[topicId];
+        if (topicName) this.selectedFilters.chuDe.add(topicName);
+      });
+
+      if (id && path.startsWith('chu-de')) {
+        const value = this.topicNameById[id];
+        if (value) this.selectedFilters.chuDe.add(value);
+        this.pageTitle = value || 'Chủ đề';
+        this.setBreadcrumb('Chủ đề');
+      } else if (id && path.startsWith('hoa-tuoi')) {
+        const value = this.getFilterValueById('hoaTuoi', id);
+        if (value) this.selectedFilters.hoaTuoi.add(value);
+        this.pageTitle = value || 'Hoa tươi';
+        this.setBreadcrumb('Hoa tươi');
+      } else if (id && path.startsWith('kieu-dang')) {
+        const value = decodeURIComponent(id);
+        this.selectedFilters.kieuDang.add(value);
+        this.pageTitle = value;
+        this.setBreadcrumb('Kiểu dáng');
+      } else if (id && path.startsWith('doi-tuong')) {
+        const value = this.getFilterValueById('doiTuong', id);
+        if (value) this.selectedFilters.doiTuong.add(value);
+        this.pageTitle = value || 'Đối tượng';
+        this.setBreadcrumb('Đối tượng');
+      } else if (id && path.startsWith('mau-sac')) {
+        const value = this.getFilterValueById('mauSac', id);
+        if (value) this.selectedFilters.mauSac.add(value);
+        this.pageTitle = value || 'Màu sắc';
+        this.setBreadcrumb('Màu sắc');
+      } else if (id && path.startsWith('bo-suu-tap')) {
+        this.pageTitle = 'Bộ sưu tập';
+        this.setBreadcrumb('Bộ sưu tập');
+      } else {
+        this.pageTitle = 'Sản phẩm';
+        this.setBreadcrumb(selectedTopicIds.length ? 'Chủ đề' : '');
+      }
+
+      this.requestServerProducts(true);
     });
+  }
+
+  private getFilterValueById(group: FilterGroup, id: string): string {
+    const checkbox = document.querySelector<HTMLInputElement>(`input[data-group="${group}"][data-id="${CSS.escape(id)}"]`);
+    return checkbox ? this.getCheckboxValue(checkbox) : '';
   }
 
   private setBreadcrumb(mainLabel = ''): void {
@@ -318,7 +365,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         });
 
         this.currentPage = 1;
-        this.render();
+        this.requestServerProducts();
       },
       error: (err) => {
         this.isLoadingProducts = false;
@@ -365,7 +412,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
         this.syncTopicCheckboxById(topicId, true);
         this.currentPage = 1;
-        this.render();
+        this.requestServerProducts();
       },
       error: (err) => {
         this.isLoadingProducts = false;
@@ -409,7 +456,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
         this.syncCheckbox('hoaTuoi', flowerName, true);
         this.currentPage = 1;
-        this.render();
+        this.requestServerProducts();
       },
       error: (err) => {
         this.isLoadingProducts = false;
@@ -457,7 +504,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
         this.syncCheckbox('kieuDang', styleName, true);
         this.currentPage = 1;
-        this.render();
+        this.requestServerProducts();
       },
       error: (err) => {
         this.isLoadingProducts = false;
@@ -502,7 +549,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
         this.syncCheckbox('doiTuong', targetName, true);
         this.currentPage = 1;
-        this.render();
+        this.requestServerProducts();
       },
       error: (err) => {
         this.isLoadingProducts = false;
@@ -548,7 +595,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
         this.syncCheckbox('mauSac', colorName, true);
         this.currentPage = 1;
-        this.render();
+        this.requestServerProducts();
       },
       error: (err) => {
         this.isLoadingProducts = false;
@@ -591,7 +638,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         );
 
         this.currentPage = 1;
-        this.render();
+        this.requestServerProducts();
       },
       error: (err) => {
         this.isLoadingProducts = false;
@@ -607,6 +654,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     });
   }
   private mapDbProductToProduct(item: CategoryProduct): Product {
+    const productId = String(item.SAN_PHAM_ID || '').trim();
     const originalPrice = Number(item.GIA ?? 0);
     const rawSalePrice = item.GIA_KHUYEN_MAI;
 
@@ -624,7 +672,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     const finalPrice = hasSalePrice && salePriceNumber !== null ? salePriceNumber : originalPrice;
 
     return {
-      id: item.SAN_PHAM_ID,
+      id: productId,
       name: item.TEN_SAN_PHAM,
       price: finalPrice,
       originalPrice: originalPrice,
@@ -638,7 +686,14 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         doiTuong: this.parseFilterList(item.TEN_DOI_TUONG_LIST),
         mauSac: this.parseFilterList(item.TEN_MAU_SAC_LIST)
       },
-      maxQuantity: Number(item.SO_LUONG || 0) > 0 ? Number(item.SO_LUONG) : undefined
+      maxQuantity: Number(item.SO_LUONG || 0) > 0 ? Number(item.SO_LUONG) : undefined,
+      badges: {
+        new: item.BADGES?.NEW === true,
+        discount: item.BADGES?.DISCOUNT === true,
+        sold: item.BADGES?.SOLD !== null && item.BADGES?.SOLD !== undefined && Number.isFinite(Number(item.BADGES.SOLD))
+          ? Number(item.BADGES.SOLD) : null,
+        fastDelivery: item.BADGES?.FAST_DELIVERY === true
+      }
     };
   }
 
@@ -673,10 +728,12 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.sortDropdownLabel = document.querySelector<HTMLSpanElement>('#sortDropdownLabel')!;
     this.sortDropdownMenu = document.querySelector<HTMLDivElement>('#sortDropdownMenu')!;
     this.mobileFilterSelect = document.querySelector<HTMLSelectElement>('#mobileFilterSelect')!;
-    this.priceMinRanges = Array.from(document.querySelectorAll<HTMLInputElement>('.price-min-range'));
-    this.priceMaxRanges = Array.from(document.querySelectorAll<HTMLInputElement>('.price-max-range'));
-    this.priceRangeFills = Array.from(document.querySelectorAll<HTMLDivElement>('.price-range-fill-sync'));
-    this.priceRangeValues = Array.from(document.querySelectorAll<HTMLDivElement>('.price-range-value-sync'));
+    this.clearAllFiltersButton = document.querySelector<HTMLButtonElement>('#clearAllFilters')!;
+    this.filterSidebar = document.querySelector<HTMLElement>('#filterSidebar')!;
+    this.filterDrawerOverlay = document.querySelector<HTMLElement>('#filterDrawerOverlay')!;
+    this.openFilterDrawerButton = document.querySelector<HTMLButtonElement>('#openFilterDrawer')!;
+    this.closeFilterDrawerButton = document.querySelector<HTMLButtonElement>('#closeFilterDrawer')!;
+    this.priceRangeOptions = Array.from(document.querySelectorAll<HTMLInputElement>('.price-range-option-input'));
   }
 
   private createProduct(
@@ -766,6 +823,114 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     });
   }
 
+  private requestServerProducts(syncUrl = true): void {
+    const version = ++this.requestVersion;
+    this.productRequestSubscription?.unsubscribe();
+    this.isLoadingProducts = true;
+    this.emptyMessage.hidden = true;
+    const query: ProductSearchQuery = {
+      search: new URLSearchParams(window.location.search).get('q') || new URLSearchParams(window.location.search).get('search') || '',
+      topics: [...this.selectedFilters.chuDe], styles: [...this.selectedFilters.kieuDang],
+      flowers: [...this.selectedFilters.hoaTuoi], targets: [...this.selectedFilters.doiTuong], colors: [...this.selectedFilters.mauSac],
+      collections: this.currentCollectionId ? [this.currentCollectionId] : [],
+      minPrice: this.selectedPriceMin, maxPrice: this.selectedPriceMax,
+      sort: this.currentSort, page: this.currentPage, pageSize: this.PAGE_SIZE
+    };
+    this.productRequestSubscription = this.categoryProductService.searchProducts(query).subscribe({
+      next: (response) => {
+        if (version !== this.requestVersion) return;
+        this.products = (response.products || []).map((item) => this.mapDbProductToProduct(item));
+        this.serverTotal = Number(response.total || 0);
+        this.serverTotalPages = Number(response.totalPages || 1);
+        this.currentPage = Number(response.page || this.currentPage);
+        this.serverPaged = true;
+        this.isLoadingProducts = false;
+        this.render();
+        if (syncUrl) this.syncServerStateUrl();
+      },
+      error: (error) => {
+        if (version !== this.requestVersion) return;
+        console.error('Không thể tải sản phẩm theo bộ lọc:', error);
+        this.products = [];
+        this.serverTotal = 0;
+        this.serverTotalPages = 1;
+        this.serverPaged = true;
+        this.isLoadingProducts = false;
+        this.render();
+      }
+    });
+  }
+
+  private syncServerStateUrl(): void {
+    const queryParams: Record<string, string | number | null> = {
+      view: 'server', sort: this.currentSort, page: this.currentPage,
+      minPrice: this.selectedPriceMin > this.priceMinLimit ? this.selectedPriceMin : null,
+      maxPrice: this.selectedPriceMax < this.priceMaxLimit ? this.selectedPriceMax : null,
+    };
+    (Object.keys(this.selectedFilters) as FilterGroup[]).forEach((group) => {
+      queryParams[`f_${group}`] = this.selectedFilters[group].size ? [...this.selectedFilters[group]].join('|') : null;
+    });
+    const tree = this.router.createUrlTree([], { relativeTo: this.route, queryParams, queryParamsHandling: 'merge' });
+    window.history.pushState({}, '', this.router.serializeUrl(tree));
+  }
+
+  private restoreServerStateFromLocation(): void {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('view') !== 'server') {
+      window.location.reload();
+      return;
+    }
+    this.clearSelectedFilters();
+    (Object.keys(this.selectedFilters) as FilterGroup[]).forEach((group) => {
+      String(params.get(`f_${group}`) || '').split('|').map((value) => value.trim()).filter(Boolean)
+        .forEach((value) => this.selectedFilters[group].add(value));
+    });
+    this.selectedPriceMin = Math.max(this.priceMinLimit, Number(params.get('minPrice') || this.priceMinLimit));
+    this.selectedPriceMax = Math.min(this.priceMaxLimit, Number(params.get('maxPrice') || this.priceMaxLimit));
+    this.currentSort = (params.get('sort') as SortValue) || 'newest';
+    this.currentPage = Math.max(1, Number(params.get('page') || 1));
+    this.sortSelect.value = this.currentSort;
+    this.syncSortDropdown();
+    this.syncPriceFilterUi();
+    this.uncheckAllCheckboxes();
+    (Object.keys(this.selectedFilters) as FilterGroup[]).forEach((group) => {
+      this.selectedFilters[group].forEach((value) => this.syncCheckbox(group, value, true));
+    });
+    this.requestServerProducts(false);
+  }
+
+  private initClearAllFilters(): void {
+    this.clearAllFiltersButton.addEventListener('click', () => {
+      this.clearSelectedFilters();
+      this.currentCollectionId = '';
+      this.resetPriceFilter();
+      this.uncheckAllCheckboxes();
+      const allTopics = document.querySelector<HTMLInputElement>('input[data-all-topics="true"]');
+      if (allTopics) allTopics.checked = true;
+      this.currentPage = 1;
+      this.currentSort = 'newest';
+      this.pageTitle = 'Sản phẩm';
+      this.setBreadcrumb();
+      this.lastProductRouteKey = '';
+      this.router.navigateByUrl('/category?view=server&sort=newest&page=1');
+    });
+  }
+
+  private initFilterDrawer(): void {
+    const close = () => {
+      this.filterSidebar.classList.remove('is-mobile-open');
+      this.filterDrawerOverlay.hidden = true;
+      document.body.classList.remove('filter-drawer-open');
+    };
+    this.openFilterDrawerButton.addEventListener('click', () => {
+      this.filterSidebar.classList.add('is-mobile-open');
+      this.filterDrawerOverlay.hidden = false;
+      document.body.classList.add('filter-drawer-open');
+    });
+    this.closeFilterDrawerButton.addEventListener('click', close);
+    this.filterDrawerOverlay.addEventListener('click', close);
+  }
+
   private isPriceFilterActive(): boolean {
     return this.selectedPriceMin > this.priceMinLimit || this.selectedPriceMax < this.priceMaxLimit;
   }
@@ -775,13 +940,21 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
     if (this.currentSort === 'priceAsc') sorted.sort((a, b) => a.price - b.price);
     if (this.currentSort === 'priceDesc') sorted.sort((a, b) => b.price - a.price);
-    if (this.currentSort === 'nameAsc') sorted.sort((a, b) => a.name.localeCompare(b.name));
-    if (this.currentSort === 'nameDesc') sorted.sort((a, b) => b.name.localeCompare(a.name));
-
     return sorted;
   }
 
   private render(): void {
+    if (this.serverPaged) {
+      this.updateBreadcrumbLabels();
+      this.renderSelectedFilters();
+      this.syncAllFilterCheckboxes();
+      this.syncFilterAccordion();
+      this.renderProducts(this.products);
+      this.renderPagination(this.serverTotalPages);
+      const start = (this.currentPage - 1) * this.PAGE_SIZE;
+      this.renderResultCount(this.serverTotal, start, this.products.length);
+      return;
+    }
     const filtered = this.sortProducts(this.getFilteredProducts());
     const totalPages = Math.max(1, Math.ceil(filtered.length / this.PAGE_SIZE));
 
@@ -792,7 +965,8 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
     this.updateBreadcrumbLabels();
     this.renderSelectedFilters();
-    this.syncTopicFilterCheckboxes();
+    this.syncAllFilterCheckboxes();
+    this.syncFilterAccordion();
     this.renderProducts(pageItems);
     this.renderPagination(totalPages);
     this.renderResultCount(filtered.length, startIndex, pageItems.length);
@@ -827,6 +1001,12 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         discountPercent > 0
           ? `<span class="badge-sale">-${discountPercent}%</span>`
           : '';
+      const dataBadges = [
+        item.badges?.new ? '<span class="product-data-badge badge-new">Mới</span>' : '',
+        item.badges?.sold !== null && item.badges?.sold !== undefined
+          ? `<span class="product-data-badge badge-sold">Đã bán ${item.badges.sold}</span>` : '',
+        item.badges?.fastDelivery ? '<span class="product-data-badge badge-fast">Giao nhanh</span>' : ''
+      ].filter(Boolean).join('');
 
       const isFavorite = this.wishlistProductIds.has(item.id);
       const favoriteClass = isFavorite ? ' is-active' : '';
@@ -848,6 +1028,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
               aria-label="Xem chi tiết ${safeName}">
               <div class="product-image-wrap">
                 ${discountBadgeHtml}
+                <div class="product-data-badges">${dataBadges}</div>
                 ${
                   item.image
                     ? `<img src="${safeImage}" alt="${safeName}" loading="${index < 4 ? 'eager' : 'lazy'}" fetchpriority="${index < 4 ? 'high' : 'auto'}" decoding="async">`
@@ -1031,7 +1212,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     });
 
     if (this.isPriceFilterActive()) {
-      const priceLabel = `${this.formatPrice(this.selectedPriceMin)} - ${this.formatPrice(this.selectedPriceMax)}`;
+      const priceLabel = this.getPriceRangeLabel();
 
       chips.push(`
           <span class="selected-chip">
@@ -1042,14 +1223,17 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     }
 
     this.selectedFilterRow.hidden = false;
-    this.selectedFilterList.innerHTML = chips.join('');
+    this.selectedFilterList.innerHTML = chips.length
+      ? chips.join('')
+      : '<span class="selected-chip all-products-label">Tất cả sản phẩm</span>';
+    this.clearAllFiltersButton.hidden = chips.length === 0 && !this.currentCollectionId;
 
     this.selectedFilterList.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
       button.addEventListener('click', () => {
         if (button.dataset['action'] === 'clear-price') {
           this.resetPriceFilter();
           this.currentPage = 1;
-          this.render();
+          this.requestServerProducts();
           return;
         }
 
@@ -1074,7 +1258,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
           }
         }
 
-        this.render();
+        this.requestServerProducts();
       });
     });
   }
@@ -1105,7 +1289,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         if (action === 'next' && this.currentPage < totalPages) this.currentPage++;
         if (page) this.currentPage = Number(page);
 
-        this.render();
+        if (this.serverPaged) this.requestServerProducts(); else this.render();
         window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     });
@@ -1152,6 +1336,17 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
         checkbox.checked = selectedTopics.has(this.getCheckboxValue(checkbox));
       });
+  }
+
+  private syncAllFilterCheckboxes(): void {
+    document.querySelectorAll<HTMLInputElement>('.filter-content input[type="checkbox"][data-group]').forEach((checkbox) => {
+      const group = checkbox.dataset['group'] as FilterGroup;
+      if (group === 'chuDe' && this.isAllTopicsCheckbox(checkbox)) {
+        checkbox.checked = this.selectedFilters.chuDe.size === 0;
+        return;
+      }
+      checkbox.checked = this.selectedFilters[group].has(this.getCheckboxValue(checkbox));
+    });
   }
 
   private uncheckSpecificTopicCheckboxes(): void {
@@ -1238,135 +1433,20 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       checkbox.addEventListener('change', () => {
         const group = checkbox.dataset['group'] as FilterGroup;
         const value = this.getCheckboxValue(checkbox);
-        const path = this.route.snapshot.routeConfig?.path || '';
-
-        // Chủ đề: cho phép chọn nhiều chủ đề cùng lúc; "Tất cả" nghĩa là không giới hạn chủ đề.
-        if (group === 'chuDe') {
-          if (this.isAllTopicsCheckbox(checkbox)) {
-            this.selectedFilters.chuDe.clear();
-            this.uncheckSpecificTopicCheckboxes();
-            checkbox.checked = true;
-            this.currentPage = 1;
-
-            if (path.startsWith('chu-de') || path === 'category') {
-              this.navigateToCategoryWithSelectedTopics();
-              this.render();
-              return;
-            }
-
-            this.render();
-            return;
-          }
-
-          if (checkbox.checked) {
-            this.selectedFilters.chuDe.add(value);
-          } else {
-            this.selectedFilters.chuDe.delete(value);
-          }
-
-          this.currentPage = 1;
-
-          if (path.startsWith('chu-de')) {
-            this.navigateToCategoryWithSelectedTopics();
-            return;
-          }
-
-          if (path === 'category') {
-            this.navigateToCategoryWithSelectedTopics();
-          }
-
-          this.render();
-          return;
-        }
-
-        // Kiểu dáng:
-        // - Nếu đang ở trang /kieu-dang/... thì chọn kiểu dáng khác sẽ chuyển route.
-        // - Nếu đang ở /chu-de/... thì chỉ lọc thêm trong danh sách sản phẩm hiện tại.
-        if (group === 'kieuDang') {
-          if (path.startsWith('kieu-dang')) {
-            if (!checkbox.checked) {
-              this.selectedFilters.kieuDang.delete(value);
-              this.currentPage = 1;
-              this.render();
-              return;
-            }
-
-            document
-              .querySelectorAll<HTMLInputElement>('input[data-group="kieuDang"]')
-              .forEach((styleCheckbox) => {
-                if (styleCheckbox !== checkbox) {
-                  styleCheckbox.checked = false;
-                }
-              });
-
-            this.selectedFilters.kieuDang.clear();
-            this.selectedFilters.kieuDang.add(value);
-
-            this.router.navigate(['/kieu-dang', value]);
-            return;
-          }
-
-          // Nếu đang ở trang chủ đề hoặc trang hoa tươi,
-          // Kiểu dáng chỉ là bộ lọc phụ, không chuyển route.
-          if (checkbox.checked) {
-            this.selectedFilters.kieuDang.add(value);
-          } else {
-            this.selectedFilters.kieuDang.delete(value);
-          }
-
-          this.currentPage = 1;
-          this.render();
-          return;
-        }
-        if (group === 'mauSac') {
-          const path = this.route.snapshot.routeConfig?.path || '';
-
-          if (path.startsWith('mau-sac')) {
-            if (!checkbox.checked) {
-              checkbox.checked = true;
-              return;
-            }
-
-            document
-              .querySelectorAll<HTMLInputElement>('input[data-group="mauSac"]')
-              .forEach((colorCheckbox) => {
-                if (colorCheckbox !== checkbox) {
-                  colorCheckbox.checked = false;
-                }
-              });
-
-            this.selectedFilters.mauSac.clear();
-            this.selectedFilters.mauSac.add(value);
-
-            const colorId = checkbox.dataset['id'];
-
-            if (colorId) {
-              this.router.navigate(['/mau-sac', colorId]);
-            }
-
-            return;
-          }
-
-          if (checkbox.checked) {
-            this.selectedFilters.mauSac.add(value);
-          } else {
-            this.selectedFilters.mauSac.delete(value);
-          }
-
-          this.currentPage = 1;
-          this.render();
-          return;
-        }
-
-        // Hoa tươi, Đối tượng, Màu sắc: lọc phụ, không chuyển route.
-        if (checkbox.checked) {
-          this.selectedFilters[group].add(value);
+        if (group === 'chuDe' && this.isAllTopicsCheckbox(checkbox)) {
+          this.selectedFilters.chuDe.clear();
+          this.uncheckSpecificTopicCheckboxes();
+          checkbox.checked = true;
         } else {
-          this.selectedFilters[group].delete(value);
+          if (group === 'chuDe') {
+            const allTopics = document.querySelector<HTMLInputElement>('input[data-all-topics="true"]');
+            if (allTopics) allTopics.checked = false;
+          }
+          if (checkbox.checked) this.selectedFilters[group].add(value);
+          else this.selectedFilters[group].delete(value);
         }
-
         this.currentPage = 1;
-        this.render();
+        this.requestServerProducts();
       });
     });
   }
@@ -1399,6 +1479,23 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         content?.classList.toggle('is-hidden', isExpanded);
       });
     });
+    this.syncFilterAccordion();
+  }
+
+  private syncFilterAccordion(): void {
+    document.querySelectorAll<HTMLElement>('.filter-group').forEach((groupElement) => {
+      const button = groupElement.querySelector<HTMLButtonElement>('.filter-title');
+      const content = groupElement.querySelector<HTMLElement>('.filter-content');
+      if (!button || !content) return;
+      const checkboxes = Array.from(content.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
+      const hasSelectedCheckbox = checkboxes.some((checkbox) => checkbox.checked && !this.isAllTopicsCheckbox(checkbox));
+      const isPriceGroup = groupElement.classList.contains('price-filter-group');
+      const expanded = hasSelectedCheckbox || (isPriceGroup && this.isPriceFilterActive());
+      button.setAttribute('aria-expanded', String(expanded));
+      button.querySelector('.chevron')?.classList.toggle('bi-chevron-up', expanded);
+      button.querySelector('.chevron')?.classList.toggle('bi-chevron-down', !expanded);
+      content.classList.toggle('is-hidden', !expanded);
+    });
   }
 
   private initSort(): void {
@@ -1406,7 +1503,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       this.currentSort = this.sortSelect.value as SortValue;
       this.currentPage = 1;
       this.syncSortDropdown();
-      this.render();
+      this.requestServerProducts();
     });
 
     this.sortDropdownToggle.addEventListener('click', (event) => {
@@ -1428,7 +1525,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.currentPage = 1;
         this.syncSortDropdown();
         this.closeSortDropdown();
-        this.render();
+        this.requestServerProducts();
       });
     });
 
@@ -1475,40 +1572,33 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   }
 
   private initPriceFilter(): void {
-    this.priceMinRanges.forEach((input) => {
-      input.addEventListener('input', () => this.onPriceRangeInput('min', input));
-    });
-
-    this.priceMaxRanges.forEach((input) => {
-      input.addEventListener('input', () => this.onPriceRangeInput('max', input));
+    this.priceRangeOptions.forEach((input) => {
+      input.addEventListener('change', () => this.onPriceRangeChange(input));
     });
 
     this.syncPriceFilterUi();
   }
 
-  private onPriceRangeInput(activeThumb: 'min' | 'max', activeInput: HTMLInputElement): void {
-    let minValue = this.selectedPriceMin;
-    let maxValue = this.selectedPriceMax;
+  private onPriceRangeChange(input: HTMLInputElement): void {
+    const minValue = Number(input.dataset['priceMin']);
+    const maxValue = Number(input.dataset['priceMax']);
 
-    if (activeThumb === 'min') {
-      minValue = Number(activeInput.value);
-    } else {
-      maxValue = Number(activeInput.value);
-    }
-
-    if (maxValue - minValue < this.priceStep) {
-      if (activeThumb === 'min') {
-        minValue = Math.max(this.priceMinLimit, maxValue - this.priceStep);
-      } else {
-        maxValue = Math.min(this.priceMaxLimit, minValue + this.priceStep);
-      }
+    if (
+      !Number.isFinite(minValue) ||
+      !Number.isFinite(maxValue) ||
+      minValue < this.priceMinLimit ||
+      maxValue > this.priceMaxLimit ||
+      minValue > maxValue
+    ) {
+      console.error('Khoảng giá bộ lọc không hợp lệ.');
+      return;
     }
 
     this.selectedPriceMin = minValue;
     this.selectedPriceMax = maxValue;
     this.currentPage = 1;
     this.syncPriceFilterUi();
-    this.render();
+    this.requestServerProducts();
   }
 
   private resetPriceFilter(): void {
@@ -1518,26 +1608,21 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   }
 
   private syncPriceFilterUi(): void {
-    const range = this.priceMaxLimit - this.priceMinLimit;
-    const minPercent = ((this.selectedPriceMin - this.priceMinLimit) / range) * 100;
-    const maxPercent = ((this.selectedPriceMax - this.priceMinLimit) / range) * 100;
-
-    this.priceMinRanges.forEach((input) => {
-      input.value = String(this.selectedPriceMin);
+    this.priceRangeOptions.forEach((input) => {
+      input.checked =
+        Number(input.dataset['priceMin']) === this.selectedPriceMin &&
+        Number(input.dataset['priceMax']) === this.selectedPriceMax;
     });
+  }
 
-    this.priceMaxRanges.forEach((input) => {
-      input.value = String(this.selectedPriceMax);
-    });
+  private getPriceRangeLabel(): string {
+    const selectedOption = this.priceRangeOptions.find((input) =>
+      Number(input.dataset['priceMin']) === this.selectedPriceMin &&
+      Number(input.dataset['priceMax']) === this.selectedPriceMax
+    );
 
-    this.priceRangeFills.forEach((fill) => {
-      fill.style.left = `${minPercent}%`;
-      fill.style.width = `${maxPercent - minPercent}%`;
-    });
-
-    this.priceRangeValues.forEach((value) => {
-      value.textContent = `${this.formatPrice(this.selectedPriceMin)} - ${this.formatPrice(this.selectedPriceMax)}`;
-    });
+    return selectedOption?.dataset['priceLabel'] ||
+      `${this.formatPrice(this.selectedPriceMin)} - ${this.formatPrice(this.selectedPriceMax)}`;
   }
 
   private getProductBreadcrumbGroup(): string {
@@ -1633,11 +1718,13 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     const customerId = this.getCustomerId();
 
     if (!customerId) {
+      alert('Vui lòng đăng nhập để lưu sản phẩm vào danh sách yêu thích.');
       this.router.navigate(['/login']);
       return;
     }
 
-    if (!String(product.id).startsWith('SP')) {
+    if (!String(product.id || '').trim()) {
+      alert('Không xác định được sản phẩm cần lưu vào danh sách yêu thích.');
       return;
     }
 
@@ -1662,6 +1749,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       this.customerService.removeWishlistItem(customerId, product.id).subscribe({
         error: (err) => {
           console.error('Lỗi xóa sản phẩm yêu thích:', err);
+          alert(err?.error?.message || 'Chưa thể xóa sản phẩm khỏi danh sách yêu thích. Vui lòng thử lại.');
           this.wishlistProductIds.add(product.id);
           this.updateWishlistButton(product, true, button);
         },
@@ -1676,6 +1764,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.customerService.addWishlistItem(customerId, product.id).subscribe({
       error: (err) => {
         console.error('Lỗi thêm sản phẩm yêu thích:', err);
+        alert(err?.error?.message || 'Chưa thể lưu sản phẩm vào danh sách yêu thích. Vui lòng thử lại.');
         this.wishlistProductIds.delete(product.id);
         this.updateWishlistButton(product, false, button);
       },

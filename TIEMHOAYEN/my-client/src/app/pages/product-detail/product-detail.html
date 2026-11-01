@@ -19,11 +19,25 @@
 
             <!-- LEFT: PRODUCT IMAGE -->
             <div class="product-images">
-                <div class="main-image-wrap">
+                <div
+                    class="main-image-wrap"
+                    (pointermove)="onProductImagePointerMove($event)"
+                    (pointerleave)="onProductImagePointerLeave($event)">
                     <img
                         class="main-image"
+                        [class.is-zoomed]="isProductImageZoomed"
+                        [style.transform-origin]="productImageZoomOrigin"
                         [src]="selectedImage || product.image"
-                        [alt]="product.name">
+                        [alt]="product.name"
+                        decoding="async"
+                        fetchpriority="high"
+                        (click)="openProductImageViewer()">
+
+                    <button class="gallery-expand" type="button" (click)="openProductImageViewer()" aria-label="Phóng to ảnh">
+                        <i class="bi bi-arrows-fullscreen"></i>
+                    </button>
+
+                    <span class="gallery-position">{{ selectedImageIndex + 1 }} / {{ product.images.length }}</span>
 
                     <button
                         class="gallery-nav gallery-nav--prev"
@@ -51,6 +65,10 @@
                             [class.active]="(selectedImage || product.image) === image"
                             [src]="image"
                             [alt]="product.name"
+                            loading="lazy"
+                            decoding="async"
+                            width="76"
+                            height="76"
                             (click)="selectImage(image)">
                     }
                 </div>
@@ -184,6 +202,24 @@
 
         </div>
     </section>
+
+    <div class="product-image-viewer" *ngIf="productImageViewer" #productViewer (click)="closeProductImageViewer()">
+        <div class="product-image-viewer__panel" (click)="$event.stopPropagation()" (touchstart)="onGalleryTouchStart($event)" (touchend)="onGalleryTouchEnd($event)">
+            <button class="viewer-close" type="button" (click)="closeProductImageViewer()" aria-label="Đóng">×</button>
+            <div class="viewer-tools">
+                <button type="button" (click)="changeProductImageZoom(-0.5)" aria-label="Thu nhỏ">−</button>
+                <span>{{ productImageZoom }}×</span>
+                <button type="button" (click)="changeProductImageZoom(0.5)" aria-label="Phóng to">+</button>
+                <button type="button" (click)="toggleProductImageFullscreen(productViewer)" aria-label="Toàn màn hình"><i class="bi bi-arrows-fullscreen"></i></button>
+            </div>
+            <button class="viewer-nav viewer-nav--prev" type="button" *ngIf="productImageViewer.images.length > 1" (click)="changeProductViewerImage(-1)">‹</button>
+            <div class="viewer-image-stage">
+                <img [src]="productImageViewer.images[productImageViewer.index]" [alt]="product.name" [style.transform]="'scale(' + productImageZoom + ')'">
+            </div>
+            <button class="viewer-nav viewer-nav--next" type="button" *ngIf="productImageViewer.images.length > 1" (click)="changeProductViewerImage(1)">›</button>
+            <div class="viewer-counter">{{ productImageViewer.index + 1 }} / {{ productImageViewer.images.length }}</div>
+        </div>
+    </div>
 
     <!-- DESCRIPTION -->
     <section class="description-section">

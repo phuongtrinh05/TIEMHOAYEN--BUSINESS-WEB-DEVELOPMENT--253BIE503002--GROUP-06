@@ -1,6 +1,20 @@
 import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId } from '../mongo.js';
 import { invalidateAnalyticsCache } from '../services/analytics/cache.js';
+import { randomUUID } from 'node:crypto';
+import { lookupAccess } from '../services/order-access.service.js';
+import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
+
+let reviewStorageReady: Promise<void> | null = null;
+export const ensureReviewStorage = async () => {
+  if (!reviewStorageReady) reviewStorageReady = (async () => {
+    await (await getCollection<any>('DANH_GIA')).createIndex(
+      { DON_HANG_ID: 1, SAN_PHAM_ID: 1 },
+      { unique: true, name: 'uniq_review_order_product' },
+    );
+  })();
+  return reviewStorageReady;
+};
 
 interface ReviewableOrderRow {
   DON_HANG_ID: string;
@@ -78,7 +92,10 @@ const mapOrderRows = (rows: ReviewableOrderRow[]) => {
     });
   });
 
-  return Array.from(orderMap.values());
+  return Array.from(orderMap.values()).map((order) => ({
+    ...order,
+    reviewed: order.items.length > 0 && order.items.every((item: any) => item.reviewed),
+  }));
 };
 
 const mapReviewRows = (rows: any[]) => rows.map((item: any) => ({
@@ -88,7 +105,7 @@ const mapReviewRows = (rows: any[]) => rows.map((item: any) => ({
   productName: item.TEN_SAN_PHAM || '',
   productImage: item.HINH_ANH || null,
   customerId: item.KHACH_HANG_ID || null,
-  customerName: item.KHACH_HANG_ID ? (item.TEN_KHACH_HANG || 'Khách hàng') : 'Khách hàng ẩn danh',
+  customerName: item.AN_DANH === true ? 'Khách hàng ẩn danh' : (item.KHACH_HANG_ID ? (item.TEN_KHACH_HANG || 'Khách hàng') : 'Khách hàng'),
   rating: Number(item.SO_SAO || 0),
   content: item.NOI_DUNG || '',
   createdAt: item.NGAY_DANH_GIA,
@@ -136,10 +153,16 @@ const buildReviewableOrderRows = async (orders: any[]): Promise<ReviewableOrderR
     reviewCollection.find({ DON_HANG_ID: { $in: orderIds } }).toArray(),
   ]);
   const productMap = new Map(products.map((product) => [product.SAN_PHAM_ID, product]));
-  const reviewedOrderIds = new Set(reviews.map((review) => review.DON_HANG_ID));
+  const reviewedPairs = new Set(reviews.map((review) => `${review.DON_HANG_ID}:${review.SAN_PHAM_ID}`));
   const orderMap = new Map(orders.map((order) => [order.DON_HANG_ID, order]));
 
-  return details
+  const groupedDetails = new Map<string, any>();
+  for (const detail of details) {
+    const key = `${detail.DON_HANG_ID}:${detail.SAN_PHAM_ID}`;
+    const current = groupedDetails.get(key);
+    groupedDetails.set(key, current ? { ...current, SO_LUONG: Number(current.SO_LUONG || 0) + Number(detail.SO_LUONG || 0) } : detail);
+  }
+  return [...groupedDetails.values()]
     .sort((left, right) => {
       const orderDateDiff = (toDate(orderMap.get(right.DON_HANG_ID)?.NGAY_TAO)?.getTime() || 0)
         - (toDate(orderMap.get(left.DON_HANG_ID)?.NGAY_TAO)?.getTime() || 0);
@@ -161,7 +184,7 @@ const buildReviewableOrderRows = async (orders: any[]): Promise<ReviewableOrderR
         SO_LUONG: detail.SO_LUONG,
         GIA: detail.GIA,
         HINH_ANH: image?.URL || null,
-        DA_DANH_GIA: reviewedOrderIds.has(detail.DON_HANG_ID) ? 1 : 0,
+        DA_DANH_GIA: reviewedPairs.has(`${detail.DON_HANG_ID}:${detail.SAN_PHAM_ID}`) ? 1 : 0,
       };
     });
 };
@@ -216,12 +239,16 @@ const createNextReviewImageId = async (): Promise<number> => {
 export const getReviewableOrdersForCustomer = async (req: Request, res: Response) => {
   try {
     const { customerId } = req.params;
+    const access = await lookupAccess(req.headers['x-order-access']);
+    if (access.authType !== 'member' || access.customerId !== customerId) throw new InventoryError(403, 'Phiên đăng nhập không thuộc khách hàng này.');
+    await ensureReviewStorage();
     const orderCollection = await getCollection<any>('DON_HANG');
     const orders = (await orderCollection.find({ KHACH_HANG_ID: customerId }).toArray()).filter(isReviewableOrder);
     const rows = await buildReviewableOrderRows(orders);
 
     return res.status(200).json({ orders: mapOrderRows(rows) });
   } catch (error: any) {
+    if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({
       message: 'Lỗi lấy đơn hàng có thể đánh giá: ' + error.message,
     });
@@ -230,8 +257,9 @@ export const getReviewableOrdersForCustomer = async (req: Request, res: Response
 
 export const lookupGuestOrderForReview = async (req: Request, res: Response) => {
   try {
-    const { orderId, phone } = req.body;
-    const normalizedPhone = normalizePhone(phone);
+    const { orderId } = req.body;
+    const access = await lookupAccess(req.headers['x-order-access']);
+    const normalizedPhone = normalizePhone(access.phone || '');
 
     if (!orderId || !normalizedPhone) {
       return res.status(400).json({ message: 'Vui lòng nhập mã đơn hàng và số điện thoại.' });
@@ -252,6 +280,7 @@ export const lookupGuestOrderForReview = async (req: Request, res: Response) => 
 
     return res.status(200).json({ order: orders[0] });
   } catch (error: any) {
+    if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({
       message: 'Lỗi tra cứu đơn hàng: ' + error.message,
     });
@@ -261,6 +290,8 @@ export const lookupGuestOrderForReview = async (req: Request, res: Response) => 
 export const getCustomerReviewHistory = async (req: Request, res: Response) => {
   try {
     const { customerId } = req.params;
+    const access = await lookupAccess(req.headers['x-order-access']);
+    if (access.authType !== 'member' || access.customerId !== customerId) throw new InventoryError(403, 'Phiên đăng nhập không thuộc khách hàng này.');
 
     if (!customerId) {
       return res.status(400).json({ message: 'Thiếu mã khách hàng.' });
@@ -279,6 +310,7 @@ export const getCustomerReviewHistory = async (req: Request, res: Response) => {
 
     return res.status(200).json({ reviews: mapReviewRows(rows) });
   } catch (error: any) {
+    if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({
       message: 'Lỗi lấy lịch sử đánh giá của khách hàng: ' + error.message,
     });
@@ -287,8 +319,8 @@ export const getCustomerReviewHistory = async (req: Request, res: Response) => {
 
 export const getGuestReviewHistory = async (req: Request, res: Response) => {
   try {
-    const { phone } = req.body;
-    const normalizedPhone = normalizePhone(phone);
+    const access = await lookupAccess(req.headers['x-order-access']);
+    const normalizedPhone = normalizePhone(access.phone || '');
 
     if (!/^0\d{9}$/.test(normalizedPhone)) {
       return res.status(400).json({ message: 'Số điện thoại không hợp lệ.' });
@@ -306,6 +338,7 @@ export const getGuestReviewHistory = async (req: Request, res: Response) => {
 
     return res.status(200).json({ reviews: mapReviewRows(rows) });
   } catch (error: any) {
+    if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({
       message: 'Lỗi lấy lịch sử đánh giá khách vãng lai: ' + error.message,
     });
@@ -314,23 +347,27 @@ export const getGuestReviewHistory = async (req: Request, res: Response) => {
 
 export const createReview = async (req: Request, res: Response) => {
   try {
-    const { orderId, productId, actorCustomerId, phone, hideReviewer, rating, content } = req.body;
+    const { orderId, hideReviewer, rating, content } = req.body;
     const normalizedOrderId = String(orderId || '').trim().toUpperCase();
-    const normalizedProductId = String(productId || '').trim();
     const safeRating = Number(rating || 0);
     const shouldHideReviewer = String(hideReviewer || '').toLowerCase() === 'true';
 
-    if (!normalizedOrderId || !normalizedProductId) {
-      return res.status(400).json({ message: 'Thiếu đơn hàng hoặc sản phẩm cần đánh giá.' });
+    if (!normalizedOrderId) {
+      return res.status(400).json({ message: 'Thiếu mã đơn hàng cần đánh giá.' });
     }
 
-    if (safeRating < 1 || safeRating > 5) {
+    if (!Number.isInteger(safeRating) || safeRating < 1 || safeRating > 5) {
       return res.status(400).json({ message: 'Số sao đánh giá phải từ 1 đến 5.' });
     }
 
-    if (!String(content || '').trim()) {
+    const safeContent = String(content || '').replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!safeContent) {
       return res.status(400).json({ message: 'Vui lòng nhập nội dung đánh giá.' });
     }
+    if (safeContent.length > 2000) return res.status(400).json({ message: 'Nội dung đánh giá không được vượt quá 2000 ký tự.' });
+
+    await ensureReviewStorage();
+    const access = await lookupAccess(req.headers['x-order-access']);
 
     const [orderCollection, orderDetailCollection, reviewCollection, reviewImageCollection] = await Promise.all([
       getCollection<any>('DON_HANG'),
@@ -340,22 +377,22 @@ export const createReview = async (req: Request, res: Response) => {
     ]);
     const [order, orderDetail] = await Promise.all([
       orderCollection.findOne({ DON_HANG_ID: normalizedOrderId }),
-      orderDetailCollection.findOne({ DON_HANG_ID: normalizedOrderId, SAN_PHAM_ID: normalizedProductId }),
+      orderDetailCollection.find({ DON_HANG_ID: normalizedOrderId }).toArray(),
     ]);
 
-    if (!order || !orderDetail || !isReviewableOrder(order)) {
+    if (!order || !orderDetail.length || !isReviewableOrder(order)) {
       return res.status(404).json({
-        message: 'Đơn hàng hoặc sản phẩm không hợp lệ, hoặc đơn chưa giao thành công.',
+        message: 'Đơn hàng không hợp lệ hoặc chưa giao thành công.',
       });
     }
 
-    const actorId = actorCustomerId ? String(actorCustomerId).trim() : '';
-    if (actorId) {
-      if (String(order.KHACH_HANG_ID || '') !== actorId) {
+    const actorId = access.authType === 'member' ? String(access.customerId || '') : '';
+    if (access.authType === 'member') {
+      if (!actorId || String(order.KHACH_HANG_ID || '') !== actorId) {
         return res.status(403).json({ message: 'Bạn không có quyền đánh giá đơn hàng này.' });
       }
     } else {
-      const normalizedInputPhone = normalizePhone(phone);
+      const normalizedInputPhone = normalizePhone(access.phone || '');
       const normalizedOrderPhone = normalizePhone(order.SDT_NGUOI_NHAN || '');
 
       if (!normalizedInputPhone || normalizedInputPhone !== normalizedOrderPhone) {
@@ -363,42 +400,98 @@ export const createReview = async (req: Request, res: Response) => {
       }
     }
 
-    if (await reviewCollection.findOne({ DON_HANG_ID: normalizedOrderId }, { projection: { DANH_GIA_ID: 1 } })) {
-      return res.status(409).json({ message: 'Đơn hàng này đã được đánh giá rồi.' });
+    const productIds = [...new Set(orderDetail.map((item) => String(item.SAN_PHAM_ID || '')).filter(Boolean))];
+    if (productIds.length === 0) {
+      return res.status(400).json({ message: 'Đơn hàng không có sản phẩm để đánh giá.' });
     }
 
-    const reviewId = await getNextPrefixedId('DANH_GIA', 'DANH_GIA_ID', 'DG', 4);
-    const customerIdToStore = shouldHideReviewer ? null : (actorId || null);
-
-    await reviewCollection.insertOne({
-      _id: reviewId,
-      DANH_GIA_ID: reviewId,
-      SAN_PHAM_ID: normalizedProductId,
-      KHACH_HANG_ID: customerIdToStore,
-      DON_HANG_ID: normalizedOrderId,
-      SO_SAO: safeRating,
-      NOI_DUNG: String(content).trim(),
-      NGAY_DANH_GIA: new Date(),
-      PHAN_HOI_SHOP: null,
-      NGAY_PHAN_HOI_SHOP: null,
-      NHAN_VIEN_PHAN_HOI_ID: null,
-    });
+    let submittedProductIds: unknown;
+    try {
+      submittedProductIds = JSON.parse(String(req.body.productIds || 'null'));
+    } catch {
+      return res.status(400).json({ message: 'Danh sách sản phẩm đánh giá không hợp lệ.' });
+    }
+    if (
+      !Array.isArray(submittedProductIds) ||
+      submittedProductIds.some((productId) => typeof productId !== 'string') ||
+      new Set(submittedProductIds).size !== productIds.length ||
+      productIds.some((productId) => !submittedProductIds.includes(productId))
+    ) {
+      return res.status(400).json({ message: 'Vui lòng gửi đánh giá cho toàn bộ sản phẩm trong đơn hàng.' });
+    }
 
     const files = (Array.isArray(req.files) ? req.files : []) as any[];
-    const imageUrls: string[] = [];
-    let nextImageId = await createNextReviewImageId();
+    const existingReviews = await reviewCollection.find({
+      DON_HANG_ID: normalizedOrderId,
+      SAN_PHAM_ID: { $in: productIds },
+    }).toArray();
+    const existingByProduct = new Map(existingReviews.map((review) => [String(review.SAN_PHAM_ID), review]));
+    if (productIds.every((productId) => existingByProduct.has(productId))) {
+      return res.status(409).json({ message: 'Đơn hàng này đã được đánh giá.' });
+    }
 
-    for (const file of files) {
-      const imageUrl = `${getPublicBaseUrl(req)}/uploads/reviews/${file.filename}`;
-      await reviewImageCollection.insertOne({
-        _id: nextImageId,
-        DANH_GIA_HINH_ANH_ID: nextImageId,
-        DANH_GIA_ID: reviewId,
-        URL: imageUrl,
-        NGAY_TAO: new Date(),
+    const imageUrls: string[] = [];
+    files.forEach(file => imageUrls.push(`${getPublicBaseUrl(req)}/uploads/reviews/${file.filename}`));
+    const submittedAt = new Date();
+    const reviews = productIds.map((productId) => ({
+      productId,
+      reviewId: String(existingByProduct.get(productId)?.DANH_GIA_ID || existingByProduct.get(productId)?._id || `DG${randomUUID().replace(/-/g, '').slice(0, 16).toUpperCase()}`),
+      existing: existingByProduct.get(productId),
+    }));
+    try {
+      await withTransaction(async session => {
+        const existingReviewIds = reviews.filter((review) => review.existing).map((review) => review.reviewId);
+        if (existingReviewIds.length) {
+          await reviewImageCollection.deleteMany({ DANH_GIA_ID: { $in: existingReviewIds } }, { session });
+        }
+
+        await reviewCollection.bulkWrite(reviews.map((review) => {
+          const reviewData = {
+            DANH_GIA_ID: review.reviewId,
+            SAN_PHAM_ID: review.productId,
+            KHACH_HANG_ID: actorId || null,
+            AN_DANH: shouldHideReviewer,
+            DON_HANG_ID: normalizedOrderId,
+            SO_SAO: safeRating,
+            NOI_DUNG: safeContent,
+            NGAY_DANH_GIA: submittedAt,
+            PHAN_HOI_SHOP: null,
+            NGAY_PHAN_HOI_SHOP: null,
+            NHAN_VIEN_PHAN_HOI_ID: null,
+          };
+
+          if (review.existing) {
+            return {
+              updateOne: {
+                filter: { _id: review.existing._id },
+                update: { $set: reviewData },
+              },
+            };
+          }
+
+          return {
+            insertOne: {
+              document: { _id: review.reviewId, ...reviewData },
+            },
+          };
+        }), { session });
+
+        if (files.length) {
+          await reviewImageCollection.insertMany(
+            reviews.flatMap((review) => files.map((file, index) => ({
+              _id: `${review.reviewId}:${index + 1}`,
+              DANH_GIA_HINH_ANH_ID: `${review.reviewId}:${index + 1}`,
+              DANH_GIA_ID: review.reviewId,
+              URL: imageUrls[index],
+              NGAY_TAO: submittedAt,
+            }))),
+            { session },
+          );
+        }
       });
-      nextImageId += 1;
-      imageUrls.push(imageUrl);
+    } catch (error: any) {
+      if (error?.code === 11000) return res.status(409).json({ message: 'Đơn hàng đã được đánh giá. Vui lòng tải lại trang.' });
+      throw error;
     }
 
     if (isReviewableOrder(order) && !String(order.LY_DO_HOAN_TIEN_TRA_HANG || '').trim()) {
@@ -416,11 +509,13 @@ export const createReview = async (req: Request, res: Response) => {
 
     return res.status(201).json({
       message: 'Đã lưu đánh giá.',
-      reviewId,
+      reviewId: reviews[0].reviewId,
+      reviews: reviews.map(({ productId, reviewId }) => ({ productId, reviewId })),
       imageUrls,
-      orderStatus: 'Hoàn thành',
+      progress: { reviewed: productIds.length, total: productIds.length },
     });
   } catch (error: any) {
+    if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({
       message: 'Lỗi lưu đánh giá: ' + error.message,
     });
@@ -447,7 +542,8 @@ export const getProductReviews = async (req: Request, res: Response) => {
 export const replyToReview = async (req: Request, res: Response) => {
   try {
     const { reviewId } = req.params;
-    const { reply, staffId } = req.body;
+    const { reply } = req.body;
+    const staffId = String(req.headers['x-admin-id'] || '').trim();
     const safeReply = String(reply || '').trim();
 
     if (!reviewId) {
@@ -466,7 +562,7 @@ export const replyToReview = async (req: Request, res: Response) => {
         $set: {
           PHAN_HOI_SHOP: safeReply,
           NGAY_PHAN_HOI_SHOP: replyDate,
-          NHAN_VIEN_PHAN_HOI_ID: staffId ? String(staffId).trim() : null,
+          NHAN_VIEN_PHAN_HOI_ID: staffId || null,
         },
       },
       { returnDocument: 'after' },

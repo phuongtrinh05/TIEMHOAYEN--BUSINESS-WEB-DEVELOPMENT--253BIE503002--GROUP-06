@@ -18,9 +18,9 @@ export const apiEndpointInterceptor: HttpInterceptorFn = (request, next) => {
   // Thành viên đã đăng nhập: gắn phiên cho mọi API để backend kiểm tra quyền sở hữu dữ liệu.
   const member = target.url.startsWith(`${apiBaseUrl()}/`) ? memberAccessToken() : '';
   if (member) target = target.clone({ setHeaders: { 'x-order-access': member } });
-  if ((target.url.startsWith(`${apiBaseUrl()}/orders`) || target.url.startsWith(`${apiBaseUrl()}/support`) || target.url.startsWith(`${apiBaseUrl()}/lucky`) || target.url.startsWith(`${apiBaseUrl()}/customers/`) && /\/orders(?:\?|$)/.test(target.url)) && typeof sessionStorage !== 'undefined') {
-    const session = orderAccessSession();
-    if (session) target = target.clone({ setHeaders: { 'x-order-access': session.accessToken } });
+  if ((target.url.startsWith(`${apiBaseUrl()}/orders`) || target.url.startsWith(`${apiBaseUrl()}/support`) || target.url.startsWith(`${apiBaseUrl()}/lucky`) || target.url.startsWith(`${apiBaseUrl()}/customers/`) && /\/orders(?:\/|\?|$)/.test(target.url)) && typeof sessionStorage !== 'undefined') {
+    const storedAccessToken = getCustomerOrderAccessToken();
+    if (storedAccessToken) target = target.clone({ setHeaders: { 'x-order-access': storedAccessToken } });
     const payment = target.url.match(/\/orders\/([^/?]+)\/payment-(status|expired|retry)(?:\?|$)/);
     const checkout = payment ? sessionStorage.getItem(`checkoutOrderAccess:${decodeURIComponent(payment[1])}`) : null;
     if (checkout) target = target.clone({ setHeaders: { 'x-checkout-access': checkout } });
@@ -32,6 +32,15 @@ export const apiEndpointInterceptor: HttpInterceptorFn = (request, next) => {
     },
   }));
 };
+
+export function getCustomerOrderAccessToken(): string | null {
+  const sessionToken = orderAccessSession()?.accessToken;
+  if (sessionToken) return sessionToken;
+  if (typeof localStorage === 'undefined') return null;
+
+  const token = localStorage.getItem('token');
+  return token && /^oa_[a-f0-9]{64}$/.test(token) ? token : null;
+}
 
 export function currentOrderAccountKey(): string {
   try { return JSON.parse(localStorage.getItem('khachHang') || 'null')?.KHACH_HANG_ID || ''; } catch { return ''; }
