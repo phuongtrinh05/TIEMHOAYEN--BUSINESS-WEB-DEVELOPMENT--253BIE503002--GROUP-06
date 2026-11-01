@@ -1,0 +1,116 @@
+<div class="audit-page">
+  <div class="page-header">
+    <div class="header-title">
+      <h2><i class="bi bi-clock-history"></i> Nhật ký hệ thống (Audit Logs)</h2>
+      <p class="subtitle">Theo dõi lịch sử thay đổi, quyền hạn, tài khoản và các thao tác quan trọng.</p>
+    </div>
+  </div>
+
+  <div class="audit-card">
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="search-box">
+        <i class="bi bi-search"></i>
+        <input
+          type="text"
+          placeholder="Tìm theo người thực hiện, đối tượng hoặc hành động..."
+          [(ngModel)]="searchKeyword"
+          (keyup.enter)="onSearch()">
+        <button class="btn-search" (click)="onSearch()">Tìm</button>
+      </div>
+
+      <div class="filter-actions">
+        <div class="filter-select">
+          <label><i class="bi bi-funnel"></i></label>
+          <select [(ngModel)]="selectedAction" (change)="onFilterAction()">
+            <option *ngFor="let item of actionList" [value]="item.value">{{ item.label }}</option>
+          </select>
+        </div>
+
+        <button class="btn-refresh" (click)="fetchLogs()" [disabled]="isLoading">
+          <i class="bi bi-arrow-clockwise" [class.spin]="isLoading"></i> Làm mới
+        </button>
+      </div>
+    </div>
+
+    <!-- Error message -->
+    <div *ngIf="loadError" class="alert-error" role="alert">
+      <i class="bi bi-exclamation-triangle-fill"></i> {{ loadError }}
+    </div>
+
+    <!-- Loading -->
+    <div *ngIf="isLoading" class="loading-state">
+      <div class="spinner"></div>
+      <p>Đang tải dữ liệu nhật ký...</p>
+    </div>
+
+    <!-- Table -->
+    <div *ngIf="!isLoading" class="table-responsive">
+      <table class="audit-table">
+        <thead>
+          <tr>
+            <th style="width: 170px;">Thời gian</th>
+            <th style="width: 140px;">Người thực hiện</th>
+            <th style="width: 100px;">Vai trò</th>
+            <th style="width: 160px;">Hành động</th>
+            <th style="width: 130px;">Đối tượng ID</th>
+            <th style="width: 110px;">Kết quả</th>
+            <th>Nội dung thay đổi</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngIf="logs.length === 0">
+            <td colspan="7" class="empty-state">
+              <i class="bi bi-inbox"></i>
+              <p>Chưa có dữ liệu nhật ký nào phù hợp.</p>
+            </td>
+          </tr>
+
+          <tr *ngFor="let log of logs" [class.expanded]="expandedLogId === log.NHAT_KY_ID">
+            <td class="time-col">{{ formatDate(log.THOI_GIAN) }}</td>
+            <td class="actor-col">
+              <strong>{{ log.NGUOI_THUC_HIEN_ID || 'Khách vãng lai' }}</strong>
+            </td>
+            <td>
+              <span class="role-badge">{{ log.LOAI_NGUOI_THUC_HIEN }}</span>
+            </td>
+            <td>
+              <span class="badge" [ngClass]="getActionBadgeClass(log.HANH_DONG)">
+                {{ getActionLabel(log.HANH_DONG) }}
+              </span>
+            </td>
+            <td class="target-col">{{ log.DOI_TUONG_ID || '—' }}</td>
+            <td>
+              <span class="status-tag" [class.success]="log.KET_QUA === 'Thanh cong'" [class.failed]="log.KET_QUA !== 'Thanh cong'">
+                {{ log.KET_QUA === 'Thanh cong' ? 'Thành công' : 'Thất bại' }}
+              </span>
+            </td>
+            <td class="changes-col">
+              <div class="changes-preview" (click)="toggleExpand(log.NHAT_KY_ID)" title="Nhấn để xem chi tiết">
+                <code>{{ formatJson(log.NOI_DUNG_THAY_DOI) }}</code>
+                <i class="bi" [ngClass]="expandedLogId === log.NHAT_KY_ID ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination-footer" *ngIf="!isLoading && total > 0">
+      <div class="pagination-info">
+        Hiển thị {{ (page - 1) * limit + 1 }} - {{ (page * limit > total) ? total : page * limit }} trên tổng số <strong>{{ total }}</strong> bản ghi
+      </div>
+
+      <div class="pagination-controls">
+        <button class="page-btn" (click)="prevPage()" [disabled]="page === 1">
+          <i class="bi bi-chevron-left"></i>
+        </button>
+        <span class="page-indicator">Trang {{ page }} / {{ totalPages }}</span>
+        <button class="page-btn" (click)="nextPage()" [disabled]="page >= totalPages">
+          <i class="bi bi-chevron-right"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

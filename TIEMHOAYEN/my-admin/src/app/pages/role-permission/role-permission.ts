@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { timeout } from 'rxjs';
@@ -137,7 +137,7 @@ export class RolePermission {
   roles: AdminRolePermission[] = DEFAULT_ROLES;
   filteredRoles: AdminRolePermission[] = [...DEFAULT_ROLES];
 
-  constructor(private readonly adminApi: AdminApiService) {
+  constructor(private readonly adminApi: AdminApiService, private cdr: ChangeDetectorRef) {
     this.loadCachedRolePermissions();
     this.refreshRolePermissions();
   }
@@ -196,6 +196,20 @@ export class RolePermission {
 
   selectRole(role: string): void {
     this.selectedRole = role;
+  }
+  togglePermission(module: string, action: AdminPermissionAction): void {
+    if (this.selectedRole === 'Admin' || this.loading) return;
+    const role = this.roles.find(item => item.name === this.selectedRole);
+    if (role) role.permissions[module][action] = !role.permissions[module][action];
+  }
+  savePermissions(): void {
+    const role = this.roles.find(item => item.name === this.selectedRole);
+    if (!role || role.name === 'Admin' || this.loading) return;
+    this.loading = true;
+    this.adminApi.saveRolePermissions(role.name, role.permissions).subscribe({
+      next: () => { this.loading = false; this.errorMessage = 'Đã lưu quyền trên hệ thống.'; this.cdr.markForCheck(); },
+      error: e => { this.loading = false; this.errorMessage = e.error?.message || 'Không lưu được quyền.'; this.cdr.markForCheck(); }
+    });
   }
 
   hasPermission(moduleKey: string, action: AdminPermissionAction): boolean {

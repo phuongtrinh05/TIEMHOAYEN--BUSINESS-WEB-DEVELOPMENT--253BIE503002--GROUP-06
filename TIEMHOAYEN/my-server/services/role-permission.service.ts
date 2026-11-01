@@ -100,9 +100,24 @@ export const resolveRoleName = (role: unknown): string => {
   return found || String(role || '').trim();
 };
 
+// Ma trận quyền đã lưu trong NHOM_QUYEN (ghi đè mặc định). Nạp khi khởi động, cập nhật khi Admin lưu.
+const roleOverrides = new Map<string, RolePermissionSet>();
+
+export const setRolePermissionOverride = (role: unknown, permissions: RolePermissionSet): void => {
+  roleOverrides.set(resolveRoleName(role), permissions);
+};
+
+export const loadRolePermissionOverrides = async (): Promise<void> => {
+  const { getCollection } = await import('../mongo.js');
+  const rows = await (await getCollection<any>('NHOM_QUYEN')).find({}).toArray();
+  for (const row of rows) {
+    if (row?.VAI_TRO && row?.QUYEN && resolveRoleName(row.VAI_TRO) !== 'Admin') setRolePermissionOverride(row.VAI_TRO, row.QUYEN);
+  }
+};
+
 export const getRolePermissions = (role: unknown): RolePermissionSet => {
   const roleName = resolveRoleName(role);
-  return defaultRolePermissions[roleName] || makePermissions({});
+  return roleOverrides.get(roleName) || defaultRolePermissions[roleName] || makePermissions({});
 };
 
 export const hasPermission = (role: unknown, moduleKey: string, action: PermissionAction): boolean => {

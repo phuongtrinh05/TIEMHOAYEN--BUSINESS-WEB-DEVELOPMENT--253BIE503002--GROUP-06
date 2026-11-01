@@ -55,6 +55,8 @@ import categoryProductRoutes from './routes/categoryProduct.js';
 import contactRoutes from './routes/contact.js';
 import supportRoutes from './routes/support.js';
 import adminRoutes from './routes/admin.js';
+import { accountAdministration } from './routes/accountAdministration.js';
+import { loadRolePermissionOverrides } from './services/role-permission.service.js';
 import rolePermissionRoutes from './routes/rolePermission.js';
 import inventoryRoutes from './routes/inventory.js';
 import analyticsRoutes from './routes/analytics.js';
@@ -155,6 +157,7 @@ app.use('/api/category-products', categoryProductRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/admin', inventoryRoutes);
 app.use('/api/admin', analyticsRoutes);
+app.use('/api/admin', accountAdministration);
 app.use('/api/admin', rolePermissionRoutes);
 app.use('/api/admin', adminRoutes);
 
@@ -171,6 +174,7 @@ const PORT = Number(process.env.PORT ?? 3000);
 (async () => {
   try {
     await connectMongo();
+    await loadRolePermissionOverrides().catch((error) => console.warn('Không nạp được NHOM_QUYEN, dùng quyền mặc định:', error?.message));
     if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureInventoryIndexes();
     await ensureSalesRequestIndexes();
     await (await import('./services/order-access.service.js')).ensureOrderAccessIndexes();

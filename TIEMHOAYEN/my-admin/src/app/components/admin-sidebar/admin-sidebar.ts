@@ -55,6 +55,7 @@ export class AdminSidebar implements OnInit, OnDestroy {
   adminMenuItems: SidebarItem[] = [
     { label: 'Tài khoản quản trị', icon: 'bi-person-gear', route: '/admin-account', module: 'permissions' },
     { label: 'Phân quyền', icon: 'bi-gear', route: '/role-permission', module: 'permissions' },
+    { label: 'Nhật ký hệ thống', icon: 'bi-clock-history', route: '/audit-logs', module: 'system' },
   ];
 
   constructor(private router: Router) {}

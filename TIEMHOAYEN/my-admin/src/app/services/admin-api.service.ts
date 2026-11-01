@@ -1,4 +1,4 @@
-﻿import { Injectable } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, catchError, map, of, tap, timeout } from 'rxjs';
 import { apiBaseUrl } from './api-config';
@@ -33,6 +33,25 @@ export interface AdminStaffAccount {
 export interface AdminStaffAccountsResponse {
   total: number;
   accounts: AdminStaffAccount[];
+}
+
+export interface AdminAuditLog {
+  _id?: string;
+  NHAT_KY_ID: string;
+  NGUOI_THUC_HIEN_ID: string | null;
+  LOAI_NGUOI_THUC_HIEN: string;
+  HANH_DONG: string;
+  DOI_TUONG_ID: string;
+  THOI_GIAN: string;
+  KET_QUA: string;
+  NOI_DUNG_THAY_DOI: any;
+}
+
+export interface AdminAuditLogsResponse {
+  total: number;
+  page: number;
+  limit: number;
+  logs: AdminAuditLog[];
 }
 
 export type AdminPermissionAction = 'view' | 'create' | 'update' | 'delete' | 'grant';
@@ -637,7 +656,8 @@ export class AdminApiService {
   }
 
   getStaffAccounts(): Observable<AdminStaffAccountsResponse> {
-    return this.http.get<AdminStaffAccountsResponse>(`${this.apiUrl}/staff-accounts`).pipe(
+    return this.http.get<any>(`${this.apiUrl}/staff-accounts`).pipe(
+      map(response => ({ total: response.total, accounts: response.accounts || (response.staff || []).map((row: any) => this.mapLegacyEmployee(row)) })),
       catchError(() =>
         this.http.get<any[]>(this.employeeApiUrl).pipe(
           map((rows) => ({
@@ -651,6 +671,23 @@ export class AdminApiService {
 
   getRolePermissions(): Observable<AdminRolePermissionsResponse> {
     return this.http.get<AdminRolePermissionsResponse>(`${this.apiUrl}/role-permissions`);
+  }
+  saveStaff(code: string | null, data: object): Observable<any> {
+    return code ? this.http.patch(`${this.apiUrl}/staff-accounts/${encodeURIComponent(code)}`, data)
+      : this.http.post(`${this.apiUrl}/staff-accounts`, data);
+  }
+  saveRolePermissions(role: string, matrix: AdminRolePermissionSet): Observable<any> {
+    return this.http.put(`${this.apiUrl}/role-permissions/${encodeURIComponent(role)}`, { QUYEN: matrix });
+  }
+
+  getAuditLogs(params?: { page?: number; limit?: number; action?: string; search?: string }): Observable<AdminAuditLogsResponse> {
+    let httpParams = new HttpParams();
+    if (params?.page) httpParams = httpParams.set('page', params.page.toString());
+    if (params?.limit) httpParams = httpParams.set('limit', params.limit.toString());
+    if (params?.action) httpParams = httpParams.set('action', params.action);
+    if (params?.search) httpParams = httpParams.set('search', params.search);
+
+    return this.http.get<AdminAuditLogsResponse>(`${this.apiUrl}/audit-logs`, { params: httpParams });
   }
 
   private mapLegacyEmployee(row: any): AdminStaffAccount {

@@ -46,9 +46,11 @@ import { EmployeeService } from './pages/employee-service/employee-service';
 
 import { RolePermission } from './pages/role-permission/role-permission';
 import { AdminAccount } from './pages/admin-account/admin-account';
+import { AuditLogsComponent } from './pages/audit-logs/audit-logs';
 import { adminPermissionGuard } from './services/admin-permission.guard';
 
 export const routes: Routes = [
+    { path: 'audit-logs', component: AuditLogsComponent, canActivate: [adminPermissionGuard], data: { module: 'system' } },
     {path:'promotions/lucky-wheel',component:LuckyWheelAdmin,canActivate:[adminPermissionGuard],data:{module:'promotions'}},
     { path: 'customer-service/legacy-chat', component: CustomerChatComponent, canActivate: [adminPermissionGuard], data: { module: 'customerService' } },
     { path: 'orders/requests', component: OrderRequests, canActivate: [adminPermissionGuard], data: { module: 'orders' } },

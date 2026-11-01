@@ -44,6 +44,7 @@
         <tr *ngFor="let item of modules">
           <td>{{ item.name }}</td>
           <td *ngFor="let action of actions">
+            <button type="button" style="border:0;background:transparent" [disabled]="selectedRole === 'Admin' || loading" [attr.aria-label]="action.label + ' ' + item.name" [attr.aria-pressed]="hasPermission(item.key, action.key)" (click)="togglePermission(item.key, action.key)">
             <i
               class="bi"
               [class.bi-check-circle-fill]="hasPermission(item.key, action.key)"
@@ -51,11 +52,13 @@
               [class.success]="hasPermission(item.key, action.key)"
               [class.locked]="!hasPermission(item.key, action.key)">
             </i>
+            </button>
           </td>
         </tr>
       </tbody>
     </table>
 
     <p *ngIf="errorMessage" class="permission-state error">{{ errorMessage }}</p>
+    <button type="button" class="btn btn-success" [disabled]="selectedRole === 'Admin' || loading" (click)="savePermissions()">{{ loading ? 'Đang lưu…' : 'Lưu phân quyền' }}</button>
   </div>
 </div>
