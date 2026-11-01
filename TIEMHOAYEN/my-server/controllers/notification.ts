@@ -180,7 +180,7 @@ export const markNotificationAsRead = async (req: Request, res: Response) => {
 
     const collection = await getNotificationCollection();
     const result = await collection.updateOne(
-      { THONG_BAO_ID: notificationId },
+      { THONG_BAO_ID: notificationId, KHACH_HANG_ID: req.identity!.id },
       { $set: { DA_DOC: true } },
     );
 

@@ -149,12 +149,15 @@
         <button
           type="submit"
           class="btn-login"
+          [disabled]="isLoggingIn"
+          [attr.aria-busy]="isLoggingIn"
           [class.is-default]="loginForm.pristine"
           [class.is-disabled]="!loginForm.pristine && loginForm.invalid"
           [class.is-ready]="loginForm.valid"
           
         >
-          Đăng nhập
+          <span *ngIf="isLoggingIn" class="login-spinner" aria-hidden="true"></span>
+          {{ isLoggingIn ? 'Đang đăng nhập…' : 'Đăng nhập' }}
         </button>
 
         <!-- Divider -->
@@ -243,23 +246,16 @@
         inputmode="numeric"
         maxlength="1"
         class="otp-popup__input"
+        [class.is-invalid]="!!otpError"
         [value]="otpValues[i]"
         (keydown)="onOtpKeydown($event, i)"
         (paste)="onOtpPaste($event)"
       >
     </div>
     <p class="error-msg otp-popup__error" *ngIf="otpError">{{ otpError }}</p>
+    <p role="status">{{ otpSeconds > 0 ? 'Mã hết hạn sau ' + otpSeconds + ' giây. Tối đa 5 lần nhập sai.' : 'Mã đã hết hạn. Vui lòng gửi mã mới.' }}</p>
 
-    <button
-      type="button"
-      class="otp-popup__button"
-      [class.is-default]="isOtpEmpty()"
-      [class.is-disabled]="!isOtpEmpty() && !isOtpValid()"
-      [class.is-ready]="isOtpValid()"
-      (click)="verifyOtp()"
-    >
-      Gửi
-    </button>
+
 
     <div class="otp-popup__resend">
       <span>Bạn chưa nhận được mã?</span>
@@ -267,6 +263,7 @@
         type="button"
         class="otp-popup__resend-button"
         (click)="resendOtp()"
+        [disabled]="otpSeconds > 0"
       >
         Gửi mã mới
       </button>

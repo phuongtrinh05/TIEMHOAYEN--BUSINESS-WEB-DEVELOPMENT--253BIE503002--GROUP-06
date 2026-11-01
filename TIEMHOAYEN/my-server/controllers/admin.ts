@@ -1,10 +1,7 @@
 import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId } from '../mongo.js';
 import { getAdminOrderDetailById } from '../services/admin-order.service.js';
-import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
-import { syncCheckoutInventory } from '../services/checkout-payment.service.js';
-import { releaseReservations } from '../services/inventory/stock.service.js';
-import { invalidateAnalyticsCache } from '../services/analytics/cache.js';
+import { audit } from '../services/auth.service.js';
 
 const toDate = (value: unknown): Date | null => {
   if (!value) return null;
@@ -267,17 +264,51 @@ export const createAdminOrder = async (req: Request, res: Response) => {
 
 export const getAdminCustomers = async (_req: Request, res: Response) => {
   try {
-    const customerCollection = await getCollection<any>('KHACH_HANG');
+    const [customerCollection, orderCollection] = await Promise.all([
+      getCollection<any>('KHACH_HANG'),
+      getCollection<any>('DON_HANG'),
+    ]);
+
+    const ordersStats = await orderCollection.aggregate([
+      {
+        $group: {
+          _id: '$KHACH_HANG_ID',
+          totalOrders: { $sum: 1 },
+          totalSpent: { $sum: { $ifNull: ['$TONG_TIEN', 0] } },
+          latestOrderDate: { $max: '$NGAY_TAO' }
+        }
+      }
+    ]).toArray();
+
+    const statsMap = new Map<string, { totalOrders: number; totalSpent: number; latestOrderDate: any }>();
+    for (const stat of ordersStats) {
+      if (stat._id) {
+        statsMap.set(String(stat._id), {
+          totalOrders: Number(stat.totalOrders || 0),
+          totalSpent: Number(stat.totalSpent || 0),
+          latestOrderDate: stat.latestOrderDate
+        });
+      }
+    }
+
     const customers = (await customerCollection.find({}).sort({ KHACH_HANG_ID: 1 }).toArray()).map((customer) => {
       const { MAT_KHAU, ...safe } = customer;
+      const stats = statsMap.get(customer.KHACH_HANG_ID) || { totalOrders: 0, totalSpent: 0, latestOrderDate: null };
       return {
         ...safe,
         id: customer.KHACH_HANG_ID,
+        code: customer.KHACH_HANG_ID,
         name: customer.TEN,
         phone: customer.SDT,
         email: customer.EMAIL,
         memberType: customer.LOAI_THANH_VIEN,
+        membershipTier: customer.LOAI_THANH_VIEN,
         points: Number(customer.DIEM_TICH_LUY || 0),
+        status: customer.TRANG_THAI || 'Hoạt động',
+        totalOrders: stats.totalOrders,
+        totalSpent: stats.totalSpent,
+        latestOrderDate: stats.latestOrderDate ? formatDate(stats.latestOrderDate) : '',
+        createdAt: customer.NGAY_DANG_KY,
         selected: false,
       };
     });
@@ -323,25 +354,57 @@ export const getAdminCustomerDetail = async (req: Request, res: Response) => {
 export const updateAdminCustomer = async (req: Request, res: Response) => {
   try {
     const { customerId } = req.params;
-    const { name, phone, email, birthDate, gender, status } = req.body;
+    const { name, phone, email, birthDate, gender, status, note, ghiChuNoiBo } = req.body;
     const customerCollection = await getCollection<any>('KHACH_HANG');
+    const existing = await customerCollection.findOne({ KHACH_HANG_ID: customerId });
+    if (!existing) return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
+
+    const nextPhone = (phone ?? req.body.SDT ?? existing.SDT)?.trim();
+    const nextEmail = (email ?? req.body.EMAIL ?? existing.EMAIL)?.trim();
+
+    if (nextPhone && nextPhone !== existing.SDT) {
+      const dupPhone = await customerCollection.findOne({ KHACH_HANG_ID: { $ne: customerId }, SDT: nextPhone });
+      if (dupPhone) return res.status(409).json({ message: 'Số điện thoại đã thuộc về khách hàng khác.' });
+    }
+    if (nextEmail && nextEmail !== existing.EMAIL) {
+      const dupEmail = await customerCollection.findOne({ KHACH_HANG_ID: { $ne: customerId }, EMAIL: nextEmail });
+      if (dupEmail) return res.status(409).json({ message: 'Email đã thuộc về khách hàng khác.' });
+    }
+
+    const nextStatus = status ?? req.body.TRANG_THAI;
+    const updateDoc: any = {};
+    if (name || req.body.TEN) updateDoc.TEN = (name ?? req.body.TEN).trim();
+    if (nextPhone) updateDoc.SDT = nextPhone;
+    if (nextEmail !== undefined) updateDoc.EMAIL = nextEmail || null;
+    if (birthDate !== undefined || req.body.DOB !== undefined) updateDoc.DOB = parseOptionalDate(birthDate ?? req.body.DOB);
+    if (gender !== undefined || req.body.GIOI_TINH !== undefined) updateDoc.GIOI_TINH = gender ?? req.body.GIOI_TINH;
+    if (nextStatus) updateDoc.TRANG_THAI = nextStatus;
+    if (note !== undefined || ghiChuNoiBo !== undefined || req.body.GHI_CHU_NOI_BO !== undefined) {
+      updateDoc.GHI_CHU_NOI_BO = note ?? ghiChuNoiBo ?? req.body.GHI_CHU_NOI_BO;
+    }
+
     const result = await customerCollection.findOneAndUpdate(
       { KHACH_HANG_ID: customerId },
-      {
-        $set: {
-          TEN: name ?? req.body.TEN,
-          SDT: phone ?? req.body.SDT,
-          EMAIL: email ?? req.body.EMAIL ?? null,
-          DOB: parseOptionalDate(birthDate ?? req.body.DOB),
-          GIOI_TINH: gender ?? req.body.GIOI_TINH,
-          ...(status ? { TRANG_THAI: status } : {}),
-        },
-      },
+      { $set: updateDoc },
       { returnDocument: 'after' },
     );
     if (!result) return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
+
+    if (nextStatus && ['ngừng hoạt động', 'ngung hoat dong', 'khóa', 'khoa'].includes(String(nextStatus).toLowerCase())) {
+      const sessionCol = await getCollection('PHIEN_DANG_NHAP');
+      await sessionCol.updateMany(
+        { TAI_KHOAN_ID: customerId, LOAI_TAI_KHOAN: 'KHACH_HANG' },
+        { $set: { DA_THU_HOI: true } }
+      );
+    }
+
+    await audit(req, nextStatus && nextStatus !== existing.TRANG_THAI ? 'DOI_TRANG_THAI_KHACH_HANG' : 'CAP_NHAT_KHACH_HANG', customerId, {
+      truoc: { TEN: existing.TEN, SDT: existing.SDT, EMAIL: existing.EMAIL, TRANG_THAI: existing.TRANG_THAI },
+      sau: updateDoc,
+    });
+
     const { MAT_KHAU, ...safeCustomer } = result;
-    return res.status(200).json({ message: 'Customer updated.', customer: safeCustomer });
+    return res.status(200).json({ message: 'Cập nhật khách hàng thành công.', customer: safeCustomer });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot update customer: ' + error.message });
   }
@@ -449,12 +512,7 @@ export const updateAdminTransaction = async (req: Request, res: Response) => {
     const { transactionId } = req.params;
     const paymentCollection = await getCollection<any>('THANH_TOAN');
     const { gateway, status, amount, referenceCode, paidAt } = req.body;
-    const result = await withTransaction(async session => {
-    const current = await paymentCollection.findOne({ THANH_TOAN_ID: transactionId }, { session });
-    if (current && status !== undefined && ['Thành công', 'Thất bại'].includes(normalizeTransactionStatus(status))) {
-      await syncCheckoutInventory(session, current.DON_HANG_ID, normalizeTransactionStatus(status) === 'Thành công');
-    }
-    return paymentCollection.findOneAndUpdate(
+    const result = await paymentCollection.findOneAndUpdate(
       { THANH_TOAN_ID: transactionId },
       {
         $set: {
@@ -465,13 +523,12 @@ export const updateAdminTransaction = async (req: Request, res: Response) => {
           ...(paidAt !== undefined ? { NGAY_THANH_TOAN: parseOptionalDate(paidAt) || new Date() } : {}),
         },
       },
-      { returnDocument: 'after', session },
+      { returnDocument: 'after' },
     );
-    });
     if (!result) return res.status(404).json({ message: 'Không tìm thấy giao dịch.' });
     return res.status(200).json({ message: 'Transaction updated.', transaction: result });
   } catch (error: any) {
-    return res.status(error instanceof InventoryError ? error.status : 500).json({ message: 'Cannot update transaction: ' + error.message });
+    return res.status(500).json({ message: 'Cannot update transaction: ' + error.message });
   }
 };
 
@@ -489,13 +546,10 @@ export const createAdminTransaction = async (req: Request, res: Response) => {
       TRANG_THAI_THANH_TOAN: normalizeTransactionStatus(req.body.status),
       NGAY_THANH_TOAN: parseOptionalDate(req.body.paidAt) || new Date(),
     };
-    await withTransaction(async session => {
-      if (['Thành công', 'Thất bại'].includes(transaction.TRANG_THAI_THANH_TOAN)) await syncCheckoutInventory(session, transaction.DON_HANG_ID, transaction.TRANG_THAI_THANH_TOAN === 'Thành công');
-      await paymentCollection.insertOne(transaction, { session });
-    });
+    await paymentCollection.insertOne(transaction);
     return res.status(201).json({ message: 'Transaction created.', transaction });
   } catch (error: any) {
-    return res.status(error instanceof InventoryError ? error.status : 500).json({ message: 'Cannot create transaction: ' + error.message });
+    return res.status(500).json({ message: 'Cannot create transaction: ' + error.message });
   }
 };
 
@@ -507,14 +561,11 @@ export const updateAdminOrderPaymentStatus = async (req: Request, res: Response)
     const status = normalizeTransactionStatus(req.body.status);
     const amount = money(req.body.paidAmount ?? req.body.amount);
     const gateway = req.body.gateway || req.body.paymentMethod || 'Admin';
-    await withTransaction(async session => {
-    if (['Thành công', 'Thất bại'].includes(status)) await syncCheckoutInventory(session, String(orderId), status === 'Thành công');
-    const latest = (await paymentCollection.find({ DON_HANG_ID: orderId }, { session }).sort({ NGAY_THANH_TOAN: -1 }).toArray())[0];
+    const latest = (await paymentCollection.find({ DON_HANG_ID: orderId }).sort({ NGAY_THANH_TOAN: -1 }).toArray())[0];
     if (latest) {
       await paymentCollection.updateOne(
         { THANH_TOAN_ID: latest.THANH_TOAN_ID },
         { $set: { TRANG_THAI_THANH_TOAN: status, SO_TIEN: amount || latest.SO_TIEN, CONG_THANH_TOAN: gateway, NGAY_THANH_TOAN: new Date() } },
-        { session },
       );
     } else {
       const paymentId = await getNextPrefixedId('THANH_TOAN', 'THANH_TOAN_ID', 'TT', 5);
@@ -527,14 +578,13 @@ export const updateAdminOrderPaymentStatus = async (req: Request, res: Response)
         SO_TIEN: amount,
         TRANG_THAI_THANH_TOAN: status,
         NGAY_THANH_TOAN: new Date(),
-      }, { session });
+      });
     }
-    if (status === 'Thành công') await orderCollection.updateOne({ DON_HANG_ID: orderId }, { $set: { TRANG_THAI: 'Chờ xử lý', TIEN_COC: amount } }, { session });
-    });
+    if (status === 'Thành công') await orderCollection.updateOne({ DON_HANG_ID: orderId }, { $set: { TRANG_THAI: 'Chờ xử lý', TIEN_COC: amount } });
     const order = await getAdminOrderDetailById(orderId);
     return res.status(200).json({ message: 'Payment status updated.', order });
   } catch (error: any) {
-    return res.status(error instanceof InventoryError ? error.status : 500).json({ message: 'Không thể cập nhật trạng thái thanh toán: ' + error.message });
+    return res.status(500).json({ message: 'Không thể cập nhật trạng thái thanh toán: ' + error.message });
   }
 };
 
@@ -745,8 +795,76 @@ export const deleteAdminCategory = async (req: Request, res: Response) => {
   }
 };
 
-// Các API NVL / NCC / phiếu nhập / phiếu xuất đã chuyển sang controllers/inventory.ts
-// (services/inventory/*) để áp dụng quy tắc kho mới: Nháp→Đã ghi nhận, FIFO, giữ tồn, sổ biến động.
+const mapAdminMaterial = (row: any, index = 0) => ({
+  id: index + 1,
+  code: row.NGUYEN_VAT_LIEU_ID,
+  name: row.TEN_NGUYEN_VAT_LIEU || '',
+  image: row.URL_HINH_ANH || '',
+  unit: row.DON_VI_TINH || '',
+  quantity: Number(row.SO_LUONG_TON || 0),
+  importPrice: Number(row.GIA_NHAP || 0),
+  sellPrice: Number(row.GIA_BAN || 0),
+  selected: false,
+  description: row.MO_TA || '',
+  status: Number(row.SO_LUONG_TON || 0) <= 0 ? 'Hết hàng' : Number(row.SO_LUONG_TON || 0) <= 10 ? 'Sắp hết hàng' : 'Còn hàng',
+  raw: row,
+});
+
+export const getAdminMaterials = async (_req: Request, res: Response) => {
+  try {
+    const materials = (await (await getCollection<any>('NGUYEN_VAT_LIEU')).find({}).sort({ NGUYEN_VAT_LIEU_ID: 1 }).toArray()).map(mapAdminMaterial);
+    return res.status(200).json({ total: materials.length, materials });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot load materials: ' + error.message });
+  }
+};
+
+export const createAdminMaterial = async (req: Request, res: Response) => {
+  try {
+    const materialCollection = await getCollection<any>('NGUYEN_VAT_LIEU');
+    const id = String(req.body.code || '').trim() || await getNextPrefixedId('NGUYEN_VAT_LIEU', 'NGUYEN_VAT_LIEU_ID', 'NVL', 3);
+    const material = {
+      _id: id,
+      NGUYEN_VAT_LIEU_ID: id,
+      TEN_NGUYEN_VAT_LIEU: req.body.name || req.body.TEN_NGUYEN_VAT_LIEU,
+      DON_VI_TINH: req.body.unit || req.body.DON_VI_TINH,
+      SO_LUONG_TON: Number(req.body.quantity ?? req.body.SO_LUONG_TON ?? 0),
+      GIA_NHAP: money(req.body.importPrice ?? req.body.GIA_NHAP),
+      GIA_BAN: money(req.body.sellPrice ?? req.body.GIA_BAN),
+      MO_TA: req.body.description || req.body.MO_TA || '',
+      URL_HINH_ANH: req.body.image || req.body.URL_HINH_ANH || '',
+    };
+    await materialCollection.insertOne(material);
+    return res.status(201).json({ message: 'Material created.', material: mapAdminMaterial(material) });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot create material: ' + error.message });
+  }
+};
+
+export const updateAdminMaterial = async (req: Request, res: Response) => {
+  try {
+    const body = req.body || {};
+    const result = await (await getCollection<any>('NGUYEN_VAT_LIEU')).findOneAndUpdate(
+      { NGUYEN_VAT_LIEU_ID: req.params.materialId },
+      {
+        $set: {
+          TEN_NGUYEN_VAT_LIEU: body.name ?? body.TEN_NGUYEN_VAT_LIEU,
+          DON_VI_TINH: body.unit ?? body.DON_VI_TINH,
+          SO_LUONG_TON: Number(body.quantity ?? body.SO_LUONG_TON ?? 0),
+          GIA_NHAP: money(body.importPrice ?? body.GIA_NHAP),
+          GIA_BAN: money(body.sellPrice ?? body.GIA_BAN),
+          MO_TA: body.description ?? body.MO_TA ?? '',
+          URL_HINH_ANH: body.image ?? body.URL_HINH_ANH ?? '',
+        },
+      },
+      { returnDocument: 'after' },
+    );
+    if (!result) return res.status(404).json({ message: 'Không tìm thấy nguyên vật liệu.' });
+    return res.status(200).json({ message: 'Material updated.', material: mapAdminMaterial(result) });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot update material: ' + error.message });
+  }
+};
 
 export const uploadAdminMaterialImage = (req: Request, res: Response) => {
   if (!req.file) return res.status(400).json({ message: 'Chưa chọn ảnh.' });
@@ -757,33 +875,278 @@ export const uploadAdminMaterialImage = (req: Request, res: Response) => {
   });
 };
 
+export const deleteAdminMaterial = async (req: Request, res: Response) => {
+  try {
+    await (await getCollection<any>('NGUYEN_VAT_LIEU')).deleteOne({ NGUYEN_VAT_LIEU_ID: req.params.materialId });
+    return res.status(200).json({ message: 'Material deleted.' });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot delete material: ' + error.message });
+  }
+};
+
+export const getAdminSuppliers = async (_req: Request, res: Response) => {
+  try {
+    const suppliers = await (await getCollection<any>('NHA_CUNG_CAP')).find({}).sort({ NHA_CUNG_CAP_ID: 1 }).toArray();
+    return res.status(200).json({ total: suppliers.length, suppliers });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot load suppliers: ' + error.message });
+  }
+};
+
+export const createAdminSupplier = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.body.code || '').trim() || await getNextPrefixedId('NHA_CUNG_CAP', 'NHA_CUNG_CAP_ID', 'NCC', 3);
+    const supplier = {
+      _id: id,
+      NHA_CUNG_CAP_ID: id,
+      TEN_NHA_CUNG_CAP: req.body.name || req.body.TEN_NHA_CUNG_CAP,
+      NGUOI_DAI_DIEN: req.body.representative || req.body.NGUOI_DAI_DIEN || '',
+      SDT: req.body.phone || req.body.SDT || '',
+      EMAIL: req.body.email || req.body.EMAIL || '',
+      DIA_CHI: req.body.address || req.body.DIA_CHI || '',
+      MA_SO_THUE: req.body.taxCode || req.body.MA_SO_THUE || '',
+      TRANG_THAI: req.body.status || req.body.TRANG_THAI || 'Hoạt động',
+    };
+    await (await getCollection<any>('NHA_CUNG_CAP')).insertOne(supplier);
+    return res.status(201).json({ message: 'Supplier created.', supplier });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot create supplier: ' + error.message });
+  }
+};
+
+export const updateAdminSupplier = async (req: Request, res: Response) => {
+  try {
+    const body = req.body || {};
+    const result = await (await getCollection<any>('NHA_CUNG_CAP')).findOneAndUpdate(
+      { NHA_CUNG_CAP_ID: req.params.supplierId },
+      {
+        $set: {
+          TEN_NHA_CUNG_CAP: body.name ?? body.TEN_NHA_CUNG_CAP,
+          NGUOI_DAI_DIEN: body.representative ?? body.NGUOI_DAI_DIEN ?? '',
+          SDT: body.phone ?? body.SDT ?? '',
+          EMAIL: body.email ?? body.EMAIL ?? '',
+          DIA_CHI: body.address ?? body.DIA_CHI ?? '',
+          MA_SO_THUE: body.taxCode ?? body.MA_SO_THUE ?? '',
+          TRANG_THAI: body.status ?? body.TRANG_THAI ?? 'Hoạt động',
+        },
+      },
+      { returnDocument: 'after' },
+    );
+    if (!result) return res.status(404).json({ message: 'Không tìm thấy nhà cung cấp.' });
+    return res.status(200).json({ message: 'Supplier updated.', supplier: result });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot update supplier: ' + error.message });
+  }
+};
+
+export const deleteAdminSupplier = async (req: Request, res: Response) => {
+  try {
+    await (await getCollection<any>('NHA_CUNG_CAP')).deleteOne({ NHA_CUNG_CAP_ID: req.params.supplierId });
+    return res.status(200).json({ message: 'Supplier deleted.' });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot delete supplier: ' + error.message });
+  }
+};
+
+const getReceiptDetails = (body: any) => Array.isArray(body.details)
+  ? body.details
+  : Array.isArray(body.materials)
+    ? body.materials
+    : [];
+
+const adjustStock = async (materialId: string, delta: number) => {
+  await (await getCollection<any>('NGUYEN_VAT_LIEU')).updateOne(
+    { NGUYEN_VAT_LIEU_ID: materialId },
+    { $inc: { SO_LUONG_TON: delta } },
+  );
+};
+
+const mapImportDetail = (receiptId: string, detail: any) => {
+  const materialId = detail.materialCode || detail.materialId || detail.NGUYEN_VAT_LIEU_ID;
+  const quantity = Number(detail.quantity ?? detail.SO_LUONG_NHAP ?? 0);
+  const unitPrice = money(detail.unitPrice ?? detail.DON_GIA_NHAP);
+  return {
+    _id: { PHIEU_NHAP_ID: receiptId, NGUYEN_VAT_LIEU_ID: materialId },
+    PHIEU_NHAP_ID: receiptId,
+    NGUYEN_VAT_LIEU_ID: materialId,
+    SO_LUONG_NHAP: quantity,
+    DON_GIA_NHAP: unitPrice,
+    THANH_TIEN: quantity * unitPrice,
+  };
+};
+
+const mapExportDetail = (receiptId: string, detail: any) => {
+  const materialId = detail.materialCode || detail.materialId || detail.NGUYEN_VAT_LIEU_ID;
+  return {
+    _id: { PHIEU_XUAT_ID: receiptId, NGUYEN_VAT_LIEU_ID: materialId },
+    PHIEU_XUAT_ID: receiptId,
+    NGUYEN_VAT_LIEU_ID: materialId,
+    SO_LUONG_XUAT: Number(detail.quantity ?? detail.SO_LUONG_XUAT ?? 0),
+  };
+};
+
+export const getAdminImports = async (_req: Request, res: Response) => {
+  try {
+    const imports = await (await getCollection<any>('PHIEU_NHAP_NVL')).find({}).sort({ NGAY_NHAP: -1 }).toArray();
+    return res.status(200).json({ total: imports.length, imports });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot load imports: ' + error.message });
+  }
+};
+
+export const createAdminImport = async (req: Request, res: Response) => {
+  try {
+    const receiptId = await getNextPrefixedId('PHIEU_NHAP_NVL', 'PHIEU_NHAP_ID', 'PN', 6);
+    const details = getReceiptDetails(req.body).map((detail: any) => mapImportDetail(receiptId, detail));
+    const total = details.reduce((sum: number, detail: any) => sum + Number(detail.THANH_TIEN || 0), 0);
+    const receipt = {
+      _id: receiptId,
+      PHIEU_NHAP_ID: receiptId,
+      NHA_CUNG_CAP_ID: req.body.supplier || req.body.supplierCode || req.body.NHA_CUNG_CAP_ID || null,
+      NHAN_VIEN_ID: req.body.staff || req.body.employeeId || await getFirstEmployeeId(),
+      NGAY_NHAP: parseOptionalDate(req.body.importDate) || new Date(),
+      TONG_TIEN: total,
+      GHI_CHU: req.body.note || req.body.GHI_CHU || null,
+    };
+    await (await getCollection<any>('PHIEU_NHAP_NVL')).insertOne(receipt);
+    if (details.length) await (await getCollection<any>('CHI_TIET_PHIEU_NHAP_NVL')).insertMany(details);
+    for (const detail of details) await adjustStock(detail.NGUYEN_VAT_LIEU_ID, Number(detail.SO_LUONG_NHAP || 0));
+    return res.status(201).json({ message: 'Import created.', import: receipt, details });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot create import: ' + error.message });
+  }
+};
+
+export const updateAdminImport = async (req: Request, res: Response) => {
+  try {
+    const { receiptId } = req.params;
+    await deleteImportDetailsAndReverseStock(receiptId);
+    const details = getReceiptDetails(req.body).map((detail: any) => mapImportDetail(receiptId, detail));
+    const total = details.reduce((sum: number, detail: any) => sum + Number(detail.THANH_TIEN || 0), 0);
+    await (await getCollection<any>('PHIEU_NHAP_NVL')).updateOne(
+      { PHIEU_NHAP_ID: receiptId },
+      {
+        $set: {
+          NHA_CUNG_CAP_ID: req.body.supplier || req.body.supplierCode || req.body.NHA_CUNG_CAP_ID || null,
+          NHAN_VIEN_ID: req.body.staff || req.body.employeeId || await getFirstEmployeeId(),
+          NGAY_NHAP: parseOptionalDate(req.body.importDate) || new Date(),
+          TONG_TIEN: total,
+          GHI_CHU: req.body.note || req.body.GHI_CHU || null,
+        },
+      },
+    );
+    if (details.length) await (await getCollection<any>('CHI_TIET_PHIEU_NHAP_NVL')).insertMany(details);
+    for (const detail of details) await adjustStock(detail.NGUYEN_VAT_LIEU_ID, Number(detail.SO_LUONG_NHAP || 0));
+    return res.status(200).json({ message: 'Import updated.', details });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot update import: ' + error.message });
+  }
+};
+
+const deleteImportDetailsAndReverseStock = async (receiptId: string) => {
+  const detailCollection = await getCollection<any>('CHI_TIET_PHIEU_NHAP_NVL');
+  const details = await detailCollection.find({ PHIEU_NHAP_ID: receiptId }).toArray();
+  for (const detail of details) await adjustStock(detail.NGUYEN_VAT_LIEU_ID, -Number(detail.SO_LUONG_NHAP || 0));
+  await detailCollection.deleteMany({ PHIEU_NHAP_ID: receiptId });
+};
+
+export const deleteAdminImport = async (req: Request, res: Response) => {
+  try {
+    const { receiptId } = req.params;
+    await deleteImportDetailsAndReverseStock(receiptId);
+    await (await getCollection<any>('PHIEU_NHAP_NVL')).deleteOne({ PHIEU_NHAP_ID: receiptId });
+    return res.status(200).json({ message: 'Import deleted.' });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot delete import: ' + error.message });
+  }
+};
+
+export const getAdminExports = async (_req: Request, res: Response) => {
+  try {
+    const exports = await (await getCollection<any>('PHIEU_XUAT_NVL')).find({}).sort({ NGAY_XUAT: -1 }).toArray();
+    return res.status(200).json({ total: exports.length, exports });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot load exports: ' + error.message });
+  }
+};
+
+export const createAdminExport = async (req: Request, res: Response) => {
+  try {
+    const receiptId = await getNextPrefixedId('PHIEU_XUAT_NVL', 'PHIEU_XUAT_ID', 'PX', 6);
+    const details = getReceiptDetails(req.body).map((detail: any) => mapExportDetail(receiptId, detail));
+    const receipt = {
+      _id: receiptId,
+      PHIEU_XUAT_ID: receiptId,
+      NHAN_VIEN_ID: req.body.staff || req.body.employeeId || await getFirstEmployeeId(),
+      NGAY_XUAT: parseOptionalDate(req.body.exportDate) || new Date(),
+      LY_DO_XUAT: req.body.reason || req.body.LY_DO_XUAT || null,
+      GHI_CHU: req.body.note || req.body.GHI_CHU || null,
+    };
+    await (await getCollection<any>('PHIEU_XUAT_NVL')).insertOne(receipt);
+    if (details.length) await (await getCollection<any>('CHI_TIET_PHIEU_XUAT_NVL')).insertMany(details);
+    for (const detail of details) await adjustStock(detail.NGUYEN_VAT_LIEU_ID, -Number(detail.SO_LUONG_XUAT || 0));
+    return res.status(201).json({ message: 'Export created.', export: receipt, details });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot create export: ' + error.message });
+  }
+};
+
+const deleteExportDetailsAndReverseStock = async (receiptId: string) => {
+  const detailCollection = await getCollection<any>('CHI_TIET_PHIEU_XUAT_NVL');
+  const details = await detailCollection.find({ PHIEU_XUAT_ID: receiptId }).toArray();
+  for (const detail of details) await adjustStock(detail.NGUYEN_VAT_LIEU_ID, Number(detail.SO_LUONG_XUAT || 0));
+  await detailCollection.deleteMany({ PHIEU_XUAT_ID: receiptId });
+};
+
+export const updateAdminExport = async (req: Request, res: Response) => {
+  try {
+    const { receiptId } = req.params;
+    await deleteExportDetailsAndReverseStock(receiptId);
+    const details = getReceiptDetails(req.body).map((detail: any) => mapExportDetail(receiptId, detail));
+    await (await getCollection<any>('PHIEU_XUAT_NVL')).updateOne(
+      { PHIEU_XUAT_ID: receiptId },
+      {
+        $set: {
+          NHAN_VIEN_ID: req.body.staff || req.body.employeeId || await getFirstEmployeeId(),
+          NGAY_XUAT: parseOptionalDate(req.body.exportDate) || new Date(),
+          LY_DO_XUAT: req.body.reason || req.body.LY_DO_XUAT || null,
+          GHI_CHU: req.body.note || req.body.GHI_CHU || null,
+        },
+      },
+    );
+    if (details.length) await (await getCollection<any>('CHI_TIET_PHIEU_XUAT_NVL')).insertMany(details);
+    for (const detail of details) await adjustStock(detail.NGUYEN_VAT_LIEU_ID, -Number(detail.SO_LUONG_XUAT || 0));
+    return res.status(200).json({ message: 'Export updated.', details });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot update export: ' + error.message });
+  }
+};
+
+export const deleteAdminExport = async (req: Request, res: Response) => {
+  try {
+    const { receiptId } = req.params;
+    await deleteExportDetailsAndReverseStock(receiptId);
+    await (await getCollection<any>('PHIEU_XUAT_NVL')).deleteOne({ PHIEU_XUAT_ID: receiptId });
+    return res.status(200).json({ message: 'Export deleted.' });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot delete export: ' + error.message });
+  }
+};
+
 export const updateAdminOrderStatus = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
     const status = String(req.body.status || req.body.TRANG_THAI || '').trim();
     if (!status) return res.status(400).json({ message: 'Missing status.' });
-    await withTransaction(async session => {
-    const orders = await getCollection<any>('DON_HANG');
-    const current = await orders.findOne({ DON_HANG_ID: orderId }, { session });
-    if (current?.KIEM_TRA_TON_KHO && status === 'Đã hủy') {
-      await releaseReservations({ orderId }, { id: String(req.headers['x-admin-id'] || ''), role: 'Admin' }, 'Admin hủy đơn', session);
-    }
     await (await getCollection<any>('DON_HANG')).updateOne(
       { DON_HANG_ID: orderId },
       {
         $set: {
           TRANG_THAI: status,
           ...(req.body.rejectReason ? { LY_DO_TU_CHOI: String(req.body.rejectReason).trim() } : {}),
-          // Mốc thời gian cho Dashboard/Báo cáo (D05): doanh thu tính theo ngày hoàn thành, tỷ lệ hủy theo ngày hủy
-          ...(status === 'Hoàn thành' && !current?.NGAY_HOAN_THANH ? { NGAY_HOAN_THANH: new Date() } : {}),
-          ...(status === 'Đã hủy' && !current?.NGAY_HUY ? { NGAY_HUY: new Date() } : {}),
-          NGAY_CAP_NHAT: new Date(),
         },
       },
-      { session },
     );
-    });
-    invalidateAnalyticsCache(); // Dashboard lấy số mới ở lần xem tiếp theo
     const order = await getAdminOrderDetailById(orderId);
     return res.status(200).json({ message: 'Order status updated.', order });
   } catch (error: any) {
@@ -837,7 +1200,7 @@ export const getAdminDashboard = async (_req: Request, res: Response) => {
         revenue: orders.reduce((sum, order) => sum + Number(order.TONG_TIEN || 0), 0),
         newCustomers: customers.length,
         productsSold: details.reduce((sum, detail) => sum + Number(detail.SO_LUONG || 0), 0),
-        warningMaterials: materials.filter((material) => material.TRANG_THAI !== 'Ngừng sử dụng' && (Number(material.TON_THUC ?? material.SO_LUONG_TON ?? 0) - Number(material.TON_DANG_GIU || 0) - Number(material.TON_KHONG_DAT || 0)) <= Number(material.NGUONG_CANH_BAO ?? 10)).length,
+        warningMaterials: materials.filter((material) => Number(material.SO_LUONG_TON || 0) <= 10).length,
       },
       chart: [],
       orders: recentOrders,
@@ -849,16 +1212,7 @@ export const getAdminDashboard = async (_req: Request, res: Response) => {
         total: Number(order.TONG_TIEN || 0),
       })),
       bestProducts,
-      // Cảnh báo NVL theo tồn KHẢ DỤNG so với ngưỡng (D01.7 tầng 1)
-      warningMaterials: materials
-        .filter((material) => material.TRANG_THAI !== 'Ngừng sử dụng')
-        .map((material) => {
-          const available = Number(material.TON_THUC ?? material.SO_LUONG_TON ?? 0) - Number(material.TON_DANG_GIU || 0) - Number(material.TON_KHONG_DAT || 0);
-          const threshold = Number(material.NGUONG_CANH_BAO ?? 10) || 1;
-          return { id: material.NGUYEN_VAT_LIEU_ID, name: material.TEN_NGUYEN_VAT_LIEU, image: material.URL_HINH_ANH || '', unit: material.DON_VI_TINH || '', quantity: Math.max(0, available), ratio: available / threshold };
-        })
-        .sort((a, b) => a.ratio - b.ratio)
-        .slice(0, 5),
+      warningMaterials: materials.sort((a, b) => Number(a.SO_LUONG_TON || 0) - Number(b.SO_LUONG_TON || 0)).slice(0, 5),
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot load dashboard: ' + error.message });

@@ -1,9 +1,6 @@
-import contentRoutes from './routes/content.js';
-import { startContentJobs } from './services/content.service.js';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { connectMongo } from './mongo.js';
-import { ensureSalesRequestIndexes } from './services/sales-proposal.service.js';
 
 import customerRoutes from './routes/customer.js';
 import employeeRoutes from './routes/employee.js';
@@ -50,14 +47,11 @@ import collectionProductRoutes from './routes/collectionProduct.js';
 import styleRoutes from './routes/style.js';
 import categoryProductRoutes from './routes/categoryProduct.js';
 import contactRoutes from './routes/contact.js';
-import supportRoutes from './routes/support.js';
 import adminRoutes from './routes/admin.js';
 import rolePermissionRoutes from './routes/rolePermission.js';
-import inventoryRoutes from './routes/inventory.js';
-import analyticsRoutes from './routes/analytics.js';
-import { ensureNotificationIndexes, startNotificationJobs } from './services/analytics/notifications.service.js';
-import { getProductAvailability } from './controllers/inventory.js';
-import { ensureInventoryIndexes, startInventoryJobs } from './services/inventory/setup.js';
+import { authRoutes } from './routes/auth.js';
+import { accountAdministration } from './routes/accountAdministration.js';
+import { requireAdminPermission } from './middleware/rolePermission.js';
 
 const app = express();
 const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
@@ -81,16 +75,19 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json({ limit: '8mb' }));
-app.use('/api/support', supportRoutes);
-app.use('/api/content', contentRoutes);
+app.use(express.json());
 app.use('/uploads', express.static('uploads'));
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', accountAdministration);
+for (const [route, module] of Object.entries({
+  employees: 'permissions', addresses: 'customers', wishlists: 'customers',
+  'cart-details': 'customers', 'order-details': 'orders', payments: 'payments',
+  'order-vouchers': 'orders', 'image-requests': 'customerService',
+})) app.use('/api/' + route, requireAdminPermission(module));
 
 app.use('/api/customers', customerRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/addresses', addressRoutes);
-// Kiểm tra khả năng đáp ứng (public) — đặt trước productRoutes
-app.get('/api/products/:id/availability', getProductAvailability);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/product-images', productImageRoutes);
@@ -147,10 +144,12 @@ app.use('/api/collection-products', collectionProductRoutes);
 app.use('/api/styles', styleRoutes);
 app.use('/api/category-products', categoryProductRoutes);
 app.use('/api/contacts', contactRoutes);
-app.use('/api/admin', inventoryRoutes);
-app.use('/api/admin', analyticsRoutes);
 app.use('/api/admin', rolePermissionRoutes);
 app.use('/api/admin', adminRoutes);
+
+app.all('/api/*', (_req: Request, res: Response) => {
+  res.status(404).json({ message: 'Đường dẫn API không tồn tại.' });
+});
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Backend TIEM_HOA_YEN đang chạy!');
@@ -165,15 +164,6 @@ const PORT = Number(process.env.PORT ?? 3000);
 (async () => {
   try {
     await connectMongo();
-    if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureInventoryIndexes();
-    await ensureSalesRequestIndexes();
-    await (await import('./services/order-access.service.js')).ensureOrderAccessIndexes();
-    await (await import('./services/support.service.js')).ensureSupportIndexes();
-    await (await import('./mongo.js')).getCollection('NOI_DUNG_WEBSITE').then(c=>c.createIndex({MA_NOI_DUNG:1},{unique:true}));
-    startContentJobs();
-    if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startInventoryJobs();
-    if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureNotificationIndexes();
-    if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startNotificationJobs();
 
     app.listen(PORT, () => {
       console.log(`\nServer: http://localhost:${PORT}`);

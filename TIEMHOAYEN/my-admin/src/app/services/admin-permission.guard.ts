@@ -20,6 +20,9 @@ export const adminPermissionGuard: CanActivateFn = (route) => {
     return router.parseUrl('/login');
   }
 
+  const role = localStorage.getItem('adminRole');
+  if (role === 'Admin') return true;
+
   const moduleKey = String(route.data?.['module'] || '');
   if (!moduleKey) return true;
 

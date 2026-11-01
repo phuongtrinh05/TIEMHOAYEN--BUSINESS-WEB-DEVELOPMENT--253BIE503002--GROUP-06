@@ -1,4 +1,5 @@
 <div class="account-page">
+    <p *ngIf="loadError" class="text-danger" role="alert">{{ loadError }}</p>
     <div class="account-card">
         <div class="toolbar">
             <div class="search-box">

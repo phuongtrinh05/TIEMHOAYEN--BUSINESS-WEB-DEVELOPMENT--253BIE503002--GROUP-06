@@ -1,7 +1,4 @@
-import {WebsiteContent} from './pages/website-content/website-content';
 import { Routes } from '@angular/router';
-import { OrderRequest } from './pages/orders/order-request/order-request';
-import { RequestHistory } from './pages/orders/request-history/request-history';
 
 import { ChatbotWidget } from './components/chatbot-widget/chatbot-widget';
 
@@ -29,6 +26,7 @@ import { ForgotPasswordComponent } from './pages/forgot-password/forgot-password
 // =========================
 import { CartComponent } from './pages/orders/cart/cart';
 import { CheckoutComponent } from './pages/orders/checkout/checkout';
+import { OrderList } from './pages/orders/order-list/order-list';
 
 // =========================
 // ORDERS
@@ -47,11 +45,9 @@ import { ProductDetailComponent } from './pages/product-detail/product-detail';
 // POLICY
 // =========================
 import { PolicyLayoutComponent } from './pages/policy/policy-layout';
+import { PageNotFoundComponent } from './pages/page-not-found/page-not-found';
 
 export const routes: Routes = [
- {path:'website/noi-dung/:code',component:WebsiteContent},
-  { path: 'order-requests', component: RequestHistory, title: 'Yêu cầu đặt hoa của tôi - Tiệm Hoa Yên' },
-  { path: 'order-request/:id', component: OrderRequest, title: 'Yêu cầu đặt hàng - Tiệm Hoa Yên' },
   // =========================
   // DEFAULT
   // =========================
@@ -149,8 +145,7 @@ export const routes: Routes = [
   },
   {
     path: 'order-list',
-    redirectTo: 'order-requests',
-    pathMatch: 'full',
+    component: OrderList,
     title: 'Danh sách đơn hàng - Tiệm Hoa Yên',
   },
 
@@ -337,6 +332,7 @@ export const routes: Routes = [
   // =========================
   {
     path: '**',
-    redirectTo: '',
+    component: PageNotFoundComponent,
+    title: 'Không tìm thấy trang - Tiệm Hoa Yên',
   },
 ];

@@ -1,121 +1,186 @@
-import {retainContentFiles} from '../services/content-files.service.js';
 import { Request, Response } from 'express';
-import { getCollection, escapeRegex } from '../mongo.js';
-import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
-import { BLOG_CATEGORIES, publicBlogQuery, blogStatus, blogFields, enrichBlog, publishDueBlogs, versionQuery, newContentId, contentError } from '../services/content.service.js';
-export async function categories(_req: Request, res: Response) { try {
-    const existing = await (await getCollection<any>('BAI_VIET')).distinct('DANH_MUC_BLOG', publicBlogQuery);
-    res.json([...new Set([...BLOG_CATEGORIES, ...existing.filter(Boolean)])]);
-}
-catch (e) {
-    contentError(res, e);
-} }
-export async function list(req: Request, res: Response) {
-    try {
-        await publishDueBlogs();
-        const admin = !!res.locals.contentEmployee;
-        const query: any = admin ? {} : { ...publicBlogQuery };
-        const keyword = String(req.query.keyword || '').trim().slice(0, 150);
-        if (keyword)
-            query.$or = [{ TIEU_DE: { $regex: escapeRegex(keyword), $options: 'i' } }, { BAI_VIET_ID: { $regex: escapeRegex(keyword), $options: 'i' } }];
-        if (req.query.category)
-            query.DANH_MUC_BLOG = String(req.query.category);
-        if (admin && req.query.status)
-            query.TRANG_THAI = req.query.status === 'Đã đăng' ? { $in: ['Đã đăng', 'Hiển thị'] } : String(req.query.status);
-        if (admin && (req.query.from || req.query.to)) {
-            query.NGAY_CAP_NHAT = {};
-            for (const k of ['from', 'to'])
-                if (req.query[k]) {
-                    const d = new Date(String(req.query[k]));
-                    if (!Number.isFinite(d.getTime()))
-                        throw new InventoryError(400, 'Ngày lọc không hợp lệ.');
-                    query.NGAY_CAP_NHAT[k === 'from' ? '$gte' : '$lte'] = d;
-                }
-        }
-        const col = await getCollection<any>('BAI_VIET');
-        const page = Math.min(100000, Math.max(1, Math.floor(Number(req.query.page) || 1))), pageSize = Math.min(50, Math.max(1, Math.floor(Number(req.query.pageSize) || 12)));
-        const paged = req.query.page !== undefined;
-        const sorts:Record<string,any>={newest:{NGAY_DANG:-1,NGAY_CAP_NHAT:-1,BAI_VIET_ID:1},oldest:{NGAY_DANG:1,BAI_VIET_ID:1},views:{LUOT_XEM:-1,BAI_VIET_ID:1},code:{BAI_VIET_ID:1}};
-        const rows = await col.find(query).sort(sorts[String(req.query.sort)]||sorts.newest).skip(paged ? (page - 1) * pageSize : 0).limit(paged ? pageSize : 100).toArray();
-        const blogs = await Promise.all(rows.map(r => enrichBlog(r, admin)));
-        res.json(paged ? { blogs, total: await col.countDocuments(query), page, pageSize } : blogs);
+import { getCollection, getNextPrefixedId } from '../mongo.js';
+
+const DEFAULT_BLOG_STATUS = 'Hiển thị';
+const DEFAULT_STAFF_ID = 'NV001';
+
+const getBlogCollection = () => getCollection('BAI_VIET');
+
+const enrichBlog = async (blog: any) => {
+  if (!blog) {
+    return blog;
+  }
+
+  const employeeCollection = await getCollection('NHAN_VIEN');
+  const employee = blog.NHAN_VIEN_ID
+    ? await employeeCollection.findOne({ NHAN_VIEN_ID: blog.NHAN_VIEN_ID })
+    : null;
+
+  return {
+    ...blog,
+    TEN_NHAN_VIEN: employee?.HO_TEN || null,
+    EMAIL_NHAN_VIEN: employee?.EMAIL || null,
+  };
+};
+
+const resolveStaffId = async (staffId: unknown, author: unknown, email?: unknown): Promise<string> => {
+  const employeeCollection = await getCollection('NHAN_VIEN');
+  const normalizedStaffId = String(staffId || '').trim();
+
+  if (normalizedStaffId) {
+    return normalizedStaffId;
+  }
+
+  const normalizedEmail = String(email || '').trim();
+  if (normalizedEmail) {
+    const employee = await employeeCollection.findOne(
+      { EMAIL: normalizedEmail },
+      { sort: { NHAN_VIEN_ID: 1 }, projection: { NHAN_VIEN_ID: 1 } },
+    );
+
+    if (employee?.NHAN_VIEN_ID) {
+      return employee.NHAN_VIEN_ID;
     }
-    catch (e) {
-        contentError(res, e);
+  }
+
+  const authorName = String(author || '').trim();
+  if (authorName) {
+    const employee = await employeeCollection.findOne(
+      { HO_TEN: authorName },
+      { sort: { NHAN_VIEN_ID: 1 }, projection: { NHAN_VIEN_ID: 1 } },
+    );
+
+    if (employee?.NHAN_VIEN_ID) {
+      return employee.NHAN_VIEN_ID;
     }
-}
-export async function detail(req: Request, res: Response) { try {
-    await publishDueBlogs();
-    const b = await (await getCollection<any>('BAI_VIET')).findOne({ BAI_VIET_ID: req.params.id, ...(res.locals.contentEmployee ? {} : publicBlogQuery) });
-    if (!b)
-        throw new InventoryError(404, 'Bài viết không khả dụng.');
-    res.json(await enrichBlog(b, !!res.locals.contentEmployee));
-}
-catch (e) {
-    contentError(res, e);
-} }
-export async function related(req: Request, res: Response) { try {
-    const col = await getCollection<any>('BAI_VIET');
-    const b = await col.findOne({ BAI_VIET_ID: req.params.id, ...publicBlogQuery });
-    if (!b)
-        throw new InventoryError(404, 'Bài viết không khả dụng.');
-    const same = await col.find({ ...publicBlogQuery, BAI_VIET_ID: { $ne: b.BAI_VIET_ID }, DANH_MUC_BLOG: b.DANH_MUC_BLOG }).sort({ NGAY_DANG: -1 }).limit(4).toArray();
-    const ids = [b.BAI_VIET_ID, ...same.map(x => x.BAI_VIET_ID)];
-    const more = same.length < 4 ? await col.find({ ...publicBlogQuery, BAI_VIET_ID: { $nin: ids } }).sort({ NGAY_DANG: -1 }).limit(4 - same.length).toArray() : [];
-    res.json(await Promise.all([...same, ...more].map(b => enrichBlog(b))));
-}
-catch (e) {
-    contentError(res, e);
-} }
-export async function save(req: Request, res: Response) {
-    try {
-        const col = await getCollection<any>('BAI_VIET'), id = String(req.params.id || newContentId('BV'));
-        const old = req.params.id ? await col.findOne({ BAI_VIET_ID: id }) : null;
-        if (req.params.id && !old)
-            throw new InventoryError(404, 'Không tìm thấy bài viết.');
-        const action = req.body.action || 'save';
-        const working = action === 'autosave';
-        const status = working ? (old ? blogStatus(old.TRANG_THAI) : 'Nháp') : blogStatus(req.body.status || 'Nháp');
-        if (!['Nháp', 'Chờ đăng', 'Đã đăng', 'Ẩn'].includes(status))
-            throw new InventoryError(400, 'Trạng thái không hợp lệ.');
-        const fields = blogFields(req.body, !working && ['Chờ đăng', 'Đã đăng'].includes(status));
-        let schedule: any = null;
-        if (status === 'Chờ đăng' && !working) {
-            schedule = new Date(req.body.scheduledAt);
-            if (!Number.isFinite(schedule.getTime()) || schedule.getTime() <= Date.now())
-                throw new InventoryError(400, 'Lịch đăng phải ở tương lai, theo giờ Việt Nam.');
-        }
-        await withTransaction(session=>retainContentFiles(JSON.stringify(fields),session));
-        const actor = res.locals.contentEmployee.NHAN_VIEN_ID, now = new Date();
-        if (old) {
-            const v = versionQuery(old, req.body.version);
-            const values = working ? { BAN_LAM_VIEC: { ...fields, NGAY_LUU: now, NGUOI_SUA_ID: actor }, NGAY_CAP_NHAT: now } : { ...fields, TRANG_THAI: status, THOI_DIEM_HEN_DANG: schedule, NGAY_CAP_NHAT: now, NGUOI_CAP_NHAT_ID: actor, ...(status === 'Đã đăng' && blogStatus(old.TRANG_THAI) !== 'Đã đăng' ? { NGAY_DANG: now } : {}) };
-            const r = await col.findOneAndUpdate({ BAI_VIET_ID: id, ...v }, { $set: values, $inc: { PHIEN_BAN: 1 }, ...(!working ? { $unset: { BAN_LAM_VIEC: '' } } : {}) }, { returnDocument: 'after' });
-            if (!r)
-                throw new InventoryError(409, 'Bài viết vừa thay đổi. Hãy tải lại.');
-            res.json({ blog: await enrichBlog(r, true) });
-        }
-        else {
-            const row = { BAI_VIET_ID: id, ...fields, TRANG_THAI: status, THOI_DIEM_HEN_DANG: schedule, NGAY_TAO: now, NGAY_CAP_NHAT: now, NGAY_DANG: status === 'Đã đăng' ? now : null, NHAN_VIEN_ID: actor, NGUOI_CAP_NHAT_ID: actor, PHIEN_BAN: 1, LUOT_XEM: 0 };
-            await col.insertOne(row);
-            res.status(201).json({ blog: await enrichBlog(row, true) });
-        }
+  }
+
+  const fallback = await employeeCollection.findOne(
+    {},
+    { sort: { NHAN_VIEN_ID: 1 }, projection: { NHAN_VIEN_ID: 1 } },
+  );
+
+  return fallback?.NHAN_VIEN_ID || DEFAULT_STAFF_ID;
+};
+
+export const getAllBlogs = async (_req: Request, res: Response) => {
+  try {
+    const collection = await getBlogCollection();
+    const blogs = await collection.find({}).sort({ NGAY_DANG: -1, BAI_VIET_ID: -1 }).toArray();
+    const enriched = await Promise.all(blogs.map(enrichBlog));
+
+    return res.status(200).json(enriched);
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot load blogs: ' + error.message });
+  }
+};
+
+export const getBlogById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const collection = await getBlogCollection();
+    const blog = await collection.findOne({ BAI_VIET_ID: id });
+
+    if (!blog) {
+      return res.status(404).json({ message: 'Không tìm thấy bài viết.' });
     }
-    catch (e) {
-        contentError(res, e);
+
+    return res.status(200).json(await enrichBlog(blog));
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot load blog: ' + error.message });
+  }
+};
+
+export const createBlog = async (req: Request, res: Response) => {
+  try {
+    const { title, content, coverImage, category, status, staffId, author, email } = req.body;
+
+    if (!String(title || '').trim() || !String(content || '').trim() || !String(category || '').trim()) {
+      return res.status(400).json({ message: 'Thiếu tiêu đề, nội dung hoặc danh mục bài viết.' });
     }
-}
-export async function remove(req: Request, res: Response) { try {
-    const col = await getCollection<any>('BAI_VIET');
-    const old = await col.findOne({ BAI_VIET_ID: req.params.id });
-    if (!old)
-        throw new InventoryError(404, 'Không tìm thấy bài viết.');
-    const v = versionQuery(old, req.body.version);
-    const r = await col.deleteOne({ BAI_VIET_ID: req.params.id, ...v });
-    if (!r.deletedCount)
-        throw new InventoryError(409, 'Bài viết vừa thay đổi.');
-    res.json({ message: 'Đã xóa bài viết.' });
-}
-catch (e) {
-    contentError(res, e);
-} }
+
+    const collection = await getBlogCollection();
+    const blogId = await getNextPrefixedId('BAI_VIET', 'BAI_VIET_ID', 'BV', 3);
+    const resolvedStaffId = await resolveStaffId(staffId, author, email);
+    const blog = {
+      BAI_VIET_ID: blogId,
+      NHAN_VIEN_ID: resolvedStaffId,
+      TIEU_DE: String(title).trim(),
+      NOI_DUNG: String(content || '').trim(),
+      ANH_BIA: String(coverImage || '').trim() || null,
+      DANH_MUC_BLOG: String(category).trim(),
+      NGAY_DANG: new Date(),
+      TRANG_THAI: String(status || DEFAULT_BLOG_STATUS).trim(),
+      LUOT_XEM: 0,
+    };
+
+    await collection.insertOne(blog);
+
+    return res.status(201).json({
+      message: 'Blog created.',
+      blog: await enrichBlog(blog),
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot create blog: ' + error.message });
+  }
+};
+
+export const updateBlog = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { title, content, coverImage, category, status, staffId, author, email } = req.body;
+
+    if (!id || !String(title || '').trim() || !String(content || '').trim() || !String(category || '').trim()) {
+      return res.status(400).json({ message: 'Thiếu thông tin bài viết.' });
+    }
+
+    const collection = await getBlogCollection();
+    const resolvedStaffId = await resolveStaffId(staffId, author, email);
+    const result = await collection.findOneAndUpdate(
+      { BAI_VIET_ID: id },
+      {
+        $set: {
+          NHAN_VIEN_ID: resolvedStaffId,
+          TIEU_DE: String(title).trim(),
+          NOI_DUNG: String(content || '').trim(),
+          ANH_BIA: String(coverImage || '').trim() || null,
+          DANH_MUC_BLOG: String(category).trim(),
+          TRANG_THAI: String(status || DEFAULT_BLOG_STATUS).trim(),
+        },
+      },
+      { returnDocument: 'after' },
+    );
+
+    if (!result) {
+      return res.status(404).json({ message: 'Không tìm thấy bài viết.' });
+    }
+
+    return res.status(200).json({
+      message: 'Blog updated.',
+      blog: await enrichBlog(result),
+    });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot update blog: ' + error.message });
+  }
+};
+
+export const deleteBlog = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ message: 'Missing blog id.' });
+    }
+
+    const collection = await getBlogCollection();
+    const result = await collection.deleteOne({ BAI_VIET_ID: id });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: 'Không tìm thấy bài viết.' });
+    }
+
+    return res.status(200).json({ message: 'Blog deleted.' });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot delete blog: ' + error.message });
+  }
+};

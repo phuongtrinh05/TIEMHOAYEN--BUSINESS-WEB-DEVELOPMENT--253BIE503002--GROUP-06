@@ -6,6 +6,8 @@ import { PageHeader2 } from '../../components/page-header-2/page-header-2';
 import { PageFooter2 } from '../../components/page-footer-2/page-footer-2';
 import { LoginService } from '../../services/login.service';
 import { Router } from '@angular/router';
+import { finalize, timeout } from 'rxjs';
+import { endSession } from '../../services/session-auth';
 @Component({
   selector: 'app-login',
   standalone: true,
@@ -22,6 +24,23 @@ constructor(
   this.restoreRememberedLogin();
 }
   loginError = '';
+  isLoggingIn = false;
+  otpChecking = false;
+  challengeId = '';
+  otpSeconds = 0;
+  private otpTimer?: ReturnType<typeof setInterval>;
+  startOtpCountdown(): void {
+    clearInterval(this.otpTimer);
+    const deadline = Date.now() + 60000;
+    this.otpSeconds = 60;
+    this.otpTimer = setInterval(() => {
+      this.otpSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      this.cdr.markForCheck();
+      if (!this.otpSeconds) clearInterval(this.otpTimer);
+    }, 250);
+  }
+  ngOnDestroy(): void { clearInterval(this.otpTimer); }
+
   loginPhoneError = '';
   showPassword = false;
   submitted = false;
@@ -90,7 +109,8 @@ constructor(
       SDT: this.forgotPhone
     }).subscribe({
 
-      next: () => {
+      next: (response: any) => {
+        this.challengeId = response.challengeId; this.startOtpCountdown();
 
         this.showForgotPasswordPopup = false;
         this.showOtpPopup = true;
@@ -100,7 +120,7 @@ constructor(
 
       error: (err) => {
         console.warn(err.error?.message);
-        this.forgotPhoneError = 'Số điện thoại không hợp lệ.';
+        this.forgotPhoneError = err.error?.message || 'Chưa gửi được mã xác minh.';
         this.cdr.detectChanges();
       }
     });
@@ -125,11 +145,13 @@ constructor(
   }
 
   onOtpKeydown(event: KeyboardEvent, index: number): void {
+    if (this.otpChecking) { event.preventDefault(); return; }
     const key = event.key;
 
     if (/^\d$/.test(key)) {
       event.preventDefault();
       this.otpValues[index] = key;
+      queueMicrotask(() => { if (this.isOtpValid()) this.verifyOtp(); });
       this.otpError = '';
 
       if (index < this.otpValues.length - 1) {
@@ -144,18 +166,10 @@ constructor(
     if (key === 'Backspace') {
       event.preventDefault();
       this.otpError = '';
-
-      if (this.otpValues[index]) {
-        this.otpValues[index] = '';
-        return;
-      }
-
-      if (index > 0) {
-        this.otpValues[index - 1] = '';
-        setTimeout(() => {
-          const prevInput = document.getElementById(`otp-${index - 1}`) as HTMLInputElement;
-          prevInput?.focus();
-        });
+      const firstFilled = this.otpValues.reduce((last, value, i) => value !== '' ? i : last, -1);
+      if (firstFilled >= 0) {
+        this.otpValues[firstFilled] = '';
+        document.getElementById('otp-' + firstFilled)?.focus();
       }
       return;
     }
@@ -166,6 +180,7 @@ constructor(
   }
 
   onOtpPaste(event: ClipboardEvent): void {
+    if (this.otpChecking) return;
     event.preventDefault();
     const digits = (event.clipboardData?.getData('text') || '')
       .replace(/\D/g, '').slice(0, 6).split('');
@@ -174,6 +189,7 @@ constructor(
     digits.forEach((digit, i) => this.otpValues[i] = digit);
     this.otpError = '';
 
+    queueMicrotask(() => { if (this.isOtpValid()) this.verifyOtp(); });
     const nextIndex = Math.min(digits.length, this.otpValues.length - 1);
     setTimeout(() => {
       const nextInput = document.getElementById(`otp-${nextIndex}`) as HTMLInputElement;
@@ -182,6 +198,7 @@ constructor(
   }
 
 verifyOtp(): void {
+  if (this.otpChecking || !this.isOtpValid()) return;
 
   this.otpError = '';
 
@@ -194,15 +211,18 @@ verifyOtp(): void {
   const otpCode =
     this.otpValues.join('');
 
+  this.otpChecking = true;
   this.loginService.verifyOtp({
 
     SDT: this.forgotPhone,
 
     OTP: otpCode
+    , challengeId: this.challengeId
 
-  }).subscribe({
+  }).pipe(timeout(20000), finalize(() => { this.otpChecking = false; this.cdr.markForCheck(); })).subscribe({
 
     next: (res: any) => {
+      sessionStorage.setItem('passwordResetToken', res.resetToken || '');
 
       if (
         res?.success === false ||
@@ -237,11 +257,12 @@ verifyOtp(): void {
 }
 
   resendOtp(): void {
+    if (this.otpSeconds > 0) return;
     this.resetOtp();
     this.loginService.sendOtp({
       SDT: this.forgotPhone
     }).subscribe({
-      next: () => {},
+      next: (res: any) => { this.challengeId = res.challengeId; this.startOtpCountdown(); },
       error: (err) => {
         console.warn(err.error?.message || 'Gửi lại OTP thất bại.');
       }
@@ -249,6 +270,7 @@ verifyOtp(): void {
 }
 
 onSubmit() {
+  if (this.isLoggingIn) return;
 
   this.submitted = true;
   this.loginError = '';
@@ -262,13 +284,15 @@ onSubmit() {
   ) {
     return;
   }
+this.isLoggingIn = true;
 this.loginService.login({
   SDT: this.formData.phone,
   MAT_KHAU: this.formData.password
 })
+.pipe(timeout(30000), finalize(() => { this.isLoggingIn = false; this.cdr.markForCheck(); }))
 .subscribe({
   next: (res) => {
-    console.log('SUCCESS:', res);
+    endSession();
     localStorage.setItem('khachHang', JSON.stringify(res.customer));
 
     if (res?.token) {
@@ -292,9 +316,6 @@ this.loginService.login({
 
   error: (err) => {
 
-    console.log('STATUS:', err.status);
-    console.log('ERROR:', err.error);
-    console.log('BODY:', this.formData);
 
     if (err.status === 404) {
       this.loginPhoneError = 'Số điện thoại không hợp lệ.';

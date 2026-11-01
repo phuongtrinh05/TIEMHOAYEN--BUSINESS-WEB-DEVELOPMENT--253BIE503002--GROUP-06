@@ -5,6 +5,7 @@ import { Router, RouterLink } from '@angular/router';
 import { PageHeader2 } from '../../components/page-header-2/page-header-2';
 import { PageFooter2 } from '../../components/page-footer-2/page-footer-2';
 import { RegisterService } from '../../services/register.service';
+import { LoginService } from '../../services/login.service';
 
 @Component({
   selector: 'app-register',
@@ -18,7 +19,8 @@ export class RegisterComponent {
   constructor(
     private registerService: RegisterService,
     private cdr: ChangeDetectorRef,
-    private router: Router
+    private router: Router,
+    private loginService: LoginService
     
   ) { }
 
@@ -28,6 +30,33 @@ export class RegisterComponent {
   showSuccessPopup = false;
   phoneError = '';
   emailError = '';
+  needsVerification = false;
+  challengeId = '';
+  verificationCode = '';
+  verificationInvalid = false;
+  onVerificationInput(value: string): void {
+    this.verificationCode = value.replace(/\D/g, '').slice(0, 6);
+    this.verificationInvalid = false;
+    if (this.verificationCode.length === 6) this.verifyRegistration();
+  }
+  verificationMessage = '';
+  busy = false;
+  sendVerification(): void {
+    if (this.busy) return;
+    this.busy = true;
+    this.loginService.sendOtp({ EMAIL: this.formData.email.trim(), purpose: 'DANG_KY' }).subscribe({
+      next: (res: any) => { this.busy = false; this.challengeId = res.challengeId; this.verificationMessage = res.message; this.cdr.markForCheck(); },
+      error: err => { this.busy = false; this.verificationMessage = err.error?.message || 'Chưa gửi được mã.'; this.cdr.markForCheck(); }
+    });
+  }
+  verifyRegistration(): void {
+    if (this.busy || !/^\d{6}$/.test(this.verificationCode)) return;
+    this.busy = true;
+    this.loginService.verifyOtp({ challengeId: this.challengeId, OTP: this.verificationCode, purpose: 'DANG_KY' }).subscribe({
+      next: () => { this.busy = false; this.needsVerification = false; this.showSuccessPopup = true; this.cdr.markForCheck(); },
+      error: err => { this.busy = false; this.verificationInvalid = true; this.verificationMessage = err.error?.message || 'Mã không hợp lệ.'; this.cdr.markForCheck(); }
+    });
+  }
 
   formData = {
     fullName: '',
@@ -43,6 +72,7 @@ export class RegisterComponent {
   toggleConfirmPassword(): void { this.showConfirmPassword = !this.showConfirmPassword; }
 
   onSubmit(): void {
+    if (this.busy || this.needsVerification) return;
     this.submitted = true;
     this.phoneError = '';
     this.emailError = '';
@@ -57,7 +87,7 @@ export class RegisterComponent {
 
     if (!/^(0[35789])\d{8}$/.test(this.formData.phone)) return;
 
-    if (this.formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.formData.email)) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.formData.email)) { this.emailError = 'Vui lòng nhập email để nhận mã xác minh.'; return; }
 
     if (this.formData.password.length < 8) return;
 
@@ -73,27 +103,18 @@ export class RegisterComponent {
       MAT_KHAU: this.formData.password
     };
 
+    this.busy = true;
     this.registerService.register(payload).subscribe({
       next: (res: any) => {
 
-        // Lưu thông tin khách hàng
-        localStorage.setItem(
-          'khachHang',
-          JSON.stringify(res.customer)
-        );
-
-        if (res.token) {
-          localStorage.setItem(
-            'token',
-            res.token
-          );
-        }
-
-        // Hiện popup thành công
-        this.showSuccessPopup = true;
+        this.busy = false;
+        this.needsVerification = true;
+        this.sendVerification();
         this.cdr.detectChanges();
       },
       error: (err) => {
+        this.busy = false;
+        this.emailError = err.error?.message || 'Đăng ký chưa thành công.';
         console.error('Lỗi status:', err.status);
         console.error('Lỗi body:', err.error);
 
@@ -121,7 +142,7 @@ export class RegisterComponent {
       new Event('auth-changed')
     );
 
-    this.router.navigate(['/']);
+    this.router.navigate(['/login']);
 
   }
 

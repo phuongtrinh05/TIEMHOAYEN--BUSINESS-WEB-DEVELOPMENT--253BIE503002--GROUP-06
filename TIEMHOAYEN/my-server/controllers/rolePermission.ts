@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { permissions } from '../services/auth.service.js';
 import { getCollection } from '../mongo.js';
 import {
   defaultRolePermissions,
@@ -23,14 +24,14 @@ export const getAdminRolePermissions = async (_req: Request, res: Response) => {
       roleCounts.set(roleName, (roleCounts.get(roleName) || 0) + Number(row.TOTAL || 0));
     }
 
-    const roles = Array.from(new Set([
+    const roles = await Promise.all(Array.from(new Set([
       ...Object.keys(defaultRolePermissions),
       ...Array.from(roleCounts.keys()),
-    ])).map((roleName) => ({
+    ])).map(async (roleName) => ({
       name: roleName,
       total: roleCounts.get(roleName) || 0,
-      permissions: getRolePermissions(roleName),
-    }));
+      permissions: await permissions(roleName),
+    })));
 
     return res.status(200).json({
       actions: permissionActions,

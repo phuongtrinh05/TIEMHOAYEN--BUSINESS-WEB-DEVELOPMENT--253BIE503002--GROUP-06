@@ -1,6 +1,4 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { apiBaseUrl } from '../../services/api-config';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import {
   Router,
   NavigationEnd,
@@ -20,10 +18,7 @@ import { AdminApiService } from '../../services/admin-api.service';
   templateUrl: './admin-header.html',
   styleUrl: './admin-header.css'
 })
-export class AdminHeader implements OnInit, OnDestroy {
-  supportPending = 0;
-  supportVisible = false;
-  private supportTimer?: ReturnType<typeof setInterval>;
+export class AdminHeader implements OnInit {
 
   pageTitle = '';
   productCount = 0;
@@ -35,7 +30,6 @@ export class AdminHeader implements OnInit, OnDestroy {
 
   private readonly routeTitles: Array<{ match: string; title: string; exact?: boolean }> = [
     { match: '/dashboard', title: 'Dashboard', exact: true },
-    { match: '/orders/requests', title: 'Yêu cầu đặt hàng' },
     { match: '/orders/order-list', title: 'Đơn hàng' },
     { match: '/orders/create-order', title: 'Tạo đơn hàng' },
     { match: '/orders/order-detail', title: 'Chi tiết đơn hàng' },
@@ -47,9 +41,6 @@ export class AdminHeader implements OnInit, OnDestroy {
     { match: '/materials/imports', title: 'Nhập kho' },
     { match: '/materials/exports', title: 'Xuất kho' },
     { match: '/materials/suppliers', title: 'Nhà cung cấp' },
-    { match: '/materials/purchase-orders', title: 'Đặt mua NCC' },
-    { match: '/materials/boms', title: 'Công thức BOM' },
-    { match: '/materials/stock', title: 'Tổng quan kho' },
     { match: '/materials', title: 'Nguyên vật liệu', exact: true },
     { match: '/customers/detail', title: 'Chi tiết khách hàng' },
     { match: '/customers/', title: 'Chi tiết khách hàng' },
@@ -68,15 +59,10 @@ export class AdminHeader implements OnInit, OnDestroy {
   constructor(
     private router: Router,
     private cdr: ChangeDetectorRef,
-    private adminApi: AdminApiService,
-    private http: HttpClient
+    private adminApi: AdminApiService
   ) {}
 
   ngOnInit(): void {
-    if (typeof window !== 'undefined') {
-      this.loadSupportSummary();
-      this.supportTimer = setInterval(() => { if (!document.hidden) this.loadSupportSummary(); }, 20000);
-    }
     
     this.updateHeader(this.router.url);
 
@@ -92,15 +78,6 @@ export class AdminHeader implements OnInit, OnDestroy {
             event.urlAfterRedirects
           );
       });
-  }
-
-  ngOnDestroy(): void { if (this.supportTimer) clearInterval(this.supportTimer); }
-
-  private loadSupportSummary(): void {
-    this.http.get<{pending:number}>(`${apiBaseUrl()}/support/admin/summary`).subscribe({
-      next: r => { this.supportPending = r.pending; this.supportVisible = true; this.cdr.markForCheck(); },
-      error: () => { this.supportVisible = false; this.cdr.markForCheck(); }
-    });
   }
 
   private updateHeader(url: string): void {
@@ -174,6 +151,7 @@ export class AdminHeader implements OnInit, OnDestroy {
   }
 
   logout(): void {
+    endSession();
     [
       'adminLoggedIn',
       'adminEmail',
@@ -187,3 +165,4 @@ export class AdminHeader implements OnInit, OnDestroy {
     this.router.navigate(['/login']);
   }
 }
+import { endSession } from '../../services/session-auth';

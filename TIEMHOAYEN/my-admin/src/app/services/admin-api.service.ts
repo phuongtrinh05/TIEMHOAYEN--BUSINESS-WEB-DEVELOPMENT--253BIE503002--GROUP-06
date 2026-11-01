@@ -1,7 +1,6 @@
-﻿import { Injectable } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, catchError, map, of, tap, timeout } from 'rxjs';
-import { apiBaseUrl } from './api-config';
 
 export interface AdminOrder {
   id: string;
@@ -35,6 +34,25 @@ export interface AdminStaffAccountsResponse {
   accounts: AdminStaffAccount[];
 }
 
+export interface AdminAuditLog {
+  _id?: string;
+  NHAT_KY_ID: string;
+  NGUOI_THUC_HIEN_ID: string | null;
+  LOAI_NGUOI_THUC_HIEN: string;
+  HANH_DONG: string;
+  DOI_TUONG_ID: string;
+  THOI_GIAN: string;
+  KET_QUA: string;
+  NOI_DUNG_THAY_DOI: any;
+}
+
+export interface AdminAuditLogsResponse {
+  total: number;
+  page: number;
+  limit: number;
+  logs: AdminAuditLog[];
+}
+
 export type AdminPermissionAction = 'view' | 'create' | 'update' | 'delete' | 'grant';
 
 export interface AdminPermissionModule {
@@ -58,6 +76,7 @@ export interface AdminRolePermissionsResponse {
 }
 
 export interface AdminLoginResponse {
+  token: string;
   employee: {
     id: string;
     name: string;
@@ -386,7 +405,6 @@ export interface AdminBlogPayload {
 }
 
 export interface AdminFAQRow {
-  SO_LUOT_HOI?: number;
   CAU_HOI_ID: string;
   CAU_HOI: string;
   CAU_TRA_LOI: string;
@@ -610,7 +628,7 @@ export interface AdminDashboardResponse {
   providedIn: 'root',
 })
 export class AdminApiService {
-  private readonly apiBaseUrl = apiBaseUrl();
+  private readonly apiBaseUrl = 'https://tiem-hoa-yen-api.onrender.com/api';
   private readonly apiUrl = `${this.apiBaseUrl}/admin`;
   private readonly employeeApiUrl = `${this.apiBaseUrl}/employees`;
   private readonly chatApiUrl = `${this.apiBaseUrl}/chats`;
@@ -624,6 +642,9 @@ export class AdminApiService {
   private productsCache: AdminProductsResponse | null = null;
   private productsCacheAt = 0;
   private readonly productsCacheTtlMs = 15000;
+  private materialsCache: AdminMaterialsResponse | null = null;
+  private materialsCacheAt = 0;
+  private readonly materialsCacheTtlMs = 15000;
 
   constructor(private readonly http: HttpClient) {}
 
@@ -636,7 +657,8 @@ export class AdminApiService {
   }
 
   getStaffAccounts(): Observable<AdminStaffAccountsResponse> {
-    return this.http.get<AdminStaffAccountsResponse>(`${this.apiUrl}/staff-accounts`).pipe(
+    return this.http.get<any>(`${this.apiUrl}/staff-accounts`).pipe(
+      map(response => ({ total: response.total, accounts: response.accounts || (response.staff || []).map((row: any) => this.mapLegacyEmployee(row)) })),
       catchError(() =>
         this.http.get<any[]>(this.employeeApiUrl).pipe(
           map((rows) => ({
@@ -650,6 +672,23 @@ export class AdminApiService {
 
   getRolePermissions(): Observable<AdminRolePermissionsResponse> {
     return this.http.get<AdminRolePermissionsResponse>(`${this.apiUrl}/role-permissions`);
+  }
+  saveStaff(code: string | null, data: object): Observable<any> {
+    return code ? this.http.patch(`${this.apiUrl}/staff-accounts/${encodeURIComponent(code)}`, data)
+      : this.http.post(`${this.apiUrl}/staff-accounts`, data);
+  }
+  saveRolePermissions(role: string, matrix: AdminRolePermissionSet): Observable<any> {
+    return this.http.put(`${this.apiUrl}/role-permissions/${encodeURIComponent(role)}`, { QUYEN: matrix });
+  }
+
+  getAuditLogs(params?: { page?: number; limit?: number; action?: string; search?: string }): Observable<AdminAuditLogsResponse> {
+    let httpParams = new HttpParams();
+    if (params?.page) httpParams = httpParams.set('page', params.page.toString());
+    if (params?.limit) httpParams = httpParams.set('limit', params.limit.toString());
+    if (params?.action) httpParams = httpParams.set('action', params.action);
+    if (params?.search) httpParams = httpParams.set('search', params.search);
+
+    return this.http.get<AdminAuditLogsResponse>(`${this.apiUrl}/audit-logs`, { params: httpParams });
   }
 
   private mapLegacyEmployee(row: any): AdminStaffAccount {
@@ -1157,5 +1196,185 @@ export class AdminApiService {
     );
   }
 
-  // API nguyên vật liệu / NCC / phiếu nhập / phiếu xuất: xem InventoryApiService (inventory-api.service.ts)
+  getMaterials(): Observable<AdminMaterialsResponse> {
+    if (this.materialsCache && Date.now() - this.materialsCacheAt < this.materialsCacheTtlMs) {
+      return of(this.materialsCache);
+    }
+
+    return this.http.get<AdminMaterialsResponse>(`${this.apiUrl}/materials`).pipe(
+      tap((response) => {
+        this.materialsCache = response;
+        this.materialsCacheAt = Date.now();
+      })
+    );
+  }
+
+  createMaterial(payload: {
+    name: string;
+    unit: string;
+    quantity: number;
+    importPrice?: number;
+    sellPrice?: number;
+    description?: string;
+    image?: string;
+  }): Observable<{ message: string; material: AdminMaterial }> {
+    return this.http.post<{ message: string; material: AdminMaterial }>(
+      `${this.apiUrl}/materials`,
+      payload
+    ).pipe(
+      tap(() => this.clearMaterialsCache())
+    );
+  }
+
+  updateMaterial(
+    materialId: string,
+    payload: {
+      name: string;
+      unit: string;
+      quantity: number;
+      importPrice?: number;
+      sellPrice?: number;
+      description?: string;
+      image?: string;
+    }
+  ): Observable<{ message: string; material: AdminMaterial }> {
+    return this.http.put<{ message: string; material: AdminMaterial }>(
+      `${this.apiUrl}/materials/${encodeURIComponent(materialId)}`,
+      payload
+    ).pipe(
+      tap(() => this.clearMaterialsCache())
+    );
+  }
+
+  uploadMaterialImage(file: File): Observable<{ message: string; imageUrl: string }> {
+    const formData = new FormData();
+    formData.append('image', file);
+
+    return this.http.post<{ message: string; imageUrl: string }>(
+      `${this.apiUrl}/materials/upload-image`,
+      formData
+    );
+  }
+
+  deleteMaterial(materialId: string): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(
+      `${this.apiUrl}/materials/${encodeURIComponent(materialId)}`
+    ).pipe(
+      tap(() => this.clearMaterialsCache())
+    );
+  }
+
+  private clearMaterialsCache(): void {
+    this.materialsCache = null;
+    this.materialsCacheAt = 0;
+  }
+
+  getSuppliers(filters: { search?: string; status?: string } = {}): Observable<AdminSuppliersResponse> {
+    let params = new HttpParams();
+    const search = filters.search?.trim();
+    const status = filters.status?.trim();
+
+    if (search) {
+      params = params.set('search', search);
+    }
+
+    if (status) {
+      params = params.set('status', status);
+    }
+
+    return this.http.get<AdminSuppliersResponse>(`${this.apiUrl}/suppliers`, { params });
+  }
+
+  createSupplier(payload: Partial<AdminSupplier>): Observable<{ message: string; supplier: AdminSupplier }> {
+    return this.http.post<{ message: string; supplier: AdminSupplier }>(
+      `${this.apiUrl}/suppliers`,
+      payload
+    );
+  }
+
+  updateSupplier(
+    supplierId: string,
+    payload: Partial<AdminSupplier>
+  ): Observable<{ message: string; supplier: AdminSupplier }> {
+    return this.http.put<{ message: string; supplier: AdminSupplier }>(
+      `${this.apiUrl}/suppliers/${encodeURIComponent(supplierId)}`,
+      payload
+    );
+  }
+
+  deleteSupplier(supplierId: string): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(
+      `${this.apiUrl}/suppliers/${encodeURIComponent(supplierId)}`
+    );
+  }
+
+  getImports(): Observable<AdminImportsResponse> {
+    return this.http.get<AdminImportsResponse>(`${this.apiUrl}/imports`);
+  }
+
+  createImport(payload: {
+    supplier: string;
+    importDate: string;
+    note: string;
+    details: Array<{ materialCode: string; quantity: number; unitPrice: number }>;
+  }): Observable<{ message: string; code: string }> {
+    return this.http.post<{ message: string; code: string }>(`${this.apiUrl}/imports`, payload);
+  }
+
+  updateImport(
+    receiptId: string,
+    payload: {
+      supplier: string;
+      importDate: string;
+      note: string;
+      details: Array<{ materialCode: string; quantity: number; unitPrice: number }>;
+    }
+  ): Observable<{ message: string }> {
+    return this.http.put<{ message: string }>(
+      `${this.apiUrl}/imports/${encodeURIComponent(receiptId)}`,
+      payload
+    );
+  }
+
+  deleteImport(receiptId: string): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(
+      `${this.apiUrl}/imports/${encodeURIComponent(receiptId)}`
+    );
+  }
+
+  getExports(): Observable<AdminExportsResponse> {
+    return this.http.get<AdminExportsResponse>(`${this.apiUrl}/exports`);
+  }
+
+  createExport(payload: {
+    staff: string;
+    exportDate: string;
+    reason: string;
+    note: string;
+    details: Array<{ materialCode: string; quantity: number }>;
+  }): Observable<{ message: string; code: string }> {
+    return this.http.post<{ message: string; code: string }>(`${this.apiUrl}/exports`, payload);
+  }
+
+  updateExport(
+    receiptId: string,
+    payload: {
+      staff: string;
+      exportDate: string;
+      reason: string;
+      note: string;
+      details: Array<{ materialCode: string; quantity: number }>;
+    }
+  ): Observable<{ message: string }> {
+    return this.http.put<{ message: string }>(
+      `${this.apiUrl}/exports/${encodeURIComponent(receiptId)}`,
+      payload
+    );
+  }
+
+  deleteExport(receiptId: string): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(
+      `${this.apiUrl}/exports/${encodeURIComponent(receiptId)}`
+    );
+  }
 }

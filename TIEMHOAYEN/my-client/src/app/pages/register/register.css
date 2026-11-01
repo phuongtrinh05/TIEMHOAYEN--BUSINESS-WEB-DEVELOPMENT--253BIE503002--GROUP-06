@@ -1115,3 +1115,4 @@ body {
   .btn-register { width:100%; }
   .login-redirect { font-size:.9rem; }
 }
+.form-control.is-invalid { border: 2px solid #dc3545; color: #dc3545; background: #fff5f5; }

@@ -33,7 +33,6 @@ export class AdminSidebar implements OnInit, OnDestroy {
   mainMenuItems: SidebarItem[] = [
     { label: 'Dashboard', icon: 'bi-house', route: '/dashboard', module: 'dashboard', exact: true },
     { label: 'Đơn hàng', icon: 'bi-cart', route: '/orders/order-list', module: 'orders' },
-    { label: 'Yêu cầu đặt hàng', icon: 'bi-inbox', route: '/orders/requests', module: 'orders' },
     { label: 'Thanh toán', icon: 'bi-credit-card', route: '/transactions', module: 'payments' },
     { label: 'Sản phẩm', icon: 'bi-box-seam', route: '/products/product-list', module: 'products' },
     { label: 'Nguyên vật liệu', icon: 'bi-flower1', route: '/materials', module: 'materials' },
@@ -46,6 +45,7 @@ export class AdminSidebar implements OnInit, OnDestroy {
   adminMenuItems: SidebarItem[] = [
     { label: 'Tài khoản quản trị', icon: 'bi-person-gear', route: '/admin-account', module: 'permissions' },
     { label: 'Phân quyền', icon: 'bi-gear', route: '/role-permission', module: 'permissions' },
+    { label: 'Nhật ký hệ thống', icon: 'bi-clock-history', route: '/audit-logs', module: 'system' },
   ];
 
   constructor(private router: Router) {}
@@ -86,6 +86,7 @@ export class AdminSidebar implements OnInit, OnDestroy {
   }
 
   canView(moduleKey: string): boolean {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('adminRole') === 'Admin') return true;
     return Boolean(this.permissions[moduleKey]?.view);
   }
 
@@ -110,6 +111,7 @@ export class AdminSidebar implements OnInit, OnDestroy {
   }
 
   logout(): void {
+    endSession();
     [
       'adminLoggedIn',
       'adminEmail',
@@ -125,3 +127,4 @@ export class AdminSidebar implements OnInit, OnDestroy {
     this.router.navigate(['/login']);
   }
 }
+import { endSession } from '../../services/session-auth';

@@ -1,8 +1,6 @@
-import {ContentWorkspace} from './pages/content/content-workspace/content-workspace';
-﻿import { Routes } from '@angular/router';
+import { Routes } from '@angular/router';
 
 import { Login } from './pages/login/login';
-import { OrderRequests } from './pages/orders/order-requests/order-requests';
 
 import { Dashboard } from './pages/dashboard/dashboard';
 
@@ -13,9 +11,6 @@ import { MaterialListComponent } from './pages/materials/material-list/material-
 import { ImportListComponent } from './pages/materials/import-list/import-list';
 import { ExportListComponent } from './pages/materials/export-list/export-list';
 import { SupplierListComponent } from './pages/materials/supplier-list/supplier-list';
-import { PurchaseOrderListComponent } from './pages/materials/purchase-order-list/purchase-order-list';
-import { BomListComponent } from './pages/materials/bom-list/bom-list';
-import { StockOverviewComponent } from './pages/materials/stock-overview/stock-overview';
 
 import { TransactionListComponent } from './pages/transactions/transaction-list';
 
@@ -31,7 +26,6 @@ import { CreateOrder } from './pages/orders/create-order/create-order';
 import { OrderDetail } from './pages/orders/order-detail/order-detail';
 
 import { CustomerChatComponent } from './pages/customer-service/customer-chat/customer-chat';
-import { SupportInbox } from './pages/customer-service/support-inbox/support-inbox';
 import { ChatbotManagementComponent } from './pages/customer-service/chatbot-management/chatbot-management';
 
 import { ArticleList } from './pages/content/article-list/article-list';
@@ -42,11 +36,10 @@ import { EmployeeService } from './pages/employee-service/employee-service';
 
 import { RolePermission } from './pages/role-permission/role-permission';
 import { AdminAccount } from './pages/admin-account/admin-account';
+import { AuditLogsComponent } from './pages/audit-logs/audit-logs';
 import { adminPermissionGuard } from './services/admin-permission.guard';
 
 export const routes: Routes = [
-    { path: 'customer-service/legacy-chat', component: CustomerChatComponent, canActivate: [adminPermissionGuard], data: { module: 'customerService' } },
-    { path: 'orders/requests', component: OrderRequests, canActivate: [adminPermissionGuard], data: { module: 'orders' } },
     {
         path: '',
         redirectTo: 'login',
@@ -156,24 +149,6 @@ export const routes: Routes = [
         canActivate: [adminPermissionGuard],
         data: { module: 'materials' }
     },
-    {
-        path: 'materials/purchase-orders',
-        component: PurchaseOrderListComponent,
-        canActivate: [adminPermissionGuard],
-        data: { module: 'materials' }
-    },
-    {
-        path: 'materials/boms',
-        component: BomListComponent,
-        canActivate: [adminPermissionGuard],
-        data: { module: 'materials' }
-    },
-    {
-        path: 'materials/stock',
-        component: StockOverviewComponent,
-        canActivate: [adminPermissionGuard],
-        data: { module: 'materials' }
-    },
 
     {
         path: 'customers',
@@ -214,12 +189,6 @@ export const routes: Routes = [
     },
     {
         path: 'customer-service/customer-chat',
-        component: SupportInbox,
-        canActivate: [adminPermissionGuard],
-        data: { module: 'customerService' }
-    },
-    {
-        path: 'customer-service/legacy-chat',
         component: CustomerChatComponent,
         canActivate: [adminPermissionGuard],
         data: { module: 'customerService' }
@@ -245,28 +214,19 @@ export const routes: Routes = [
     },
     {
         path: 'content/article-list',
-        component: ContentWorkspace,
-        canDeactivate: [(component:ContentWorkspace)=>component.canLeave()],
-        canActivate: [adminPermissionGuard],
-        data: { module: 'content' }
-    },
-    {
-        path: 'content/website-information',
         component: ArticleList,
         canActivate: [adminPermissionGuard],
         data: { module: 'content' }
     },
     {
         path: 'content/create-article',
-        component: ContentWorkspace,
-        canDeactivate: [(component:ContentWorkspace)=>component.canLeave()],
+        component: CreateArticle,
         canActivate: [adminPermissionGuard],
         data: { module: 'content' }
     },
     {
         path: 'content/article-detail/:id',
-        component: ContentWorkspace,
-        canDeactivate: [(component:ContentWorkspace)=>component.canLeave()],
+        component: ArticleDetail,
         canActivate: [adminPermissionGuard],
         data: { module: 'content' }
     },
@@ -282,6 +242,12 @@ export const routes: Routes = [
         component: RolePermission,
         canActivate: [adminPermissionGuard],
         data: { module: 'permissions' }
+    },
+    {
+        path: 'audit-logs',
+        component: AuditLogsComponent,
+        canActivate: [adminPermissionGuard],
+        data: { module: 'system' }
     },
 
     {

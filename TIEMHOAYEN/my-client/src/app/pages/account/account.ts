@@ -1539,6 +1539,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   }
 
   logout(): void {
+    endSession();
     if (isPlatformBrowser(this.platformId)) {
       localStorage.removeItem('khachHang');
       localStorage.removeItem('token');
@@ -1566,3 +1567,4 @@ export class AccountComponent implements OnInit, OnDestroy {
     this.showAllWishlist = !this.showAllWishlist;
   }
 }
+import { endSession } from '../../services/session-auth';
