@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
-import { getCollection } from '../mongo.js';
+import { staffAccess } from '../services/order-access.service.js';
+import { InventoryError } from '../services/inventory/helpers.js';
 import { hasPermission, PermissionAction } from '../services/role-permission.service.js';
 
 const actionByMethod: Record<string, PermissionAction> = {
@@ -10,38 +11,21 @@ const actionByMethod: Record<string, PermissionAction> = {
   DELETE: 'delete',
 };
 
-const getHeaderValue = (value: string | string[] | undefined): string => {
-  if (Array.isArray(value)) return value[0] || '';
-  return value || '';
-};
-
-const getEmployeeRoleById = async (employeeId: string): Promise<string> => {
-  const employeeCollection = await getCollection('NHAN_VIEN');
-  const employee = await employeeCollection.findOne(
-    { NHAN_VIEN_ID: employeeId },
-    { projection: { VAI_TRO: 1 } },
-  );
-
-  return employee?.VAI_TRO || '';
-};
-
-const resolveRequestRole = async (req: Request): Promise<string> => {
-  const role = getHeaderValue(req.headers['x-admin-role']);
-  if (role.trim()) return role.trim();
-
-  const employeeId = getHeaderValue(req.headers['x-admin-id']);
-  if (employeeId.trim()) {
-    return getEmployeeRoleById(employeeId.trim());
-  }
-
-  return '';
-};
+export async function authenticatedEmployee(req: Request) {
+  const header = String(req.headers.authorization || '');
+  const employee = await staffAccess(header.startsWith('Bearer ') ? header.slice(7) : '');
+  // Keep older handlers on the verified identity, never an ID claimed by the browser.
+  req.headers['x-admin-id'] = employee.NHAN_VIEN_ID;
+  return employee;
+}
 
 export const requireAdminPermission = (moduleKey: string, forcedAction?: PermissionAction) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const action = forcedAction || actionByMethod[req.method] || 'view';
-      const role = await resolveRequestRole(req);
+      const employee = await authenticatedEmployee(req);
+      res.locals.adminEmployee = employee;
+      const role = String(employee.VAI_TRO || '');
 
       if (!role || !hasPermission(role, moduleKey, action)) {
         return res.status(403).json({
@@ -52,9 +36,8 @@ export const requireAdminPermission = (moduleKey: string, forcedAction?: Permiss
 
       return next();
     } catch (error: any) {
-      return res.status(500).json({
-        message: 'Không thể kiểm tra phân quyền.',
-        detail: error.message,
+      return res.status(error instanceof InventoryError ? error.status : 500).json({
+        message: error instanceof InventoryError ? error.message : 'Không thể kiểm tra phân quyền.',
       });
     }
   };

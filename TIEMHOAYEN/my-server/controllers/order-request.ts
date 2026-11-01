@@ -6,6 +6,7 @@ import { resolveRoleName } from '../services/role-permission.service.js';
 import { requestWorkflow } from '../services/request-workflow.js';
 import { accessToken } from './order-access.js';
 import { consultationOptions, convertProposal, messages, propose, respondToProposal, sendMessage, recordContact, customerChangeRequest } from '../services/sales-proposal.service.js';
+import { authenticatedEmployee } from '../middleware/rolePermission.js';
 
 const failure = (res: Response, error: any) => res.status(error instanceof InventoryError ? error.status : 500)
   .json({ message: error instanceof InventoryError ? error.message : 'Không thể xử lý yêu cầu đặt hàng.' });
@@ -13,12 +14,12 @@ const failure = (res: Response, error: any) => res.status(error instanceof Inven
 // Use the persisted employee role, never a claimed x-admin-role for this queue.
 export async function requireSales(req: Request, res: Response, next: NextFunction) {
   try {
-    const id = String(req.headers['x-admin-id'] || '');
-    const employee = id ? await (await getCollection<any>('NHAN_VIEN')).findOne({ NHAN_VIEN_ID: id }) : null;
+    const employee = await authenticatedEmployee(req);
     if (!employee || !['Admin', 'Nhân viên bán hàng'].includes(resolveRoleName(employee.VAI_TRO)) || /khóa|ngừng|ngưng|nghỉ|inactive/i.test(String(employee.TRANG_THAI || ''))) {
       return res.status(403).json({ message: 'Chỉ nhân viên Sales hoặc Admin đang hoạt động được xử lý yêu cầu.' });
     }
     res.locals.salesEmployee = employee;
+    res.locals.adminEmployee = employee;
     next();
   } catch (error) { failure(res, error); }
 }

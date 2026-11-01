@@ -1,5 +1,6 @@
 import express from 'express';
-import { requireCustomerLookup } from '../controllers/order-access.js';
+import { requireCustomerLookup, requireAddressOwner } from '../controllers/order-access.js';
+import { requireAdminPermission } from '../middleware/rolePermission.js';
 import multer from 'multer';
 import path from 'path';
 import {
@@ -36,7 +37,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-router.get('/', getAllCustomers);
+router.get('/', requireAdminPermission('customers'), getAllCustomers);
 
 // Đăng ký
 router.post('/', registerCustomer);
@@ -51,25 +52,27 @@ router.post('/send-otp', sendOtp);
 router.post('/verify-otp', verifyOtp);
 
 // Lấy thông tin khách hàng theo ID
-router.get('/:id/addresses', getCustomerAddresses);
-router.delete('/addresses/:addressId', deleteCustomerAddress);
-router.put('/addresses/:addressId', updateCustomerAddress);
-router.put('/addresses/:addressId/default', setDefaultCustomerAddress);
+router.get('/:id/addresses', requireAddressOwner, getCustomerAddresses);
+router.delete('/addresses/:addressId', requireAddressOwner, deleteCustomerAddress);
+router.put('/addresses/:addressId', requireAddressOwner, updateCustomerAddress);
+router.put('/addresses/:addressId/default', requireAddressOwner, setDefaultCustomerAddress);
 router.get('/:id/orders', requireCustomerLookup, getCustomerOrders);
-router.get('/:id/vouchers', getCustomerVouchers);
-router.get('/:id/wishlist', getCustomerWishlist);
-router.put('/:id/avatar', upload.single('avatar'), updateCustomerAvatar);
-router.put('/:id/avatar/remove', removeCustomerAvatar);
+router.get('/:id/vouchers', requireAddressOwner, getCustomerVouchers);
+router.get('/:id/wishlist', requireAddressOwner, getCustomerWishlist);
+router.put('/:id/avatar', requireAddressOwner, upload.single('avatar'), updateCustomerAvatar);
+router.put('/:id/avatar/remove', requireAddressOwner, removeCustomerAvatar);
 router.post(
   '/:customerId/wishlist/:productId',
+  requireAddressOwner,
   addWishlistItem
 );
 router.delete(
   '/:customerId/wishlist/:productId',
+  requireAddressOwner,
   removeWishlistItem
 );
-router.get('/:id', getCustomerById);
-router.put('/:id', updateCustomerById);
-router.post('/:id/addresses', addCustomerAddress);
+router.get('/:id', requireAddressOwner, getCustomerById);
+router.put('/:id', requireAddressOwner, updateCustomerById);
+router.post('/:id/addresses', requireAddressOwner, addCustomerAddress);
 
 export default router;

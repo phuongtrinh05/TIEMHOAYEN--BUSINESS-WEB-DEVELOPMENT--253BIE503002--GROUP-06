@@ -1,3 +1,4 @@
+import {getAdminAfterSales,changeAdminAfterSales} from '../controllers/admin.js';
 import express from 'express';
 import { requireSales, listRequests, changeRequest, salesOptions, salesPropose, salesConvert, listRequestMessages, postRequestMessage, requireRequestOwner, uploadedProposalImage, salesRecordContact } from '../controllers/order-request.js';
 import fs from 'fs';
@@ -81,6 +82,8 @@ const materialImageUpload = multer({
 router.get('/dashboard', requireAdminPermission('dashboard'), getAdminDashboard);
 router.get('/address-options', requireAdminPermission('customers'), getAdminAddressOptions);
 router.get('/staff-accounts', requireAdminPermission('permissions'), getAdminStaffAccounts);
+router.get('/after-sales',requireAdminPermission('orders'),getAdminAfterSales);
+router.patch('/after-sales/:requestId',requireAdminPermission('orders','update'),(req,res,next)=>req.body.action==='refund' ? requireAdminPermission('payments','update')(req,res,next) : next(),changeAdminAfterSales);
 router.get('/orders', requireAdminPermission('orders'), getAdminOrders);
 router.get('/order-requests', requireSales, listRequests);
 router.patch('/order-requests/:requestId', requireSales, changeRequest);

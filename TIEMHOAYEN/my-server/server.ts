@@ -162,10 +162,12 @@ const PORT = Number(process.env.PORT ?? 3000);
 (async () => {
   try {
     await connectMongo();
-    if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureInventoryIndexes();
-    await ensureSalesRequestIndexes();
-    await (await import('./services/order-access.service.js')).ensureOrderAccessIndexes();
-    await (await import('./services/support.service.js')).ensureSupportIndexes();
+    if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') {
+      await ensureInventoryIndexes();
+      await ensureSalesRequestIndexes();
+      await (await import('./services/order-access.service.js')).ensureOrderAccessIndexes();
+      await (await import('./services/support.service.js')).ensureSupportIndexes();
+    }
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startInventoryJobs();
     if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureNotificationIndexes();
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startNotificationJobs();

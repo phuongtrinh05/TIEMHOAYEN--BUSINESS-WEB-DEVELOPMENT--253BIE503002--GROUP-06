@@ -45,6 +45,36 @@ export const computeBuildable = (lines: BomLine[], materialsById: Map<string, an
   return { buildable: Number.isFinite(buildable) ? buildable : 0, bottleneck, perMaterial };
 };
 
+export type ProductSellableStock = {
+  finishedAvailable: number;
+  buildable: number;
+  sellable: number;
+};
+
+/** Tính tồn bán được cho nhiều sản phẩm trong một lượt đọc kho/BOM. */
+export const getProductSellableStockMap = async (products: any[]): Promise<Map<string, ProductSellableStock>> => {
+  const ids = [...new Set(products.map((product) => String(product?.SAN_PHAM_ID || '')).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const [materials, bomMap] = await Promise.all([
+    col(COLLECTIONS.material).then((collection) => collection.find({}).toArray()),
+    getActiveBomMap(ids),
+  ]);
+  const materialsById = new Map(materials.map((material: any) => [material.NGUYEN_VAT_LIEU_ID, material]));
+  return new Map(products.map((product) => {
+    const finishedAvailable = Math.floor(finishedAvailableOf(product));
+    const buildable = computeBuildable(bomMap.get(product.SAN_PHAM_ID) || [], materialsById).buildable;
+    return [String(product.SAN_PHAM_ID), { finishedAvailable, buildable, sellable: finishedAvailable + buildable }];
+  }));
+};
+
+/** Trường tương thích cho API cũ; SO_LUONG tạm ánh xạ sang tồn khả dụng. */
+export const sellableStockFields = (stock?: ProductSellableStock) => ({
+  SO_LUONG: stock?.sellable ?? 0,
+  TON_KHA_DUNG: stock?.sellable ?? 0,
+  TON_THANH_PHAM_KHA_DUNG: stock?.finishedAvailable ?? 0,
+  SO_BO_CO_THE_LAM: stock?.buildable ?? 0,
+});
+
 /** Hàng đang về từ PO "Đang giao" có ngày dự kiến ≤ deadline (chỉ dùng DỰ BÁO). */
 export const incomingByMaterial = async (deadline: Date | null) => {
   const query: any = { TRANG_THAI: PO_STATUS.shipping };
@@ -112,16 +142,18 @@ export const checkProductAvailability = async (productId: string, qtyRaw: unknow
 
   let forecast: any[] = [];
   if (sameDay) {
-    if (vnTimeKey(now) >= INVENTORY_CONFIG.sameDayCutoff) {
-      decision = 'need_review';
-      reasons.push(`Đơn giao trong ngày sau ${INVENTORY_CONFIG.sameDayCutoff} cần Sales/Admin xác nhận khả năng thực hiện.`);
-    }
+    // Cùng ngày: tồn hiện tại là nguồn quyết định. Nếu đủ thành phẩm/BOM thì
+    // checkout giữ tồn ngay; giờ cutoff không được tự biến đơn đủ hàng thành
+    // yêu cầu Sales. Việc giữ tồn nguyên tử vẫn là bước quyết định cuối cùng.
     if (sellable < qty) {
       decision = 'need_review';
       reasons.push(`Chỉ đáp ứng được ${sellable}/${qty} bó với tồn hiện tại${bottleneck ? ` (NVL chốt chặn: ${bottleneck.name})` : ''}.`);
     }
   } else {
-    // Đơn tương lai: dự báo = khả dụng hiện tại + PO đang giao kịp − nhu cầu chưa giữ của đơn khác trước ngày giao
+    // Lịch tương lai luôn qua Sales: tồn hiện tại không được dùng để cam kết cho
+    // một ngày khác. Dự báo dưới đây chỉ là dữ liệu tham khảo để Sales tư vấn.
+    decision = 'need_review';
+    reasons.push('Lịch giao ở ngày tương lai cần Sales xác minh nguồn hoa và lịch chuẩn bị trước khi nhận đơn.');
     const incoming = await incomingByMaterial(deliveryAt);
     const demand = await pendingDemandByMaterial(deliveryAt);
     forecast = requirement.map((r) => {
@@ -130,7 +162,6 @@ export const checkProductAvailability = async (productId: string, qtyRaw: unknow
     });
     const short = forecast.filter((f) => f.short);
     if (short.length) {
-      decision = 'need_review';
       reasons.push(`Dự báo thiếu NVL trước ngày giao: ${short.map((s) => `${s.name} (cần ${s.required}, dự kiến ${s.projected} ${s.unit})`).join('; ')}.`);
     }
   }

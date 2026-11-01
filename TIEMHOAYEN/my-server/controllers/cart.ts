@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
+import { getProductSellableStockMap, sellableStockFields } from '../services/inventory/availability.service.js';
 
 const createCartId = (): string => `GH${Date.now().toString().slice(-8)}`;
 
@@ -64,6 +65,7 @@ const buildCartItems = async (cartId: string) => {
     topicCollection.find({}).toArray(),
     imageCollection.find({ SAN_PHAM_ID: { $in: productIds } }).toArray(),
   ]);
+  const stockMap = await getProductSellableStockMap(products);
 
   const detailMap = new Map(details.map((item) => [item.SAN_PHAM_ID, item]));
   const topicMap = new Map(topics.map((topic) => [topic.CHU_DE_ID, topic]));
@@ -80,12 +82,14 @@ const buildCartItems = async (cartId: string) => {
       const detail = detailMap.get(product.SAN_PHAM_ID);
       const topic = topicMap.get(product.CHU_DE_ID);
       const image = imageMap.get(product.SAN_PHAM_ID);
+      const stock = stockMap.get(String(product.SAN_PHAM_ID));
       return {
         SAN_PHAM_ID: product.SAN_PHAM_ID,
         TEN_SAN_PHAM: product.TEN_SAN_PHAM,
         GIA: product.GIA,
         GIA_KHUYEN_MAI: product.GIA_KHUYEN_MAI,
-        SO_LUONG_TON: product.SO_LUONG,
+        ...sellableStockFields(stock),
+        SO_LUONG_TON: stock?.sellable ?? 0,
         KIEU_DANG: product.KIEU_DANG,
         CHU_DE_ID: product.CHU_DE_ID,
         TEN_CHU_DE: topic?.TEN_CHU_DE || null,

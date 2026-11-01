@@ -61,7 +61,7 @@ const mapNotificationRow = (row: any) => ({
   message: row.NOI_DUNG,
   image: row.HINH_ANH,
   link: row.DUONG_DAN,
-  isRead: Boolean(row.DA_DOC),
+  isRead: Boolean(row.DA_DOC), isViewed:Boolean(row.DA_XEM || row.DA_DOC),
   createdAt: row.NGAY_TAO,
   orderCode: row.DON_HANG_ID,
 });
@@ -77,11 +77,12 @@ const sortNotifications = (left: any, right: any): number => {
 
 export const getNotifications = async (req: Request, res: Response) => {
   try {
-    const customerId = String(req.query.customerId || '').trim();
+    const customerId = String(res.locals.orderAccess?.customerId || '');
+    if (!customerId || res.locals.orderAccess?.authType !== 'member') return res.status(403).json({ message: 'Cần đăng nhập để xem thông báo cá nhân.' });
     const limit = normalizeLimit(req.query.limit);
     const collection = await getNotificationCollection();
     const query = customerId
-      ? { $or: [{ KHACH_HANG_ID: customerId }, { KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }] }
+      ? { $or: [{ KHACH_HANG_ID: customerId }, { KHACH_HANG_ID: null, DON_HANG_ID: null }] }
       : { $or: [{ KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }] };
     const notifications = (await collection.find(query).toArray()).sort(sortNotifications).slice(0, limit);
 
@@ -100,6 +101,7 @@ export const getPublicNotifications = async (req: Request, res: Response) => {
     const limit = normalizeLimit(req.query.limit);
     const collection = await getNotificationCollection();
     const notifications = (await collection.find({
+      DON_HANG_ID: null,
       $or: [{ KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }],
     }).toArray()).sort(sortNotifications).slice(0, limit);
 
@@ -119,6 +121,7 @@ export const createNotification = async (req: Request, res: Response) => {
     const notificationId = await createNextNotificationId();
     const customerId = body.customerId ? String(body.customerId).trim() : null;
     const orderId = body.orderId ? String(body.orderId).trim() : null;
+    if (orderId && !customerId) return res.status(400).json({ message: 'Thông báo đơn hàng phải có người nhận riêng, không được phát công khai.' });
     const type = normalizeType(body.type);
     const title = String(body.title || '').trim();
     const message = String(body.message || '').trim();
@@ -180,8 +183,8 @@ export const markNotificationAsRead = async (req: Request, res: Response) => {
 
     const collection = await getNotificationCollection();
     const result = await collection.updateOne(
-      { THONG_BAO_ID: notificationId },
-      { $set: { DA_DOC: true } },
+      { THONG_BAO_ID: notificationId, KHACH_HANG_ID: res.locals.orderAccess?.customerId || '__DENIED__' },
+      { $set: req.body?.viewedOnly === true ? { DA_XEM: true } : { DA_DOC: true, DA_XEM: true } },
     );
 
     if (result.matchedCount === 0) {
@@ -200,7 +203,8 @@ export const markNotificationAsRead = async (req: Request, res: Response) => {
 
 export const markAllNotificationsAsRead = async (req: Request, res: Response) => {
   try {
-    const customerId = String(req.params.customerId || req.query.customerId || '').trim();
+    const customerId = String(res.locals.orderAccess?.customerId || '');
+    if (res.locals.orderAccess?.authType !== 'member' || customerId !== req.params.customerId) return res.status(403).json({ message: 'Không được sửa thông báo tài khoản khác.' });
 
     if (!customerId) {
       return res.status(400).json({ message: 'Thiếu mã khách hàng.' });

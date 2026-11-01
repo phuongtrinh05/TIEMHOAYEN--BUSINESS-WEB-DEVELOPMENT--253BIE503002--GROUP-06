@@ -4,14 +4,18 @@ import { randomUUID, randomBytes, createHash } from 'node:crypto';
 
 const uri = process.env.TEST_MONGO_URI;
 if (!uri) {
+  // Pure contract tests use injected catalog rows and never open a database connection.
+  process.env.MONGO_URI = 'mongodb://127.0.0.1:1';
+  process.env.MONGO_DATABASE = 'TIEM_HOA_YEN_UNIT_ONLY';
   test('checkout integration requires TEST_MONGO_URI (isolated replica set)', { skip: true }, () => {});
 } else {
   process.env.MONGO_URI = uri;
+  process.env.INVENTORY_SAME_DAY_CUTOFF = '23:59';
   process.env.MONGO_DATABASE = `TIEM_HOA_YEN_CHECKOUT_TEST_${randomUUID().replaceAll('-', '')}`;
   let mongo: typeof import('../mongo.js');
   let service: typeof import('../services/order-request.service.js');
   let stock: typeof import('../services/inventory/stock.service.js');
-  const payload = { sender: { name: 'Người đặt', phone: '0901234567' }, receiver: { name: 'Người nhận', phone: '0912345678', address: 'Test' }, delivery: { date: '2026-11-01', time: '10:00' } };
+  const payload = { sender: { name: 'Người đặt', phone: '0901234567' }, receiver: { name: 'Người nhận', phone: '0912345678', address: '1 Đường A, Quận 1, Thành phố Hồ Chí Minh', districtName: 'Quận 1', provinceName: 'Thành phố Hồ Chí Minh' }, delivery: { date: '2026-11-01', time: '10:00' } };
   const verifiedToken = async (phone = payload.sender.phone) => {
     const token = 'oa_' + randomBytes(32).toString('hex');
     await (await mongo.getCollection<any>('XAC_THUC_TRA_CUU_DON')).insertOne({ _id: createHash('sha256').update(token).digest('hex'), kind: 'lookup', phone, expiresAt: new Date(Date.now()+1800000) });
@@ -94,15 +98,15 @@ if (!uri) {
     assert.equal(closed.status, service.REQUEST_STATUS.rejected);
     assert.equal(closed.history.length, 4);
   });
-  const invoke = async (handler: any, body: any, params: any = {}) => {
+  const invoke = async (handler: any, body: any, params: any = {}, headers: any = {}) => {
     let code = 200, data: any;
-    const response: any = { status(value: number) { code = value; return this; }, json(value: any) { data = value; return this; } };
-    await handler({ body, params }, response);
+    const response: any = { locals: {}, status(value: number) { code = value; return this; }, json(value: any) { data = value; return this; } };
+    await handler({ body, params, headers }, response);
     return { code, data };
   };
   const submit = async (productId: string) => {
     const controller = await import('../controllers/order.js');
-    return invoke(controller.createOrder, { ...payload, checkoutSessionId: randomUUID(), items: [{ id: productId, qty: 1, price: 100000 }],
+    return invoke(controller.createOrder, { ...payload, delivery: { date: new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()), time: '23:59' }, checkoutSessionId: randomUUID(), items: [{ id: productId, qty: 1, price: 100000 }],
       payment: { method: 'bank', methodName: 'Chuyển khoản' }, summary: { subtotal: 100000, total: 100000 }, flags: {} });
   };
   test('real createOrder controller: only A receives payment, B receives persisted Sales request', async () => {
@@ -117,10 +121,10 @@ if (!uri) {
   test('Admin confirms payment atomically with official stock hold; repeated confirmation adds no hold', async () => {
     const { updateAdminOrderPaymentStatus } = await import('../controllers/admin.js');
     const { data: order } = await submit('SP_PAID');
-    const first = await invoke(updateAdminOrderPaymentStatus, { status: 'Thành công', amount: 100000 }, { orderId: order.orderId });
+    const first = await invoke(updateAdminOrderPaymentStatus, { status: 'Thành công', amount: 400000 }, { orderId: order.orderId });
     assert.equal(first.code, 200);
     assert.equal((await (await mongo.getCollection<any>('GIU_TON')).findOne({ DON_HANG_ID: order.orderId })).TRANG_THAI, 'CHINH_THUC');
-    assert.equal((await invoke(updateAdminOrderPaymentStatus, { status: 'Thành công', amount: 100000 }, { orderId: order.orderId })).code, 200);
+    assert.equal((await invoke(updateAdminOrderPaymentStatus, { status: 'Thành công', amount: 400000 }, { orderId: order.orderId })).code, 200);
     assert.equal((await (await mongo.getCollection<any>('SAN_PHAM')).findOne({ SAN_PHAM_ID: 'SP_PAID' })).TP_DANG_GIU, 1);
   });
   test('late payment cannot revive an expired hold or steal stock from another buyer', async () => {
@@ -129,16 +133,18 @@ if (!uri) {
     await (await mongo.getCollection<any>('GIU_TON')).updateMany({ DON_HANG_ID: first.orderId }, { $set: { HET_HAN_LUC: new Date(0) } });
     const { data: second } = await submit('SP_LATE');
     assert.equal(second.kind, 'order');
-    const late = await invoke(updateAdminOrderPaymentStatus, { status: 'Thành công', amount: 100000 }, { orderId: first.orderId });
+    const late = await invoke(updateAdminOrderPaymentStatus, { status: 'Thành công', amount: 400000 }, { orderId: first.orderId });
     assert.equal(late.code, 410);
     assert.equal((await (await mongo.getCollection<any>('THANH_TOAN')).findOne({ DON_HANG_ID: first.orderId })).TRANG_THAI_THANH_TOAN, 'Chờ thanh toán');
   });
   test('payment retry rechecks stock; retry after expiry fails if another buyer holds it', async () => {
     const { retryOrderPayment, expireOrderPayment } = await import('../controllers/order.js');
     const { data: first } = await submit('SP_RETRY');
+    await (await mongo.getCollection<any>('THANH_TOAN')).updateMany({ DON_HANG_ID: first.orderId }, { $set: { NGAY_THANH_TOAN: new Date(0) } });
     await invoke(expireOrderPayment, {}, { orderId: first.orderId });
     const retry = await invoke(retryOrderPayment, {}, { orderId: first.orderId });
     assert.equal(retry.code, 200);
+    await (await mongo.getCollection<any>('THANH_TOAN')).updateMany({ DON_HANG_ID: first.orderId }, { $set: { NGAY_THANH_TOAN: new Date(0) } });
     await invoke(expireOrderPayment, {}, { orderId: first.orderId });
     assert.equal((await submit('SP_RETRY')).data.kind, 'order');
     assert.equal((await invoke(retryOrderPayment, {}, { orderId: first.orderId })).code, 409);
@@ -267,9 +273,11 @@ if (!uri) {
     try {
       await (await mongo.getCollection<any>('NHAN_VIEN')).insertOne({ NHAN_VIEN_ID: sales.NHAN_VIEN_ID, VAI_TRO: 'Nhân viên bán hàng', TRANG_THAI: 'Đang làm việc', HO_TEN: sales.HO_TEN });
       const r = await freshRequest();
-      const admin = { 'x-admin-id': sales.NHAN_VIEN_ID, 'Content-Type': 'application/json' };
+      const staff = await (await mongo.getCollection<any>('NHAN_VIEN')).findOne({ NHAN_VIEN_ID: sales.NHAN_VIEN_ID });
+      const staffSession = await (await import('../services/order-access.service.js')).createStaffAccess(staff);
+      const admin = { Authorization: `Bearer ${staffSession.accessToken}`, 'Content-Type': 'application/json' };
       const customer = { 'x-request-token': r.accessToken, 'Content-Type': 'application/json' };
-      assert.equal((await fetch(`${base}/admin/order-requests`, { headers: { 'x-admin-role': 'Admin' } })).status, 403);
+      assert.equal((await fetch(`${base}/admin/order-requests`, { headers: { 'x-admin-role': 'Admin' } })).status, 401);
       const list = await (await fetch(`${base}/admin/order-requests`, { headers: admin })).json() as any;
       assert.equal(list.requests.every((x: any) => !x.tokenHash), true);
       const choices = await (await fetch(`${base}/admin/order-requests/${r.requestId}/options`, { headers: admin })).json() as any;
@@ -404,3 +412,190 @@ if (!uri) {
   });
 
 }
+
+test('verified balance excludes pending/failed and deduplicates receipt references', async () => {
+  const { sumVerifiedPayments } = await import('../services/admin-order.service.js');
+  assert.equal(sumVerifiedPayments([
+    { THANH_TOAN_ID: 'A', MA_GIAO_DICH: 'REF', SO_TIEN: 300000, TRANG_THAI_THANH_TOAN: 'Thành công' },
+    { THANH_TOAN_ID: 'B', MA_GIAO_DICH: 'REF', SO_TIEN: 300000, TRANG_THAI_THANH_TOAN: 'Thành công' },
+    { THANH_TOAN_ID: 'C', SO_TIEN: 700000, TRANG_THAI_THANH_TOAN: 'Thất bại' },
+    { THANH_TOAN_ID: 'D', SO_TIEN: 700000, TRANG_THAI_THANH_TOAN: 'Chờ thanh toán' },
+  ]), 300000);
+});
+
+test('backend prices catalog, shipping and voucher instead of submitted money', async () => {
+  const { priceCheckout } = await import('../services/admin-order.service.js');
+  const rows: Record<string, any> = {
+    SAN_PHAM: { SAN_PHAM_ID: 'SP1', TEN_SAN_PHAM: 'Hoa hồng', GIA: 400000, GIA_KHUYEN_MAI: 250000 },
+    HINH_ANH_SAN_PHAM: { URL: '/sample.jpg' },
+    VOUCHER: { VOUCHER_ID: 'V1', LOAI_GIAM_GIA: 'Phần trăm', GIA_TRI_GIAM: 10 },
+  };
+  const collections: any = async (name: string) => ({
+    findOne: async () => rows[name] || null,
+    find: () => ({ sort() { return this; }, limit() { return this; }, next: async () => rows[name] || null }),
+  });
+  const payload = { delivery: { date: '2099-11-01', time: '10:00' }, items: [{ id: 'SP1', qty: 1, price: 1 }], receiver: { address: '1 Đường A, Quận 1, Hồ Chí Minh', districtName: 'Quận 1', provinceName: 'Thành phố Hồ Chí Minh' },
+    shippingMethod: 'standard', payment: { method: 'bank' }, voucher: { id: 'V1' }, summary: { total: 0, subtotal: 1, shippingFee: 0, depositAmount: 0 } };
+  const quote = await priceCheckout(payload, undefined, collections);
+  assert.equal(quote.items[0].price, 250000);
+  assert.equal(quote.summary.subtotal, 250000);
+  assert.equal(quote.summary.shippingFee, 30000);
+  assert.equal(quote.summary.total, 255000);
+  assert.equal(quote.items[0].image, '/sample.jpg');
+  for (const type of ['Số tiền', 'Tiền mặt']) {
+    rows.VOUCHER = { VOUCHER_ID: 'V1', LOAI_GIAM_GIA: type, GIA_TRI_GIAM: 50000 };
+    const fixed = await priceCheckout(payload, undefined, collections);
+    assert.equal(fixed.summary.productDiscount, 50000);
+    assert.equal(fixed.summary.shippingFee, 30000);
+    assert.equal(fixed.summary.total, 230000);
+  }
+  rows.VOUCHER = { VOUCHER_ID: 'V1', LOAI_GIAM_GIA: 'Freeship', GIA_TRI_GIAM: 50000 };
+  const shipping = await priceCheckout(payload, undefined, collections);
+  assert.equal(shipping.summary.productDiscount, 0);
+  assert.equal(shipping.summary.shippingFee, 0);
+  rows.SAN_PHAM.GIA_KHUYEN_MAI = 49999;
+  const noDeposit = await priceCheckout({ ...payload, voucher: null, payment: { method: 'cod' } }, undefined, collections);
+  assert.equal(noDeposit.summary.depositAmount, 0);
+  assert.equal(noDeposit.summary.total, 79999);
+  rows.SAN_PHAM.GIA_KHUYEN_MAI = 50000;
+  const deposit = await priceCheckout({ ...payload, voucher: null, payment: { method: 'cod' } }, undefined, collections);
+  assert.equal(deposit.summary.depositAmount, 50000);
+  await assert.rejects(priceCheckout({ ...payload, payment: { method: 'unknown' } }, undefined, collections), /không được hỗ trợ/);
+  await assert.rejects(priceCheckout({ ...payload, items: [{ id: 'SP1', qty: -1 }] }, undefined, collections), /số lượng/);
+  await assert.rejects(priceCheckout({ ...payload, receiver: { address: 'Hà Nội' } }, undefined, collections), /Hồ Chí Minh/);
+  rows.SAN_PHAM.TRANG_THAI = 'Đã xóa';
+  await assert.rejects(priceCheckout(payload, undefined, collections), /không còn bán/);
+});
+
+test('existing Atlas deposit receipts count as money received without treating a pending deposit as paid', async () => {
+  const { paymentSucceeded, sumVerifiedPayments } = await import('../services/admin-order.service.js');
+  assert.equal(paymentSucceeded('Đã cọc'), true);
+  assert.equal(paymentSucceeded('Đang thanh toán'), false);
+  assert.equal(paymentSucceeded('\u0010� thanh to�n'), false);
+  assert.equal(sumVerifiedPayments([
+    { THANH_TOAN_ID: 'LEGACY', MA_GIAO_DICH: 'BANK-LEGACY', SO_TIEN: 100000, TRANG_THAI_THANH_TOAN: 'Đã cọc' },
+    { THANH_TOAN_ID: 'PENDING', SO_TIEN: 300000, TRANG_THAI_THANH_TOAN: 'Chờ thanh toán' },
+  ]), 100000);
+});
+
+test('order state cannot skip preparation or finish with an unpaid balance', async () => {
+  const { assertOrderTransition } = await import('../services/admin-order.service.js');
+  assert.throws(() => assertOrderTransition({ TRANG_THAI: 'Chờ thanh toán' }, 'Đang giao', 1000000), /bỏ qua/);
+  assert.throws(() => assertOrderTransition({ TRANG_THAI: 'Chờ xử lý', TONG_TIEN: 400000, PHUONG_THUC_THANH_TOAN: 'Chuyển khoản' }, 'Đang chuẩn bị', 100000), /Chưa xác minh/);
+  assert.throws(() => assertOrderTransition({ TRANG_THAI: 'Đã giao', TONG_TIEN: 400000, TIEN_COC: 100000, PHUONG_THUC_THANH_TOAN: 'COD' }, 'Hoàn thành', 100000), /số dư/);
+});
+
+test('forged Admin role and employee ID cannot replace an authenticated session', async () => {
+  const { requireAdminPermission } = await import('../middleware/rolePermission.js');
+  const { requireSales } = await import('../controllers/order-request.js');
+  for (const middleware of [requireAdminPermission('orders'), requireSales]) {
+    let code = 0, continued = false;
+    const response: any = { locals: {}, status(value: number) { code = value; return this; }, json() { return this; } };
+    await middleware({ headers: { 'x-admin-role': 'Admin', 'x-admin-id': 'NV001' }, method: 'POST' } as any, response, () => { continued = true; });
+    assert.equal(code, 401);
+    assert.equal(continued, false);
+  }
+});
+
+test('a verified receipt cannot be repriced, reopened or counted again by retry', async () => {
+  const { changeCheckoutPayment } = await import('../services/checkout-payment.service.js');
+  const receipt = { THANH_TOAN_ID: 'TT1', DON_HANG_ID: 'D1', SO_TIEN: 300000, MA_GIAO_DICH: 'BANK1', TRANG_THAI_THANH_TOAN: 'Thành công' };
+  const collections: any = async (name: string) => ({ findOne: async () => name === 'THANH_TOAN' ? receipt : { DON_HANG_ID: 'D1', TONG_TIEN: 1000000 } });
+  const confirmed = await changeCheckoutPayment({} as any, 'TT1', { status: 'Thành công', amount: 300000 }, 'NV1', collections);
+  assert.equal(confirmed, receipt);
+  await assert.rejects(changeCheckoutPayment({} as any, 'TT1', { status: 'Thành công', amount: 1000000 }, 'NV1', collections), /không được sửa/);
+  await assert.rejects(changeCheckoutPayment({} as any, 'TT1', { status: 'Thất bại' }, 'NV1', collections), /đã thu tiền/);
+  await assert.rejects(changeCheckoutPayment({} as any, 'TT1', { status: 'Thành công', referenceCode: 'BANK2' }, 'NV1', collections), /đã thu tiền/);
+});
+
+test('guest OTP scope never mixes account-owned requests into guest history', async () => {
+  const { ownedRequestQuery, ownedOrderQuery } = await import('../services/order-access.service.js');
+  assert.deepEqual(ownedRequestQuery({ authType: 'member', customerId: 'KH_A' }), { customerId: 'KH_A' });
+  assert.deepEqual(ownedRequestQuery({ phone: '0901234567' }).customerId, { $in: [null, ''] });
+  assert.deepEqual((await ownedOrderQuery({ phone: '0901234567' })).KHACH_HANG_ID, { $in: [null, ''] });
+});
+
+test('delivery validation accepts existing Admin slots and rejects invalid or past dates', async () => {
+  const { validateCheckoutDelivery } = await import('../services/admin-order.service.js');
+  assert.equal(validateCheckoutDelivery({ date: '01/11/2099', time: '11:00 AM–01:00 PM' }).date, '2099-11-01');
+  assert.throws(() => validateCheckoutDelivery({ date: '2099-02-31', time: '10:00' }), /không tồn tại/);
+  assert.throws(() => validateCheckoutDelivery({ date: '2000-01-01', time: '10:00' }), /đã qua/);
+  assert.throws(() => validateCheckoutDelivery({ date: '2099-01-01', time: '25:00' }), /không hợp lệ/);
+  assert.throws(() => validateCheckoutDelivery({ date: '2099-01-01', time: '17:00-08:00' }), /không hợp lệ/);
+});
+
+test('same-day stock is not diverted to Sales only because checkout is after the cutoff', async () => {
+  const source = await import('../services/inventory/availability.service.js');
+  const file = await import('node:fs/promises').then(async fs => fs.readFile((await import('node:path')).resolve(process.cwd(), 'services/inventory/availability.service.ts'), 'utf8'));
+  assert.doesNotMatch(file, /vnTimeKey\(now\)\s*>=\s*INVENTORY_CONFIG\.sameDayCutoff/);
+  assert.match(file, /if \(sameDay\)[\s\S]*if \(sellable < qty\)/);
+  assert.equal(typeof source.checkProductAvailability, 'function');
+});
+
+test('same-day reserved perishable stock skips shelf-day review but explicit expiry remains blocked', async () => {
+  const file = await import('node:fs/promises').then(async fs => fs.readFile((await import('node:path')).resolve(process.cwd(), 'services/order-request.service.ts'), 'utf8'));
+  assert.match(file, /if \(future && !product && item\.NHOM_NVL === 'DE_HU'/);
+  assert.match(file, /if \(expires && \(!Number\.isFinite\(expires\.getTime\(\)\) \|\| expires <= now \|\| expires < when\)\)/);
+});
+
+
+test('Stage 3 derives permitted actions from payment, preparation and refund-request state', async () => {
+  const { allowedOrderStatuses, assertOrderTransition } = await import('../services/admin-order.service.js');
+  assert.deepEqual(allowedOrderStatuses({ TRANG_THAI: 'Chờ thanh toán', TONG_TIEN: 100000 }, 0), ['Đã hủy']);
+  const order = { TRANG_THAI: 'Chờ xử lý', PHUONG_THUC_THANH_TOAN: 'COD', TIEN_COC: 0, TONG_TIEN: 40000, THOI_DIEM_BAT_DAU_CHUAN_BI: new Date(Date.now()+60000) };
+  assert.equal(allowedOrderStatuses(order, 0).includes('Đang chuẩn bị hàng'), true);
+  assert.equal(allowedOrderStatuses(order, 0).includes('Đang giao'), false);
+  assert.deepEqual(allowedOrderStatuses({TRANG_THAI:'Yêu cầu hoàn tiền/trả hàng'}, 0), ['Từ chối hoàn tiền/trả hàng']);
+  assert.throws(() => assertOrderTransition({TRANG_THAI:'Yêu cầu hoàn tiền/trả hàng'}, 'Đã hoàn tiền', 100000), /Hậu mãi/);
+});
+
+test('Stage 3 staff token resolves a verified employee and is invalidated by password changes or lock', async () => {
+  const { staffAccess } = await import('../services/order-access.service.js');
+  const token = 'sa_' + 'a'.repeat(64);
+  const employee: any = { NHAN_VIEN_ID:'NV_SAFE', VAI_TRO:'Admin', MAT_KHAU:'a-hashed-credential', TRANG_THAI:'Hoạt động' };
+  const session = { employeeId:employee.NHAN_VIEN_ID, credentialHash:createHash('sha256').update(employee.MAT_KHAU).digest('hex') };
+  const collections: any = async (name: string) => ({findOne:async (query: any) => {
+    if (name === 'XAC_THUC_TRA_CUU_DON') { assert.equal(query.kind,'staff'); assert.equal(query._id,createHash('sha256').update(token).digest('hex')); return session; }
+    return employee;
+  }});
+  assert.equal((await staffAccess(token, collections)).NHAN_VIEN_ID, 'NV_SAFE');
+  employee.MAT_KHAU = 'changed'; await assert.rejects(staffAccess(token, collections), /không còn hiệu lực/);
+  employee.MAT_KHAU = 'a-hashed-credential'; employee.TRANG_THAI='Khóa'; await assert.rejects(staffAccess(token, collections), /không còn hiệu lực/);
+  await assert.rejects(staffAccess('forged-token', collections), /đăng nhập/);
+});
+
+test('Stage 3 rejects a pending receipt that exceeds the remaining deposit obligation', async () => {
+  const { changeCheckoutPayment } = await import('../services/checkout-payment.service.js');
+  let locks = 0;
+  const receipt = {THANH_TOAN_ID:'P',DON_HANG_ID:'O',SO_TIEN:400000,MA_GIAO_DICH:'R',TRANG_THAI_THANH_TOAN:'Chờ thanh toán'};
+  const order = {DON_HANG_ID:'O',TONG_TIEN:400000,TIEN_COC:100000,PHUONG_THUC_THANH_TOAN:'COD',TRANG_THAI:'Chờ thanh toán'};
+  const collections: any = async (name: string) => ({ findOne: async () => name === 'THANH_TOAN' ? receipt : order,
+    updateOne: async () => { locks++; return {matchedCount:1}; }, find: () => ({toArray:async () => []}) });
+  await assert.rejects(changeCheckoutPayment({} as any,'P',{status:'Thành công',amount:400000},'NV_SAFE',collections), /nghĩa vụ còn lại/);
+  assert.equal(locks,1);
+});
+
+
+test('Stage 3 payment status endpoint cannot turn a refund record into a receipt', async () => {
+  const { changeCheckoutPayment } = await import('../services/checkout-payment.service.js');
+  const collections: any = async () => ({ findOne: async () => ({ THANH_TOAN_ID:'REFUND',LOAI_GIAO_DICH:'HOAN_TIEN' }) });
+  await assert.rejects(changeCheckoutPayment({} as any, 'REFUND', {status:'Thành công'}, 'NV_SAFE', collections), /hồ sơ hậu mãi/);
+});
+
+
+test('Stage 4 after-sales validates affected lines, evidence and actual refundable balance', async () => {
+ const {afterSalesInput,refundableAmount}=await import('../services/admin-order.service.js');
+ const details=[{SAN_PHAM_ID:'SP1',SO_LUONG:2}];
+ assert.equal(afterSalesInput({type:'exchange',reason:'Giao sai mẫu',evidence:['https://example.com/proof.jpg']},details).items[0].quantity,2);
+ assert.throws(()=>afterSalesInput({type:'refund',reason:'Lỗi shop',items:[{productId:'OTHER',quantity:1}]},details),/không thuộc đơn/);
+ assert.throws(()=>afterSalesInput({type:'refund',reason:'Lỗi shop',evidence:['javascript:alert(1)']},details),/bằng chứng/);
+ assert.throws(()=>afterSalesInput({type:'cancel',reason:'Đổi ý'},details),/trả hàng/);
+ assert.equal(refundableAmount([{THANH_TOAN_ID:'A',SO_TIEN:100000,TRANG_THAI_THANH_TOAN:'Đã cọc'},{THANH_TOAN_ID:'B',SO_TIEN:30000,LOAI_GIAO_DICH:'HOAN_TIEN',TRANG_THAI_THANH_TOAN:'Thành công'},{THANH_TOAN_ID:'C',SO_TIEN:900000,TRANG_THAI_THANH_TOAN:'Chờ thanh toán'}]),70000);
+});
+
+test('Stage 4 order-scoped Guest lookup cannot select another order or Sales requests', async () => {
+ const {ownedOrderQuery,ownedRequestQuery}=await import('../services/order-access.service.js');
+ const access={phone:'0901234567',orderId:'YEN_ALLOWED'};
+ assert.equal((await ownedOrderQuery(access)).DON_HANG_ID,'YEN_ALLOWED');
+ assert.equal(ownedRequestQuery(access)._id,'__ORDER_ONLY__');
+});

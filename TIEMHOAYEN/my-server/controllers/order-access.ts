@@ -3,9 +3,9 @@ import { InventoryError } from '../services/inventory/helpers.js';
 import { authorizeCheckout, authorizeOrder, lookupAccess, ownedOrderQuery, ownedRequestQuery, phonePattern, requestOrderOtp, revokeOrderAccess, verifyOrderOtp } from '../services/order-access.service.js';
 import { getCollection } from '../mongo.js';
 const failure = (res: Response, error: any) => res.status(error instanceof InventoryError ? error.status : 500).json({ message: error instanceof InventoryError ? error.message : 'Không thể xác thực tra cứu lúc này.' });
-export const accessToken = (req: Request) => String(req.headers['x-order-access'] || req.headers['x-request-token'] || '');
+export const accessToken = (req: Request) => String(req.headers['x-request-token'] || req.headers['x-order-access'] || '');
 export async function sendLookupOtp(req: Request, res: Response) {
-  try { res.setHeader('Cache-Control','no-store'); res.json(await requestOrderOtp(req.body.phone, req.ip || 'unknown')); } catch(e) { failure(res,e); }
+  try { res.setHeader('Cache-Control','no-store'); res.json(await requestOrderOtp(req.body.phone, req.ip || 'unknown', req.body.orderId ? String(req.body.orderId).trim() : undefined)); } catch(e) { failure(res,e); }
 }
 export async function verifyLookupOtp(req: Request, res: Response) {
   try { res.setHeader('Cache-Control','no-store'); res.json(await verifyOrderOtp(req.body.challengeId, req.body.code)); } catch(e) { failure(res,e); }
@@ -46,4 +46,20 @@ export async function requireCustomerLookup(req: Request, res: Response, next: N
     if (!customer) throw new InventoryError(404, 'Không tìm thấy lịch sử trong phạm vi được phép.');
     next();
   } catch(e) { failure(res,e); }
+}
+
+/** Address book belongs to an authenticated member, never a caller supplied ID. */
+export async function requireAddressOwner(req: Request, res: Response, next: NextFunction) {
+  try {
+    const access = await lookupAccess(accessToken(req));
+    if (access.authType !== 'member') throw new InventoryError(403, 'Cần đăng nhập để quản lý địa chỉ.');
+    const id = String(req.params.id || req.params.customerId || '');
+    if (id && id !== access.customerId) throw new InventoryError(404, 'Không tìm thấy địa chỉ trong tài khoản.');
+    if (req.params.addressId) {
+      const row = await (await getCollection<any>('DIA_CHI_GIAO_HANG')).findOne({ DIA_CHI_ID: req.params.addressId, KHACH_HANG_ID: access.customerId, DA_XOA: { $nin: [true, 1] } });
+      if (!row) throw new InventoryError(404, 'Không tìm thấy địa chỉ trong tài khoản.');
+    }
+    res.locals.orderAccess = access;
+    next();
+  } catch (error) { failure(res, error); }
 }
