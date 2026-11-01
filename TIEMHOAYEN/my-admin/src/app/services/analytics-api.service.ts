@@ -353,7 +353,7 @@ export class AnalyticsApiService {
   };
 
   /** fresh=true: bỏ qua cache server (nút Tải lại). */
-  overview(q: RangeQuery, opts: { deliveryMode?: 'window' | 'today'; bestSort?: 'quantity' | 'revenue'; fresh?: boolean } = {}): Observable<DashboardOverview> {
+  overview(q: RangeQuery, opts: { deliveryMode?: 'window' | 'today'; bestSort?: 'quantity' | 'revenue'; groupBy?: GroupBy | 'hour'; fresh?: boolean } = {}): Observable<DashboardOverview> {
     const { fresh, ...rest } = opts;
     return this.http
       .get<DashboardOverview>(`${this.base}/dashboard/overview`, { params: this.rangeParams(q, { ...rest, fresh: fresh ? '1' : undefined }) })

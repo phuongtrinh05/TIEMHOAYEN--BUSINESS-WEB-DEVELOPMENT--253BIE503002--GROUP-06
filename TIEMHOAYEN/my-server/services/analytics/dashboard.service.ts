@@ -272,7 +272,8 @@ export const getDashboardOverview = async (query: any) => {
     statusBreakdown: [...ds.orders.filter((o) => inRange(o.createdAt, range)).reduce((m, o) => m.set(o.status, (m.get(o.status) || 0) + 1), new Map<string, number>()).entries()]
       .map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count),
     latestOrderAt: ds.orders.reduce<Date | null>((m, o) => (o.createdAt && (!m || o.createdAt > m) ? o.createdAt : m), null),
-    series: computeSeries(ds, range, prev, autoBucket(range)),
+    // Độ hạt biểu đồ: theo nút Ngày/Tuần/Tháng/Quý/Năm của trang Tổng quan (nếu có), không thì tự chọn theo độ dài kỳ
+    series: computeSeries(ds, range, prev, (['hour', 'day', 'week', 'month', 'quarter', 'year'].includes(query.groupBy) && !(query.groupBy === 'hour' && range.to.getTime() - range.from.getTime() > 2 * 86_400_000) ? query.groupBy : autoBucket(range)) as Bucket),
     needAction: await computeNeedAction(ds, salesRequests),
     deliveries: computeDeliveries(ds, query.deliveryMode === 'today' ? 'today' : 'window'),
     attentionOrders: computeAttentionOrders(ds, shortageOrders).slice(0, 50),

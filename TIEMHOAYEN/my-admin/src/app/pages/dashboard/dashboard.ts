@@ -20,6 +20,25 @@ import * as F from './shared/format';
 import { ExportKind, ExportMenu, ExportSheet, exportCsv, exportExcel, printPdf } from './shared/export';
 
 type ChartMetric = 'revenue' | 'cash' | 'orders';
+export type Period = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'custom';
+
+/** Mốc đầu kỳ (giờ VN) của Ngày / Tuần (thứ Hai) / Tháng / Quý / Năm, tính tới hôm nay. */
+const periodRange = (p: Exclude<Period, 'custom'>): { from: string; to: string } => {
+  const today = F.isoDate(0);
+  const [y, m, d] = today.split('-').map(Number);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  switch (p) {
+    case 'day': return { from: today, to: today };
+    case 'week': {
+      const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+      return { from: F.isoDate(-((dow + 6) % 7)), to: today };
+    }
+    case 'month': return { from: `${y}-${pad(m)}-01`, to: today };
+    case 'quarter': return { from: `${y}-${pad(Math.floor((m - 1) / 3) * 3 + 1)}-01`, to: today };
+    case 'year': return { from: `${y}-01-01`, to: today };
+  }
+};
+const PERIOD_BUCKET: Record<Period, 'hour' | 'day' | 'week' | 'month' | undefined> = { day: 'hour', week: 'day', month: 'day', quarter: 'week', year: 'month', custom: undefined };
 
 const NOTI_POLL_MS = 30_000;
 const DELIVERY_POLL_MS = 60_000;
@@ -50,6 +69,13 @@ export class Dashboard implements OnInit {
 
   /** Mặc định: hôm nay, so với hôm qua. */
   range = signal<RangeValue>(memoRange.value || { from: F.isoDate(0), to: F.isoDate(0), compare: 'previous' });
+  readonly periods: { key: Period; label: string }[] = [
+    { key: 'day', label: 'Ngày' }, { key: 'week', label: 'Tuần' }, { key: 'month', label: 'Tháng' }, { key: 'quarter', label: 'Quý' }, { key: 'year', label: 'Năm' }, { key: 'custom', label: 'Tùy chọn' },
+  ];
+  /** Kỳ đang chọn — suy ra từ khoảng ngày (khớp Ngày/Tuần/… nào thì sáng nút đó). */
+  period = signal<Period>('day');
+  showCustom = signal(false);
+  periodLabel = computed(() => ({ day: 'Hôm nay', week: 'Tuần này', month: 'Tháng này', quarter: 'Quý này', year: 'Năm nay', custom: 'Khoảng tùy chọn' } as Record<Period, string>)[this.period()]);
   isToday = computed(() => this.range().from === F.isoDate(0) && this.range().to === F.isoDate(0));
   compareShort = computed(() => (this.range().compare === 'lastYear' ? 'Năm trước' : this.range().from === this.range().to ? 'Hôm trước' : 'Kỳ trước'));
 
@@ -118,6 +144,8 @@ export class Dashboard implements OnInit {
     if (!this.isBrowser) return;
     const q = this.route.snapshot.queryParamMap;
     if (q.get('from') && q.get('to')) this.range.set({ from: q.get('from')!, to: q.get('to')!, compare: (q.get('compare') as CompareMode) || 'previous' });
+    const qp = q.get('period') as Period | null;
+    this.period.set(qp && this.periods.some((x) => x.key === qp) ? qp : this.detectPeriod());
     this.load();
     this.loadNotifications();
     const a = interval(NOTI_POLL_MS).subscribe(() => this.loadNotifications());
@@ -137,12 +165,12 @@ export class Dashboard implements OnInit {
 
   load(fresh = false): void {
     memoRange.value = this.range();
-    const key = `ov|${this.range().from}|${this.range().to}|${this.range().compare}|${this.deliveryMode()}`;
+    const key = `ov|${this.range().from}|${this.range().to}|${this.range().compare}|${this.deliveryMode()}|${this.period()}`;
     const cached = memo.get(key) as DashboardOverview | undefined;
     if (cached && !fresh) this.apply(cached);
     this.loading.set(true);
     this.error.set('');
-    this.api.overview(this.query, { deliveryMode: this.deliveryMode(), fresh }).subscribe({
+    this.api.overview(this.query, { deliveryMode: this.deliveryMode(), groupBy: this.range().from === this.range().to ? 'hour' : PERIOD_BUCKET[this.period()], fresh }).subscribe({
       next: (ov) => { memo.set(key, ov); this.apply(ov); this.loading.set(false); },
       error: (e: Error) => { this.error.set(e.message); this.loading.set(false); },
     });
@@ -167,15 +195,30 @@ export class Dashboard implements OnInit {
 
   /* ---------------- tương tác ---------------- */
 
-  onRange(v: RangeValue): void {
+  private detectPeriod(): Period {
+    const r = this.range();
+    const hit = (['day', 'week', 'month', 'quarter', 'year'] as const).find((p) => { const x = periodRange(p); return x.from === r.from && x.to === r.to; });
+    return hit || 'custom';
+  }
+
+  setPeriod(p: Period): void {
+    if (p === 'custom') { this.showCustom.set(!this.showCustom()); return; }
+    this.showCustom.set(false);
+    this.onRange({ ...periodRange(p), compare: this.range().compare }, p);
+  }
+
+  setCompare(c: CompareMode): void {
+    if (c !== this.range().compare) this.onRange({ ...this.range(), compare: c }, this.period());
+  }
+
+  /** p: kỳ người dùng vừa bấm (đầu tháng trùng hôm nay thì vẫn giữ "Tháng"). */
+  onRange(v: RangeValue, p?: Period): void {
     this.range.set(v);
-    this.router.navigate([], { queryParams: { from: v.from, to: v.to, compare: v.compare }, replaceUrl: true });
+    this.period.set(p ?? this.detectPeriod());
+    this.router.navigate([], { queryParams: { from: v.from, to: v.to, compare: v.compare, period: this.period() }, replaceUrl: true });
     this.load();
   }
 
-  setToday(): void {
-    this.onRange({ from: F.isoDate(0), to: F.isoDate(0), compare: this.range().compare });
-  }
 
   setDeliveryMode(m: 'window' | 'today'): void {
     this.deliveryMode.set(m);
