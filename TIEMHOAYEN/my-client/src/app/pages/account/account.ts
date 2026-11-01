@@ -624,8 +624,8 @@ export class AccountComponent implements OnInit, OnDestroy {
     const khachHang = JSON.parse(saved);
 
     this.customerService.getWishlist(khachHang.KHACH_HANG_ID).subscribe({
-      next: (data: CustomerWishlistItem[]) => {
-        this.wishlistItems = data.map(item => {
+      next: (data) => {
+        this.wishlistItems = data.items.map((item: CustomerWishlistItem) => {
           const originalPrice = Number(item.GIA || 0);
           const salePrice = Number(item.GIA_KHUYEN_MAI || 0);
           const hasSalePrice = salePrice > 0 && salePrice < originalPrice;
