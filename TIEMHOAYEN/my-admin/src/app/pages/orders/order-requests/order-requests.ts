@@ -64,7 +64,7 @@ export class OrderRequests implements OnInit, OnDestroy {
     if (!this.active || !this.options) return;
     const q = this.active.quote;
     this.draft = { items: q ? q.items.map((item: any) => ({ ...item, materials: item.custom ? item.bom.materials.map((m: any) => ({ ...m })) : [], designFee: item.bom?.designFee || 0, extraFee: item.bom?.extraFee || 0 }))
-      : this.active.items.map((i: any) => ({ id: i.productId, qty: i.quantity, custom: false })),
+      : this.active.items.map((i: any) => i.designId ? {id:i.productId,qty:i.quantity,custom:true,designId:i.designId,name:i.name,image:i.image,imageDescription:'Thiết kế 3D khách gửi; cần xác nhận khả năng thực hiện',materials:i.bom.materials.map((m:any)=>({...m})),designFee:i.bom.designFee || 0,extraFee:i.bom.extraFee || 0} : { id: i.productId, qty: i.quantity, custom: false }),
       date: this.dateInput(q?.delivery.date || this.active.delivery?.date), time: String(q?.delivery.time || this.active.delivery?.time || '').match(/\b\d{2}:\d{2}\b/)?.[0] || '',
       shippingFee: q?.summary.shippingFee ?? this.active.originalSummary?.shippingFee ?? 0,
       paymentMethod: q?.payment.method || 'bank', depositAmount: q?.summary.depositAmount || 0, note: q?.note || '' };

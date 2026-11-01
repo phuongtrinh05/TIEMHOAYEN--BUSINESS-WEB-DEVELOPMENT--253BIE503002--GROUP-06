@@ -343,24 +343,8 @@
               <span class="discount-voucher">-{{ formatVND(voucherDiscount) }}</span>
             </div>
 
-            <!-- Điểm thưởng -->
             <div class="loyalty-bar">
-              <span class="loyalty-bar__label">
-                Sử dụng {{ selectedCustomerLoyalty }} điểm thưởng
-                <label class="loyalty-switch" [class.loyalty-switch--disabled]="selectedCustomerLoyalty === 0">
-                  <input
-                    type="checkbox"
-                    [(ngModel)]="useLoyalty"
-                    (change)="onLoyaltyToggle()"
-                    [disabled]="selectedCustomerLoyalty === 0"
-                  >
-                  <span class="loyalty-switch__track"></span>
-                </label>
-              </span>
-              <span class="loyalty-bar__discount" *ngIf="useLoyalty && loyaltyDiscount > 0">
-                -{{ formatVND(loyaltyDiscount) }}
-              </span>
-              <span *ngIf="!useLoyalty || loyaltyDiscount === 0"></span>
+              <span class="loyalty-bar__label">Sử dụng điểm đang tạm khóa trong khi chính sách được hoàn thiện.</span>
             </div>
 
             <div class="payment-row">

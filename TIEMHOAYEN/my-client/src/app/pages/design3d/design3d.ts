@@ -1,8 +1,15 @@
+import {apiBaseUrl} from '../../services/api-config';
+import {Design3dService,DesignQuote} from '../../services/design3d.service';
+import {CartService} from '../../services/cart.service';
+import {Router} from '@angular/router';
+import {inject,ChangeDetectorRef,DestroyRef,PLATFORM_ID,OnInit,signal,afterNextRender} from '@angular/core';
+import {isPlatformBrowser} from '@angular/common';
+import {map,timeout,finalize} from 'rxjs';
+import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
-  AfterViewInit,
   OnDestroy,
   ElementRef,
   ViewChild
@@ -14,6 +21,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 interface FlowerDef {
+  materialId?: string; available?: number; price?: number; unit?: string; threshold?: number;
   name: string;
   image: string;
   colors: string[];
@@ -59,7 +67,7 @@ interface SelectedFlower extends FlowerDef {
   templateUrl: './design3d.html',
   styleUrl: './design3d.css',
 })
-export class Design3d implements AfterViewInit, OnDestroy {
+export class Design3d implements OnInit, OnDestroy {
   @ViewChild('threeCanvas', { static: true })
   threeCanvas!: ElementRef;
 
@@ -82,6 +90,11 @@ export class Design3d implements AfterViewInit, OnDestroy {
   private modelCache = new Map<string, ModelEntry>();
   // Các modelPath đang trong quá trình load (tránh load trùng song song)
   private loadingPaths = new Set<string>();
+  private failedPaths = new Set<string>();
+  private modelRequests = new Map<string,AbortController>();
+  readonly modelsLoading=signal(0);
+  readonly modelError=signal('');
+  private destroyed=false;
 
   private loader = new GLTFLoader();
 
@@ -151,7 +164,7 @@ export class Design3d implements AfterViewInit, OnDestroy {
     return flower.colors;
   }
 
-  flowers: FlowerDef[] = [
+  private modelLibrary: FlowerDef[] = [
     {
       name: 'Hoa Hồng',
       image: 'assets/images/design3d_hoahong.png',
@@ -242,6 +255,91 @@ export class Design3d implements AfterViewInit, OnDestroy {
     }
   ];
 
+  private designApi=inject(Design3dService);
+  private cartApi=inject(CartService);
+  private router=inject(Router);
+  private cdr=inject(ChangeDetectorRef);
+  private readonly destroyRef=inject(DestroyRef);
+  private readonly isBrowser=isPlatformBrowser(inject(PLATFORM_ID));
+  private readonly materialsState=signal<FlowerDef[]>([]);
+  private readonly materialsLoading=signal(false);
+  get flowers():FlowerDef[]{return this.materialsState();}
+  set flowers(value:FlowerDef[]){this.materialsState.set(value);}
+  get loadingMaterials():boolean{return this.materialsLoading();}
+  set loadingMaterials(value:boolean){this.materialsLoading.set(value);}
+  materialLoadError='';
+  rendererError='';
+  rendererReady=false;
+  ngOnInit():void { if(this.isBrowser)this.loadDesignMaterials(); }
+  private readonly quoteState=signal<DesignQuote | null>(null);
+  private readonly quotePending=signal(false);
+  get quote():DesignQuote | null{return this.quoteState();}
+  set quote(value:DesignQuote | null){this.quoteState.set(value);}
+  get quoteLoading():boolean{return this.quotePending();}
+  set quoteLoading(value:boolean){this.quotePending.set(value);}
+  designError=''; designMessage=''; savingDesign=false;
+  private quoteTimer?: ReturnType<typeof setTimeout>;
+  private quoteVersion=0;
+  loadDesignMaterials():void {
+    if(!this.isBrowser || this.loadingMaterials)return;
+    this.loadingMaterials=true;
+    this.materialLoadError='';
+    this.designApi.materials().pipe(
+      timeout(15000),
+      map(result=>{
+        if(!Array.isArray(result?.materials) || !Array.isArray(result?.models))throw new Error('Invalid 3D material response');
+        return result.materials.map(m=>{
+          const index=result.models.indexOf(m.modelKey),base=index>=0?this.modelLibrary[index]:undefined;
+          const colors=m.colors?.length?m.colors:(base?.colors || (m.color?[m.color]:[]));
+          return {...base,name:m.name,image:m.image?(m.image.startsWith('/uploads/')?this.backendHost()+m.image:m.image):(base?.image || 'assets/images/flower_default.png'),
+            materialId:m.id,unit:m.unit,available:m.available,price:m.price,threshold:m.threshold,colors,modelPath:base?.modelPath || ''};
+        });
+      }),
+      finalize(()=>{this.loadingMaterials=false;this.cdr.markForCheck();}),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe({
+      next:flowers=>{this.flowers=flowers;this.cdr.markForCheck();},
+      error:e=>{this.materialLoadError=e.name==='TimeoutError'?'Tải nguyên vật liệu quá lâu. Bạn thử lại nhé.':e.error?.message || 'Không tải được nguyên vật liệu thiết kế. Bạn thử lại nhé.';this.cdr.markForCheck();}
+    });
+  }
+  private backendHost():string {return this.designApiUrl().replace(/\/api$/,'');}
+  private designApiUrl():string {return apiBaseUrl();}
+  private materialLines(){
+    const lines=new Map<string,{materialId:string;quantity:number;colors?:{color:string;quantity:number}[]}>();
+    for(const f of this.selectedFlowers){
+      const id=f.materialId!;
+      const line=lines.get(id)||{materialId:id,quantity:0,colors:[]};
+      line.quantity+=f.quantity;
+      if(f.selectedColor)line.colors!.push({color:f.selectedColor,quantity:f.quantity});
+      lines.set(id,line);
+    }
+    return [...lines.values()].map(l=>({...l,...(!l.colors?.length?{colors:undefined}:{})}));
+  }
+  refreshQuote():void {
+    const version=++this.quoteVersion;
+    if(this.quoteTimer)clearTimeout(this.quoteTimer);
+    this.designMessage='';this.quote=null;
+    if(!this.selectedFlowers.length){this.quoteLoading=false;return;}
+    this.quoteLoading=true;
+    this.quoteTimer=setTimeout(()=>this.designApi.estimate(this.materialLines()).pipe(timeout(15000),takeUntilDestroyed(this.destroyRef)).subscribe({next:q=>{if(version!==this.quoteVersion)return;this.quote=q;this.quoteLoading=false;this.cdr.markForCheck();},error:e=>{if(version!==this.quoteVersion)return;this.designError=e.error?.message || 'Chưa tính được giá.';this.quoteLoading=false;this.cdr.markForCheck();}}),250);
+  }
+  orderDesign():void {
+    if(this.savingDesign || this.quoteLoading || !this.selectedFlowers.length || !this.renderer)return;
+    this.savingDesign=true;this.designError='';
+    this.renderer.render(this.scene,this.camera);
+    const canvas=document.createElement('canvas');canvas.width=480;canvas.height=480;
+    canvas.getContext('2d')?.drawImage(this.renderer.domElement,0,0,480,480);
+    const image=canvas.toDataURL('image/jpeg',.7);
+    this.designApi.save(this.materialLines(),image).subscribe({next:d=>{
+      let customer:any=null;try{customer=JSON.parse(localStorage.getItem('khachHang') || 'null');}catch{}
+      if(customer?.KHACH_HANG_ID){this.cartApi.addItem(customer.KHACH_HANG_ID,d.productId,1).subscribe({next:()=>{this.savingDesign=false;this.router.navigate(['/cart']);},error:e=>{this.savingDesign=false;this.designError=e.error?.message || 'Chưa thêm được vào giỏ.';this.cdr.markForCheck();}});}
+      else {try{const raw=JSON.parse(localStorage.getItem('tiemHoaYenCart') || '[]');const cart=Array.isArray(raw)?raw:[];
+        cart.push({id:d.productId,designId:d.designId,name:d.name,style:'Thiết kế 3D',quantity:1,price:d.price,image:d.image,selected:true,requiresReview:d.requiresReview,badges:d.badges});
+        localStorage.setItem('tiemHoaYenCart',JSON.stringify(cart));window.dispatchEvent(new Event('cart-changed'));this.savingDesign=false;this.router.navigate(['/cart']);
+      }catch{this.savingDesign=false;this.designError='Giỏ hàng lưu trên máy đã đầy. Hãy xóa bớt thiết kế hoặc đăng nhập rồi thử lại.';this.cdr.markForCheck();}}
+    },error:e=>{this.savingDesign=false;this.designError=e.error?.message || 'Chưa lưu được thiết kế.';this.cdr.markForCheck();}});
+  }
+
   selectedFlowers: SelectedFlower[] = [];
 
   /**
@@ -270,12 +368,14 @@ export class Design3d implements AfterViewInit, OnDestroy {
    * nhờ vậy có thể trộn nhiều màu của cùng 1 loại hoa (vd Hoa Hồng Đỏ + Hồng).
    */
   addFlowerWithColor(flower: FlowerDef, color: string): void {
+    if(!flower.materialId || !(Number(flower.available)>0)){this.designError='NVL hiện hết khả dụng. Chọn NVL khác hoặc trao đổi với shop.';return;}
+    this.designError='';
     const existing = this.selectedFlowers.find(
-      item => item.name === flower.name && item.selectedColor === color
+      item => item.materialId === flower.materialId && item.selectedColor === color
     );
 
     if (existing) {
-      existing.quantity++;
+      existing.quantity=Math.min(1000,existing.quantity+1);
     } else {
       this.selectedFlowers.push({
         ...flower,
@@ -291,6 +391,7 @@ export class Design3d implements AfterViewInit, OnDestroy {
     }
 
     this.renderBouquet();
+    this.refreshQuote();
   }
 
   /**
@@ -301,7 +402,7 @@ export class Design3d implements AfterViewInit, OnDestroy {
    */
   onColorChange(flower: SelectedFlower, newColor: string): void {
     const mergeTarget = this.selectedFlowers.find(
-      item => item !== flower && item.name === flower.name && item.selectedColor === newColor
+      item => item !== flower && item.materialId === flower.materialId && item.selectedColor === newColor
     );
 
     if (mergeTarget) {
@@ -316,17 +417,20 @@ export class Design3d implements AfterViewInit, OnDestroy {
     }
 
     this.renderBouquet();
+    this.refreshQuote();
   }
 
   increaseQuantity(flower: SelectedFlower): void {
-    flower.quantity++;
+    flower.quantity=Math.min(1000,flower.quantity+1);
     this.renderBouquet();
+    this.refreshQuote();
   }
 
   decreaseQuantity(flower: SelectedFlower): void {
     if (flower.quantity > 1) {
       flower.quantity--;
       this.renderBouquet();
+    this.refreshQuote();
     }
   }
 
@@ -339,8 +443,9 @@ export class Design3d implements AfterViewInit, OnDestroy {
     if (!qty || qty < 1) {
       qty = 1;
     }
-    flower.quantity = qty;
+    flower.quantity = Math.min(1000,qty);
     this.renderBouquet();
+    this.refreshQuote();
   }
 
   removeFlower(flower: SelectedFlower): void {
@@ -348,6 +453,7 @@ export class Design3d implements AfterViewInit, OnDestroy {
       item => item !== flower
     );
     this.renderBouquet();
+    this.refreshQuote();
   }
 
   getTotalFlowers(): number {
@@ -358,18 +464,18 @@ export class Design3d implements AfterViewInit, OnDestroy {
   }
 
   getTotalTypes(): number {
-    return this.selectedFlowers.length;
+    return new Set(this.selectedFlowers.map(f=>f.materialId)).size;
   }
 
   clearAllFlowers(): void {
     this.selectedFlowers = [];
     this.renderBouquet();
+    this.refreshQuote();
   }
 
   /**
    * Chụp ảnh khung canvas 3D hiện tại (đúng góc nhìn user đang xoay/zoom)
-   * và tải file ảnh về máy. Thay cho nút "Lưu thiết kế" cũ vì thiết kế
-   * không cần lưu ở server, chỉ cần xuất ảnh.
+   * và tải file ảnh về máy. Nút đặt mẫu lưu bản thiết kế riêng trên server.
    */
   captureImage(): void {
     if (!this.renderer || !this.scene || !this.camera) return;
@@ -386,7 +492,16 @@ export class Design3d implements AfterViewInit, OnDestroy {
     link.click();
   }
 
-  ngAfterViewInit(): void {
+  constructor() {
+    afterNextRender(()=>{
+    if(this.destroyed)return;
+    try { this.initializeScene();this.rendererReady=true; }
+    catch(error){this.rendererError='Không khởi tạo được khung 3D. Hãy tải lại trang hoặc kiểm tra hỗ trợ đồ họa của trình duyệt.';console.error('3D renderer initialization failed',error);}
+    this.cdr.markForCheck();
+    });
+  }
+
+  private initializeScene(): void {
     const container = this.threeCanvas.nativeElement;
 
     // Dọn sạch canvas cũ nếu container đã từng có (vd do HMR/re-init trước đó
@@ -401,7 +516,7 @@ export class Design3d implements AfterViewInit, OnDestroy {
 
     const camera = new THREE.PerspectiveCamera(
       45,
-      container.clientWidth / container.clientHeight,
+      Math.max(1,container.clientWidth) / Math.max(1,container.clientHeight),
       0.1,
       1000
     );
@@ -415,7 +530,7 @@ export class Design3d implements AfterViewInit, OnDestroy {
       preserveDrawingBuffer: true // cần để có thể chụp ảnh canvas (toDataURL)
     });
 
-    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setSize(Math.max(1,container.clientWidth), Math.max(1,container.clientHeight));
     renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(renderer.domElement);
     this.camera = camera;
@@ -457,6 +572,7 @@ export class Design3d implements AfterViewInit, OnDestroy {
     // Nếu component có sẵn hoa đã chọn từ trước (state giữ lại), render lại ngay
     if (this.selectedFlowers.length > 0) {
       this.renderBouquet();
+    this.refreshQuote();
     }
   }
 
@@ -465,6 +581,11 @@ export class Design3d implements AfterViewInit, OnDestroy {
    * gỡ canvas khỏi DOM. Quan trọng để tránh rò rỉ và tránh chồng canvas khi re-init.
    */
   ngOnDestroy(): void {
+    this.destroyed=true;
+    this.modelRequests.forEach(controller=>controller.abort());
+    if(this.quoteTimer)clearTimeout(this.quoteTimer);
+    ++this.quoteVersion;
+
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
     }
@@ -482,60 +603,53 @@ export class Design3d implements AfterViewInit, OnDestroy {
    * tự tính hệ số scale quy về TARGET_HEIGHT chung cho mọi loại hoa.
    * Lưu kết quả vào cache. Nếu đã có trong cache, không load lại.
    */
-  private loadModel(
+  private async loadModel(
     modelPath: string,
     rotationOffset: [number, number, number]
   ): Promise<ModelEntry | null> {
-    if (!modelPath) {
-      return Promise.resolve(null);
+    const cached=this.modelCache.get(modelPath);
+    if(cached)return cached;
+    const controller=new AbortController();
+    this.modelRequests.set(modelPath,controller);
+    const timer=setTimeout(()=>controller.abort(),25000);
+    try {
+      const url=new URL(modelPath,document.baseURI);
+      const response=await fetch(url,{signal:controller.signal});
+      if(!response.ok)throw new Error(`Model HTTP ${response.status}`);
+      const data=await response.arrayBuffer();
+      const gltf=await this.loader.parseAsync(data,new URL('.',url).href);
+      if(this.destroyed)return null;
+      const model=gltf.scene;
+      model.rotation.set(...rotationOffset);
+      model.updateMatrixWorld(true);
+      const box=new THREE.Box3().setFromObject(model);
+      if(box.isEmpty())throw new Error('Empty model');
+      const size=box.getSize(new THREE.Vector3());
+      let scale=this.TARGET_HEIGHT/(size.y || 1);
+      const rawWidth=Math.max(size.x,size.z) || 1;
+      if(rawWidth*scale>this.TARGET_MAX_WIDTH)scale=this.TARGET_MAX_WIDTH/rawWidth;
+      const entry={object:model,scale,baseOffset:box.min.y};
+      this.modelCache.set(modelPath,entry);
+      this.failedPaths.delete(modelPath);
+      return entry;
+    } catch(error) {
+      if(!this.destroyed){
+        this.failedPaths.add(modelPath);
+        this.modelError.set('Chưa tải được mô hình hoa. Bấm thử lại để dựng bó hoa.');
+        console.error('Không tải được mô hình 3D',modelPath,error);
+      }
+      return null;
+    } finally {
+      clearTimeout(timer);
+      this.modelRequests.delete(modelPath);
+      this.loadingPaths.delete(modelPath);
+      this.modelsLoading.set(this.loadingPaths.size);
     }
+  }
 
-    const cached = this.modelCache.get(modelPath);
-    if (cached) {
-      return Promise.resolve(cached);
-    }
-
-    return new Promise(resolve => {
-      this.loader.load(
-        modelPath,
-        (gltf: any) => {
-          const model = gltf.scene;
-
-          // Áp góc xoay thủ công trước khi đo, để Box3 phản ánh đúng
-          // chiều cao thật theo phương thẳng đứng mong muốn.
-          model.rotation.set(
-            rotationOffset[0],
-            rotationOffset[1],
-            rotationOffset[2]
-          );
-
-          const box = new THREE.Box3().setFromObject(model);
-          const size = box.getSize(new THREE.Vector3());
-          const rawHeight = size.y || 1; // tránh chia cho 0
-          const rawWidth = Math.max(size.x, size.z) || 1;
-
-          // Scale theo chiều cao chuẩn trước, nhưng nếu bề ngang sau khi scale
-          // vượt quá TARGET_MAX_WIDTH (loại tán xòe rộng như hoa baby) thì
-          // scale nhỏ thêm theo bề ngang để tránh chồng lấn slot bên cạnh.
-          let scale = this.TARGET_HEIGHT / rawHeight;
-          if (rawWidth * scale > this.TARGET_MAX_WIDTH) {
-            scale = this.TARGET_MAX_WIDTH / rawWidth;
-          }
-          const baseOffset = box.min.y;
-
-          const entry: ModelEntry = { object: model, scale, baseOffset };
-          this.modelCache.set(modelPath, entry);
-          this.loadingPaths.delete(modelPath);
-          resolve(entry);
-        },
-        undefined,
-        (error: any) => {
-          console.error('Lỗi load model:', modelPath, error);
-          this.loadingPaths.delete(modelPath);
-          resolve(null);
-        }
-      );
-    });
+  retryModels():void {
+    this.failedPaths.clear();this.modelError.set('');
+    this.renderBouquet();
   }
 
   /**
@@ -546,12 +660,13 @@ export class Design3d implements AfterViewInit, OnDestroy {
     modelPath: string,
     rotationOffset: [number, number, number]
   ): void {
-    if (!modelPath || this.modelCache.has(modelPath) || this.loadingPaths.has(modelPath)) {
+    if (this.destroyed || !modelPath || this.modelCache.has(modelPath) || this.loadingPaths.has(modelPath) || this.failedPaths.has(modelPath)) {
       return;
     }
     this.loadingPaths.add(modelPath);
-    this.loadModel(modelPath, rotationOffset).then(() => {
-      this.renderBouquet();
+    this.modelsLoading.set(this.loadingPaths.size);
+    this.loadModel(modelPath, rotationOffset).then(entry => {
+      if(!this.destroyed && entry)this.renderBouquet();
     });
   }
 
@@ -568,6 +683,7 @@ export class Design3d implements AfterViewInit, OnDestroy {
    * tăm tắp như bản sao robot.
    */
   renderBouquet(): void {
+    if(!this.roseGroup || this.destroyed)return;
     this.roseGroup.clear();
 
     type Instance = { flower: SelectedFlower; entry: ModelEntry };
@@ -579,7 +695,7 @@ export class Design3d implements AfterViewInit, OnDestroy {
       const path = this.getEffectiveModelPath(flower, flower.selectedColor);
       if (!path) continue;
       const entry = this.modelCache.get(path);
-      if (!entry) continue;
+      if (!entry){this.preloadModel(path,flower.rotationOffset ?? [0,0,0]);continue;}
       const list: Instance[] = [];
       for (let i = 0; i < flower.quantity; i++) {
         list.push({ flower, entry });
@@ -711,6 +827,7 @@ export class Design3d implements AfterViewInit, OnDestroy {
     }
 
     this.fitCameraToBouquet();
+    if(this.renderer && this.scene && this.camera)this.renderer.render(this.scene,this.camera);
   }
 
   /**

@@ -1,5 +1,8 @@
+import { InventoryDialogComponent } from '../inventory-dialog';
+import { exportInventoryCsv } from '../inventory-csv';
+import { InventoryPagerComponent } from '../inventory-pager';
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
@@ -27,11 +30,16 @@ const NEXT_STATUS: Record<string, string[]> = {
 @Component({
   selector: 'app-purchase-order-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, InventoryTabsComponent],
+  imports: [InventoryDialogComponent, CommonModule, FormsModule, InventoryTabsComponent, InventoryPagerComponent],
   templateUrl: './purchase-order-list.html',
   styleUrls: ['../inventory.css'],
 })
 export class PurchaseOrderListComponent implements OnInit {
+  @ViewChild(InventoryDialogComponent) private dialog!: InventoryDialogComponent;
+  exportCsv(): void { exportInventoryCsv('purchase-order-list', ['Mã PO','NCC','Ngày đặt','Dự kiến giao','Giá trị','Trạng thái'], this.filtered().map(po => [po.PO_ID, this.supplierName(po.NHA_CUNG_CAP_ID), po.NGAY_DAT, po.NGAY_GIO_DU_KIEN_GIAO, po.TONG_TIEN_DU_KIEN, po.TRANG_THAI])); }
+  readonly listPage = signal(1);
+  readonly displayPage = computed(() => Math.min(this.listPage(), Math.max(1, Math.ceil(this.filtered().length / 15))));
+  filtersOpen = false;
   private readonly api = inject(InventoryApiService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -68,14 +76,14 @@ export class PurchaseOrderListComponent implements OnInit {
     }
   }
 
-  load(): void {
+  load(): void { this.listPage.set(1);
     this.loading.set(true);
     this.api.purchaseOrders().subscribe({
       next: (r) => { this.orders.set(r.purchaseOrders); this.loading.set(false); },
       error: (e) => { this.error.set(inventoryErrorMessage(e)); this.loading.set(false); },
     });
   }
-  refilter(): void { this.tick.update((x) => x + 1); }
+  refilter(): void { this.listPage.set(1); this.tick.update((x) => x + 1); }
 
   openCreate(): void {
     this.editingId = null;
@@ -122,19 +130,19 @@ export class PurchaseOrderListComponent implements OnInit {
     });
   }
 
-  changeStatus(po: InvPurchaseOrder, status: string): void {
+  async changeStatus(po: InvPurchaseOrder, status: string): Promise<void> {
     let note: string | undefined;
-    if (status === 'Đã hủy') { note = prompt('Lý do hủy PO?') ?? undefined; if (note === undefined) return; }
+    if (status === 'Đã hủy') { note = await this.dialog.prompt('Nhập lý do hủy PO.', '', {title: 'Hủy PO', label: 'Hủy PO'}) ?? undefined; if (note === undefined) return; }
     if (status === 'Giao thành công' && po.CHI_TIET.some((l) => (l.SL_DA_NHAN || 0) < l.SL_DAT)
-      && !confirm('PO chưa nhận đủ. Đóng PO sẽ không còn tính phần chưa giao vào hàng đang về. Tiếp tục?')) return;
+      && !(await this.dialog.confirm('PO chưa nhận đủ. Đóng PO sẽ không còn tính phần chưa giao vào hàng đang về. Tiếp tục?'))) return;
     this.api.changePurchaseOrderStatus(po.PO_ID, status, note).subscribe({
       next: () => { this.notify(`PO ${po.PO_ID} → ${status}`); this.load(); },
       error: (e) => this.notify(inventoryErrorMessage(e), true),
     });
   }
 
-  updateExpected(po: InvPurchaseOrder): void {
-    const v = prompt('Ngày giờ NCC báo giao mới (YYYY-MM-DD HH:mm)', po.NGAY_GIO_DU_KIEN_GIAO ? this.toLocal(po.NGAY_GIO_DU_KIEN_GIAO).replace('T', ' ') : '');
+  async updateExpected(po: InvPurchaseOrder): Promise<void> {
+    const v = await this.dialog.prompt('Ngày giờ NCC báo giao mới', po.NGAY_GIO_DU_KIEN_GIAO ? this.toLocal(po.NGAY_GIO_DU_KIEN_GIAO) : '', {title: 'Cập nhật lịch giao', type: 'datetime-local'});
     if (!v) return;
     this.api.updatePurchaseOrder(po.PO_ID, { expectedAt: new Date(v.replace(' ', 'T')).toISOString() }).subscribe({
       next: () => { this.notify('Đã cập nhật ngày dự kiến giao. Kiểm tra cảnh báo thiếu NVL theo T.'); this.load(); },

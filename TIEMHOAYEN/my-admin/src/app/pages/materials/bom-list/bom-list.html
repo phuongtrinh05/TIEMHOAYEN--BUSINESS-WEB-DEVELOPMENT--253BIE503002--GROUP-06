@@ -1,24 +1,54 @@
 <div class="inv-page">
   <div class="inv-card">
     <app-inventory-tabs />
-    <h2 class="inv-title">Công thức sản phẩm (BOM)</h2>
-    <p class="inv-sub">Định lượng NVL cho <b>1 bó</b>. Số bó làm được = min ⌊khả dụng / định mức⌋. Mỗi sản phẩm chỉ có 1 BOM “Hiệu lực”; sửa BOM = tạo phiên bản mới.</p>
-
-    <div class="inv-split">
+    <div class="inv-toolbar inv-list-tools inv-bom-export-tools"><button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button></div>
+    <div class="inv-split inv-bom-layout" [class.picker-closed]="!pickerOpen()">
       <!-- Danh sách sản phẩm -->
-      <div>
-        <input class="inv-input mb-2" placeholder="Tìm sản phẩm…" [(ngModel)]="search" (ngModelChange)="refilter()">
-        <div class="d-flex gap-3 small mb-2">
-          <label><input type="checkbox" [(ngModel)]="onlyReview" (ngModelChange)="refilter()"> Cần rà soát</label>
-          <label><input type="checkbox" [(ngModel)]="onlyNoBom" (ngModelChange)="refilter()"> Chưa có BOM</label>
+      <div class="inv-bom-sidebar" [class.is-collapsed]="!pickerOpen()">
+        <div class="inv-bom-search-row">
+          @if (pickerOpen()) { <input class="inv-input" aria-label="Tìm sản phẩm" placeholder="Tìm sản phẩm…" [(ngModel)]="search" (ngModelChange)="refilter()"> }
+          @if (pickerOpen()) { <button class="inv-bom-filter-toggle" type="button" aria-label="Lọc theo danh mục" [class.active]="categoryFiltersOpen || categoryValue || recipeFilter" [attr.aria-expanded]="categoryFiltersOpen" (click)="categoryFiltersOpen = !categoryFiltersOpen"><i class="bi bi-funnel" aria-hidden="true"></i></button> }
+          <button class="inv-bom-toggle" type="button" [attr.aria-expanded]="pickerOpen()" [attr.aria-label]="pickerOpen() ? 'Thu gọn chọn sản phẩm' : 'Mở chọn sản phẩm'" (click)="pickerOpen.set(!pickerOpen())"><i class="bi" [class.bi-chevron-left]="pickerOpen()" [class.bi-chevron-right]="!pickerOpen()" aria-hidden="true"></i></button>
         </div>
+        @if (pickerOpen()) {
+
+          @if (categoryFiltersOpen) {
+            <div class="inv-bom-simple-filters">
+              <div class="inv-bom-filter-heading"><span>Lọc sản phẩm</span><button type="button" (click)="clearSearch()">Xóa lọc</button></div>
+              @if (categoryError()) { <div class="inv-alert error">{{ categoryError() }} <button class="inv-btn sm" type="button" (click)="loadProducts()">Thử lại</button></div> }
+              <div class="inv-bom-category-choice">
+                <label>Danh mục
+                  <select class="inv-select sm" aria-label="Danh mục" [ngModel]="categoryType" (ngModelChange)="changeCategory($event)">
+                    @for (t of categoryTabs; track t[0]) { <option [value]="t[0]">{{ t[1] }}</option> }
+                  </select>
+                </label>
+                <label>Chi tiết danh mục
+                  <select class="inv-select sm" aria-label="Chi tiết danh mục" [(ngModel)]="categoryValue" (ngModelChange)="refilter()" [disabled]="loading() || !categoryOptions().length">
+                    <option value="">{{ loading() ? 'Đang tải…' : categoryOptions().length ? 'Tất cả' : 'Chưa có dữ liệu' }}</option>
+                    @for (value of categoryOptions(); track value) { <option [value]="value">{{ value }}</option> }
+                  </select>
+                </label>
+              </div>
+              <label>Tình trạng công thức
+                <select class="inv-select sm" aria-label="Tình trạng công thức" [ngModel]="recipeFilter" (ngModelChange)="setRecipeFilter($event)">
+                  <option value="">Mọi công thức</option><option value="missing">Chưa có công thức</option><option value="review">Cần rà soát</option>
+                </select>
+              </label>
+            </div>
+          }
+          <div class="inv-bom-results-head">
+            <span>{{ loading() ? 'Đang tải sản phẩm…' : filtered().length + ' sản phẩm' }}</span>
+            @if (search || categoryValue || recipeFilter) { <button type="button" (click)="clearSearch()">Xóa lọc</button> }
+          </div>
+          @if (categoryValue) { <div class="inv-bom-active-filter">{{ categoryValue }}</div> }
+          @if (productError()) { <div class="inv-alert error">{{ productError() }} <button class="inv-btn sm" type="button" (click)="loadProducts()">Thử lại</button></div> }
         <div class="inv-table-wrap" style="max-height:68vh;overflow-y:auto">
           <table class="inv-table">
             <thead><tr><th>Sản phẩm</th><th class="num">Bán được</th></tr></thead>
             <tbody>
               @if (loading()) { <tr><td colspan="2" class="inv-empty">Đang tải…</td></tr> }
               @for (p of filtered(); track p.SAN_PHAM_ID) {
-                <tr class="clickable" [class.row-low]="selected()?.SAN_PHAM_ID === p.SAN_PHAM_ID" (click)="select(p)">
+                <tr class="clickable" [attr.aria-selected]="selected()?.SAN_PHAM_ID === p.SAN_PHAM_ID" (click)="select(p)">
                   <td>
                     <div class="fw-semibold">{{ p.TEN_SAN_PHAM }}</div>
                     <div class="muted">{{ p.SAN_PHAM_ID }} · {{ p.KIEU_DANG }}
@@ -30,21 +60,21 @@
                   <td class="num"><span class="badge-s" [class.out]="p.sellable <= 0" [class.low]="p.sellable > 0 && p.sellable <= 3" [class.ok]="p.sellable > 3">{{ p.sellable }}</span>
                     @if (p.finishedAvailable) { <div class="muted">{{ p.finishedAvailable }} cắm sẵn</div> }</td>
                 </tr>
-              }
+              } @empty { @if (!loading() && !productError()) { <tr><td colspan="2" class="inv-empty">Không có sản phẩm phù hợp.</td></tr> } }
             </tbody>
           </table>
         </div>
+        }
       </div>
-
       <!-- Chi tiết BOM -->
-      <div>
+      <div class="inv-bom-detail">
         @if (!selected()) {
           <div class="inv-empty">Chọn một sản phẩm để xem / sửa BOM.</div>
         } @else {
           @let p = selected()!;
           <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
             <div>
-              <h4 class="mb-1" style="color:#731919">{{ p.TEN_SAN_PHAM }}</h4>
+              <h4 class="mb-1 inv-bom-product-title">{{ p.TEN_SAN_PHAM }}</h4>
               <div class="muted">{{ p.SAN_PHAM_ID }} · giá {{ (p.GIA_KHUYEN_MAI || p.GIA) | number }}đ · cắm sẵn {{ p.finishedAvailable }} · làm thêm được {{ p.buildable }}
                 @if (p.bottleneck) { · NVL chốt chặn: <b>{{ p.bottleneck.name }}</b> }</div>
             </div>
@@ -144,3 +174,5 @@
 </div>
 
 @if (toast(); as t) { <div class="inv-toast" [class.error]="t.error">{{ t.text }}</div> }
+
+<app-inventory-dialog />

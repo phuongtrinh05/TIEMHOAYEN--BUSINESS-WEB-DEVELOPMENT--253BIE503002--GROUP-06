@@ -23,7 +23,7 @@ Bản này hiện thực hóa **Stage S1 (Master data) + S2 (Inventory core)** t
 | NVL/NCC đã có giao dịch chỉ ẩn / "Ngừng hợp tác", không xóa cứng. | `deleteOrHideMaterial`, `deleteOrDeactivateSupplier` |
 
 Cấu hình dùng chung nằm ở `services/inventory/constants.ts` → `INVENTORY_CONFIG`. Có thể override bằng `.env`:
-`INVENTORY_HOLD_MINUTES` (mặc định 15), `INVENTORY_SAME_DAY_CUTOFF` (mặc định 14:00), `INVENTORY_PRODUCT_LOW_STOCK` (mặc định 3).
+`INVENTORY_HOLD_MINUTES` (mặc định 5), `INVENTORY_SAME_DAY_CUTOFF` (mặc định 14:00), `INVENTORY_PRODUCT_LOW_STOCK` (mặc định 3).
 
 ## 2. Dữ liệu (MongoDB)
 
@@ -119,7 +119,7 @@ localStorage.setItem('API_BASE_URL','http://localhost:3000/api'); location.reloa
 
 Bỏ trỏ local: `localStorage.removeItem('API_BASE_URL')`.
 
-**Kiểm thử tự động**: gồm 17 ca, có các ca trong mục §08 của Stage plan. Cần MongoDB replica set (Atlas, hoặc `mongod --replSet`). Test tự tạo và xóa DB riêng.
+**Kiểm thử tự động**: gồm 39 ca kho và 24 ca đơn, có các ca trong mục §08 của Stage plan. Cần MongoDB replica set (Atlas, hoặc `mongod --replSet`). Test tự tạo và xóa DB riêng.
 
 ```bash
 TEST_MONGO_URI="mongodb://127.0.0.1:27017/?replicaSet=rs0" npm run test:inventory
@@ -127,9 +127,27 @@ TEST_MONGO_URI="mongodb://127.0.0.1:27017/?replicaSet=rs0" npm run test:inventor
 
 ## 5. Còn cần nhóm chốt
 
-- **Thời gian giữ QR**: Stage plan ghi 15 phút, `Tồn kho.docx` ghi 5 phút. Code đang để 15 phút, đổi bằng `INVENTORY_HOLD_MINUTES`.
+- **Thời gian giữ QR**: mặc định 5 phút theo D01/D04 cập nhật; backend dùng chung cho giữ tạm và hạn thanh toán. Kiểm tra `INVENTORY_HOLD_MINUTES` nếu môi trường triển khai đã đặt giá trị khác.
 - **Ngưỡng cảnh báo** lấy theo bảng D01.7 (giả định). Cần kiểm kê đầu kỳ trước khi bật cảnh báo, vì tồn mẫu 100 làm hoa hồng báo "Sắp hết" ngay.
 - **Đơn vị trong công thức cũ**: một số công thức ghi khác đơn vị NVL (ví dụ baby: kg ↔ cành). BOM v1 của các sản phẩm này được gắn cờ **"Cần rà soát"**; lọc ở tab BOM để sửa.
 - **Bảo mật** (ngoài phạm vi đợt này):
   - Quyền Admin đang dựa vào header `x-admin-role`, client có thể tự gửi.
   - `GET /api/employees` đang trả cả `MAT_KHAU` (hash).
+
+## Cập nhật sau rà soát 01/11/2026
+
+- Nguồn ưu tiên được loại trùng trước khi phân bổ, tránh lấy hai lần cùng nguồn.
+- ĐVT chỉ đổi trực tiếp khi NVL chưa có tồn/giao dịch/BOM/nguồn cung; dữ liệu đã dùng cần NVL hoặc quy đổi riêng.
+- Checkout thường lưu BOM snapshot được backend dùng lúc giữ; thanh toán lại, nhu cầu và gợi ý PX dùng snapshot. Đơn cũ thiếu snapshot báo cần đối soát, không tự lấy BOM mới.
+- Lập nhu cầu thủ công và giữ theo nhu cầu kiểm đơn đã thanh toán/cọc, chưa hủy. Dự báo loại nhu cầu không có bằng chứng thanh toán hợp lệ.
+- Đảo PX theo đơn chỉ khi còn chờ xử lý/chuẩn bị và liên kết chưa đổi: phục hồi NVL/giữ, bỏ dấu đã xuất, giữ nguyên trạng thái vận hành đơn; phiếu cũ chuyển Đã đảo để lập phiếu thay thế mà vẫn giữ ràng buộc một PX đang hiệu lực.
+- Đảo cắm sẵn trừ thành phẩm đã ghi tăng và khôi phục NVL trong cùng giao dịch; thành phẩm không đủ khả dụng thì chặn. Không tự hoàn khi hủy/trả hàng.
+- Ca sửa số nhận NCC khi PN đã có điều chỉnh vẫn để bàn sau theo yêu cầu người dùng; không tự sửa PO/tiền qua điều chỉnh kiểm kê.
+
+### Hạn đảo phiếu nhập
+
+PN chỉ được đảo trong 24 giờ từ NGAY_XAC_NHAN (lúc ghi nhận, không phải ngày thực nhận). Đủ 24 giờ là hết hạn. Vẫn phải còn nguyên nguồn và chưa điều chỉnh; mỗi PN đảo một lần. Quá hạn dùng điều chỉnh chênh lệch có lý do. Phiếu cũ thiếu thời điểm ghi nhận phải đối soát, không tự lấy ngày nhập thay thế. Giới hạn này không áp dụng PX.
+
+### Quyết định nhóm: luôn FIFO
+
+Không cho chọn PN mới nhập trước. Giữ/xuất tự phân bổ theo thời điểm nhận rồi mã PN, trong phần nguồn còn dùng được; không lấy phần giữ của đơn khác. Bỏ trường chọn nguồn ưu tiên trên PX. Backend bỏ qua chỉ định nguồn do client/phiếu nháp cũ gửi lên. Giá vốn hoa vẫn theo nguồn; phụ kiện vẫn bình quân. Chọn nguồn để đánh dấu hỏng thực tế không phải ngoại lệ xuất FIFO.

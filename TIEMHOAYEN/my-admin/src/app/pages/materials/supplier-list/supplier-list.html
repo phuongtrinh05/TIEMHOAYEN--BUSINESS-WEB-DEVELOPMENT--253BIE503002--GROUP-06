@@ -2,22 +2,11 @@
   <div class="inv-card">
     <app-inventory-tabs />
 
-    <div class="inv-head">
-      <div>
-        <h2 class="inv-title">Nhà cung cấp</h2>
-        <p class="inv-sub">Biết NCC nào bán NVL nào, giá, thời gian giao (lead time) và giờ chốt đơn — dùng khi xử lý đơn thiếu NVL và lập PO.</p>
-      </div>
-      <button class="inv-btn primary" (click)="openCreate()"><i class="bi bi-plus-lg"></i> Thêm nhà cung cấp</button>
-    </div>
-
-    <div class="inv-toolbar">
-      <div class="grow"><input class="inv-input" placeholder="Tìm mã, tên, SĐT, email, người đại diện…" [(ngModel)]="search" (ngModelChange)="refilter()"></div>
-      <select class="inv-select" style="width:180px" [(ngModel)]="statusFilter" (ngModelChange)="refilter()">
+<div class="inv-toolbar inv-list-tools"><div class="grow"><input class="inv-input" placeholder="Tìm mã, tên, SĐT, email, người đại diện…" [(ngModel)]="search" (ngModelChange)="refilter()"></div><button class="inv-btn" type="button" [class.inv-filter-active]="filtersOpen || statusFilter" [attr.aria-expanded]="filtersOpen" (click)="filtersOpen = !filtersOpen"><i class="bi bi-funnel"></i> Bộ lọc</button><button class="inv-btn" type="button" title="Tải lại" aria-label="Tải lại" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button><button class="inv-btn inv-add-btn" type="button" (click)="openCreate()" title="Thêm nhà cung cấp" aria-label="Thêm nhà cung cấp"><i class="bi bi-plus-circle" aria-hidden="true"></i></button><button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button></div>
+@if (filtersOpen) { <div class="inv-toolbar inv-filter-panel"><select class="inv-select" style="width:180px" [(ngModel)]="statusFilter" (ngModelChange)="refilter()">
         <option value="">Mọi trạng thái</option>
         @for (s of statuses(); track s) { <option [value]="s">{{ s }}</option> }
-      </select>
-      <button class="inv-btn" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button>
-    </div>
+      </select><button class="inv-btn inv-clear-filter" type="button" (click)="statusFilter = ''; refilter()">Xóa bộ lọc</button></div> }
     @if (error()) { <div class="inv-alert error">{{ error() }}</div> }
 
     <div class="inv-table-wrap">
@@ -25,7 +14,7 @@
         <thead><tr><th>Mã</th><th>Nhà cung cấp</th><th>Liên hệ</th><th class="num">Lead time</th><th>Chốt đơn</th><th class="num">NVL cung cấp</th><th>Trạng thái</th><th></th></tr></thead>
         <tbody>
           @if (loading()) { <tr><td colspan="8" class="inv-empty">Đang tải…</td></tr> }
-          @for (s of filtered(); track s.NHA_CUNG_CAP_ID) {
+          @for (s of filtered().slice((displayPage() - 1) * 15, displayPage() * 15); track s.NHA_CUNG_CAP_ID) {
             <tr class="clickable" (click)="open(s)">
               <td class="fw-bold">{{ s.NHA_CUNG_CAP_ID }}</td>
               <td><div class="fw-semibold">{{ s.TEN_NHA_CUNG_CAP }}</div><div class="muted">{{ s.DIA_CHI }}</div></td>
@@ -40,18 +29,19 @@
         </tbody>
       </table>
     </div>
+    <app-inventory-pager [count]="filtered().length" [page]="displayPage()" (pageChange)="listPage.set($event)" />
   </div>
 </div>
 
 @if (formOpen()) {
   <div class="inv-backdrop" (click)="formOpen.set(false)">
-    <div class="inv-modal" (click)="$event.stopPropagation()">
+    <div class="inv-modal inv-supplier-modal" [class.inv-supplier-sources]="tab() === 'materials'" role="dialog" aria-modal="true" aria-label="Nhà cung cấp" (click)="$event.stopPropagation()">
       <div class="inv-modal-head">
         <h3>{{ selected() ? selected()!.NHA_CUNG_CAP_ID + ' · ' + selected()!.TEN_NHA_CUNG_CAP : 'Thêm nhà cung cấp' }}</h3>
-        <button class="inv-icon-btn" (click)="formOpen.set(false)"><i class="bi bi-x-lg"></i></button>
+        <button class="inv-icon-btn" aria-label="Đóng biểu mẫu" (click)="formOpen.set(false)"><i class="bi bi-x-lg"></i></button>
       </div>
       @if (selected()) {
-        <div class="px-4 pt-3 d-flex gap-2">
+        <div class="inv-local-tabs inv-supplier-tabs">
           <button class="inv-btn sm" [class.primary]="tab() === 'info'" (click)="tab.set('info')">Thông tin</button>
           <button class="inv-btn sm" [class.primary]="tab() === 'materials'" (click)="tab.set('materials'); resetLink()">Nguồn cung NVL ({{ links().length }})</button>
         </div>
@@ -60,6 +50,7 @@
         @if (tab() === 'info') {
           @if (formError()) { <div class="inv-alert error">{{ formError() }}</div> }
           <div class="inv-grid">
+            <h4 class="inv-form-section">Thông tin nhà cung cấp</h4>
             <div class="inv-field"><label class="required">Tên nhà cung cấp</label><input class="inv-input" [(ngModel)]="form.name"></div>
             <div class="inv-field"><label>Người đại diện</label><input class="inv-input" [(ngModel)]="form.representative"></div>
             <div class="inv-field"><label>Số điện thoại</label><input class="inv-input" [(ngModel)]="form.phone"></div>
@@ -69,15 +60,22 @@
               <select class="inv-select" [(ngModel)]="form.status">@for (s of statuses(); track s) { <option [value]="s">{{ s }}</option> }</select>
               <div class="hint">Chỉ "Hoạt động"/"Đang hợp tác" mới được lập PO, phiếu nhập mua.</div>
             </div>
-            <div class="inv-field"><label>Lead time mặc định (ngày)</label><input class="inv-input" type="number" min="0" [(ngModel)]="form.defaultLeadDays"></div>
-            <div class="inv-field"><label>Giờ chốt nhận đơn</label><input class="inv-input" type="time" [(ngModel)]="form.orderCutoffTime"><div class="hint">Đặt sau giờ này → cộng thêm 1 ngày.</div></div>
+            <h4 class="inv-form-section">Giao hàng và thanh toán</h4>
+            <div class="inv-field"><label>Thời gian giao (ngày)</label><input class="inv-input" type="number" min="0" [(ngModel)]="form.defaultLeadDays"></div>
+            <div class="inv-field"><label>Giờ chốt nhận đơn</label><input class="inv-input" type="time" [(ngModel)]="form.orderCutoffTime"></div>
             <div class="inv-field"><label>Điều khoản thanh toán</label><input class="inv-input" [(ngModel)]="form.paymentTerms" placeholder="VD: Công nợ 15 ngày"></div>
             <div class="inv-field full"><label>Địa chỉ</label><input class="inv-input" [(ngModel)]="form.address"></div>
             <div class="inv-field full"><label>Logo (URL)</label><input class="inv-input" [(ngModel)]="form.logo"></div>
             <div class="inv-field full"><label>Ghi chú</label><textarea class="inv-textarea" [(ngModel)]="form.note"></textarea></div>
           </div>
         } @else {
-          <div class="inv-alert info">Lead time là ước lượng cần xác minh. Với hoa hiếm, ghi rõ mức tin cậy và ngày liên hệ gần nhất.</div>
+
+          <div class="inv-source-toolbar">
+            <h4>Nguyên liệu cung cấp</h4>
+            <button class="inv-btn" type="button" [attr.aria-expanded]="sourceFormOpen()" (click)="sourceFormOpen() ? resetLink() : sourceFormOpen.set(true)"><i class="bi" [class.bi-plus-lg]="!sourceFormOpen()" [class.bi-chevron-up]="sourceFormOpen()" aria-hidden="true"></i> {{ sourceFormOpen() ? 'Thu gọn' : 'Thêm nguồn cung' }}</button>
+          </div>
+          @if (sourceFormOpen()) {
+          <div class="inv-source-form">
           @if (linkError()) { <div class="inv-alert error">{{ linkError() }}</div> }
           <div class="inv-grid">
             <div class="inv-field"><label class="required">NVL</label>
@@ -107,6 +105,8 @@
               @if (editingLinkId) { <button class="inv-btn" (click)="resetLink()">Bỏ sửa</button> }
             </div>
           </div>
+          </div>
+          }
           <div class="inv-table-wrap mt-3">
             <table class="inv-table">
               <thead><tr><th>NVL</th><th class="num">Đơn giá</th><th class="num">Lead time</th><th>Chốt</th><th class="num">SL tối thiểu</th><th>Tin cậy</th><th class="num">Ưu tiên</th><th>Xác minh</th><th></th></tr></thead>
@@ -117,7 +117,7 @@
                     <td class="num">{{ l.DON_GIA | number }}đ</td><td class="num">{{ l.SO_NGAY_GIAO }} ngày</td><td>{{ l.GIO_CHOT_DON || '—' }}</td>
                     <td class="num">{{ l.SL_DAT_TOI_THIEU }}</td><td>{{ l.MUC_TIN_CAY }}</td><td class="num">{{ l.UU_TIEN }}</td>
                     <td class="muted">{{ l.NGAY_XAC_MINH | date: 'dd/MM/yyyy' }}</td>
-                    <td><button class="inv-icon-btn" (click)="editLink(l)"><i class="bi bi-pencil"></i></button><button class="inv-icon-btn" (click)="removeLink(l)"><i class="bi bi-trash"></i></button></td>
+                    <td><button class="inv-icon-btn" (click)="editLink(l)"><i class="bi bi-pencil-square"></i></button><button class="inv-icon-btn" (click)="removeLink(l)"><i class="bi bi-trash"></i></button></td>
                   </tr>
                 } @empty { <tr><td colspan="9" class="inv-empty">Chưa khai báo NVL nào.</td></tr> }
               </tbody>
@@ -135,3 +135,5 @@
 }
 
 @if (toast(); as t) { <div class="inv-toast" [class.error]="t.error">{{ t.text }}</div> }
+
+<app-inventory-dialog />

@@ -79,18 +79,21 @@ export const col = <T extends Document = any>(name: string): Promise<Collection<
 export const nextCode = async (collectionName: string, idField: string, prefix: string, width: number): Promise<string> => {
   const counters = await col(COLLECTIONS.counter);
   const key = `${collectionName}:${prefix}`;
-  const existing = await counters.findOne({ _id: key as any });
-  if (!existing) {
-    const rows = await (await col(collectionName))
-      .find({ [idField]: { $regex: `^${prefix}\\d+$` } })
-      .project({ [idField]: 1 })
-      .toArray();
-    const max = rows.reduce((m: number, row: any) => {
-      const n = Number(String(row[idField]).slice(prefix.length));
-      return Number.isFinite(n) ? Math.max(m, n) : m;
-    }, 0);
-    await counters.updateOne({ _id: key as any }, { $setOnInsert: { value: max } }, { upsert: true });
-  }
+  // Luôn đồng bộ bộ đếm với mã lớn nhất thật trong collection. Điều này xử lý
+  // cả database cũ/chuyển môi trường có counter bị thiếu hoặc thấp hơn dữ liệu.
+  const rows = await (await col(collectionName))
+    .find({ [idField]: { $regex: `^${prefix}\\d+$` } })
+    .project({ [idField]: 1 })
+    .toArray();
+  const max = rows.reduce((m: number, row: any) => {
+    const n = Number(String(row[idField]).slice(prefix.length));
+    return Number.isFinite(n) ? Math.max(m, n) : m;
+  }, 0);
+  await counters.updateOne(
+    { _id: key as any },
+    { $max: { value: max }, $setOnInsert: { createdAt: new Date() } },
+    { upsert: true }
+  );
   const updated = await counters.findOneAndUpdate({ _id: key as any }, { $inc: { value: 1 } }, { returnDocument: 'after' });
   return `${prefix}${String((updated as any).value).padStart(width, '0')}`;
 };

@@ -1,3 +1,4 @@
+import {approveDesignFromProposal,designFutureDay,normalizeColorQuantities} from './design3d.service.js';
 import {orderEvent} from './admin-order.service.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { ClientSession } from 'mongodb';
@@ -6,7 +7,7 @@ import { availableOf, finishedAvailableOf, InventoryError, withTransaction } fro
 import { MATERIAL_STATUS, RESERVATION_STATUS } from './inventory/constants.js';
 import { computeBuildable, supplierOptionsFor } from './inventory/availability.service.js';
 import { getActiveBom, getActiveBomMap } from './inventory/bom.service.js';
-import { REQUESTS, REQUEST_STATUS, publicRequest, assertReservedStockUsable } from './order-request.service.js';
+import { REQUESTS, REQUEST_STATUS, publicRequest } from './order-request.service.js';
 import { requestByVerifiedPhone } from './order-access.service.js';
 import { reserveOrderLines } from './order-stock.service.js';
 import { sweepExpiredReservations } from './inventory/stock.service.js';
@@ -65,7 +66,7 @@ async function snapshotItem(raw: any, index: number, session: ClientSession) {
   if (raw.custom) {
     const name = text(raw.name, 150);
     const image = String(raw.image || '');
-    if (!/^\/uploads\/materials\/[\w.-]+$/.test(image) && !/^https?:\/\//.test(image)) throw new InventoryError(400, 'Bó phối mới cần ảnh mẫu hoặc ảnh minh họa hợp lệ.');
+    if (!/^\/uploads\/materials\/[\w.-]+$/.test(image) && !/^https?:\/\//.test(image) && !(/^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(image) && image.length<=700000)) throw new InventoryError(400, 'Bó phối mới cần ảnh mẫu hoặc ảnh minh họa hợp lệ.');
     const imageDescription = text(raw.imageDescription, 300);
     if (!Array.isArray(raw.materials) || !raw.materials.length || raw.materials.length > 40) throw new InventoryError(400, 'Bó phối mới cần 1–40 nguyên vật liệu.');
     const seen = new Set<string>();
@@ -77,12 +78,13 @@ async function snapshotItem(raw: any, index: number, session: ClientSession) {
       const m = await (await getCollection<any>('NGUYEN_VAT_LIEU')).findOne({ NGUYEN_VAT_LIEU_ID: id }, { session });
       if (!m || inactive(m.TRANG_THAI)) throw new InventoryError(400, `Nguyên vật liệu ${id} không còn sử dụng.`);
       if (!(Number(m.GIA_BAN) > 0)) throw new InventoryError(400, `${m.TEN_NGUYEN_VAT_LIEU}: chưa có giá bán NVL. Cần cập nhật trước khi báo giá.`);
-      materials.push({ materialId: id, name: m.TEN_NGUYEN_VAT_LIEU, quantity: quantity(l.quantity), unit: m.DON_VI_TINH, price: amount(m.GIA_BAN) });
+      const colors=normalizeColorQuantities(l.colors,Number(l.quantity));
+      materials.push({ materialId: id, name: m.TEN_NGUYEN_VAT_LIEU, quantity: quantity(l.quantity), unit: m.DON_VI_TINH, price: amount(m.GIA_BAN),...(colors?{colors}:{}) });
     }
     const designFee = amount(raw.designFee || 0), extraFee = amount(raw.extraFee || 0);
     const price = amount(Math.round(materials.reduce((sum, l) => sum + l.quantity * l.price, 0)) + designFee + extraFee);
     if (price <= 0) throw new InventoryError(400, 'Giá bó hoa phải lớn hơn 0.');
-    return { id: `SPYC_${index}`, name, qty, price, image, imageDescription, custom: true,
+    return { id: `SPYC_${index}`, name, qty, price, image, imageDescription, custom: true, ...(raw.designId?{designId:String(raw.designId)}:{}),
       bom: { materials, designFee, extraFee }, description: String(raw.description || '').slice(0, 2000) };
   }
   const id = String(raw.id || '');
@@ -93,7 +95,7 @@ async function snapshotItem(raw: any, index: number, session: ClientSession) {
   const price = priceOf(p);
   if (price <= 0) throw new InventoryError(400, 'Mẫu chưa có giá bán hợp lệ.');
   return { id, name: p.TEN_SAN_PHAM, qty, price, image: image?.URL || '', custom: false,
-    imageDescription: 'Ảnh mẫu sản phẩm', bom: { fingerprint: bomFingerprint(resolved), version: resolved.bom?.PHIEN_BAN || null, lines: resolved.lines } };
+    imageDescription: 'Ảnh mẫu sản phẩm', bom: { id: resolved.bom?.BOM_ID || null, fingerprint: bomFingerprint(resolved), version: resolved.bom?.PHIEN_BAN || null, lines: resolved.lines } };
 }
 
 /** A proposal is a new immutable commercial snapshot; it never overwrites the original request. */
@@ -106,6 +108,7 @@ export async function propose(id: string, body: any, employee: any) {
     const at = deliveryAt(body.date, body.time);
     const items = [];
     for (const [index, raw] of body.items.entries()) items.push(await snapshotItem(raw, index, session));
+    for(const item of items)if((item as any).designId && !row.items.some((l:any)=>l.designId===(item as any).designId))throw new InventoryError(409,'Thiết kế không thuộc yêu cầu này.');
     const ids = items.map(i => i.id);
     if (new Set(ids).size !== ids.length) throw new InventoryError(400, 'Sản phẩm bị trùng; hãy gộp số lượng.');
     const subtotal = amount(items.reduce((sum, i) => sum + i.qty * i.price, 0));
@@ -173,10 +176,11 @@ export async function convertProposal(id: string, body: any, employee: any) {
     const paymentSessionId = `sales-${row.quote.id}`;
     const ctx = { orderId, paymentSessionId, status: RESERVATION_STATUS.temporary, actor: { id: employee.NHAN_VIEN_ID, role: 'sales' } };
     const items = row.quote.items.map((item: any) => ({ ...item, id: item.custom ? `SPYC_${row.quote.id}_${item.id}` : item.id }));
-    await reserveOrderLines(session, items, ctx);
-    await assertReservedStockUsable(session, orderId, new Date(row.quote.deliveryAt).toISOString(), true);
+    const futureNoHold=row.items.some((i:any)=>i.designId) && designFutureDay(row.quote.delivery.date);
+    if(!futureNoHold)await reserveOrderLines(session, items, ctx);
+    for(const item of items)await approveDesignFromProposal(item,row,employee,session);
     const checkoutData = { customerId: row.customerId, sender: row.sender, receiver: row.receiver, flags: row.flags,
-      delivery: row.quote.delivery, summary: row.quote.summary, payment: row.quote.payment, items, checkoutSessionId: paymentSessionId };
+      inventoryMode:futureNoHold?'FUTURE_DEMAND':undefined, delivery: row.quote.delivery, summary: row.quote.summary, payment: row.quote.payment, items, checkoutSessionId: paymentSessionId };
     const result = { kind: 'order', ...await writeCheckoutOrder(session, orderId, checkoutData, { requestId: id, quote: row.quote }) };
     await (await getCollection<any>(MESSAGES)).updateMany({ YEU_CAU_ID: id, LOAI_TIN_NHAN: { $in: SALES_CHAT_TYPES } }, { $set: { DON_HANG_ID: orderId } }, { session });
     await (await getCollection<any>(REQUESTS)).updateOne({ _id: id, version: row.version }, {

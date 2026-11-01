@@ -265,4 +265,40 @@ if (!uri) {
       await assert.rejects(noti.markAdminNotificationsRead(null, 'all'));
     });
   });
+
+  describe('Bảng phân tích & Danh sách báo cáo', () => {
+    test('Bảng phân tích: số liệu khớp KPI Tổng quan, có đủ 5 khối', async () => {
+      const cache = await import('../services/analytics/cache.js');
+      cache.invalidateAnalyticsCache();
+      const { getAnalysis } = await import('../services/analytics/analysis.service.js');
+      const a = await getAnalysis({ preset: '7d' });
+      const ov = await dash.getDashboardOverview({ preset: '7d' });
+      const net = (k: any[]) => k.find((x) => x.key === 'netRevenue').value;
+      assert.equal(net(a.revenue.kpis), net(ov.kpis));
+      assert.equal(a.costs.statement.find((x: any) => x.key === 'net')!.value, net(ov.kpis));
+      // doanh thu trước giảm giá − giảm giá = doanh thu thuần
+      const st = Object.fromEntries(a.costs.statement.map((x: any) => [x.key, x.value]));
+      assert.equal(st.gross - st.discount, st.net);
+      assert.equal(st.gp - st.loss, st.afterLoss);
+      assert.ok(a.occasions.byTopic.some((t: any) => t.name === 'Tình yêu'));
+      assert.equal(a.operations.funnel[0].count, a.operations.statusBreakdown.reduce((s: number, x: any) => s + x.count, 0));
+      assert.equal(a.revenue.series.labels.length, a.revenue.series.netRevenue.length);
+    });
+    test('Danh sách báo cáo: mọi báo cáo chạy được, cột tổng khớp hàng', async () => {
+      const { getReportCatalog, runReport } = await import('../services/analytics/report-catalog.service.js');
+      const cat = getReportCatalog();
+      assert.ok(cat.reports.length >= 15);
+      for (const r of cat.reports) {
+        const out = await runReport(r.key, { preset: '30d' });
+        assert.ok(Array.isArray(out.rows), r.key);
+        out.columns.filter((c: any) => c.sum).forEach((c: any) => assert.equal(out.totals[c.key], out.rows.reduce((s: number, x: any) => s + (Number(x[c.key]) || 0), 0), `${r.key}.${c.key}`));
+      }
+      const byTime = await runReport('sales-by-time', { preset: '7d' });
+      const ov = await dash.getDashboardOverview({ preset: '7d' });
+      assert.equal(byTime.totals.netRevenue, ov.kpis.find((k: any) => k.key === 'netRevenue')!.value);
+      const filtered = await runReport('orders-detail', { preset: '30d', status: 'Đã hủy' });
+      assert.ok(filtered.rows.every((r: any) => r.status === 'Đã hủy'));
+      await assert.rejects(runReport('khong-ton-tai', {}));
+    });
+  });
 }

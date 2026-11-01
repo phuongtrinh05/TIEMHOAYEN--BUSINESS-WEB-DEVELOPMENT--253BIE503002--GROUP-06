@@ -3,6 +3,10 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AdminApiService } from '../../services/admin-api.service';
+import { finalize, timeout } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
+import { endSession } from '../../services/session-auth';
+import { apiBaseUrl } from '../../services/api-config';
 
 @Component({
   selector: 'app-login',
@@ -15,10 +19,39 @@ export class Login implements AfterViewInit {
   constructor(
     private router: Router,
     private cdr: ChangeDetectorRef,
-    private adminApi: AdminApiService
+    private adminApi: AdminApiService,
+    private http: HttpClient
   ) {}
 
   submitted = false;
+  isLoggingIn = false;
+  recoveryBusy = false;
+  recoveryError = '';
+  otpChecking = false;
+  challengeId = '';
+  otpSeconds = 0;
+  private otpTimer?: ReturnType<typeof setInterval>;
+  startOtpCountdown(): void {
+    clearInterval(this.otpTimer);
+    const deadline = Date.now() + 60000;
+    this.otpSeconds = 60;
+    this.otpTimer = setInterval(() => {
+      this.otpSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      this.cdr.markForCheck();
+      if (!this.otpSeconds) clearInterval(this.otpTimer);
+    }, 250);
+  }
+  ngOnDestroy(): void { clearInterval(this.otpTimer); }
+
+  resetToken = '';
+  private recoveryRequest(path: string, data: object, done: (result: any) => void): void {
+    if (this.recoveryBusy) return;
+    this.recoveryBusy = true;
+    this.recoveryError = '';
+    this.http.post(`${apiBaseUrl()}/auth/admin/` + path, data)
+      .pipe(timeout(20000), finalize(() => { this.recoveryBusy = false; this.cdr.markForCheck(); }))
+      .subscribe({ next: done, error: e => { this.recoveryError = e.error?.message || 'Chưa xử lý được yêu cầu. Vui lòng thử lại.'; } });
+  }
   loginError = '';
   showPassword = false;
 
@@ -84,6 +117,7 @@ export class Login implements AfterViewInit {
   }
 
   onSubmit(emailValue?: string, passwordValue?: string): void {
+    if (this.isLoggingIn) return;
     this.formData.email = emailValue || this.formData.email;
     this.formData.password = passwordValue || this.formData.password;
 
@@ -101,11 +135,17 @@ export class Login implements AfterViewInit {
       return;
     }
 
+    endSession();
     this.clearStoredAdminSession();
 
-    this.adminApi.loginAdmin(email, password).subscribe({
+    this.isLoggingIn = true;
+    this.adminApi.loginAdmin(email, password).pipe(timeout(30000), finalize(() => {
+      this.isLoggingIn = false;
+      this.cdr.markForCheck();
+    })).subscribe({
       next: (response) => {
         localStorage.setItem('adminLoggedIn', 'true');
+        if(response.adminSessionToken)localStorage.setItem('adminSessionToken',response.adminSessionToken);
         localStorage.setItem('adminEmail', response.employee.email);
         localStorage.setItem('adminEmployeeId', response.employee.id);
         localStorage.setItem('adminRole', response.employee.role);
@@ -122,6 +162,7 @@ export class Login implements AfterViewInit {
   private clearStoredAdminSession(): void {
     [
       'adminLoggedIn',
+      'adminSessionToken',
       'adminEmail',
       'adminEmployeeId',
       'adminRole',
@@ -171,12 +212,14 @@ export class Login implements AfterViewInit {
       return;
     }
 
-    console.log('Gửi OTP đến email:', email);
+    this.recoveryRequest('send-otp', { EMAIL: email }, result => {
+    this.challengeId = result.challengeId; this.startOtpCountdown();
     this.showForgotPopup = false;
     this.showOtpPopup = true;
     this.forgotSubmitted = false;
     this.forgotEmailError = '';
     this.resetOtp();
+    });
   }
 
   backToForgot(): void {
@@ -202,12 +245,14 @@ export class Login implements AfterViewInit {
   }
 
   onOtpKeydown(event: KeyboardEvent, index: number): void {
+    if (this.otpChecking) { event.preventDefault(); return; }
     const key = event.key;
 
     if (/^\d$/.test(key)) {
       event.preventDefault();
       this.otpSubmitted = false;
       this.otpValues[index] = key;
+      queueMicrotask(() => { if (this.isOtpValid()) this.verifyOtp(); });
       this.focusOtpInput(index + 1);
       return;
     }
@@ -215,17 +260,11 @@ export class Login implements AfterViewInit {
     if (key === 'Backspace') {
       event.preventDefault();
       this.otpSubmitted = false;
-
-      if (this.otpValues[index]) {
-        this.otpValues[index] = '';
-        return;
+      const firstFilled = this.otpValues.reduce((last, value, i) => value !== '' ? i : last, -1);
+      if (firstFilled >= 0) {
+        this.otpValues[firstFilled] = '';
+        document.getElementById('otp-' + firstFilled)?.focus();
       }
-
-      if (index > 0) {
-        this.otpValues[index - 1] = '';
-        this.focusOtpInput(index - 1);
-      }
-
       return;
     }
 
@@ -245,24 +284,28 @@ export class Login implements AfterViewInit {
       this.otpValues[index] = digit;
     });
 
+    queueMicrotask(() => { if (this.isOtpValid()) this.verifyOtp(); });
     const focusIndex = Math.min(digits.length, this.otpValues.length - 1);
     this.focusOtpInput(focusIndex);
   }
 
   verifyOtp(): void {
+    if (this.recoveryBusy || !this.isOtpValid()) return;
     this.otpSubmitted = true;
-    if (!this.isOtpValid()) return;
 
-    console.log('OTP đã nhập:', this.otpValues.join(''));
+    this.recoveryRequest('verify-otp', { challengeId: this.challengeId, OTP: this.otpValues.join('') }, result => {
+    this.resetToken = result.resetToken;
     this.showOtpPopup = false;
     this.showNewPasswordPopup = true;
     this.otpSubmitted = false;
     this.resetNewPasswordForm();
+    });
   }
 
   resendOtp(): void {
+    if (this.otpSeconds > 0) return;
     this.resetOtp();
-    console.log('Gửi lại OTP đến email:', this.forgotEmail.trim());
+    this.sendResetEmail();
   }
 
   backToOtp(): void {
@@ -310,7 +353,8 @@ export class Login implements AfterViewInit {
     this.newPasswordSubmitted = true;
     if (!this.isNewPasswordValid()) return;
 
-    console.log('Đổi mật khẩu mới:', this.newPassword);
+    this.recoveryRequest('reset-password', { resetToken: this.resetToken, NEW_PASSWORD: this.newPassword }, () => {
+    this.resetToken = '';
     this.showSuccessToast = true;
 
     setTimeout(() => {
@@ -326,6 +370,7 @@ export class Login implements AfterViewInit {
       this.loginError = '';
       this.router.navigate(['/login']);
     }, 1200);
+    });
   }
 
   private focusOtpInput(index: number): void {

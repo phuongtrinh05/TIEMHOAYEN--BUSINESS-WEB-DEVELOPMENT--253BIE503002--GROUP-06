@@ -17,6 +17,7 @@
                 >
                     Voucher
                 </a>
+                <a routerLink="/promotions/lucky-wheel">Vòng quay may mắn</a>
             </div>
 
             <div class="toolbar-right">
@@ -118,6 +119,7 @@
                     (click)="openAddModal()"
                 >
                     <i class="bi bi-plus-circle"></i>
+                    <span>Thêm voucher</span>
                 </button>
 
                 <div class="dropdown-wrapper">
@@ -338,6 +340,54 @@
                     </div>
                 </div>
             </div>
+            <div class="form-row">
+                <div class="form-group"><label>Giảm tối đa</label><input type="number" min="0" [(ngModel)]="editingVoucher.maxDiscount"></div>
+                <div class="form-group"><label>Đơn tối thiểu</label><input type="number" min="0" [(ngModel)]="editingVoucher.minimumOrder"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Đối tượng</label><select [(ngModel)]="editingVoucher.audience"><option *ngFor="let audience of audienceOptions" [value]="audience">{{ audience }}</option></select></div>
+                <div class="form-group"><label>Hạng thành viên</label><input type="text" [(ngModel)]="editingVoucher.membershipTierText"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Giới hạn tổng lượt</label><input type="number" min="0" [(ngModel)]="editingVoucher.totalLimit"></div>
+                <div class="form-group"><label>Giới hạn mỗi người</label><input type="number" min="0" [(ngModel)]="editingVoucher.perUserLimit"></div>
+            </div>
+            <div class="form-group full-width"><label>Sản phẩm áp dụng</label><input type="text" [(ngModel)]="editingVoucher.productScopeText"></div>
+            <div class="form-group full-width">
+                <label>Danh mục áp dụng</label>
+                <div class="category-picker">
+                    <button
+                        type="button"
+                        class="category-picker-trigger"
+                        (click)="toggleCategoryMenu()"
+                        [attr.aria-expanded]="isCategoryMenuOpen"
+                    >
+                        <span>{{ getCategorySelectionLabel(editingVoucher) }}</span>
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                    <div class="category-picker-menu" *ngIf="isCategoryMenuOpen">
+                        <div class="category-picker-toolbar">
+                            <span>Chọn một hoặc nhiều danh mục</span>
+                            <button type="button" (click)="clearCategorySelection(editingVoucher)">Bỏ chọn</button>
+                        </div>
+                        <label class="category-picker-item" *ngFor="let category of categoryOptions">
+                            <input
+                                type="checkbox"
+                                [checked]="isCategorySelected(editingVoucher, category.code)"
+                                (change)="toggleCategorySelection(editingVoucher, category.code, $event)"
+                            >
+                            <span>{{ category.name }}</span>
+                        </label>
+                        <div class="category-picker-empty" *ngIf="categoryOptions.length === 0">
+                            {{ categoryOptionsError ? 'Không tải được danh mục' : 'Chưa có danh mục' }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-row">
+                <label><input type="checkbox" [(ngModel)]="editingVoucher.firstOrderOnly"> Chỉ đơn đầu tiên</label>
+                <label><input type="checkbox" [(ngModel)]="editingVoucher.active"> Kích hoạt voucher</label>
+            </div>
         </div>
 
         <div class="voucher-form-actions">
@@ -501,6 +551,54 @@
                         <span>{{ newVoucher.discountType === 'Phần trăm' ? '%' : 'đ' }}</span>
                     </div>
                 </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Giảm tối đa</label><input type="number" min="0" [(ngModel)]="newVoucher.maxDiscount"></div>
+                <div class="form-group"><label>Đơn tối thiểu</label><input type="number" min="0" [(ngModel)]="newVoucher.minimumOrder"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Đối tượng</label><select [(ngModel)]="newVoucher.audience"><option *ngFor="let audience of audienceOptions" [value]="audience">{{ audience }}</option></select></div>
+                <div class="form-group"><label>Hạng thành viên</label><input type="text" [(ngModel)]="newVoucher.membershipTierText"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Giới hạn tổng lượt</label><input type="number" min="0" [(ngModel)]="newVoucher.totalLimit"></div>
+                <div class="form-group"><label>Giới hạn mỗi người</label><input type="number" min="0" [(ngModel)]="newVoucher.perUserLimit"></div>
+            </div>
+            <div class="form-group full-width"><label>Sản phẩm áp dụng</label><input type="text" [(ngModel)]="newVoucher.productScopeText"></div>
+            <div class="form-group full-width">
+                <label>Danh mục áp dụng</label>
+                <div class="category-picker">
+                    <button
+                        type="button"
+                        class="category-picker-trigger"
+                        (click)="toggleCategoryMenu()"
+                        [attr.aria-expanded]="isCategoryMenuOpen"
+                    >
+                        <span>{{ getCategorySelectionLabel(newVoucher) }}</span>
+                        <i class="bi bi-chevron-down"></i>
+                    </button>
+                    <div class="category-picker-menu" *ngIf="isCategoryMenuOpen">
+                        <div class="category-picker-toolbar">
+                            <span>Chọn một hoặc nhiều danh mục</span>
+                            <button type="button" (click)="clearCategorySelection(newVoucher)">Bỏ chọn</button>
+                        </div>
+                        <label class="category-picker-item" *ngFor="let category of categoryOptions">
+                            <input
+                                type="checkbox"
+                                [checked]="isCategorySelected(newVoucher, category.code)"
+                                (change)="toggleCategorySelection(newVoucher, category.code, $event)"
+                            >
+                            <span>{{ category.name }}</span>
+                        </label>
+                        <div class="category-picker-empty" *ngIf="categoryOptions.length === 0">
+                            {{ categoryOptionsError ? 'Không tải được danh mục' : 'Chưa có danh mục' }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-row">
+                <label><input type="checkbox" [(ngModel)]="newVoucher.firstOrderOnly"> Chỉ đơn đầu tiên</label>
+                <label><input type="checkbox" [(ngModel)]="newVoucher.active"> Kích hoạt voucher</label>
             </div>
         </div>
 

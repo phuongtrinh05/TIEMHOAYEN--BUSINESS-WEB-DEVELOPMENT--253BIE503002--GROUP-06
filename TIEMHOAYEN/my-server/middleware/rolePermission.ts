@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
-import { staffAccess } from '../services/order-access.service.js';
 import { InventoryError } from '../services/inventory/helpers.js';
-import { hasPermission, PermissionAction } from '../services/role-permission.service.js';
+import { PermissionAction } from '../services/role-permission.service.js';
+import { identify, allowed } from '../services/auth.service.js';
 
 const actionByMethod: Record<string, PermissionAction> = {
   GET: 'view',
@@ -11,23 +11,25 @@ const actionByMethod: Record<string, PermissionAction> = {
   DELETE: 'delete',
 };
 
+/** Nhân viên đã xác thực qua phiên đăng nhập của main (auth.service), không tin ID do trình duyệt gửi. */
 export async function authenticatedEmployee(req: Request) {
-  const header = String(req.headers.authorization || '');
-  const employee = await staffAccess(header.startsWith('Bearer ') ? header.slice(7) : '');
-  // Keep older handlers on the verified identity, never an ID claimed by the browser.
-  req.headers['x-admin-id'] = employee.NHAN_VIEN_ID;
-  return employee;
+  req.identity = req.identity || await identify(req);
+  if (!req.identity || req.identity.type !== 'NHAN_VIEN') throw new InventoryError(401, 'Cần đăng nhập nhân viên để thực hiện thao tác.');
+  req.headers['x-admin-id'] = req.identity.id;
+  return req.identity.account;
 }
 
 export const requireAdminPermission = (moduleKey: string, forcedAction?: PermissionAction) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const action = forcedAction || actionByMethod[req.method] || 'view';
-      const employee = await authenticatedEmployee(req);
-      res.locals.adminEmployee = employee;
-      const role = String(employee.VAI_TRO || '');
-
-      if (!role || !hasPermission(role, moduleKey, action)) {
+      req.identity = await identify(req);
+      if (!req.identity) return res.status(401).json({ message: 'Vui lòng đăng nhập lại.' });
+      if (req.identity.type === 'NHAN_VIEN') {
+        res.locals.adminEmployee = req.identity.account;
+        req.headers['x-admin-id'] = req.identity.id;
+      }
+      if (!await allowed(req.identity, moduleKey, action)) {
         return res.status(403).json({
           message: 'Bạn không có quyền thực hiện chức năng này.',
           required: { module: moduleKey, action },

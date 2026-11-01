@@ -1,11 +1,10 @@
 import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId } from '../mongo.js';
 import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordHash.js';
-import { randomUUID } from 'node:crypto';
-import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
 import { createCustomerOrderAccess } from '../services/order-access.service.js';
+import { audit } from '../services/auth.service.js';
+import { derivePromotionStatus } from '../services/pricing-voucher.service.js';
 
-const otpStore = new Map<string, string>();
 
 const normalizeAddressText = (value: unknown): string => {
   return String(value ?? '').trim().replace(/\s+/g, ' ');
@@ -16,7 +15,7 @@ const sanitizeCustomer = (customer: any) => {
     return customer;
   }
 
-  const { MAT_KHAU, ...safeCustomer } = customer;
+  const { MAT_KHAU, GHI_CHU_NOI_BO, ...safeCustomer } = customer;
   return safeCustomer;
 };
 
@@ -90,7 +89,7 @@ export const registerCustomer = async (req: Request, res: Response) => {
   try {
     const { TEN, GIOI_TINH, SDT, EMAIL, MAT_KHAU } = req.body;
 
-    if (!TEN || !SDT || !MAT_KHAU || !GIOI_TINH) {
+    if (!TEN || !SDT || !MAT_KHAU || !GIOI_TINH || !EMAIL || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(EMAIL)) || String(MAT_KHAU).length < 8 || String(MAT_KHAU).length > 72) {
       return res.status(400).json({ message: 'Thiếu thông tin bắt buộc.' });
     }
 
@@ -126,7 +125,7 @@ export const registerCustomer = async (req: Request, res: Response) => {
       LOAI_THANH_VIEN: 'Thành viên',
       DIEM_TICH_LUY: 0,
       AVATAR: null,
-      TRANG_THAI: 'Hoạt động',
+      TRANG_THAI: 'Chờ xác minh',
       DA_XOA: false,
     };
 
@@ -135,6 +134,7 @@ export const registerCustomer = async (req: Request, res: Response) => {
     return res.status(201).json({
       message: 'Đăng ký thành công',
       customer: sanitizeCustomer(customer),
+      requiresVerification: true,
     });
   } catch (error: any) {
     console.error('Lỗi registerCustomer:', error.message);
@@ -161,6 +161,7 @@ export const loginCustomer = async (req: Request, res: Response) => {
     if (!isValidPassword) {
       return res.status(401).json({ message: 'Mật khẩu không chính xác.' });
     }
+    if (/chờ xác minh/i.test(String(customer.TRANG_THAI || ''))) return res.status(403).json({ message: 'Tài khoản chưa xác minh email. Vui lòng hoàn tất xác minh đăng ký.' });
     if (!isActiveRow(customer) || /khóa|ngừng|inactive/i.test(String(customer.TRANG_THAI || ''))) return res.status(403).json({ message: 'Tài khoản không còn hoạt động.' });
 
     if (!isPasswordHash(customer.MAT_KHAU)) {
@@ -171,73 +172,14 @@ export const loginCustomer = async (req: Request, res: Response) => {
     }
 
     const orderAccess = await createCustomerOrderAccess(customer);
+    req.identity = { id: customer.KHACH_HANG_ID, type: 'KHACH_HANG', account: customer, sessionId: '' };
+    await audit(req, 'DANG_NHAP', customer.KHACH_HANG_ID);
     return res.status(200).json({
       message: 'Đăng nhập thành công.', token: orderAccess.accessToken, orderAccess,
       customer: sanitizeCustomer(customer),
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Lỗi server: ' + error.message });
-  }
-};
-
-export const forgotPassword = async (req: Request, res: Response) => {
-  try {
-    const { SDT, NEW_PASSWORD } = req.body;
-
-    if (!SDT || !NEW_PASSWORD) {
-      return res.status(400).json({ message: 'Thiếu thông tin.' });
-    }
-
-    const customerCollection = await getCustomerCollection();
-    const customer = await customerCollection.findOne({ SDT: String(SDT).trim() });
-
-    if (!customer) {
-      return res.status(404).json({ message: 'Không tìm thấy tài khoản.' });
-    }
-
-    await customerCollection.updateOne(
-      { KHACH_HANG_ID: customer.KHACH_HANG_ID },
-      { $set: { MAT_KHAU: await hashPassword(String(NEW_PASSWORD)) } },
-    );
-
-    return res.status(200).json({ message: 'Đổi mật khẩu thành công.' });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Lỗi server: ' + error.message });
-  }
-};
-
-export const sendOtp = async (req: Request, res: Response) => {
-  try {
-    const { SDT } = req.body;
-    const customerCollection = await getCustomerCollection();
-    const customer = await customerCollection.findOne({ SDT: String(SDT || '').trim() });
-
-    if (!customer) {
-      return res.status(404).json({ message: 'Số điện thoại không tồn tại' });
-    }
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    otpStore.set(String(SDT).trim(), otp);
-    console.log('OTP:', otp);
-
-    return res.status(200).json({ message: 'Đã gửi OTP' });
-  } catch (error: any) {
-    return res.status(500).json({ message: error.message });
-  }
-};
-
-export const verifyOtp = async (req: Request, res: Response) => {
-  try {
-    const { SDT, OTP } = req.body;
-    const savedOtp = otpStore.get(String(SDT || '').trim());
-
-    if (savedOtp !== String(OTP || '').trim()) {
-      return res.status(400).json({ message: 'OTP không đúng' });
-    }
-
-    return res.status(200).json({ message: 'OTP hợp lệ' });
-  } catch (error: any) {
-    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -261,15 +203,19 @@ export const updateCustomerById = async (req: Request, res: Response) => {
     const { TEN, EMAIL, SDT, DOB, GIOI_TINH } = req.body;
     const customerCollection = await getCustomerCollection();
 
+    const existing = await customerCollection.findOne({ KHACH_HANG_ID: id });
+    const same = (a: unknown, b: unknown) => String(a ?? '').trim() === String(b ?? '').trim();
+    if (existing && ((EMAIL !== undefined && !same(EMAIL, existing.EMAIL)) || (SDT !== undefined && !same(SDT, existing.SDT)))) {
+      return res.status(400).json({ message: 'Đổi email hoặc số điện thoại cần được xác minh riêng.' });
+    }
+    if (!String(TEN || '').trim()) return res.status(400).json({ message: 'Vui lòng nhập họ tên.' });
     const result = await customerCollection.findOneAndUpdate(
       { KHACH_HANG_ID: id },
       {
         $set: {
           TEN,
-          EMAIL: EMAIL || null,
-          SDT,
-          DOB: DOB || null,
-          GIOI_TINH,
+          DOB: toDate(DOB),
+          GIOI_TINH: GIOI_TINH ?? existing?.GIOI_TINH,
         },
       },
       { returnDocument: 'after' },
@@ -279,6 +225,7 @@ export const updateCustomerById = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
     }
 
+    await audit(req, 'CAP_NHAT_HO_SO', id, { TRUOC: { TEN: existing?.TEN, DOB: existing?.DOB, GIOI_TINH: existing?.GIOI_TINH }, SAU: { TEN, DOB, GIOI_TINH } });
     return res.status(200).json({
       message: 'Cập nhật thông tin thành công.',
       customer: sanitizeCustomer(result),
@@ -307,46 +254,142 @@ export const getCustomerAddresses = async (req: Request, res: Response) => {
   }
 };
 
-const changeOwnedAddress = (action: 'add' | 'edit' | 'delete' | 'default') => async (req: Request, res: Response) => {
+export const addCustomerAddress = async (req: Request, res: Response) => {
   try {
-    const customerId = res.locals.orderAccess?.customerId;
-    if (!customerId || res.locals.orderAccess?.authType !== 'member') throw new InventoryError(403, 'Cần đăng nhập để quản lý địa chỉ.');
-    const address = await withTransaction(async session => {
-      // One member document serializes concurrent default-address changes.
-      const owner = await (await getCustomerCollection()).updateOne({ KHACH_HANG_ID: customerId }, { $inc: { PHIEN_BAN_DIA_CHI: 1 } }, { session });
-      if (!owner.matchedCount) throw new InventoryError(404, 'Không tìm thấy tài khoản.');
-      const col = await getAddressCollection();
-      const current = action === 'add' ? null : await col.findOne({ DIA_CHI_ID: req.params.addressId, KHACH_HANG_ID: customerId, DA_XOA: { $nin: [true, 1] } }, { session });
-      if (action !== 'add' && !current) throw new InventoryError(404, 'Không tìm thấy địa chỉ của bạn.');
-      const rows = await col.find({ KHACH_HANG_ID: customerId, DA_XOA: { $nin: [true, 1] } }, { session }).sort({ DIA_CHI_ID: 1 }).toArray();
-      const id = current?.DIA_CHI_ID || `DC${randomUUID().replaceAll('-', '')}`;
-      if (action === 'delete') {
-        await col.updateOne({ DIA_CHI_ID: id, KHACH_HANG_ID: customerId }, { $set: { DA_XOA: true, LA_MAC_DINH: false } }, { session });
-        if (current.LA_MAC_DINH) {
-          const replacement = rows.find(r => r.DIA_CHI_ID !== id);
-          if (replacement) await col.updateOne({ DIA_CHI_ID: replacement.DIA_CHI_ID }, { $set: { LA_MAC_DINH: true } }, { session });
-        }
-        return null;
-      }
-      const data = action === 'default' ? normalizeAddressPayload(current) : normalizeAddressPayload(req.body);
-      if (Object.values(data).some(v => !v || v.length > 300) || !/^\+?\d[\d\s.-]{7,19}$/.test(data.SDT_NGUOI_NHAN)) throw new InventoryError(400, 'Cần đủ địa chỉ và số điện thoại hợp lệ.');
-      if (action !== 'default' && rows.some(r => r.DIA_CHI_ID !== id && isSameAddress(r, data))) throw new InventoryError(409, 'Địa chỉ này đã tồn tại.');
-      const wantsDefault = action === 'default' || req.body.LA_MAC_DINH === true || req.body.LA_MAC_DINH === 1;
-      const isDefault = wantsDefault || !rows.length || !!current?.LA_MAC_DINH;
-      if (isDefault) await col.updateMany({ KHACH_HANG_ID: customerId, DA_XOA: { $nin: [true, 1] } }, { $set: { LA_MAC_DINH: false } }, { session });
-      const next = { DIA_CHI_ID: id, KHACH_HANG_ID: customerId, ...data, LA_MAC_DINH: isDefault, DA_XOA: false };
-      await col.updateOne({ DIA_CHI_ID: id, KHACH_HANG_ID: customerId }, { $set: next, ...(current ? {} : { $setOnInsert: { _id: id } }) }, { upsert: !current, session });
-      return next;
+    const { id } = req.params;
+    const addressCollection = await getAddressCollection();
+    const normalizedAddress = normalizeAddressPayload(req.body);
+    const activeAddresses = (await addressCollection.find({ KHACH_HANG_ID: id }).toArray()).filter(isActiveRow);
+
+    if (activeAddresses.some((address) => isSameAddress(address, normalizedAddress))) {
+      return res.status(409).json({ message: 'Địa chỉ này đã tồn tại.' });
+    }
+
+    const newId = await getNextPrefixedId('DIA_CHI_GIAO_HANG', 'DIA_CHI_ID', 'DC', 4);
+    const isDefaultAddress = Boolean(req.body.LA_MAC_DINH) || activeAddresses.length === 0;
+
+    if (isDefaultAddress) {
+      await addressCollection.updateMany(
+        { KHACH_HANG_ID: id, DA_XOA: { $ne: true } },
+        { $set: { LA_MAC_DINH: false } },
+      );
+    }
+
+    await addressCollection.insertOne({
+      _id: newId,
+      DIA_CHI_ID: newId,
+      KHACH_HANG_ID: id,
+      ...normalizedAddress,
+      LA_MAC_DINH: isDefaultAddress,
+      DA_XOA: false,
     });
-    return res.status(action === 'add' ? 201 : 200).json({ message: 'Đã lưu thay đổi địa chỉ.', address, addressId: address?.DIA_CHI_ID });
-  } catch (e: any) {
-    return res.status(e instanceof InventoryError ? e.status : 500).json({ message: e instanceof InventoryError ? e.message : 'Không thể cập nhật địa chỉ.' });
+
+    return res.status(201).json({ message: 'Thêm địa chỉ thành công' });
+  } catch (error: any) {
+    return res.status(500).json({ message: error.message });
   }
 };
-export const addCustomerAddress = changeOwnedAddress('add');
-export const updateCustomerAddress = changeOwnedAddress('edit');
-export const deleteCustomerAddress = changeOwnedAddress('delete');
-export const setDefaultCustomerAddress = changeOwnedAddress('default');
+
+export const deleteCustomerAddress = async (req: Request, res: Response) => {
+  try {
+    const { addressId } = req.params;
+    const addressCollection = await getAddressCollection();
+    const address = await addressCollection.findOne({ DIA_CHI_ID: addressId });
+
+    if (!address) {
+      return res.status(404).json({ message: 'Không tìm thấy địa chỉ.' });
+    }
+
+    if (address.LA_MAC_DINH) {
+      const replacement = await addressCollection.findOne(
+        {
+          KHACH_HANG_ID: address.KHACH_HANG_ID,
+          DIA_CHI_ID: { $ne: addressId },
+          DA_XOA: { $ne: true },
+        },
+        { sort: { DIA_CHI_ID: 1 } },
+      );
+
+      if (replacement) {
+        await addressCollection.updateOne(
+          { DIA_CHI_ID: replacement.DIA_CHI_ID },
+          { $set: { LA_MAC_DINH: true } },
+        );
+      }
+    }
+
+    await addressCollection.updateOne(
+      { DIA_CHI_ID: addressId },
+      { $set: { DA_XOA: true, LA_MAC_DINH: false } },
+    );
+
+    return res.status(200).json({ message: 'Xóa địa chỉ thành công.' });
+  } catch (_error: any) {
+    return res.status(500).json({ message: 'Đã xảy ra lỗi. Vui lòng thử lại sau.' });
+  }
+};
+
+export const updateCustomerAddress = async (req: Request, res: Response) => {
+  try {
+    const { addressId } = req.params;
+    const addressCollection = await getAddressCollection();
+    const address = await addressCollection.findOne({ DIA_CHI_ID: addressId, DA_XOA: { $ne: true } });
+
+    if (!address) {
+      return res.status(404).json({ message: 'Không tìm thấy địa chỉ.' });
+    }
+
+    const normalizedAddress = normalizeAddressPayload(req.body);
+    const activeAddresses = (await addressCollection.find({ KHACH_HANG_ID: address.KHACH_HANG_ID }).toArray())
+      .filter((item) => isActiveRow(item) && item.DIA_CHI_ID !== addressId);
+
+    if (activeAddresses.some((item) => isSameAddress(item, normalizedAddress))) {
+      return res.status(409).json({ message: 'Địa chỉ này đã tồn tại.' });
+    }
+
+    const isDefault = Boolean(req.body.LA_MAC_DINH);
+    if (isDefault) {
+      await addressCollection.updateMany(
+        { KHACH_HANG_ID: address.KHACH_HANG_ID, DA_XOA: { $ne: true } },
+        { $set: { LA_MAC_DINH: false } },
+      );
+    }
+
+    await addressCollection.updateOne(
+      { DIA_CHI_ID: addressId },
+      { $set: { ...normalizedAddress, LA_MAC_DINH: isDefault } },
+    );
+
+    return res.status(200).json({ message: 'Cập nhật địa chỉ thành công.' });
+  } catch (_error: any) {
+    return res.status(500).json({ message: 'Không thể cập nhật địa chỉ.' });
+  }
+};
+
+export const setDefaultCustomerAddress = async (req: Request, res: Response) => {
+  try {
+    const { addressId } = req.params;
+    const addressCollection = await getAddressCollection();
+    const address = await addressCollection.findOne({ DIA_CHI_ID: addressId, DA_XOA: { $ne: true } });
+
+    if (!address) {
+      return res.status(404).json({ message: 'Không tìm thấy địa chỉ.' });
+    }
+
+    await addressCollection.updateMany(
+      { KHACH_HANG_ID: address.KHACH_HANG_ID, DA_XOA: { $ne: true } },
+      { $set: { LA_MAC_DINH: false } },
+    );
+    await addressCollection.updateOne(
+      { DIA_CHI_ID: addressId },
+      { $set: { LA_MAC_DINH: true } },
+    );
+
+    return res.status(200).json({ message: 'Đã đặt địa chỉ mặc định.' });
+  } catch (_error: any) {
+    return res.status(500).json({ message: 'Không thể đặt địa chỉ mặc định.' });
+  }
+};
 
 export const getCustomerOrders = async (req: Request, res: Response) => {
   try {
@@ -376,14 +419,16 @@ export const getCustomerVouchers = async (req: Request, res: Response) => {
     const today = new Date();
     const vouchers = await voucherCollection.find({
       $or: [{ KHACH_HANG_ID: id }, { KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }],
-      DA_DUNG: { $ne: true },
     }).toArray();
+    const usageRows = await (await getCollection<any>('VOUCHER_SU_DUNG')).find({ DINH_DANH: `member:${id}` }).toArray();
+    const usageCount = new Map<string, number>();
+    usageRows.forEach(row => usageCount.set(String(row.VOUCHER_ID), (usageCount.get(String(row.VOUCHER_ID)) || 0) + 1));
 
     const available = vouchers.filter((voucher) => {
-      const start = toDate(voucher.NGAY_BAT_DAU);
-      const end = toDate(voucher.NGAY_KET_THUC);
-      return (!start || today >= start) && (!end || today <= end);
-    });
+      const perUserLimit = Number(voucher.GIOI_HAN_MOI_NGUOI || (voucher.KHACH_HANG_ID ? 1 : 0));
+      const used = usageCount.get(String(voucher.VOUCHER_ID)) || 0;
+      return derivePromotionStatus(voucher, today) === 'Đang diễn ra' && (!perUserLimit || used < perUserLimit);
+    }).map(voucher => ({ ...voucher, DA_DUNG: (usageCount.get(String(voucher.VOUCHER_ID)) || 0) > 0 }));
     const byCode = new Map<string, any>();
 
     for (const voucher of available.sort((left, right) => {

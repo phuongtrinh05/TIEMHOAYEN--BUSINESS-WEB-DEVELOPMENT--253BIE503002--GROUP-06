@@ -42,3 +42,6 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Generated legacy blog covers shared from Customer
+/public/assets/images/blog/

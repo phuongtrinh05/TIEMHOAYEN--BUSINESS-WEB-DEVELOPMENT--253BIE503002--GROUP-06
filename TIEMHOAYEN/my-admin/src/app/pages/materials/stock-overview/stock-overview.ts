@@ -1,14 +1,16 @@
+import { InventoryDialogComponent } from '../inventory-dialog';
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
+import { exportInventoryCsv } from '../inventory-csv';
 import { InvAlerts, InventoryApiService, inventoryErrorMessage } from '../../../services/inventory-api.service';
 
 type Tab = 'alerts' | 'reservations' | 'demands' | 'finished' | 'ledger' | 'reconcile';
 
 const MOVEMENT_LABEL: Record<string, string> = {
-  NHAP: 'Nhập kho', XUAT: 'Xuất kho', GIU: 'Giữ tồn', NHA_GIU: 'Nhả giữ', KET_THUC_GIU: 'Kết thúc giữ (xuất)',
+  NHAP: 'Nhập kho', DAO_NHAP: 'Đảo nhập kho', KHOI_PHUC_GIU: 'Khôi phục giữ sau đảo', DAO_CAM_SAN: 'Đảo cắm bó sẵn', DAO_XUAT: 'Đảo xuất kho', DIEU_CHINH_NHAP: 'Điều chỉnh tồn theo PN', XUAT: 'Xuất kho', GIU: 'Giữ tồn', NHA_GIU: 'Nhả giữ', KET_THUC_GIU: 'Kết thúc giữ (xuất)',
   DANH_DAU_KHONG_DAT: 'Đánh dấu không đạt', XUAT_HUY: 'Xuất hủy / hao hụt', NHAP_THANH_PHAM: 'Nhập thành phẩm',
   XUAT_THANH_PHAM: 'Giao thành phẩm', HUY_THANH_PHAM: 'Hủy thành phẩm', CHUYEN_GIU_CHINH_THUC: 'Chuyển giữ chính thức',
 };
@@ -19,11 +21,29 @@ const MOVEMENT_LABEL: Record<string, string> = {
 @Component({
   selector: 'app-stock-overview',
   standalone: true,
-  imports: [CommonModule, FormsModule, InventoryTabsComponent],
+  imports: [InventoryDialogComponent, CommonModule, FormsModule, InventoryTabsComponent],
   templateUrl: './stock-overview.html',
   styleUrls: ['../inventory.css'],
 })
 export class StockOverviewComponent implements OnInit {
+  @ViewChild(InventoryDialogComponent) private dialog!: InventoryDialogComponent;
+  exportCsv(): void {
+    const tab = this.tab();
+    if (tab === 'alerts') {
+      const a = this.alerts();
+      if (!a) return;
+      exportInventoryCsv('canh-bao-kho', ['Nhóm', 'Đối tượng', 'Tên', 'Khả dụng', 'Thiếu', 'Đơn', 'Thời điểm cần'], [
+        ...a.materialAlerts.map(m => ['Nguyên liệu', m.materialId, m.name, m.available, '', '', '']),
+        ...a.forecastShortages.map(m => ['Dự báo thiếu', m.materialId, m.name, m.available, m.missing, m.orderId, m.neededAt]),
+        ...a.productAlerts.map(p => ['Sản phẩm', p.productId, p.name, p.sellable, '', '', '']),
+      ]);
+      return;
+    }
+    const rows: Record<string, any>[] = tab === 'reservations' ? this.reservations() : tab === 'demands' ? this.demands()
+      : tab === 'finished' ? this.finished() : tab === 'ledger' ? this.ledger() : this.reconcileResult()?.diffs || [];
+    const keys = [...new Set(rows.flatMap(row => Object.keys(row)))].filter(key => key !== '_id');
+    exportInventoryCsv('kho-' + tab, keys.length ? keys : ['Kết quả'], rows.map(row => keys.map(key => typeof row[key] === 'object' ? JSON.stringify(row[key]) : row[key])));
+  }
   private readonly api = inject(InventoryApiService);
   private readonly router = inject(Router);
 
@@ -81,23 +101,25 @@ export class StockOverviewComponent implements OnInit {
 
   /* ---------- hành động ---------- */
   createPo(materialId: string, qty: number): void {
-    this.router.navigate(['/materials/purchase-orders'], { queryParams: { new: 1, material: materialId, qty: Math.ceil(qty) } });
+    this.router.navigate(['/materials/purchase-orders'], { queryParams: { new: 1, material: materialId, qty } });
   }
-  openMaterial(): void { this.router.navigate(['/materials']); }
+  openMaterial(materialId: string, sourceId: string): void {
+    this.router.navigate(['/materials'], { queryParams: { material: materialId, source: sourceId } });
+  }
 
-  release(r: any): void {
-    if (!confirm(`Nhả giữ ${r.SO_LUONG} ${r.TEN || ''} (${r.MA_GIU_TON})?`)) return;
+  async release(r: any): Promise<void> {
+    if (!(await this.dialog.confirm(`Nhả giữ ${r.SO_LUONG} ${r.TEN || ''} (${r.MA_GIU_TON})?`))) return;
     this.api.releaseReservations({ reservationIds: [r.MA_GIU_TON], reason: 'Admin nhả giữ thủ công' }).subscribe({
       next: (x) => { this.notify(`Đã nhả ${x.released} bản ghi giữ.`); this.loadReservations(); },
       error: (e) => this.notify(inventoryErrorMessage(e), true),
     });
   }
 
-  setPrep(g: { orderId: string; neededAt: string | null }): void {
+  async setPrep(g: { orderId: string; neededAt: string | null }): Promise<void> {
     const current = g.neededAt ? new Date(g.neededAt) : new Date(Date.now() + 86_400_000);
     const p = (n: number) => String(n).padStart(2, '0');
     const def = `${current.getFullYear()}-${p(current.getMonth() + 1)}-${p(current.getDate())} ${p(current.getHours())}:${p(current.getMinutes())}`;
-    const v = prompt(`Thời điểm bắt đầu chuẩn bị T cho đơn ${g.orderId} (YYYY-MM-DD HH:mm):`, def);
+    const v = await this.dialog.prompt(`Thời điểm bắt đầu chuẩn bị T cho đơn ${g.orderId} `, def.replace(' ', 'T'), {title: 'Lịch chuẩn bị đơn', type: 'datetime-local'});
     if (!v) return;
     this.api.setPrepTime(g.orderId, new Date(v.replace(' ', 'T')).toISOString()).subscribe({
       next: () => { this.notify('Đã cập nhật T. Dự báo thiếu NVL được tính lại.'); this.loadDemands(); },
@@ -105,8 +127,8 @@ export class StockOverviewComponent implements OnInit {
     });
   }
 
-  reserveNow(orderId: string): void {
-    if (!confirm(`Giữ chính thức NVL cho đơn ${orderId} ngay bây giờ (đến lịch trước T)?`)) return;
+  async reserveNow(orderId: string): Promise<void> {
+    if (!(await this.dialog.confirm(`Giữ chính thức NVL cho đơn ${orderId} ngay bây giờ (đến lịch trước T)?`))) return;
     this.api.reserveDemand(orderId).subscribe({
       next: () => { this.notify('Đã giữ chính thức NVL cho đơn.'); this.loadDemands(); },
       error: (e) => this.notify(inventoryErrorMessage(e), true),
@@ -117,18 +139,19 @@ export class StockOverviewComponent implements OnInit {
     this.router.navigate(['/materials/exports'], { queryParams: { new: 1, type: 'Làm hoa theo đơn', orderId } });
   }
 
-  dispose(p: any): void {
-    const v = prompt(`Hủy bao nhiêu bó "${p.TEN_SAN_PHAM}" không đạt? (khả dụng ${p.KHA_DUNG})`, '1');
+  async dispose(p: any): Promise<void> {
+    const v = await this.dialog.prompt(`Hủy bao nhiêu bó "${p.TEN_SAN_PHAM}" không đạt? (khả dụng ${p.KHA_DUNG})`, '1', {title: 'Hủy thành phẩm', type: 'number', min: 1, max: p.KHA_DUNG});
     if (!v) return;
-    const note = prompt('Lý do?', 'Bó không còn đạt chất lượng') || '';
+    const note = await this.dialog.prompt('Lý do hủy thành phẩm', 'Bó không còn đạt chất lượng', {title: 'Xác nhận hủy thành phẩm', label: 'Hủy thành phẩm'});
+    if (note === null) return;
     this.api.disposeFinished(p.SAN_PHAM_ID, Number(v), note).subscribe({
       next: () => { this.notify('Đã hủy thành phẩm.'); this.loadFinished(); },
       error: (e) => this.notify(inventoryErrorMessage(e), true),
     });
   }
 
-  reconcile(fix: boolean): void {
-    if (fix && !confirm('Ghi đè bộ đếm tồn theo sổ biến động? Chỉ dùng khi đã kiểm tra chênh lệch.')) return;
+  async reconcile(fix: boolean): Promise<void> {
+    if (fix && !(await this.dialog.confirm('Ghi đè bộ đếm tồn theo sổ biến động? Chỉ dùng khi đã kiểm tra chênh lệch.'))) return;
     this.api.reconcile(fix).subscribe({
       next: (r) => { this.reconcileResult.set(r); this.notify(r.ok ? 'Đối soát khớp.' : `Có ${r.diffs.length} chênh lệch.`, !r.ok); },
       error: (e) => this.notify(inventoryErrorMessage(e), true),

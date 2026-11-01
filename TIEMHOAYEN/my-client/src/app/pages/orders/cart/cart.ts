@@ -1,3 +1,4 @@
+import {Design3dService} from '../../../services/design3d.service';
 ﻿import { CommonModule, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectorRef,
@@ -26,11 +27,18 @@ import {
   CustomerService,
   CustomerVoucher,
 } from '../../../services/customer.service';
+import { PricingService, ServerQuote } from '../../../services/pricing.service';
 
 
 
 interface CartItem {
   id: string;
+  designId?: string | null;
+  requiresReview?: boolean;
+  badges?: string[];
+  lineKey: string;
+  variantId?: string | null;
+  configuration?: Record<string, unknown>;
   name: string;
   style: string;
   occasion: string;
@@ -41,6 +49,9 @@ interface CartItem {
   image: string;
   selected: boolean;
   maxQuantity?: number;
+  priceChanged?: boolean;
+  priceWhenAdded?: number;
+  availabilityDecision?: string;
 }
 
 interface SuggestedProduct {
@@ -118,6 +129,10 @@ export class CartComponent implements OnInit {
   availableVouchers: CartVoucher[] = [];
   selectedProductVoucher: CartVoucher | null = null;
   selectedShippingVoucher: CartVoucher | null = null;
+  serverQuote: ServerQuote | null = null;
+  quoteError = '';
+  cartError = '';
+  private quoteRequestVersion = 0;
   private cachedCustomerId = '';
   private suggestedMobileStartIndex = 0;
 
@@ -126,7 +141,9 @@ export class CartComponent implements OnInit {
     private materialService: MaterialService,
     private productDetailService: ProductDetailService,
     private cartService: CartService,
+    private designApi: Design3dService,
     private customerService: CustomerService,
+    private pricingService: PricingService,
     private router: Router,
     private cdr: ChangeDetectorRef,
   ) {}
@@ -228,7 +245,9 @@ export class CartComponent implements OnInit {
         this.mapStorageItemToCartItem(item)
       );
 
+      this.hydrateDesignItems();
       this.hydrateMissingTopicNames();
+      this.recalculateServerQuote();
       this.cdr.detectChanges();
     } catch (error: unknown) {
       console.error('Lỗi đọc giỏ hàng localStorage:', error);
@@ -263,6 +282,7 @@ export class CartComponent implements OnInit {
         );
 
         this.saveCustomerCartCache();
+        this.recalculateServerQuote();
         this.cdr.detectChanges();
         this.dispatchCartChanged();
       },
@@ -315,6 +335,12 @@ export class CartComponent implements OnInit {
 
     return {
       id: String(item.SAN_PHAM_ID || ''),
+      lineKey: String(item.LINE_KEY || item.SAN_PHAM_ID || ''),
+      variantId: item.BIEN_THE_ID || null,
+      designId: item.THIET_KE_3D_ID || item.THIET_KE_ID || null,
+      configuration: item.CAU_HINH || {},
+      requiresReview: !!item.CAN_SHOP_DUYET,
+      badges: item.BADGES || [],
       name: String(item.TEN_SAN_PHAM || ''),
       style: String(item.KIEU_DANG || 'Sản phẩm'),
       occasion: topicName || 'Sản phẩm',
@@ -328,6 +354,9 @@ export class CartComponent implements OnInit {
         item.SO_LUONG_TON === null || item.SO_LUONG_TON === undefined
           ? undefined
           : Number(item.SO_LUONG_TON),
+      priceChanged: Boolean(item.GIA_DA_THAY_DOI),
+      priceWhenAdded: Number(item.GIA_LUC_THEM || 0),
+      availabilityDecision: String(item.QUYET_DINH_KHA_DUNG || ''),
     };
   }
 
@@ -340,6 +369,12 @@ export class CartComponent implements OnInit {
 
     return {
       id: String(data.id || ''),
+      lineKey: String(data.lineKey || data.id || ''),
+      variantId: data.variantId || null,
+      designId: data.designId || null,
+      configuration: data.configuration || {},
+      requiresReview: !!data.requiresReview,
+      badges: data.badges || [],
       name: String(data.name || ''),
       style: String(data.style || ''),
       occasion: topicName || 'Sản phẩm',
@@ -358,6 +393,16 @@ export class CartComponent implements OnInit {
           : Number(data.maxQuantity),
     };
   }
+
+  private hydrateDesignItems():void {
+    for(const item of this.cartItems.filter(i=>i.id.startsWith('SP3D_')))this.designApi.get(item.id).subscribe({next:d=>{
+      item.designId=d.designId;item.price=d.price;item.name=d.name;item.image=d.image || item.image;
+      const short=d.materials.some(l=>l.quantity*item.quantity>l.available);
+      item.requiresReview=d.requiresReview || short;item.badges=[...d.badges,...(short?['Số bó vượt NVL khả dụng']:[])];
+      if(this.isLoggedIn)this.saveCustomerCartCache();else this.saveGuestCartToStorage();this.cdr.detectChanges();
+    },error:()=>{item.requiresReview=true;item.badges=['Chưa xác minh được thiết kế; vui lòng tải lại trước khi đặt.'];this.cdr.detectChanges();}});
+  }
+  get hasDesignReview():boolean{return this.cartItems.some(i=>i.selected && i.requiresReview);}
 
   private getCartTopicName(value: unknown): string {
     const text = String(value || '').trim();
@@ -380,7 +425,7 @@ export class CartComponent implements OnInit {
 
   private hydrateMissingTopicNames(): void {
     const itemsMissingTopic = this.cartItems.filter((item: CartItem) =>
-      this.isProductItem(item) && !item.topicName
+      this.isProductItem(item) && !item.id.startsWith('SP3D_') && !item.topicName
     );
 
     itemsMissingTopic.forEach((item: CartItem) => {
@@ -483,23 +528,74 @@ export class CartComponent implements OnInit {
 
   private pickBestVouchersForSummary(): void {
     const productVouchers = this.availableVouchers
-      .filter((voucher: CartVoucher) => this.isPercentVoucher(voucher))
-      .sort((a: CartVoucher, b: CartVoucher) => b.value - a.value);
+      .filter((voucher: CartVoucher) => !this.isShippingVoucher(voucher))
+      .sort((a: CartVoucher, b: CartVoucher) => this.estimatedProductSaving(b) - this.estimatedProductSaving(a));
 
     const shippingVouchers = this.availableVouchers
-      .filter((voucher: CartVoucher) => this.isCashVoucher(voucher))
+      .filter((voucher: CartVoucher) => this.isShippingVoucher(voucher))
       .sort((a: CartVoucher, b: CartVoucher) => b.value - a.value);
 
-    this.selectedProductVoucher = productVouchers[0] || null;
-    this.selectedShippingVoucher = shippingVouchers[0] || null;
+    const productVoucher = productVouchers[0] || null;
+    const shippingVoucher = shippingVouchers[0] || null;
+    const productSaving = productVoucher ? this.estimatedProductSaving(productVoucher) : 0;
+    const shippingSaving = shippingVoucher ? Math.min(this.getShippingFee(), shippingVoucher.value) : 0;
+    this.selectedProductVoucher = productSaving >= shippingSaving ? productVoucher : null;
+    this.selectedShippingVoucher = shippingSaving > productSaving ? shippingVoucher : null;
+    this.recalculateServerQuote();
   }
 
   private isPercentVoucher(voucher: CartVoucher): boolean {
     return this.normalizeText(voucher.type) === this.normalizeText('Phần trăm');
   }
 
-  private isCashVoucher(voucher: CartVoucher): boolean {
-    return this.normalizeText(voucher.type) === this.normalizeText('Tiền mặt');
+  private isShippingVoucher(voucher: CartVoucher): boolean {
+    const type = this.normalizeText(voucher.type);
+    return type === this.normalizeText('Phí vận chuyển') || type.includes('ship');
+  }
+
+  private estimatedProductSaving(voucher: CartVoucher): number {
+    const subtotal = this.cartItems
+      .filter(item => item.selected && this.isProductItem(item))
+      .reduce((sum, item) => sum + item.price * item.quantity, 0);
+    return this.isPercentVoucher(voucher)
+      ? Math.min(subtotal, subtotal * voucher.value / 100)
+      : Math.min(subtotal, Math.max(0, voucher.value));
+  }
+
+  private recalculateServerQuote(): void {
+    const items = this.cartItems.filter(item => item.selected && this.isProductItem(item)).map(item => ({ id: item.id, quantity: item.quantity, lineKey: item.lineKey, variantId: item.variantId, designId: item.designId, configuration: item.configuration, displayedUnitPrice: item.price }));
+    const requestVersion = ++this.quoteRequestVersion;
+    if (!items.length) { this.serverQuote = null; this.quoteError = ''; return; }
+    const selected = this.selectedProductVoucher || this.selectedShippingVoucher;
+    this.pricingService.quote({ items, shippingFee: this.getShippingFee(), voucher: selected ? { id: selected.id, code: selected.code } : null, customerId: this.getCustomerId() || null }).subscribe({
+      next: quote => {
+        if (requestVersion !== this.quoteRequestVersion) return;
+        quote.items.forEach(serverItem => {
+          const item = this.cartItems.find(cartItem => cartItem.lineKey === serverItem.lineKey);
+          if (!item) return;
+          if (serverItem.priceChanged) {
+            item.priceWhenAdded = item.price;
+            item.priceChanged = true;
+          }
+          item.price = serverItem.unitPrice;
+          item.originalPrice = serverItem.regularPrice > serverItem.unitPrice ? serverItem.regularPrice : null;
+          item.availabilityDecision = String(serverItem.availability?.decision || '');
+          if (Number.isFinite(Number(serverItem.availability?.sellable))) item.maxQuantity = Number(serverItem.availability?.sellable);
+        });
+        this.serverQuote = quote; this.quoteError = ''; this.cdr.detectChanges();
+      },
+      error: error => {
+        if (requestVersion !== this.quoteRequestVersion) return;
+        this.serverQuote = null; this.quoteError = error?.error?.message || 'Không thể kiểm tra voucher.'; this.cdr.detectChanges();
+      }
+    });
+  }
+
+  canCheckout(): boolean {
+    const hasSelectedVoucher = !!(this.selectedProductVoucher || this.selectedShippingVoucher);
+    return this.getSelectedCount() > 0 &&
+      (!hasSelectedVoucher || !this.quoteError) &&
+      !this.cartItems.some(item => item.selected && item.availabilityDecision === 'unavailable');
   }
 
   private normalizeText(value: string): string {
@@ -533,12 +629,14 @@ export class CartComponent implements OnInit {
     }
 
     this.cdr.detectChanges();
+    this.recalculateServerQuote();
   }
 
   onItemSelectedChange(): void {
     if (!this.isLoggedIn) {
       this.saveGuestCartToStorage();
     }
+    this.recalculateServerQuote();
   }
 
   increaseQty(item: CartItem): void {
@@ -547,12 +645,15 @@ export class CartComponent implements OnInit {
       return;
     }
 
+    const previousQuantity = item.quantity;
     item.quantity++;
+    if(item.id.startsWith('SP3D_'))this.hydrateDesignItems();
     this.saveCustomerCartCache();
     this.cdr.detectChanges();
+    this.recalculateServerQuote();
 
     if (this.isLoggedIn && this.isProductItem(item)) {
-      this.updateDatabaseQuantity(item);
+      this.updateDatabaseQuantity(item, previousQuantity);
       return;
     }
 
@@ -564,12 +665,15 @@ export class CartComponent implements OnInit {
       return;
     }
 
+    const previousQuantity = item.quantity;
     item.quantity--;
+    if(item.id.startsWith('SP3D_'))this.hydrateDesignItems();
     this.saveCustomerCartCache();
     this.cdr.detectChanges();
+    this.recalculateServerQuote();
 
     if (this.isLoggedIn && this.isProductItem(item)) {
-      this.updateDatabaseQuantity(item);
+      this.updateDatabaseQuantity(item, previousQuantity);
       return;
     }
 
@@ -581,16 +685,14 @@ export class CartComponent implements OnInit {
    * Giao diện đã cập nhật tức thì ở increaseQty/decreaseQty nên không cần
    * gọi lại loadCartFromDatabase() để tránh giật/tải lại giỏ hàng.
    */
-  private updateDatabaseQuantity(item: CartItem): void {
+  private updateDatabaseQuantity(item: CartItem, previousQuantity: number): void {
     const customerId = this.getCustomerId();
 
     if (!customerId) {
       return;
     }
 
-    const previousQuantity = item.quantity;
-
-    this.cartService.updateItem(customerId, item.id, item.quantity).subscribe({
+    this.cartService.updateItem(customerId, item.id, item.quantity, item.lineKey).subscribe({
       next: () => {
         this.dispatchCartChanged();
       },
@@ -598,6 +700,7 @@ export class CartComponent implements OnInit {
         console.error('Lỗi cập nhật số lượng database:', err);
         // Hoàn tác số lượng nếu server từ chối cập nhật.
         item.quantity = previousQuantity;
+        this.cartError = (err as any)?.error?.message || 'Không thể cập nhật số lượng sản phẩm.';
         this.cdr.detectChanges();
       },
     });
@@ -606,11 +709,11 @@ export class CartComponent implements OnInit {
   removeItem(item: CartItem): void {
     // Cập nhật giao diện tức thì trước, không chờ phản hồi từ server.
     const removedItems = this.cartItems.filter(
-      (cartItem: CartItem) => cartItem.id === item.id
+      (cartItem: CartItem) => cartItem.lineKey === item.lineKey
     );
 
     this.cartItems = this.cartItems.filter(
-      (cartItem: CartItem) => cartItem.id !== item.id
+      (cartItem: CartItem) => cartItem.lineKey !== item.lineKey
     );
     this.saveCustomerCartCache();
     this.cdr.detectChanges();
@@ -618,7 +721,7 @@ export class CartComponent implements OnInit {
     if (this.isLoggedIn && this.isProductItem(item)) {
       const customerId = this.getCustomerId();
 
-      this.cartService.removeItem(customerId, item.id).subscribe({
+      this.cartService.removeItem(customerId, item.id, item.lineKey).subscribe({
         next: () => {
           this.dispatchCartChanged();
         },
@@ -662,7 +765,7 @@ export class CartComponent implements OnInit {
 
       forkJoin(
         productItems.map((item: CartItem) =>
-          this.cartService.removeItem(customerId, item.id)
+          this.cartService.removeItem(customerId, item.id, item.lineKey)
         )
       ).subscribe({
         next: () => {
@@ -696,6 +799,7 @@ export class CartComponent implements OnInit {
   }
 
   getSubtotal(): number {
+    if (this.serverQuote) return this.serverQuote.subtotal;
     return this.cartItems
       .filter((item: CartItem) => item.selected)
       .reduce((sum: number, item: CartItem) => sum + item.price * item.quantity, 0);
@@ -706,6 +810,7 @@ export class CartComponent implements OnInit {
   }
 
   getProductVoucherDiscount(): number {
+    if (this.serverQuote) return this.serverQuote.productDiscount;
     if (!this.selectedProductVoucher || this.getSubtotal() <= 0) {
       return 0;
     }
@@ -717,6 +822,7 @@ export class CartComponent implements OnInit {
   }
 
   getShippingVoucherDiscount(): number {
+    if (this.serverQuote) return this.serverQuote.shippingDiscount;
     if (!this.selectedShippingVoucher || this.getShippingFee() <= 0) {
       return 0;
     }
@@ -725,6 +831,7 @@ export class CartComponent implements OnInit {
   }
 
   getTotal(): number {
+    if (this.serverQuote) return this.serverQuote.total;
     return Math.max(
       0,
       this.getSubtotal() +
@@ -792,6 +899,7 @@ export class CartComponent implements OnInit {
 
       this.cartItems.push({
         id: product.id,
+        lineKey: product.id,
         name: product.name,
         style: product.style || 'Sản phẩm mua kèm',
         occasion: topicName || 'Sản phẩm',
@@ -817,7 +925,7 @@ export class CartComponent implements OnInit {
         return;
       }
 
-      this.cartService.addItem(customerId, product.id, 1).subscribe({
+      this.cartService.addItem(customerId, product.id, 1, { lineKey: existingItem?.lineKey || product.id }).subscribe({
         next: () => {
           this.dispatchCartChanged();
         },
@@ -888,9 +996,12 @@ export class CartComponent implements OnInit {
             ? res.materials
             : [];
 
-        this.suggestedProducts = products.map((item: SuggestedProductResponse) =>
-          this.mapSuggestedProductResponse(item)
-        );
+        const existingIds = new Set(this.cartItems.map(item => item.id));
+        this.suggestedProducts = products
+          .filter(item => !item.TRANG_THAI || this.normalizeText(String(item.TRANG_THAI)) === this.normalizeText('Đang bán'))
+          .map((item: SuggestedProductResponse) => this.mapSuggestedProductResponse(item))
+          .filter(product => product.id.startsWith('SP') && !existingIds.has(product.id) && product.maxQuantity !== 0)
+          .slice(0, 4);
         this.suggestedMobileStartIndex = 0;
 
         this.cdr.detectChanges();

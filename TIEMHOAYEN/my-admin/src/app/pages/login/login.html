@@ -94,8 +94,9 @@
       </div>
 
       <!-- Nút Đăng nhập -->
-      <button type="submit" class="btn-signin">
-        Sign in
+      <button type="submit" class="btn-signin" [disabled]="isLoggingIn" [attr.aria-busy]="isLoggingIn">
+        <span *ngIf="isLoggingIn" class="login-spinner" aria-hidden="true"></span>
+        {{ isLoggingIn ? 'Đang đăng nhập…' : 'Đăng nhập' }}
       </button>
 
     </form>
@@ -113,6 +114,8 @@
     </div>
 
     <h2 class="auth-popup__title">Quên mật khẩu</h2>
+    <p class="error-msg" role="alert" *ngIf="recoveryError">{{ recoveryError }}</p>
+    <p role="status" *ngIf="recoveryBusy">Đang xử lý…</p>
 
     <p class="auth-popup__desc">
       Chúng tôi sẽ giúp bạn đăng nhập lại. Vui lòng nhập địa chỉ email admin đã đăng ký để nhận mã xác minh.
@@ -169,6 +172,9 @@
     </div>
 
     <h2 class="auth-popup__title">Xác thực</h2>
+    <p role="status">{{ otpSeconds > 0 ? 'Mã hết hạn sau ' + otpSeconds + ' giây. Tối đa 5 lần nhập sai.' : 'Mã đã hết hạn. Vui lòng gửi mã mới.' }}</p>
+    <p class="error-msg" role="alert" *ngIf="recoveryError">{{ recoveryError }}</p>
+    <p role="status" *ngIf="recoveryBusy">Đang xử lý…</p>
 
     <p class="auth-popup__desc">
       Chúng tôi đã gửi mã xác minh đến <strong>{{ forgotEmail }}</strong>.<br>
@@ -183,7 +189,7 @@
         inputmode="numeric"
         maxlength="1"
         class="otp-input"
-        [class.is-invalid]="otpSubmitted && !isOtpValid()"
+        [class.is-invalid]="!!recoveryError"
         [value]="otpValues[i]"
         (keydown)="onOtpKeydown($event, i)"
         (paste)="onOtpPaste($event)"
@@ -194,17 +200,11 @@
       Vui lòng nhập đầy đủ mã xác thực.
     </span>
 
-    <button
-      type="button"
-      class="btn-auth--verify"
-      (click)="verifyOtp()"
-    >
-      Xác thực
-    </button>
+
 
     <p class="otp-resend">
       Bạn chưa nhận được mã?
-      <button type="button" class="resend-btn" (click)="resendOtp()">Gửi lại!</button>
+      <button type="button" class="resend-btn" [disabled]="otpSeconds > 0 || recoveryBusy" (click)="resendOtp()">Gửi lại!</button>
     </p>
 
   </div>
@@ -225,6 +225,8 @@
     </div>
 
     <h2 class="auth-popup__title">Tạo mật khẩu mới</h2>
+    <p class="error-msg" role="alert" *ngIf="recoveryError">{{ recoveryError }}</p>
+    <p role="status" *ngIf="recoveryBusy">Đang xử lý…</p>
 
     <p class="auth-popup__desc">
       Mật khẩu gồm ít nhất 8 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt.

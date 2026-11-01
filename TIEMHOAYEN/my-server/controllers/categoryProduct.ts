@@ -2,6 +2,13 @@ import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
 import { getProductSellableStockMap, sellableStockFields } from '../services/inventory/availability.service.js';
 
+const PUBLIC_PRODUCT_FILTER = { TRANG_THAI: 'Đang bán' };
+const PUBLIC_CATEGORY_FILTER = { AN: { $ne: true }, TRANG_THAI: { $nin: ['Ẩn', 'Đang ẩn', 'Đã xóa'] } };
+const publicCategory = (row: any, idField: string, nameField: string) => ({
+  [idField]: row?.[idField], [nameField]: row?.[nameField],
+  MO_TA: String(row?.MO_TA || ''), HINH_ANH: String(row?.HINH_ANH || row?.ANH_DAI_DIEN || ''),
+});
+
 const uniqueJoin = (values: unknown[]): string | null => {
   const normalized = Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
   return normalized.length > 0 ? normalized.join('|') : null;
@@ -39,7 +46,7 @@ const buildNameListMap = async (
   const lookupCollection = await getCollection<any>(lookupCollectionName);
   const [relations, lookups] = await Promise.all([
     relationCollection.find({ SAN_PHAM_ID: { $in: productIds } }).toArray(),
-    lookupCollection.find({}).toArray(),
+    lookupCollection.find(PUBLIC_CATEGORY_FILTER).toArray(),
   ]);
   const lookupMap = new Map(lookups.map((item) => [item[relationIdField], item[nameField]]));
   const valueMap = new Map<string, string[]>();
@@ -58,7 +65,7 @@ const enrichProducts = async (products: any[], extraByProduct = new Map<string, 
   const productIds = products.map((product) => product.SAN_PHAM_ID).filter(Boolean);
   const topicCollection = await getCollection<any>('CHU_DE');
   const [topics, imageMap, flowerListMap, targetListMap, colorListMap, stockMap] = await Promise.all([
-    topicCollection.find({}).toArray(),
+    topicCollection.find(PUBLIC_CATEGORY_FILTER).toArray(),
     getPrimaryImageMap(productIds),
     buildNameListMap('HOA_TUOI_SAN_PHAM', 'HOA_TUOI', 'HOA_TUOI_ID', 'TEN_HOA_TUOI', productIds),
     buildNameListMap('DOI_TUONG_SAN_PHAM', 'DOI_TUONG', 'DOI_TUONG_ID', 'TEN_DOI_TUONG', productIds),
@@ -94,21 +101,86 @@ const enrichProducts = async (products: any[], extraByProduct = new Map<string, 
 const getProductsByIds = async (productIds: string[]) => {
   if (productIds.length === 0) return [];
   const productCollection = await getCollection<any>('SAN_PHAM');
-  const products = await productCollection.find({ SAN_PHAM_ID: { $in: productIds } }).toArray();
+  const products = await productCollection.find({ SAN_PHAM_ID: { $in: productIds }, ...PUBLIC_PRODUCT_FILTER }).toArray();
   const orderMap = new Map(productIds.map((id, index) => [id, index]));
   return products.sort((left, right) => (orderMap.get(left.SAN_PHAM_ID) ?? 0) - (orderMap.get(right.SAN_PHAM_ID) ?? 0));
 };
 
-export const getAllCategoryProducts = async (_req: Request, res: Response) => {
+export const getAllCategoryProducts = async (req: Request, res: Response) => {
   try {
     const productCollection = await getCollection<any>('SAN_PHAM');
-    const products = await productCollection.find({}).toArray();
-    const sortedProducts = products.sort((left, right) => String(right.SAN_PHAM_ID || '').localeCompare(String(left.SAN_PHAM_ID || ''), 'vi'));
-    const enriched = await enrichProducts(sortedProducts);
+    const rawProducts = await productCollection.find(PUBLIC_PRODUCT_FILTER).toArray();
+    let enriched = await enrichProducts(rawProducts);
+    const values = (value: unknown) => String(value || '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
+    const matchesAny = (raw: unknown, selected: string[]) => !selected.length || String(raw || '').split('|').some((item) => selected.includes(item.trim().toLowerCase()));
+    const search = String(req.query.search || req.query.q || '').trim().toLowerCase();
+    const topics = values(req.query.topics);
+    const styles = values(req.query.styles);
+    const flowers = values(req.query.flowers);
+    const targets = values(req.query.targets);
+    const colors = values(req.query.colors);
+    const collectionIds = values(req.query.collections);
+    const minPrice = Math.max(0, Number(req.query.minPrice || 0) || 0);
+    const maxPriceRaw = Number(req.query.maxPrice);
+    const maxPrice = Number.isFinite(maxPriceRaw) && maxPriceRaw > 0 ? maxPriceRaw : Number.POSITIVE_INFINITY;
+
+    if (collectionIds.length) {
+      const links = await (await getCollection<any>('BO_SUU_TAP_SAN_PHAM')).find({}).toArray();
+      const allowed = new Set(links.filter((link) => collectionIds.includes(String(link.BO_SUU_TAP_ID || '').toLowerCase())).map((link) => String(link.SAN_PHAM_ID)));
+      enriched = enriched.filter((product) => allowed.has(String(product.SAN_PHAM_ID)));
+    }
+
+    enriched = enriched.filter((product) => {
+      const price = Number(product.GIA_KHUYEN_MAI || 0) > 0 && Number(product.GIA_KHUYEN_MAI) < Number(product.GIA || 0)
+        ? Number(product.GIA_KHUYEN_MAI) : Number(product.GIA || 0);
+      const searchable = `${product.SAN_PHAM_ID || ''} ${product.TEN_SAN_PHAM || ''} ${product.MO_TA || ''}`.toLowerCase();
+      return (!search || searchable.includes(search))
+        && price >= minPrice && price <= maxPrice
+        && matchesAny(product.TEN_CHU_DE, topics)
+        && matchesAny(product.KIEU_DANG, styles)
+        && matchesAny(product.TEN_HOA_TUOI_LIST, flowers)
+        && matchesAny(product.TEN_DOI_TUONG_LIST, targets)
+        && matchesAny(product.TEN_MAU_SAC_LIST, colors);
+    });
+
+    const rawById = new Map(rawProducts.map((product) => [String(product.SAN_PHAM_ID), product]));
+    const sort = String(req.query.sort || 'newest');
+    const dateValue = (product: any) => {
+      const raw = rawById.get(String(product.SAN_PHAM_ID));
+      const date = new Date(raw?.NGAY_TAO || raw?.NGAY_CAP_NHAT || 0).getTime();
+      return Number.isFinite(date) ? date : 0;
+    };
+    enriched.sort((left, right) => {
+      if (sort === 'oldest') return dateValue(left) - dateValue(right) || String(left.SAN_PHAM_ID).localeCompare(String(right.SAN_PHAM_ID), 'vi');
+      if (sort === 'bestSeller') return Number(right.DA_BAN || 0) - Number(left.DA_BAN || 0) || dateValue(right) - dateValue(left);
+      if (sort === 'nameAsc') return String(left.TEN_SAN_PHAM || '').localeCompare(String(right.TEN_SAN_PHAM || ''), 'vi');
+      if (sort === 'nameDesc') return String(right.TEN_SAN_PHAM || '').localeCompare(String(left.TEN_SAN_PHAM || ''), 'vi');
+      if (sort === 'priceAsc' || sort === 'priceDesc') {
+        const price = (item: any) => Number(item.GIA_KHUYEN_MAI || 0) > 0 && Number(item.GIA_KHUYEN_MAI) < Number(item.GIA || 0) ? Number(item.GIA_KHUYEN_MAI) : Number(item.GIA || 0);
+        return sort === 'priceAsc' ? price(left) - price(right) : price(right) - price(left);
+      }
+      return dateValue(right) - dateValue(left) || String(right.SAN_PHAM_ID).localeCompare(String(left.SAN_PHAM_ID), 'vi');
+    });
+
+    const total = enriched.length;
+    const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize || 20) || 20));
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(totalPages, Math.max(1, Number(req.query.page || 1) || 1));
+    const products = enriched.slice((page - 1) * pageSize, page * pageSize).map((product) => {
+      const raw = rawById.get(String(product.SAN_PHAM_ID));
+      return {
+        ...product,
+        BADGES: {
+          NEW: raw?.LA_SAN_PHAM_MOI === true || raw?.NHAN_MOI === true,
+          DISCOUNT: Number(product.GIA_KHUYEN_MAI || 0) > 0 && Number(product.GIA_KHUYEN_MAI) < Number(product.GIA || 0),
+          SOLD: Number.isFinite(Number(product.DA_BAN)) ? Number(product.DA_BAN) : null,
+          FAST_DELIVERY: raw?.GIAO_NHANH === true,
+        },
+      };
+    });
 
     return res.status(200).json({
-      total: enriched.length,
-      products: enriched,
+      total, page, pageSize, totalPages, sort, products,
     });
   } catch (error: any) {
     return res.status(500).json({ message: 'Lỗi Controller: ' + error.message });
@@ -122,17 +194,17 @@ export const getProductsByTopic = async (req: Request, res: Response) => {
       getCollection<any>('CHU_DE'),
       getCollection<any>('SAN_PHAM'),
     ]);
-    const topic = await topicCollection.findOne({ CHU_DE_ID: id });
+    const topic = await topicCollection.findOne({ CHU_DE_ID: id, ...PUBLIC_CATEGORY_FILTER });
 
     if (!topic) {
       return res.status(404).json({ message: 'Không tìm thấy chủ đề' });
     }
 
-    const products = await productCollection.find({ CHU_DE_ID: id }).toArray();
+    const products = await productCollection.find({ CHU_DE_ID: id, ...PUBLIC_PRODUCT_FILTER }).toArray();
     const enriched = await enrichProducts(products);
 
     return res.status(200).json({
-      topic,
+      topic: publicCategory(topic, 'CHU_DE_ID', 'TEN_CHU_DE'),
       total: enriched.length,
       products: enriched,
     });
@@ -148,7 +220,7 @@ export const getProductsByFlower = async (req: Request, res: Response) => {
       getCollection<any>('HOA_TUOI'),
       getCollection<any>('HOA_TUOI_SAN_PHAM'),
     ]);
-    const flower = await flowerCollection.findOne({ HOA_TUOI_ID: id });
+    const flower = await flowerCollection.findOne({ HOA_TUOI_ID: id, ...PUBLIC_CATEGORY_FILTER });
 
     if (!flower) {
       return res.status(404).json({ message: 'Không tìm thấy hoa tươi' });
@@ -163,7 +235,7 @@ export const getProductsByFlower = async (req: Request, res: Response) => {
     const enriched = await enrichProducts(products, extra);
 
     return res.status(200).json({
-      flower,
+      flower: publicCategory(flower, 'HOA_TUOI_ID', 'TEN_HOA_TUOI'),
       total: enriched.length,
       products: enriched,
     });
@@ -176,7 +248,7 @@ export const getProductsByStyle = async (req: Request, res: Response) => {
   try {
     const decodedStyle = decodeURIComponent(req.params.style);
     const productCollection = await getCollection<any>('SAN_PHAM');
-    const products = (await productCollection.find({}).toArray())
+    const products = (await productCollection.find(PUBLIC_PRODUCT_FILTER).toArray())
       .filter((product) => String(product.KIEU_DANG || '').trim().toLowerCase() === decodedStyle.trim().toLowerCase());
     const enriched = await enrichProducts(products);
 
@@ -197,7 +269,7 @@ export const getProductsByTarget = async (req: Request, res: Response) => {
       getCollection<any>('DOI_TUONG'),
       getCollection<any>('DOI_TUONG_SAN_PHAM'),
     ]);
-    const target = await targetCollection.findOne({ DOI_TUONG_ID: id });
+    const target = await targetCollection.findOne({ DOI_TUONG_ID: id, ...PUBLIC_CATEGORY_FILTER });
 
     if (!target) {
       return res.status(404).json({ message: 'Không tìm thấy đối tượng' });
@@ -212,7 +284,7 @@ export const getProductsByTarget = async (req: Request, res: Response) => {
     const enriched = await enrichProducts(products, extra);
 
     return res.status(200).json({
-      target,
+      target: publicCategory(target, 'DOI_TUONG_ID', 'TEN_DOI_TUONG'),
       total: enriched.length,
       products: enriched,
     });
@@ -228,7 +300,7 @@ export const getProductsByColor = async (req: Request, res: Response) => {
       getCollection<any>('MAU_SAC'),
       getCollection<any>('MAU_SAC_SAN_PHAM'),
     ]);
-    const color = await colorCollection.findOne({ MAU_SAC_ID: id });
+    const color = await colorCollection.findOne({ MAU_SAC_ID: id, ...PUBLIC_CATEGORY_FILTER });
 
     if (!color) {
       return res.status(404).json({ message: 'Không tìm thấy màu sắc' });
@@ -243,7 +315,7 @@ export const getProductsByColor = async (req: Request, res: Response) => {
     const enriched = await enrichProducts(products, extra);
 
     return res.status(200).json({
-      color,
+      color: publicCategory(color, 'MAU_SAC_ID', 'TEN_MAU_SAC'),
       total: enriched.length,
       products: enriched,
     });
@@ -259,7 +331,7 @@ export const getProductsByCollection = async (req: Request, res: Response) => {
       getCollection<any>('BO_SUU_TAP'),
       getCollection<any>('BO_SUU_TAP_SAN_PHAM'),
     ]);
-    const collection = await collectionCollection.findOne({ BO_SUU_TAP_ID: id });
+    const collection = await collectionCollection.findOne({ BO_SUU_TAP_ID: id, ...PUBLIC_CATEGORY_FILTER });
 
     if (!collection) {
       return res.status(404).json({ message: 'Không tìm thấy bộ sưu tập' });
@@ -274,7 +346,7 @@ export const getProductsByCollection = async (req: Request, res: Response) => {
     const enriched = await enrichProducts(products, extra);
 
     return res.status(200).json({
-      collection,
+      collection: publicCategory(collection, 'BO_SUU_TAP_ID', 'TEN_BO_SUU_TAP'),
       total: enriched.length,
       products: enriched,
     });

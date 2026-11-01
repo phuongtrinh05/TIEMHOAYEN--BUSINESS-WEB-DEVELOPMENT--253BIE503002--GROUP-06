@@ -17,6 +17,7 @@
                 >
                     Voucher
                 </a>
+                <a routerLink="/promotions/lucky-wheel">Vòng quay may mắn</a>
             </div>
 
             <div class="toolbar-right">
@@ -293,6 +294,19 @@
                     </option>
                 </select>
             </div>
+            <div class="form-row">
+                <div class="form-group"><label>Đối tượng</label><select [(ngModel)]="editingCampaign.audience"><option *ngFor="let audience of audienceOptions" [value]="audience">{{ audience }}</option></select></div>
+                <div class="form-group"><label>Hạng thành viên</label><input type="text" [(ngModel)]="editingCampaign.membershipTierText"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Giới hạn tổng lượt</label><input type="number" min="0" [(ngModel)]="editingCampaign.totalLimit"></div>
+                <div class="form-group"><label>Giới hạn mỗi người</label><input type="number" min="0" [(ngModel)]="editingCampaign.perUserLimit"></div>
+            </div>
+            <div class="form-row">
+                <label><input type="checkbox" [(ngModel)]="editingCampaign.firstOrderOnly"> Chỉ đơn đầu tiên</label>
+                <label><input type="checkbox" [(ngModel)]="editingCampaign.active"> Kích hoạt</label>
+                <label><input type="checkbox" [(ngModel)]="editingCampaign.approved"> Đã được duyệt</label>
+            </div>
         </div>
 
         <div class="campaign-form-actions">
@@ -375,6 +389,19 @@
                         {{ status }}
                     </option>
                 </select>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Đối tượng</label><select [(ngModel)]="newCampaign.audience"><option *ngFor="let audience of audienceOptions" [value]="audience">{{ audience }}</option></select></div>
+                <div class="form-group"><label>Hạng thành viên</label><input type="text" [(ngModel)]="newCampaign.membershipTierText"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Giới hạn tổng lượt</label><input type="number" min="0" [(ngModel)]="newCampaign.totalLimit"></div>
+                <div class="form-group"><label>Giới hạn mỗi người</label><input type="number" min="0" [(ngModel)]="newCampaign.perUserLimit"></div>
+            </div>
+            <div class="form-row">
+                <label><input type="checkbox" [(ngModel)]="newCampaign.firstOrderOnly"> Chỉ đơn đầu tiên</label>
+                <label><input type="checkbox" [(ngModel)]="newCampaign.active"> Kích hoạt</label>
+                <label><input type="checkbox" [(ngModel)]="newCampaign.approved"> Đã được duyệt</label>
             </div>
         </div>
 

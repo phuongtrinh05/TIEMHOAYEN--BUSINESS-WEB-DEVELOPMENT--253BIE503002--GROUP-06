@@ -77,8 +77,7 @@ const sortNotifications = (left: any, right: any): number => {
 
 export const getNotifications = async (req: Request, res: Response) => {
   try {
-    const customerId = String(res.locals.orderAccess?.customerId || '');
-    if (!customerId || res.locals.orderAccess?.authType !== 'member') return res.status(403).json({ message: 'Cần đăng nhập để xem thông báo cá nhân.' });
+    const customerId = String(req.query.customerId || '').trim();
     const limit = normalizeLimit(req.query.limit);
     const collection = await getNotificationCollection();
     const query = customerId
@@ -183,7 +182,7 @@ export const markNotificationAsRead = async (req: Request, res: Response) => {
 
     const collection = await getNotificationCollection();
     const result = await collection.updateOne(
-      { THONG_BAO_ID: notificationId, KHACH_HANG_ID: res.locals.orderAccess?.customerId || '__DENIED__' },
+      { THONG_BAO_ID: notificationId, KHACH_HANG_ID: req.identity!.id },
       { $set: req.body?.viewedOnly === true ? { DA_XEM: true } : { DA_DOC: true, DA_XEM: true } },
     );
 
@@ -203,8 +202,7 @@ export const markNotificationAsRead = async (req: Request, res: Response) => {
 
 export const markAllNotificationsAsRead = async (req: Request, res: Response) => {
   try {
-    const customerId = String(res.locals.orderAccess?.customerId || '');
-    if (res.locals.orderAccess?.authType !== 'member' || customerId !== req.params.customerId) return res.status(403).json({ message: 'Không được sửa thông báo tài khoản khác.' });
+    const customerId = String(req.params.customerId || req.query.customerId || '').trim();
 
     if (!customerId) {
       return res.status(400).json({ message: 'Thiếu mã khách hàng.' });

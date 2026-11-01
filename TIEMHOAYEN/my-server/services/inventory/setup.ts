@@ -5,6 +5,7 @@ import { sweepExpiredReservations } from './stock.service.js';
 /** Index bảo vệ ràng buộc nghiệp vụ ở tầng DB (chạy idempotent khi server khởi động). */
 export const ensureInventoryIndexes = async () => {
   const tasks: Promise<unknown>[] = [
+    (await col('DIEU_CHINH_KHO')).createIndex({ 'CHI_TIET.NGUYEN_VAT_LIEU_ID': 1, NGAY_XAC_NHAN: -1 }, { name: 'dieu_chinh_nvl_thoi_diem' }),
     (await col(COLLECTIONS.supplierMaterial)).createIndex({ NHA_CUNG_CAP_ID: 1, NGUYEN_VAT_LIEU_ID: 1 }, { unique: true, name: 'uniq_ncc_nvl' }),
     (await col(COLLECTIONS.bom)).createIndex(
       { SAN_PHAM_ID: 1 },

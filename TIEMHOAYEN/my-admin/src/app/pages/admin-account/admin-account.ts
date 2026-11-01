@@ -137,44 +137,27 @@ export class AdminAccount implements OnInit {
   }
 
   lockSelected(): void {
-    this.filteredEmployees
-      .filter((employee) => employee.selected)
-      .forEach((employee) => {
-        employee.status = 'Bị khóa';
-        employee.statusClass = 'locked';
-        employee.searchIndex = this.buildSearchIndex(employee);
-      });
+    this.filteredEmployees.filter(employee => employee.selected).forEach(employee => this.setEmployeeStatus(employee, 'Ngừng hoạt động'));
     this.showMenu = false;
   }
 
   unlockSelected(): void {
-    this.filteredEmployees
-      .filter((employee) => employee.selected)
-      .forEach((employee) => {
-        employee.status = 'Hoạt động';
-        employee.statusClass = 'active';
-        employee.searchIndex = this.buildSearchIndex(employee);
-      });
+    this.filteredEmployees.filter(employee => employee.selected).forEach(employee => this.setEmployeeStatus(employee, 'Hoạt động'));
     this.showMenu = false;
   }
 
   deleteEmployee(employee: EmployeeView): void {
-    this.employees = this.employees.filter((item) => item.code !== employee.code);
-    this.applyCurrentView();
+    this.setEmployeeStatus(employee, 'Ngừng hoạt động');
   }
 
   deleteSelected(): void {
-    const selectedCodes = new Set(
-      this.filteredEmployees
-        .filter((employee) => employee.selected)
-        .map((employee) => employee.code)
-    );
-
-    if (!selectedCodes.size) return;
-
-    this.employees = this.employees.filter((employee) => !selectedCodes.has(employee.code));
-    this.showMenu = false;
-    this.applyCurrentView();
+    this.lockSelected();
+  }
+  private setEmployeeStatus(employee: EmployeeView, status: string): void {
+    this.adminApi.saveStaff(employee.code, { TRANG_THAI: status }).subscribe({
+      next: () => this.loadEmployees(),
+      error: e => { this.loadError = e.error?.message || 'Không lưu được trạng thái.'; this.cdr.markForCheck(); }
+    });
   }
 
   generateEmployeeCode(): string {
@@ -210,10 +193,13 @@ export class AdminAccount implements OnInit {
 
     if (!employee.name || !employee.email || !employee.phone) return;
 
-    employee.statusClass = this.getStatusClass(employee.status);
-    employee.searchIndex = this.buildSearchIndex(employee);
-    this.editingEmployeeCode = null;
-    this.applyCurrentView();
+    this.adminApi.saveStaff(this.isAddingEmployee ? null : employee.code, {
+      HO_TEN: employee.name, EMAIL: employee.email, SDT: employee.phone, VAI_TRO: employee.role,
+      TRANG_THAI: employee.status === 'Hoạt động' ? 'Hoạt động' : 'Ngừng hoạt động'
+    }).subscribe({
+      next: () => { this.editingEmployeeCode = null; this.isAddingEmployee = false; this.loadEmployees(); },
+      error: e => { this.loadError = e.error?.message || 'Không lưu được nhân viên.'; this.cdr.markForCheck(); }
+    });
   }
 
   searchEmployee(): void {

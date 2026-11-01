@@ -12,7 +12,7 @@
   [class.auth-content]="useAuthLayout()"
 >
   @if (!useAuthLayout()) {
-    <nav aria-label="Theo dõi yêu cầu đặt hoa" class="requests-shortcut"><a routerLink="/order-requests">Tra cứu đơn hàng và yêu cầu tư vấn</a></nav>
+    <nav aria-label="Theo dõi yêu cầu đặt hoa" class="requests-shortcut"><a routerLink="/order-requests">Tra cứu đơn hàng và yêu cầu tư vấn</a><a routerLink="/lucky-wheel" style="margin-left:20px"><i class="bi bi-stars"></i> Vòng quay may mắn</a></nav>
   }
   <router-outlet></router-outlet>
   @if (!useAuthLayout()) {

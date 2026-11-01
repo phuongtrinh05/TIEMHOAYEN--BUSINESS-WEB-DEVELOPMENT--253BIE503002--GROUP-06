@@ -1,6 +1,6 @@
-﻿import { Injectable } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, catchError, map, of, tap, timeout } from 'rxjs';
+import { Observable, catchError, forkJoin, map, of, switchMap, tap, timeout } from 'rxjs';
 import { apiBaseUrl } from './api-config';
 
 export interface AdminOrder {
@@ -35,6 +35,25 @@ export interface AdminStaffAccountsResponse {
   accounts: AdminStaffAccount[];
 }
 
+export interface AdminAuditLog {
+  _id?: string;
+  NHAT_KY_ID: string;
+  NGUOI_THUC_HIEN_ID: string | null;
+  LOAI_NGUOI_THUC_HIEN: string;
+  HANH_DONG: string;
+  DOI_TUONG_ID: string;
+  THOI_GIAN: string;
+  KET_QUA: string;
+  NOI_DUNG_THAY_DOI: any;
+}
+
+export interface AdminAuditLogsResponse {
+  total: number;
+  page: number;
+  limit: number;
+  logs: AdminAuditLog[];
+}
+
 export type AdminPermissionAction = 'view' | 'create' | 'update' | 'delete' | 'grant';
 
 export interface AdminPermissionModule {
@@ -58,6 +77,7 @@ export interface AdminRolePermissionsResponse {
 }
 
 export interface AdminLoginResponse {
+  adminSessionToken?: string; adminSessionExpiresAt?: string;
   employee: {
     id: string;
     name: string;
@@ -279,7 +299,7 @@ export interface AdminChatConversationsResponse {
 }
 
 export interface AdminTransaction {
-  id: number;
+  id: string | number;
   code: string;
   orderCode: string;
   gateway: string;
@@ -304,19 +324,30 @@ export interface AdminProduct {
   selected: boolean;
 }
 
+export interface AdminProductImage {
+  url: string;
+  isPrimary: boolean;
+  sortOrder: number;
+}
+
 export interface AdminProductDetailForm {
   name: string;
   code: string;
   note: string;
   color: string;
+  colors: string[];
   style: string;
   target: string;
+  targets: string[];
   topic: string;
   flower: string;
+  flowers: string[];
+  collections: string[];
   quantity: number;
   status: string;
   isPublished: boolean;
-  images: string[];
+  images: AdminProductImage[];
+  inventorySource?: string;
   importPrice: number;
   salePrice: number;
   discountPrice: number;
@@ -351,6 +382,7 @@ export interface AdminProductDetailResponse {
     targets: string[];
     topics: string[];
     flowers: string[];
+    collections: string[];
     materials: AdminProductRecipeItem[];
   };
   materials: AdminProductRecipeItem[];
@@ -406,6 +438,26 @@ export interface AdminCategory {
   name: string;
   total: number;
   selected: boolean;
+  description?: string;
+  image?: string;
+  status?: string;
+  source?: string;
+}
+
+export interface AdminCategoryDetailResponse {
+  type: string;
+  category: AdminCategory;
+  products: AdminProduct[];
+}
+
+export interface AdminProductClassifications {
+  found: boolean;
+  primaryImage: string;
+  colors: string[];
+  targets: string[];
+  flowers: string[];
+  collections: string[];
+  topic: string;
 }
 
 export interface AdminCampaign {
@@ -416,6 +468,13 @@ export interface AdminCampaign {
   startDate: string;
   endDate: string;
   status: string;
+  active: boolean;
+  approved: boolean;
+  audience: string;
+  membershipTiers: string[];
+  totalLimit: number;
+  perUserLimit: number;
+  firstOrderOnly: boolean;
   selected: boolean;
 }
 
@@ -428,6 +487,18 @@ export interface AdminVoucher {
   customerName: string;
   discountType: string;
   discountValue: number;
+  maxDiscount: number;
+  minimumOrder: number;
+  productIds: string[];
+  categoryIds: string[];
+  audience: string;
+  membershipTiers: string[];
+  totalLimit: number;
+  perUserLimit: number;
+  firstOrderOnly: boolean;
+  active: boolean;
+  status: string;
+  usageCount: number;
   startDate: string;
   endDate: string;
   used: boolean;
@@ -512,6 +583,7 @@ export interface AdminTransactionsResponse {
 export interface AdminProductsResponse {
   total: number;
   products: AdminProduct[];
+  nextCode?: string;
 }
 
 export interface AdminCategoriesResponse {
@@ -636,7 +708,8 @@ export class AdminApiService {
   }
 
   getStaffAccounts(): Observable<AdminStaffAccountsResponse> {
-    return this.http.get<AdminStaffAccountsResponse>(`${this.apiUrl}/staff-accounts`).pipe(
+    return this.http.get<any>(`${this.apiUrl}/staff-accounts`).pipe(
+      map(response => ({ total: response.total, accounts: response.accounts || (response.staff || []).map((row: any) => this.mapLegacyEmployee(row)) })),
       catchError(() =>
         this.http.get<any[]>(this.employeeApiUrl).pipe(
           map((rows) => ({
@@ -650,6 +723,23 @@ export class AdminApiService {
 
   getRolePermissions(): Observable<AdminRolePermissionsResponse> {
     return this.http.get<AdminRolePermissionsResponse>(`${this.apiUrl}/role-permissions`);
+  }
+  saveStaff(code: string | null, data: object): Observable<any> {
+    return code ? this.http.patch(`${this.apiUrl}/staff-accounts/${encodeURIComponent(code)}`, data)
+      : this.http.post(`${this.apiUrl}/staff-accounts`, data);
+  }
+  saveRolePermissions(role: string, matrix: AdminRolePermissionSet): Observable<any> {
+    return this.http.put(`${this.apiUrl}/role-permissions/${encodeURIComponent(role)}`, { QUYEN: matrix });
+  }
+
+  getAuditLogs(params?: { page?: number; limit?: number; action?: string; search?: string }): Observable<AdminAuditLogsResponse> {
+    let httpParams = new HttpParams();
+    if (params?.page) httpParams = httpParams.set('page', params.page.toString());
+    if (params?.limit) httpParams = httpParams.set('limit', params.limit.toString());
+    if (params?.action) httpParams = httpParams.set('action', params.action);
+    if (params?.search) httpParams = httpParams.set('search', params.search);
+
+    return this.http.get<AdminAuditLogsResponse>(`${this.apiUrl}/audit-logs`, { params: httpParams });
   }
 
   private mapLegacyEmployee(row: any): AdminStaffAccount {
@@ -915,7 +1005,7 @@ export class AdminApiService {
       return of(this.productsCache);
     }
 
-    return this.http.get<AdminProductsResponse>(`${this.apiUrl}/products`).pipe(
+    return this.http.get<AdminProductsResponse>(`${this.apiUrl}/products?includeDeleted=true`).pipe(
       tap((response) => {
         this.productsCache = response;
         this.productsCacheAt = Date.now();
@@ -924,19 +1014,24 @@ export class AdminApiService {
   }
 
   createProduct(payload: {
-    sku: string;
+    sku?: string;
+    reservedCode?: string;
+    codeReservationToken?: string;
     name: string;
     description: string;
     color?: string;
+    colors?: string[];
     target?: string;
+    targets?: string[];
     flower?: string;
+    flowers?: string[];
+    collections?: string[];
     topic?: string;
     importPrice?: number;
     salePrice: number;
     discountPrice: number;
-    quantity: number;
     style: string;
-    images: string[];
+    images: AdminProductImage[];
     materials?: Array<{
       name: string;
       quantity: number;
@@ -953,9 +1048,49 @@ export class AdminApiService {
     );
   }
 
+  getNextProductCode(): Observable<{ code: string }> {
+    return this.http.get<{ code: string }>(`${this.apiUrl}/products/next-code`);
+  }
+
+  reserveProductCode(): Observable<{ code: string; token: string; expiresInMinutes: number }> {
+    return this.http.post<{ code: string; token: string; expiresInMinutes: number }>(
+      `${this.apiUrl}/products/reserve-code`, {}
+    );
+  }
+
   getProductDetail(productId: string): Observable<AdminProductDetailResponse> {
     return this.http.get<AdminProductDetailResponse>(
       `${this.apiUrl}/products/${encodeURIComponent(productId)}`
+    );
+  }
+
+  getProductClassifications(productId: string): Observable<AdminProductClassifications> {
+    const splitList = (value: unknown): string[] => String(value || '').split('|').map((item) => item.trim()).filter(Boolean);
+    return forkJoin({
+      all: this.http.get<any>(`${this.apiBaseUrl}/category-products`).pipe(catchError(() => of({ products: [] }))),
+      collections: this.http.get<any[]>(`${this.apiBaseUrl}/collections`).pipe(catchError(() => of([])))
+    }).pipe(
+      switchMap(({ all, collections }) => {
+        const product = (all?.products || []).find((item: any) => String(item.SAN_PHAM_ID) === productId);
+        const collectionRequests = (collections || []).map((collection: any) =>
+          this.http.get<any>(`${this.apiBaseUrl}/category-products/collection/${encodeURIComponent(collection.BO_SUU_TAP_ID)}`).pipe(
+            map((response) => (response?.products || []).some((item: any) => String(item.SAN_PHAM_ID) === productId)
+              ? String(collection.TEN_BO_SUU_TAP || '').trim() : ''),
+            catchError(() => of(''))
+          )
+        );
+        const collectionNames$ = collectionRequests.length ? forkJoin(collectionRequests) : of([] as string[]);
+        return collectionNames$.pipe(map((collectionNames) => ({
+          found: Boolean(product),
+          primaryImage: String(product?.HINH_ANH || '').trim(),
+          colors: splitList(product?.TEN_MAU_SAC_LIST),
+          targets: splitList(product?.TEN_DOI_TUONG_LIST),
+          flowers: splitList(product?.TEN_HOA_TUOI_LIST),
+          collections: collectionNames.filter(Boolean),
+          topic: String(product?.TEN_CHU_DE || '').trim()
+        })));
+      }),
+      catchError(() => of({ found: false, primaryImage: '', colors: [], targets: [], flowers: [], collections: [], topic: '' }))
     );
   }
 
@@ -1061,11 +1196,61 @@ export class AdminApiService {
 
   createCategory(
     type: string,
-    name: string
+    payload: string | { name: string; description?: string; image?: string }
   ): Observable<{ message: string; category: AdminCategory }> {
     return this.http.post<{ message: string; category: AdminCategory }>(
       `${this.apiUrl}/categories/${encodeURIComponent(type)}`,
-      { name }
+      typeof payload === 'string' ? { name: payload } : payload
+    );
+  }
+
+  getCategoryDetail(type: string, categoryId: string): Observable<AdminCategoryDetailResponse> {
+    const publicId = type === 'style' && categoryId.startsWith('style:') ? categoryId.slice(6) : categoryId;
+    const publicPath: Record<string, string> = {
+      topic: 'topic', target: 'target', style: 'style', color: 'color', collection: 'collection', flower: 'flower'
+    };
+    return this.http.get<AdminCategoryDetailResponse>(
+      `${this.apiUrl}/categories/${encodeURIComponent(type)}/${encodeURIComponent(categoryId)}`
+    ).pipe(
+      timeout(8000),
+      catchError(() => this.http.get<any>(
+        `${this.apiBaseUrl}/category-products/${publicPath[type] || type}/${encodeURIComponent(publicId)}`
+      ).pipe(
+        timeout(8000),
+        map((response) => {
+          const meta = response.topic || response.target || response.style || response.color || response.collection || response.flower || {};
+          const name = meta.TEN_CHU_DE || meta.TEN_DOI_TUONG || meta.KIEU_DANG || meta.TEN_MAU_SAC || meta.TEN_BO_SUU_TAP || meta.TEN_HOA_TUOI || publicId;
+          const products: AdminProduct[] = (response.products || []).map((row: any) => ({
+            sku: String(row.SAN_PHAM_ID || ''),
+            name: String(row.TEN_SAN_PHAM || ''),
+            image: String(row.HINH_ANH || ''),
+            price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0).toLocaleString('vi-VN'),
+            sale: Number(row.GIA_KHUYEN_MAI || 0) > 0,
+            featured: false,
+            quantity: Number(row.SO_LUONG || 0),
+            rating: 0,
+            status: String(row.TRANG_THAI || 'Đang bán'),
+            statusClass: '',
+            selected: false
+          }));
+          return {
+            type,
+            category: { code: categoryId, name, total: products.length, selected: false, description: meta.MO_TA || '', image: meta.HINH_ANH || '', status: 'Đang hiển thị' },
+            products
+          };
+        })
+      ))
+    );
+  }
+
+  updateCategory(
+    type: string,
+    categoryId: string,
+    payload: { name: string; description?: string; image?: string; status?: string; productIds?: string[] }
+  ): Observable<AdminCategoryDetailResponse> {
+    return this.http.put<AdminCategoryDetailResponse>(
+      `${this.apiUrl}/categories/${encodeURIComponent(type)}/${encodeURIComponent(categoryId)}`,
+      payload
     );
   }
 
@@ -1085,6 +1270,8 @@ export class AdminApiService {
     startDate: string;
     endDate: string;
     status: string;
+    active: boolean; approved: boolean; audience: string; membershipTiers: string[];
+    totalLimit: number; perUserLimit: number; firstOrderOnly: boolean;
   }): Observable<{ message: string; campaign: AdminCampaign }> {
     return this.http.post<{ message: string; campaign: AdminCampaign }>(
       `${this.apiUrl}/campaigns`,
@@ -1100,6 +1287,8 @@ export class AdminApiService {
       startDate: string;
       endDate: string;
       status: string;
+      active: boolean; approved: boolean; audience: string; membershipTiers: string[];
+      totalLimit: number; perUserLimit: number; firstOrderOnly: boolean;
     }
   ): Observable<{ message: string; campaign: AdminCampaign }> {
     return this.http.put<{ message: string; campaign: AdminCampaign }>(
@@ -1118,13 +1307,21 @@ export class AdminApiService {
     return this.http.get<AdminVouchersResponse>(`${this.apiUrl}/vouchers`);
   }
 
+  getNextVoucherId(): Observable<{ voucherId: string }> {
+    return this.http.get<{ voucherId: string }>(`${this.apiUrl}/vouchers-next-id`);
+  }
+
   createVoucher(payload: {
     voucherCode: string;
     campaignCode: string;
     customerIds?: string[];
     quantity?: number;
+    expectedVoucherId?: string;
     discountType: string;
     discountValue: number;
+    maxDiscount: number; minimumOrder: number; productIds: string[]; categoryIds: string[];
+    audience: string; membershipTiers: string[]; totalLimit: number; perUserLimit: number;
+    firstOrderOnly: boolean; active: boolean;
     startDate: string;
     endDate: string;
   }): Observable<{ message: string; voucher: AdminVoucher; vouchers?: AdminVoucher[] }> {
@@ -1141,6 +1338,9 @@ export class AdminApiService {
       campaignCode: string;
       discountType: string;
       discountValue: number;
+      maxDiscount: number; minimumOrder: number; productIds: string[]; categoryIds: string[];
+      audience: string; membershipTiers: string[]; totalLimit: number; perUserLimit: number;
+      firstOrderOnly: boolean; active: boolean;
       startDate: string;
       endDate: string;
     }

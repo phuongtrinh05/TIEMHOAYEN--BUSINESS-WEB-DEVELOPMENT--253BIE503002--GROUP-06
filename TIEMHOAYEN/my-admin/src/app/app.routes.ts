@@ -1,9 +1,14 @@
-﻿import { Routes } from '@angular/router';
+import {LuckyWheelAdmin} from './pages/promotions/lucky-wheel/lucky-wheel';
+import {ContentWorkspace} from './pages/content/content-workspace/content-workspace';
+import { Routes } from '@angular/router';
 
 import { Login } from './pages/login/login';
 import { OrderRequests } from './pages/orders/order-requests/order-requests';
 
 import { Dashboard } from './pages/dashboard/dashboard';
+import { Analytics } from './pages/dashboard/analytics/analytics';
+import { ReportList } from './pages/dashboard/reports/report-list';
+import { ReportDetail } from './pages/dashboard/reports/report-detail';
 
 import { CustomerComponent } from './pages/customers/customer-overview/customer-overview';
 import { CustomerDetailComponent } from './pages/customers/customer-detail/customer-detail';
@@ -41,9 +46,12 @@ import { EmployeeService } from './pages/employee-service/employee-service';
 
 import { RolePermission } from './pages/role-permission/role-permission';
 import { AdminAccount } from './pages/admin-account/admin-account';
+import { AuditLogsComponent } from './pages/audit-logs/audit-logs';
 import { adminPermissionGuard } from './services/admin-permission.guard';
 
 export const routes: Routes = [
+    { path: 'audit-logs', component: AuditLogsComponent, canActivate: [adminPermissionGuard], data: { module: 'system' } },
+    {path:'promotions/lucky-wheel',component:LuckyWheelAdmin,canActivate:[adminPermissionGuard],data:{module:'promotions'}},
     { path: 'customer-service/legacy-chat', component: CustomerChatComponent, canActivate: [adminPermissionGuard], data: { module: 'customerService' } },
     { path: 'orders/requests', component: OrderRequests, canActivate: [adminPermissionGuard], data: { module: 'orders' } },
     {
@@ -63,6 +71,10 @@ export const routes: Routes = [
         canActivate: [adminPermissionGuard],
         data: { module: 'dashboard' }
     },
+    // Tổng quan ▸ Bảng phân tích / Danh sách báo cáo
+    { path: 'dashboard/analytics', component: Analytics, canActivate: [adminPermissionGuard], data: { module: 'dashboard' } },
+    { path: 'dashboard/reports', component: ReportList, canActivate: [adminPermissionGuard], data: { module: 'dashboard' } },
+    { path: 'dashboard/reports/:key', component: ReportDetail, canActivate: [adminPermissionGuard], data: { module: 'dashboard' } },
 
     {
         path: 'orders',
@@ -244,19 +256,28 @@ export const routes: Routes = [
     },
     {
         path: 'content/article-list',
+        component: ContentWorkspace,
+        canDeactivate: [(component:ContentWorkspace)=>component.canLeave()],
+        canActivate: [adminPermissionGuard],
+        data: { module: 'content' }
+    },
+    {
+        path: 'content/website-information',
         component: ArticleList,
         canActivate: [adminPermissionGuard],
         data: { module: 'content' }
     },
     {
         path: 'content/create-article',
-        component: CreateArticle,
+        component: ContentWorkspace,
+        canDeactivate: [(component:ContentWorkspace)=>component.canLeave()],
         canActivate: [adminPermissionGuard],
         data: { module: 'content' }
     },
     {
         path: 'content/article-detail/:id',
-        component: ArticleDetail,
+        component: ContentWorkspace,
+        canDeactivate: [(component:ContentWorkspace)=>component.canLeave()],
         canActivate: [adminPermissionGuard],
         data: { module: 'content' }
     },

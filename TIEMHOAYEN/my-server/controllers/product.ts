@@ -294,7 +294,7 @@ const calculateSearchScore = (
 export const getAllProducts = async (req: Request, res: Response) => {
   try {
     const productCollection = await getCollection('SAN_PHAM');
-    const products = await productCollection.find({}).sort({ TEN_SAN_PHAM: 1 }).toArray();
+    const products = await productCollection.find({ TRANG_THAI: 'Đang bán' }).sort({ TEN_SAN_PHAM: 1 }).toArray();
     const rows = await enrichProducts(products);
 
     res.status(200).json(rows);
@@ -326,7 +326,7 @@ export const searchProducts = async (req: Request, res: Response) => {
     const budget = parseBudgetFromKeyword(keyword);
 
     const productCollection = await getCollection('SAN_PHAM');
-    const products = await productCollection.find({ TRANG_THAI: { $ne: 'Ngừng bán' } }).toArray();
+    const products = await productCollection.find({ TRANG_THAI: 'Đang bán' }).toArray();
     const rows = await enrichProducts(products, true);
 
     const rankedProducts = rows
@@ -374,7 +374,7 @@ export const getProductById = async (req: Request, res: Response) => {
 
     const product = await productCollection.findOne({ SAN_PHAM_ID: id });
 
-    if (!product) {
+    if (!product || product.TRANG_THAI !== 'Đang bán') {
       return res.status(404).json({
         message: 'Không tìm thấy sản phẩm'
       });

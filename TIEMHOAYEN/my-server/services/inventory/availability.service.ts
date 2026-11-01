@@ -1,3 +1,4 @@
+import { eligiblePaidOrderIds } from './order-eligibility.js';
 import {
   ACTIVE_RESERVATION_STATUSES,
   COLLECTIONS,
@@ -35,7 +36,8 @@ export const computeBuildable = (lines: BomLine[], materialsById: Map<string, an
     const m = materialsById.get(l.NGUYEN_VAT_LIEU_ID);
     const available = availableOf(m);
     const perUnit = Number(l.DINH_LUONG || 0);
-    const canMake = perUnit > 0 ? Math.floor(roundQty(available / perUnit) + 1e-9) : Number.POSITIVE_INFINITY;
+    const scale = 10 ** INVENTORY_CONFIG.quantityDecimals;
+    const canMake = perUnit > 0 ? Math.floor(Math.round(available * scale) / Math.round(perUnit * scale)) : Number.POSITIVE_INFINITY;
     if (canMake < buildable) {
       buildable = canMake;
       bottleneck = { materialId: l.NGUYEN_VAT_LIEU_ID, name: m?.TEN_NGUYEN_VAT_LIEU || l.NGUYEN_VAT_LIEU_ID };
@@ -75,6 +77,7 @@ export const sellableStockFields = (stock?: ProductSellableStock) => ({
   SO_BO_CO_THE_LAM: stock?.buildable ?? 0,
 });
 
+
 /** Hàng đang về từ PO "Đang giao" có ngày dự kiến ≤ deadline (chỉ dùng DỰ BÁO). */
 export const incomingByMaterial = async (deadline: Date | null) => {
   const query: any = { TRANG_THAI: PO_STATUS.shipping };
@@ -95,7 +98,8 @@ export const pendingDemandByMaterial = async (deadline: Date | null, excludeOrde
   if (excludeOrderId) query.DON_HANG_ID = { $ne: excludeOrderId };
   const rows = await (await col(COLLECTIONS.demand)).find(query).toArray();
   const map = new Map<string, number>();
-  rows.forEach((r: any) => map.set(r.NGUYEN_VAT_LIEU_ID, roundQty((map.get(r.NGUYEN_VAT_LIEU_ID) || 0) + Number(r.SO_LUONG || 0))));
+  const paid = await eligiblePaidOrderIds(rows.map(r => r.DON_HANG_ID));
+  rows.filter(r => paid.has(r.DON_HANG_ID)).forEach((r: any) => map.set(r.NGUYEN_VAT_LIEU_ID, roundQty((map.get(r.NGUYEN_VAT_LIEU_ID) || 0) + Number(r.SO_LUONG || 0))));
   return map;
 };
 
@@ -142,18 +146,16 @@ export const checkProductAvailability = async (productId: string, qtyRaw: unknow
 
   let forecast: any[] = [];
   if (sameDay) {
-    // Cùng ngày: tồn hiện tại là nguồn quyết định. Nếu đủ thành phẩm/BOM thì
-    // checkout giữ tồn ngay; giờ cutoff không được tự biến đơn đủ hàng thành
-    // yêu cầu Sales. Việc giữ tồn nguyên tử vẫn là bước quyết định cuối cùng.
+    if (vnTimeKey(now) >= INVENTORY_CONFIG.sameDayCutoff) {
+      decision = 'need_review';
+      reasons.push(`Đơn giao trong ngày sau ${INVENTORY_CONFIG.sameDayCutoff} cần Sales/Admin xác nhận khả năng thực hiện.`);
+    }
     if (sellable < qty) {
       decision = 'need_review';
       reasons.push(`Chỉ đáp ứng được ${sellable}/${qty} bó với tồn hiện tại${bottleneck ? ` (NVL chốt chặn: ${bottleneck.name})` : ''}.`);
     }
   } else {
-    // Lịch tương lai luôn qua Sales: tồn hiện tại không được dùng để cam kết cho
-    // một ngày khác. Dự báo dưới đây chỉ là dữ liệu tham khảo để Sales tư vấn.
-    decision = 'need_review';
-    reasons.push('Lịch giao ở ngày tương lai cần Sales xác minh nguồn hoa và lịch chuẩn bị trước khi nhận đơn.');
+    // Đơn tương lai: dự báo = khả dụng hiện tại + PO đang giao kịp − nhu cầu chưa giữ của đơn khác trước ngày giao
     const incoming = await incomingByMaterial(deliveryAt);
     const demand = await pendingDemandByMaterial(deliveryAt);
     forecast = requirement.map((r) => {
@@ -162,6 +164,7 @@ export const checkProductAvailability = async (productId: string, qtyRaw: unknow
     });
     const short = forecast.filter((f) => f.short);
     if (short.length) {
+      decision = 'need_review';
       reasons.push(`Dự báo thiếu NVL trước ngày giao: ${short.map((s) => `${s.name} (cần ${s.required}, dự kiến ${s.projected} ${s.unit})`).join('; ')}.`);
     }
   }
@@ -252,7 +255,8 @@ export const getInventoryAlerts = async () => {
   // Tầng 1b + 3 — dự báo theo lịch T: khả dụng + PO đang giao kịp T − nhu cầu chưa giữ các đơn có T sớm hơn/cùng T
   // Gộp theo (đơn, NVL) — một đơn có nhiều sản phẩm dùng chung NVL
   const grouped = new Map<string, any>();
-  demandRows.forEach((d: any) => {
+  const paid = await eligiblePaidOrderIds(demandRows.map(d => d.DON_HANG_ID));
+  demandRows.filter(d => paid.has(d.DON_HANG_ID)).forEach((d: any) => {
     const key = `${d.DON_HANG_ID}|${d.NGUYEN_VAT_LIEU_ID}`;
     const g = grouped.get(key);
     if (g) g.SO_LUONG = roundQty(g.SO_LUONG + Number(d.SO_LUONG || 0));

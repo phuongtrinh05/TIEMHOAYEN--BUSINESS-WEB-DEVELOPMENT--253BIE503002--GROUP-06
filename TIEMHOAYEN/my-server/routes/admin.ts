@@ -18,6 +18,7 @@ import {
   deleteAdminProduct,
   deleteAdminVoucher,
   getAdminCategories,
+  getAdminCategoryDetail,
   getAdminCampaigns,
   getAdminAddressOptions,
   getAdminCustomerDetail,
@@ -27,9 +28,12 @@ import {
   getAdminOrderDetail,
   getAdminProductDetail,
   getAdminProducts,
+  getAdminNextProductCode,
+  reserveAdminProductCode,
   getAdminStaffAccounts,
   getAdminTransactions,
   getAdminVouchers,
+  getAdminNextVoucherId,
   updateAdminCampaign,
   updateAdminCustomer,
   updateAdminCustomerAddress,
@@ -38,6 +42,7 @@ import {
   updateAdminOrderPaymentStatus,
   updateAdminProductDetail,
   updateAdminProductStatus,
+  updateAdminCategory,
   updateAdminTransaction,
   updateAdminVoucher,
   setDefaultAdminCustomerAddress,
@@ -114,6 +119,8 @@ router.get('/transactions', requireAdminPermission('payments'), getAdminTransact
 router.post('/transactions', requireAdminPermission('payments'), createAdminTransaction);
 router.put('/transactions/:transactionId', requireAdminPermission('payments'), updateAdminTransaction);
 router.get('/products', requireAdminPermission('products'), getAdminProducts);
+router.get('/products/next-code', requireAdminPermission('products'), getAdminNextProductCode);
+router.post('/products/reserve-code', requireAdminPermission('products'), reserveAdminProductCode);
 router.post('/products', requireAdminPermission('products'), createAdminProduct);
 router.get('/products/:productId', requireAdminPermission('products'), getAdminProductDetail);
 router.put('/products/:productId', requireAdminPermission('products'), updateAdminProductDetail);
@@ -121,12 +128,15 @@ router.put('/products/:productId/status', requireAdminPermission('products'), up
 router.delete('/products/:productId', requireAdminPermission('products'), deleteAdminProduct);
 router.get('/categories/:type', requireAdminPermission('products'), getAdminCategories);
 router.post('/categories/:type', requireAdminPermission('products'), createAdminCategory);
+router.get('/categories/:type/:categoryId', requireAdminPermission('products'), getAdminCategoryDetail);
+router.put('/categories/:type/:categoryId', requireAdminPermission('products'), updateAdminCategory);
 router.delete('/categories/:type/:categoryId', requireAdminPermission('products'), deleteAdminCategory);
 router.get('/campaigns', requireAdminPermission('promotions'), getAdminCampaigns);
 router.post('/campaigns', requireAdminPermission('promotions'), createAdminCampaign);
 router.put('/campaigns/:campaignId', requireAdminPermission('promotions'), updateAdminCampaign);
 router.delete('/campaigns/:campaignId', requireAdminPermission('promotions'), deleteAdminCampaign);
 router.get('/vouchers', requireAdminPermission('promotions'), getAdminVouchers);
+router.get('/vouchers-next-id', requireAdminPermission('promotions'), getAdminNextVoucherId);
 router.post('/vouchers', requireAdminPermission('promotions'), createAdminVoucher);
 router.put('/vouchers/:voucherId', requireAdminPermission('promotions'), updateAdminVoucher);
 router.delete('/vouchers/:voucherId', requireAdminPermission('promotions'), deleteAdminVoucher);

@@ -53,11 +53,13 @@
             <img [src]="item.image" [alt]="item.name" class="item-image">
 
             <div class="item-info">
-              <p class="item-name">{{ item.name }}</p>
+              <p class="item-name">{{ item.name }}</p><p *ngIf="item.designId" class="item-meta">{{item.requiresReview ? 'Cần shop duyệt · Giá tạm tính' : 'Mẫu đã được duyệt'}}</p>
               <p class="item-meta">Kiểu dáng: {{ item.style }}</p>
               <p class="item-meta item-topic">
                 Chủ đề: <span>{{ getCartTopicLabel(item) }}</span>
               </p>
+              <p class="cart-line-warning" *ngIf="item.priceChanged">Giá sản phẩm đã được cập nhật theo giá hiện tại.</p>
+              <p class="cart-line-warning" *ngIf="item.availabilityDecision === 'unavailable'">Sản phẩm hiện không đủ khả dụng. Vui lòng giảm số lượng hoặc liên hệ nhân viên.</p>
             </div>
           </div>
 
@@ -127,12 +129,15 @@
         <span>Tổng cộng</span>
         <span class="total-value">{{ formatPrice(getTotal()) }}</span>
       </div>
+      <p class="cart-summary-error" *ngIf="quoteError || cartError">{{ quoteError || cartError }}</p>
 
+      <p *ngIf="hasDesignReview" class="design-review-note">Mẫu thiết kế cần shop kiểm tra. Bạn sẽ gửi yêu cầu trao đổi trước khi thanh toán.</p>
       <button
         type="button"
         class="btn-order"
+        [disabled]="!canCheckout()"
         (click)="goToCheckout()">
-        Đặt hàng
+        {{ hasDesignReview ? 'Tiếp tục gửi yêu cầu' : 'Đặt hàng' }}
       </button>
 
       <div class="summary-guarantees">

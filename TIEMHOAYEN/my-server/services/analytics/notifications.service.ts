@@ -53,7 +53,7 @@ export const NOTIFICATION_EVENT_MATRIX = [
   { type: 'STOCK_FORECAST_SHORT', group: 'Tồn kho', priority: 'Cao', module: 'materials', trigger: 'Dự báo thiếu NVL trước lịch chuẩn bị T', link: 'Tổng quan kho', autoResolve: 'Khi hết thiếu' },
   { type: 'PO_LATE', group: 'Tồn kho', priority: 'Trung bình', module: 'materials', trigger: 'PO "Đang giao" quá ngày dự kiến', link: 'Đặt mua NCC', autoResolve: 'Khi PO đóng / đổi ngày' },
   { type: 'FRESH_QUALITY_CHECK', group: 'Tồn kho', priority: 'Thấp', module: 'materials', trigger: 'Hoa tươi quá số ngày bảo quản', link: 'Tổng quan kho', autoResolve: 'Khi xuất hết / đánh dấu' },
-  { type: 'RECONCILE_ISSUE', group: 'Hệ thống', priority: 'Cao', module: 'dashboard', trigger: 'Đối chiếu đơn–tiền–kho phát hiện lệch (mức Cao)', link: 'Tổng quan → Đối chiếu', autoResolve: 'Khi hết lệch' },
+  { type: 'RECONCILE_ISSUE', group: 'Hệ thống', priority: 'Cao', module: 'dashboard', trigger: 'Đối chiếu đơn–tiền–kho phát hiện lệch (mức Cao)', link: 'Danh sách báo cáo → Đối chiếu', autoResolve: 'Khi hết lệch' },
 ];
 
 export const ensureNotificationIndexes = async () => {
@@ -179,7 +179,7 @@ export const syncAdminNotifications = async (force = false) => {
     if (rec) {
       rec.issues.filter((i: any) => i.count > 0 && i.severity === 'Cao').forEach((i: any) => events.push({
         key: `RECONCILE_ISSUE:${i.code}`, type: 'RECONCILE_ISSUE', group: 'Hệ thống', priority: 'Cao', module: 'dashboard', stateful: true, entityId: i.code,
-        title: `Đối chiếu: ${i.title}`, message: `${i.count} trường hợp. ${i.hint}`, link: '/dashboard', queryParams: { section: 'doi-soat' } }));
+        title: `Đối chiếu: ${i.title}`, message: `${i.count} trường hợp. ${i.hint}`, link: '/dashboard/reports/reconciliation' }));
     }
 
     // 1 lệnh bulkWrite thay cho N lệnh upsert tuần tự

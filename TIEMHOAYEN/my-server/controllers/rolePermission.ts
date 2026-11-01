@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import {randomBytes,createHash} from 'node:crypto';
 import { getCollection } from '../mongo.js';
 import {
   defaultRolePermissions,
@@ -8,7 +9,6 @@ import {
   resolveRoleName,
 } from '../services/role-permission.service.js';
 import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordHash.js';
-import { createStaffAccess } from '../services/order-access.service.js';
 
 export const getAdminRolePermissions = async (_req: Request, res: Response) => {
   try {
@@ -57,17 +57,15 @@ export const loginAdminEmployee = async (req: Request, res: Response) => {
 
     const employeeCollection = await getCollection('NHAN_VIEN');
     const employee = await employeeCollection.findOne({ EMAIL: email });
-    if (!employee || employee.DA_XOA === true || employee.DA_XOA === 1 || !(await verifyPassword(password, employee.MAT_KHAU))) {
+    if (!employee || !(await verifyPassword(password, employee.MAT_KHAU))) {
       return res.status(401).json({ message: 'Email hoặc mật khẩu không đúng.' });
     }
 
     if (!isPasswordHash(employee.MAT_KHAU)) {
-      const passwordHash = await hashPassword(password);
       await employeeCollection.updateOne(
         { NHAN_VIEN_ID: employee.NHAN_VIEN_ID },
-        { $set: { MAT_KHAU: passwordHash } },
+        { $set: { MAT_KHAU: await hashPassword(password) } },
       );
-      employee.MAT_KHAU = passwordHash;
     }
 
     const status = String(employee.TRANG_THAI || '').trim().toLowerCase();
@@ -76,10 +74,11 @@ export const loginAdminEmployee = async (req: Request, res: Response) => {
     }
 
     const role = resolveRoleName(employee.VAI_TRO);
-    const session = await createStaffAccess(employee);
-    res.setHeader('Cache-Control', 'no-store');
+    const adminSessionToken='as_'+randomBytes(32).toString('hex');
+    const adminSessionExpiresAt=new Date(Date.now()+8*3600000);
+    await (await getCollection<any>('PHIEN_DANG_NHAP_ADMIN')).insertOne({_id:createHash('sha256').update(adminSessionToken).digest('hex'),employeeId:employee.NHAN_VIEN_ID,expiresAt:adminSessionExpiresAt,createdAt:new Date()});
     return res.status(200).json({
-      ...session,
+      adminSessionToken,adminSessionExpiresAt,
       employee: {
         id: employee.NHAN_VIEN_ID,
         name: employee.HO_TEN,

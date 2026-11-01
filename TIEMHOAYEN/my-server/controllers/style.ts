@@ -6,6 +6,7 @@ export const getAllStyles = async (req: Request, res: Response) => {
     const productCollection = await getCollection('SAN_PHAM');
     const styles = await productCollection.distinct('KIEU_DANG', {
       KIEU_DANG: { $nin: [null, ''] },
+      TRANG_THAI: 'Đang bán',
     });
 
     res.status(200).json(

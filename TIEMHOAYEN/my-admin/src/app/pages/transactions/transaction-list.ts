@@ -5,7 +5,7 @@ import { interval, Subscription } from 'rxjs';
 import { AdminApiService, AdminTransaction } from '../../services/admin-api.service';
 
 interface TransactionItem {
-    id: number;
+    id: string | number;
     code: string;
     orderCode: string;
     gateway: string;
@@ -27,6 +27,7 @@ interface TransactionItem {
     styleUrls: ['./transaction-list.css']
 })
 export class TransactionListComponent implements OnInit, OnDestroy {
+    errorMessage = '';
     searchKeyword = '';
     selectedGateway = 'Tất cả';
     selectedStatus = 'Tất cả';
@@ -60,7 +61,7 @@ export class TransactionListComponent implements OnInit, OnDestroy {
     currentPage = 1;
     pageSize = 10;
 
-    editingTransactionIds = new Set<number>();
+    editingTransactionIds = new Set<string | number>();
     private readonly liveRefreshMs = 10000;
     private liveRefreshSub?: Subscription;
     private isLiveRefreshInFlight = false;
@@ -160,11 +161,16 @@ export class TransactionListComponent implements OnInit, OnDestroy {
     }
 
     private mapTransaction(transaction: AdminTransaction): TransactionItem {
+        const row = transaction as any;
         return {
             ...transaction,
+            id: row.id ?? row.THANH_TOAN_ID,
+            code: row.code ?? row.THANH_TOAN_ID ?? String(row.id || ''),
+            orderCode: row.orderCode ?? row.orderId ?? row.DON_HANG_ID ?? '',
+            referenceCode: row.referenceCode ?? row.MA_GIAO_DICH ?? '',
             gateway: this.normalizeGateway(transaction.gateway),
             status: this.normalizeTransactionStatus(transaction.status),
-            transactionDate: transaction.transactionDate ? new Date(transaction.transactionDate) : new Date(),
+            transactionDate: (row.transactionDate || row.paidAt || row.NGAY_THANH_TOAN) ? new Date(row.transactionDate || row.paidAt || row.NGAY_THANH_TOAN) : new Date(),
             selected: false
         };
     }
@@ -453,7 +459,8 @@ export class TransactionListComponent implements OnInit, OnDestroy {
                 },
                 error: (error) => {
                     console.error('Cannot update transaction', error);
-                    alert('Không thể lưu giao dịch. Vui lòng thử lại.');
+                    this.errorMessage = error.error?.message || 'Không thể lưu giao dịch. Vui lòng thử lại.';
+                    this.cdr.detectChanges();
                     this.loadTransactions();
                 }
             });
@@ -619,7 +626,8 @@ export class TransactionListComponent implements OnInit, OnDestroy {
             },
             error: (error) => {
                 console.error('Cannot create transaction', error);
-                alert('Không thể thêm giao dịch. Vui lòng kiểm tra mã đơn hàng rồi thử lại.');
+                this.errorMessage = error.error?.message || 'Không thể thêm giao dịch. Vui lòng kiểm tra mã đơn hàng rồi thử lại.';
+                this.cdr.detectChanges();
             }
         });
 

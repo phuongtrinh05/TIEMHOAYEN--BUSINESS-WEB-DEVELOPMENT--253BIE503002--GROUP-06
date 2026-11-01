@@ -1,3 +1,4 @@
+import { memberAccessToken } from '../../../services/session-auth';
 import { orderAccessSession } from '../../../services/api-config';
 import { CommonModule, isPlatformBrowser } 
 from '@angular/common';
@@ -852,7 +853,7 @@ export class OrderDetail implements OnInit, OnDestroy {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-          'x-order-access': orderAccessSession()?.accessToken || '',
+          'x-order-access': memberAccessToken() || orderAccessSession()?.accessToken || '',
                 },
                 body: JSON.stringify({
                   customerId,

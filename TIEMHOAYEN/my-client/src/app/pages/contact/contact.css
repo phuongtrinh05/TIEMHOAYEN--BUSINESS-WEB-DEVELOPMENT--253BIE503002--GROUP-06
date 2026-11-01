@@ -446,3 +446,6 @@
 .contact-submit-message.is-error {
     color: #731919;
 }
+.contact-page .field-error{display:block;color:#a3323c;font-size:12px;margin:4px 0 10px}.contact-page .btn-send{font-size:14px;padding:11px 18px;border-radius:7px;background:#781b20}.contact-page .quick-contact{gap:14px}
+
+.contact-page .info-item{margin-bottom:13px;gap:12px}.contact-page .info-item a{color:#781b20;text-decoration:none}.contact-page .info-item div{font-size:14px}

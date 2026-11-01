@@ -6,21 +6,6 @@ import { InventoryError, withTransaction } from './inventory/helpers.js';
 
 const ACCESS = 'XAC_THUC_TRA_CUU_DON';
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
-export async function createStaffAccess(employee: any) {
-  const accessToken = `sa_${randomBytes(32).toString('hex')}`;
-  const expiresAt = new Date(Date.now() + 8 * 3600000);
-  await (await getCollection<any>(ACCESS)).insertOne({ _id: hash(accessToken), kind: 'staff', employeeId: employee.NHAN_VIEN_ID,
-    credentialHash: hash(String(employee.MAT_KHAU)), expiresAt, createdAt: new Date() });
-  return { accessToken, expiresAt };
-}
-export async function staffAccess(token: unknown, collections: typeof getCollection = getCollection) {
-  if (!/^sa_[a-f0-9]{64}$/.test(String(token))) throw new InventoryError(401, 'Cần đăng nhập nhân viên để thực hiện thao tác.');
-  const row = await (await collections<any>(ACCESS)).findOne({ _id: hash(String(token)), kind: 'staff', expiresAt: { $gt: new Date() } });
-  const employee = row && await (await collections<any>('NHAN_VIEN')).findOne({ NHAN_VIEN_ID: row.employeeId });
-  if (!employee || employee.DA_XOA === true || employee.DA_XOA === 1 || /khóa|ngừng|ngưng|nghỉ|inactive|locked|disabled|terminated|deleted/i.test(String(employee.TRANG_THAI || ''))
-    || row.credentialHash !== hash(String(employee.MAT_KHAU))) throw new InventoryError(401, 'Phiên nhân viên đã hết hạn hoặc không còn hiệu lực.');
-  return employee;
-}
 export async function ensureOrderAccessIndexes() {
   await (await getCollection<any>(ACCESS)).createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 }
@@ -32,7 +17,7 @@ export function phonePattern(phone: string) {
   const tail = phone.slice(1).split('').join('[\\s().-]*');
   return new RegExp(`^(?:0|\\+?84)[\\s().-]*${tail}$`);
 }
-export async function requestOrderOtp(value: unknown, ip: string, orderId?: string) {
+export async function requestOrderOtp(value: unknown, ip: string) {
   const phone = normalizeOrderPhone(value);
   if (!phone) throw new InventoryError(400, 'Nhập số điện thoại người đặt hợp lệ.');
   if (process.env.ORDER_OTP_DELIVERY !== 'console' || process.env.NODE_ENV === 'production') {
@@ -54,7 +39,7 @@ export async function requestOrderOtp(value: unknown, ip: string, orderId?: stri
       await col.updateOne({ _id: key }, { $set: { kind: 'rate', windowAt: sameWindow ? old.windowAt : now, count: sameWindow ? old.count + 1 : 1, lastSentAt: now, expiresAt: new Date(now.getTime() + 10 * 60000) } }, { upsert: true, session });
     }
     await col.updateMany({ kind: 'otp', phone, consumed: false }, { $set: { consumed: true } }, { session });
-    await col.insertOne({ _id: challengeId, kind: 'otp', phone, ...(orderId?{orderId}:{}), codeHash: hash(`${challengeId}:${otp}`), attempts: 0, consumed: false, createdAt: now, expiresAt }, { session });
+    await col.insertOne({ _id: challengeId, kind: 'otp', phone, codeHash: hash(`${challengeId}:${otp}`), attempts: 0, consumed: false, createdAt: now, expiresAt }, { session });
   });
   // Explicit local development transport. Never return the code in an API response.
   console.info(`[ORDER OTP - LOCAL] ${phone}: ${otp} (hiệu lực 5 phút)`);
@@ -74,12 +59,12 @@ export async function verifyOrderOtp(challengeId: unknown, code: unknown) {
   if (!updated || !correct) throw new InventoryError(400, 'Mã xác thực không đúng hoặc hết lượt thử.');
   const token = `oa_${randomBytes(32).toString('hex')}`;
   const expiresAt = new Date(Date.now() + 30 * 60000);
-  await col.insertOne({ _id: hash(token), kind: 'lookup', phone: row.phone, ...(row.orderId?{orderId:row.orderId}:{}), createdAt: new Date(), expiresAt });
-  return { accessToken: token, phone: row.phone, ...(row.orderId?{orderId:row.orderId}:{}), expiresAt };
+  await col.insertOne({ _id: hash(token), kind: 'lookup', phone: row.phone, createdAt: new Date(), expiresAt });
+  return { accessToken: token, phone: row.phone, expiresAt };
 }
 export async function lookupAccess(token: unknown, session?: ClientSession) {
-  if (!/^(?:oa|ra)_[a-f0-9]{64}$/.test(String(token))) throw new InventoryError(401, 'Vui lòng đăng nhập, dùng liên kết riêng hoặc xác minh OTP để xem yêu cầu.');
-  const row = await (await getCollection<any>(ACCESS)).findOne({ _id: hash(String(token)), kind: { $in: ['lookup', 'request'] }, expiresAt: { $gt: new Date() } }, { session });
+  if (!/^oa_[a-f0-9]{64}$/.test(String(token))) throw new InventoryError(401, 'Vui lòng đăng nhập; khách vãng lai cần xác minh SĐT bằng OTP để xem đơn.');
+  const row = await (await getCollection<any>(ACCESS)).findOne({ _id: hash(String(token)), kind: 'lookup', expiresAt: { $gt: new Date() } }, { session });
   if (!row) throw new InventoryError(401, 'Phiên truy cập đã hết hạn. Vui lòng đăng nhập lại hoặc xác minh OTP nếu là khách vãng lai.');
   if (row.authType === 'member') {
     const customer = await (await getCollection<any>('KHACH_HANG')).findOne({ KHACH_HANG_ID: row.customerId }, { session });
@@ -94,21 +79,9 @@ export async function createCustomerOrderAccess(customer: any) {
   await (await getCollection<any>(ACCESS)).insertOne({ _id: hash(accessToken), kind: 'lookup', authType: 'member', customerId: customer.KHACH_HANG_ID, phone, expiresAt, createdAt: new Date() });
   return { accessToken, expiresAt, phone, authType: 'member', customerId: customer.KHACH_HANG_ID };
 }
-export async function createRequestAccess(requestId: string, session: ClientSession) {
-  const accessToken = `ra_${randomBytes(32).toString('hex')}`;
-  const expiresAt = new Date(Date.now() + 30 * 86400000);
-  await (await getCollection<any>(ACCESS)).insertOne({ _id: hash(accessToken), kind: 'request', authType: 'guest_request', requestId, expiresAt, createdAt: new Date() }, { session });
-  return { accessToken, expiresAt };
-}
-export const ownedRequestQuery = (access: any) => access.authType === 'member' ? { customerId: access.customerId }
-  : access.kind === 'request' ? { requestId: access.requestId, customerId: { $in: [null, ''] } }
-  : access.orderId ? { _id:'__ORDER_ONLY__' } : { customerId: { $in: [null, ''] }, 'sender.phone': phonePattern(access.phone) };
+export const ownedRequestQuery = (access: any) => access.authType === 'member' ? { customerId: access.customerId } : { 'sender.phone': phonePattern(access.phone) };
 export async function ownedOrderQuery(access: any) {
-  if (access.kind === 'request') {
-    const request = await (await getCollection<any>('YEU_CAU_DAT_HANG')).findOne({ requestId: access.requestId, customerId: { $in: [null, ''] } });
-    return { DON_HANG_ID: request?.orderId || '__DENIED__', KHACH_HANG_ID: { $in: [null, ''] } };
-  }
-  return access.authType === 'member' ? { KHACH_HANG_ID: access.customerId } : { ...await orderPhoneQuery(access.phone), ...(access.orderId?{DON_HANG_ID:access.orderId}:{}) };
+  return access.authType === 'member' ? { KHACH_HANG_ID: access.customerId } : orderPhoneQuery(access.phone);
 }
 export async function requestByVerifiedPhone(id: string, token: string, session?: ClientSession) {
   const access = await lookupAccess(token, session);
@@ -117,7 +90,8 @@ export async function requestByVerifiedPhone(id: string, token: string, session?
   return row;
 }
 export async function orderPhoneQuery(phone: string) {
-  return { KHACH_HANG_ID: { $in: [null, ''] }, SDT_NGUOI_DAT: phonePattern(phone) };
+  const customers = await (await getCollection<any>('KHACH_HANG')).find({ SDT: phonePattern(phone) }, { projection: { KHACH_HANG_ID: 1 } }).toArray();
+  return { $or: [{ SDT_NGUOI_DAT: phonePattern(phone) }, { SDT_NGUOI_DAT: { $in: [null, ''] }, KHACH_HANG_ID: { $in: customers.map(c => c.KHACH_HANG_ID) } }] };
 }
 export async function authorizeOrder(id: string, token: string) {
   const access = await lookupAccess(token);

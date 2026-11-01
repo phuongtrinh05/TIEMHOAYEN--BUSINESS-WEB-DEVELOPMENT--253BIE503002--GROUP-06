@@ -1,4 +1,7 @@
-import { Component, OnInit, inject, PLATFORM_ID, HostListener, ChangeDetectorRef } from '@angular/core';
+import { apiBaseUrl } from '../../../services/api-config';
+import { memberAccessToken } from '../../../services/session-auth';
+import {LuckyRewardPicker} from '../../../components/lucky-reward-picker/lucky-reward-picker';
+import { Component, OnInit, ViewChild, inject, PLATFORM_ID, HostListener, ChangeDetectorRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule, NgForm } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -14,9 +17,15 @@ import {
   CreateOrderPayload,
   CreateOrderResponse,
 } from '../../../services/order.service';
+import { PricingService, ServerQuote } from '../../../services/pricing.service';
 
 export interface OrderItem {
+  requiresReview?: boolean;
   id: string;
+  lineKey: string;
+  variantId?: string | null;
+  designId?: string | null;
+  configuration?: Record<string, unknown>;
   name: string;
   image: string;
   qty: number;
@@ -24,6 +33,7 @@ export interface OrderItem {
 }
 
 export interface CartStorageItem {
+  requiresReview?: boolean; CAN_SHOP_DUYET?: boolean;
   id?: string;
   SAN_PHAM_ID?: string;
   name?: string;
@@ -37,6 +47,14 @@ export interface CartStorageItem {
   GIA?: number;
   GIA_KHUYEN_MAI?: number | null;
   selected?: boolean;
+  lineKey?: string;
+  LINE_KEY?: string;
+  variantId?: string | null;
+  BIEN_THE_ID?: string | null;
+  designId?: string | null;
+  THIET_KE_ID?: string | null;
+  configuration?: Record<string, unknown>;
+  CAU_HINH?: Record<string, unknown>;
 }
 
 export interface SavedAddress {
@@ -107,12 +125,13 @@ export interface WardOption extends Ward {
 @Component({
   selector: 'app-order-registrant',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, PageHeader, PageFooter],
+  imports: [CommonModule, FormsModule, RouterLink, PageHeader, PageFooter, LuckyRewardPicker],
   templateUrl: './order-registrant.html',
   styleUrl: './order-registrant.css',
 })
 export class OrderRegistrantComponent implements OnInit {
   private readonly platformId = inject(PLATFORM_ID);
+  private readonly pricingService = inject(PricingService);
   private readonly router = inject(Router);
   private readonly customerService = inject(CustomerService);
   private readonly orderService = inject(OrderService);
@@ -278,6 +297,7 @@ export class OrderRegistrantComponent implements OnInit {
   availableVouchers: Voucher[] = [];
 
   // ===== SẢN PHẨM ĐƯỢC CHỌN TỪ GIỎ HÀNG =====
+  get hasDesignReview(): boolean { return this.orderItems.some(i=>!!i.requiresReview); }
   orderItems: OrderItem[] = [];
 
   paymentMethods: PaymentMethod[] = [
@@ -539,6 +559,7 @@ export class OrderRegistrantComponent implements OnInit {
 
     if (checkoutItems.length > 0) {
       this.orderItems = checkoutItems;
+      this.refreshServerQuote();
       return;
     }
 
@@ -550,6 +571,7 @@ export class OrderRegistrantComponent implements OnInit {
 
     if (legacyItems.length > 0) {
       this.orderItems = legacyItems;
+      this.refreshServerQuote();
       return;
     }
 
@@ -594,7 +616,7 @@ export class OrderRegistrantComponent implements OnInit {
       return;
     }
 
-    fetch(`https://tiem-hoa-yen-api.onrender.com/api/cart/customer/${customerId}`)
+    fetch(`${apiBaseUrl()}/cart/customer/${customerId}`, { headers: { 'x-order-access': memberAccessToken() } })
       .then(response => {
         if (!response.ok) {
           throw new Error(`Không lấy được giỏ hàng: ${response.status}`);
@@ -612,6 +634,7 @@ export class OrderRegistrantComponent implements OnInit {
         this.orderItems = items
           .map((item: CartStorageItem) => this.mapCartItemToOrderItem(item))
           .filter((item: OrderItem) => !!item.id && item.qty > 0);
+        this.refreshServerQuote();
       })
       .catch(error => {
         console.error('Lỗi lấy giỏ hàng database:', error);
@@ -640,10 +663,15 @@ export class OrderRegistrantComponent implements OnInit {
 
     return {
       id,
+      lineKey: String(item.lineKey || item.LINE_KEY || id),
+      variantId: item.variantId || item.BIEN_THE_ID || null,
+      designId: item.designId || item.THIET_KE_ID || null,
+      configuration: item.configuration || item.CAU_HINH || {},
       name,
       image,
       qty,
       price,
+      requiresReview: !!(item.requiresReview || item.CAN_SHOP_DUYET),
     };
   }
 
@@ -823,6 +851,7 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   get subtotal(): number {
+    if (this.serverQuote) return this.serverQuote.subtotal;
     return this.orderItems.reduce((sum, item) => sum + item.price * item.qty, 0);
   }
 
@@ -925,6 +954,7 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   get productVoucherDiscount(): number {
+    if (this.serverQuote) return this.serverQuote.productDiscount;
     if (!this.selectedVoucher || !this.isPercentVoucher(this.selectedVoucher)) {
       return 0;
     }
@@ -933,6 +963,7 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   get shippingVoucherDiscount(): number {
+    if (this.serverQuote) return this.serverQuote.shippingDiscount;
     if (!this.selectedVoucher || !this.isCashVoucher(this.selectedVoucher)) {
       return 0;
     }
@@ -941,6 +972,7 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   get shippingFee(): number {
+    if (this.serverQuote) return Math.max(0, this.serverQuote.shippingFee - this.serverQuote.shippingDiscount);
     return Math.max(0, this.baseShippingFee - this.shippingVoucherDiscount);
   }
 
@@ -957,7 +989,7 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   private getMaxLoyaltyDiscountBase(): number {
-    return Math.max(0, this.subtotal - this.productVoucherDiscount);
+    return Math.max(0, this.subtotal - this.productVoucherDiscount - this.luckyRewardDiscount);
   }
 
   get loyaltyPointsToUse(): number {
@@ -976,10 +1008,14 @@ export class OrderRegistrantComponent implements OnInit {
     return this.convertPointsToMoney(this.loyaltyPointsToUse);
   }
 
+  @ViewChild(LuckyRewardPicker) private luckyPicker?:LuckyRewardPicker;
+  luckyRewardId='';luckyRewardDiscount=0;
+  onLuckyReward(value:{id:string;discount:number}|null){this.luckyRewardId=value?.id||'';this.luckyRewardDiscount=value?.discount||0;}
   get total(): number {
+    if (this.serverQuote) return Math.max(0, this.serverQuote.total - this.loyaltyDiscount);
     return Math.max(
       0,
-      this.subtotal + this.shippingFee - this.productVoucherDiscount - this.loyaltyDiscount
+      this.subtotal + this.shippingFee - this.productVoucherDiscount - this.loyaltyDiscount - this.luckyRewardDiscount
     );
   }
 
@@ -1225,6 +1261,7 @@ export class OrderRegistrantComponent implements OnInit {
     this.formData.voucherCode = this.selectedVoucher ? v.code : '';
     this.voucherError = '';
     this.showVoucherDropdown = false;
+    this.refreshServerQuote();
   }
 
   onVoucherCodeChange(): void {
@@ -1237,9 +1274,16 @@ export class OrderRegistrantComponent implements OnInit {
 
     if (!code) {
       this.selectedVoucher = null;
+      this.luckyPicker?.choose('');
+      this.refreshServerQuote();
       return;
     }
 
+    if(/^YEN-[A-F0-9]{12}$/i.test(code)){
+      this.selectedVoucher=null;this.cdr.detectChanges();
+      this.luckyPicker?.applyCode(code);
+      return;
+    }
     const found = this.availableVouchers.find(
       v => v.code.trim().toUpperCase() === code
     );
@@ -1248,7 +1292,25 @@ export class OrderRegistrantComponent implements OnInit {
 
     if (!found) {
       this.voucherError = 'Voucher không hợp lệ.';
+    } else {
+      this.refreshServerQuote();
     }
+  }
+
+  serverQuote: ServerQuote | null = null;
+  private quoteVersion = 0;
+  private refreshServerQuote(): void {
+    if (!this.orderItems.length) return;
+    const version = ++this.quoteVersion;
+    this.pricingService.quote({
+      items: this.orderItems.map(item => ({ id: item.id, quantity: item.qty, lineKey: item.lineKey, variantId: item.variantId, designId: item.designId, configuration: item.configuration, displayedUnitPrice: item.price })),
+      shippingFee: this.baseShippingFee,
+      voucher: this.selectedVoucher ? { id: this.selectedVoucher.id, code: this.selectedVoucher.code } : null,
+      customerId: this.getCustomerId() || null,
+    }).subscribe({
+      next: quote => { if (version === this.quoteVersion) { this.serverQuote = quote; this.cdr.detectChanges(); } },
+      error: error => { if (version === this.quoteVersion) { this.serverQuote = null; this.voucherError = error?.error?.message || 'Không thể kiểm tra báo giá.'; this.cdr.detectChanges(); } },
+    });
   }
 
   // ====================================================================
@@ -1828,6 +1890,10 @@ export class OrderRegistrantComponent implements OnInit {
       },
       items: this.orderItems.map(item => ({
         id: item.id,
+        lineKey: item.lineKey,
+        variantId: item.variantId,
+        designId: item.designId,
+        configuration: item.configuration,
         name: item.name,
         qty: item.qty,
         price: item.price,
@@ -1840,6 +1906,7 @@ export class OrderRegistrantComponent implements OnInit {
             value: this.selectedVoucher.value,
           }
         : null,
+      luckyRewardId: this.luckyRewardId || undefined,
       summary: {
         subtotal: this.subtotal,
         shippingFee: this.shippingFee,

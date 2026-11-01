@@ -1,15 +1,14 @@
-import { AFTER_SALES,afterSalesChange,afterSalesRead,orderEvent } from '../services/admin-order.service.js';
+import {syncLuckyOrder} from '../services/lucky-wheel.service.js';
 import { Request, Response } from 'express';
-import { getCollection, getNextPrefixedId } from '../mongo.js';
-import { getAdminOrderDetailById, sumVerifiedPayments, assertOrderTransition, allowedOrderStatuses } from '../services/admin-order.service.js';
-import { createOrder } from './order.js';
-import { randomUUID } from 'node:crypto';
-import { finishedAvailableOf, InventoryError, withTransaction } from '../services/inventory/helpers.js';
-import { computeBuildable } from '../services/inventory/availability.service.js';
-import { getActiveBomMap } from '../services/inventory/bom.service.js';
+import { getCollection, getNextPrefixedId, escapeRegex } from '../mongo.js';
+import { getAdminOrderDetailById, sumVerifiedPayments, assertOrderTransition, allowedOrderStatuses, AFTER_SALES, afterSalesChange, afterSalesRead, orderEvent } from '../services/admin-order.service.js';
+import { finishedAvailableOf, InventoryError, nextCode, withTransaction } from '../services/inventory/helpers.js';
 import { syncCheckoutInventory, changeCheckoutPayment } from '../services/checkout-payment.service.js';
 import { releaseReservations } from '../services/inventory/stock.service.js';
 import { invalidateAnalyticsCache } from '../services/analytics/cache.js';
+import { audit } from '../services/auth.service.js';
+import { randomUUID } from 'node:crypto';
+import { derivePromotionStatus, ensureVoucherStorage, normalizeVoucherCode } from '../services/pricing-voucher.service.js';
 
 const toDate = (value: unknown): Date | null => {
   if (!value) return null;
@@ -83,6 +82,46 @@ const normalizePaymentStatus = (status: unknown, deposit: unknown = 0, total: un
 
 const money = (value: unknown): number => Math.max(0, Math.round(Number(value || 0) || 0));
 
+const PRODUCT_STATUSES = ['Đang bán', 'Ngừng bán', 'Đã xóa'] as const;
+const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const PRODUCT_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+const normalizeProductStatus = (value: unknown): typeof PRODUCT_STATUSES[number] => {
+  const key = normalizeText(value);
+  if (key.includes('xoa') || key === 'deleted') return 'Đã xóa';
+  if (key.includes('ngung') || key === 'an' || key === 'hidden' || key.includes('stop') || key === 'inactive') return 'Ngừng bán';
+  return 'Đang bán';
+};
+
+const sanitizeProductHtml = (value: unknown): string => String(value || '')
+  .replace(/<(script|style|iframe|object|embed|form|meta|link)[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
+  .replace(/<(script|style|iframe|object|embed|form|meta|link)\b[^>]*\/?\s*>/gi, '')
+  .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+  .replace(/\s(?:href|src)\s*=\s*(["'])\s*(?:javascript|vbscript|data:text\/html)[\s\S]*?\1/gi, '')
+  .trim();
+
+const normalizeProductName = (value: unknown): string => normalizeText(value).replace(/\s+/g, ' ');
+
+type ProductImageInput = { url: string; isPrimary: boolean; sortOrder: number };
+
+const normalizeProductImages = (images: unknown): ProductImageInput[] => {
+  if (!Array.isArray(images)) return [];
+  return images.map((item: any, index) => ({
+    url: String(typeof item === 'string' ? item : item?.url || item?.URL || '').trim(),
+    isPrimary: typeof item === 'string' ? index === 0 : Boolean(item?.isPrimary ?? item?.LA_ANH_CHINH),
+    sortOrder: Number.isFinite(Number(item?.sortOrder)) ? Number(item.sortOrder) : index,
+  })).filter((item) => item.url).sort((a, b) => a.sortOrder - b.sortOrder);
+};
+
+const validateProductImage = (image: ProductImageInput): string | null => {
+  if (/^https?:\/\//i.test(image.url) || image.url.startsWith('/')) return null;
+  const match = image.url.match(/^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/i);
+  if (!match) return 'Ảnh phải là URL hợp lệ hoặc tệp ảnh được tải lên.';
+  if (!PRODUCT_IMAGE_MIME_TYPES.has(match[1].toLowerCase())) return 'Chỉ chấp nhận ảnh JPG, PNG hoặc WEBP.';
+  const bytes = Math.floor(match[2].replace(/\s/g, '').length * 3 / 4);
+  return bytes > PRODUCT_IMAGE_MAX_BYTES ? 'Mỗi ảnh không được vượt quá 5 MB.' : null;
+};
+
 const getFirstEmployeeId = async (): Promise<string> => {
   const employeeCollection = await getCollection<any>('NHAN_VIEN');
   const employee = await employeeCollection.findOne({}, { sort: { NHAN_VIEN_ID: 1 }, projection: { NHAN_VIEN_ID: 1 } });
@@ -112,21 +151,22 @@ const getPrimaryImageMap = async (productIds: string[]) => {
 const mapAdminProduct = (row: any, image?: any, avgRating = 0, stock?: { finished: number; buildable: number }) => ({
   id: row.SAN_PHAM_ID,
   code: row.SAN_PHAM_ID,
+  sku: row.SAN_PHAM_ID,
   name: row.TEN_SAN_PHAM || '',
   description: row.MO_TA || '',
   image: image?.URL || '',
   salePrice: Number(row.GIA || 0),
   discountPrice: Number(row.GIA_KHUYEN_MAI || 0),
-  price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0),
-  status: row.TRANG_THAI || '',
+  price: Number(row.GIA_KHUYEN_MAI || row.GIA || 0).toLocaleString('vi-VN') + 'đ',
+  status: normalizeProductStatus(row.TRANG_THAI),
+  statusClass: normalizeProductStatus(row.TRANG_THAI) === 'Đang bán' ? 'selling' : normalizeProductStatus(row.TRANG_THAI) === 'Đã xóa' ? 'deleted' : 'stop',
   style: row.KIEU_DANG || '',
-  // Không dùng SO_LUONG cũ: với sản phẩm theo BOM, khả năng bán phải giảm
-  // ngay khi thành phẩm/NVL được giữ cho đơn khác.
-  quantity: stock ? stock.finished + stock.buildable : Number(row.SO_LUONG || 0),
-  finishedAvailable: stock?.finished ?? 0,
-  buildable: stock?.buildable ?? 0,
+  quantity: finishedAvailableOf(row),
+  inventorySource: 'Tồn thành phẩm khả dụng (TON_THANH_PHAM - TP_DANG_GIU)',
   sold: Number(row.DA_BAN || 0),
   rating: Number(avgRating || 0),
+  featured: Number(row.DA_BAN || 0) > 0,
+  sale: Number(row.GIA_KHUYEN_MAI || 0) > 0 && Number(row.GIA_KHUYEN_MAI) < Number(row.GIA || 0),
   selected: false,
 });
 
@@ -156,6 +196,14 @@ const categoryConfig: Record<string, { collection: string; idField: string; name
   target: { collection: 'DOI_TUONG', idField: 'DOI_TUONG_ID', nameField: 'TEN_DOI_TUONG', prefix: 'DT', linkCollection: 'DOI_TUONG_SAN_PHAM' },
   color: { collection: 'MAU_SAC', idField: 'MAU_SAC_ID', nameField: 'TEN_MAU_SAC', prefix: 'MS', linkCollection: 'MAU_SAC_SAN_PHAM' },
   collection: { collection: 'BO_SUU_TAP', idField: 'BO_SUU_TAP_ID', nameField: 'TEN_BO_SUU_TAP', prefix: 'BST', linkCollection: 'BO_SUU_TAP_SAN_PHAM' },
+};
+
+const standardProductCategories: Record<string, string[]> = {
+  color: ['Đỏ', 'Hồng', 'Trắng', 'Vàng', 'Cam', 'Tím', 'Xanh dương', 'Xanh lá', 'Kem', 'Pastel', 'Đa sắc'],
+  style: ['Bó hoa', 'Giỏ hoa', 'Hộp hoa', 'Bình hoa', 'Kệ hoa', 'Hoa cầm tay', 'Set hoa và quà'],
+  target: ['Người yêu', 'Vợ/Chồng', 'Mẹ', 'Cha', 'Bạn bè', 'Đồng nghiệp', 'Sếp', 'Khách hàng', 'Đối tác', 'Thầy cô'],
+  flower: ['Hoa hồng', 'Hoa hướng dương', 'Hoa baby', 'Hoa tulip', 'Hoa cúc', 'Hoa ly', 'Hoa lan', 'Hoa cẩm chướng', 'Hoa đồng tiền', 'Hoa mẫu đơn', 'Hoa sen'],
+  topic: ['Sinh nhật', 'Tình yêu', 'Kỷ niệm', 'Chúc mừng', 'Khai trương', 'Tốt nghiệp', 'Cảm ơn', 'Xin lỗi', 'Cưới hỏi', 'Chia buồn', 'Ngày lễ', 'Hoa văn phòng'],
 };
 
 export const getAdminAddressOptions = async (_req: Request, res: Response) => {
@@ -233,43 +281,107 @@ export const getAdminOrderDetail = async (req: Request, res: Response) => {
 };
 
 export const createAdminOrder = async (req: Request, res: Response) => {
-  const body = req.body || {};
-  // Admin uses exactly the same price validation, reservation and idempotency as Customer.
-  // It never treats a user-entered paid/deposit field as a verified receipt.
-  res.locals.adminCheckout = true;
-  req.body = {
-    checkoutSessionId: body.checkoutSessionId,
-    customerId: body.customerId || body.senderCustomerId || null,
-    sender: { name: body.senderName, phone: body.senderPhone, email: body.senderEmail },
-    receiver: { name: body.receiverName, phone: body.receiverPhone, address: body.deliveryAddress,
-      districtName: body.districtName, provinceName: body.provinceName },
-    delivery: { date: body.deliveryDate, time: body.deliverySlot || body.deliveryTime, message: body.cardMessage, noteShop: body.customerNote },
-    shippingMethod: body.shippingMethod || 'standard',
-    items: body.items || body.products,
-    payment: { method: /cod|tiền mặt|nhận hàng/i.test(String(body.paymentMethod)) ? 'cod'
-      : /momo/i.test(String(body.paymentMethod)) ? 'momo' : /vnpay/i.test(String(body.paymentMethod)) ? 'vnpay'
-      : /chuyển khoản|^bank$/i.test(String(body.paymentMethod)) ? 'bank' : '' },
-    summary: { loyaltyPoints: body.loyaltyPoints || 0, loyaltyDiscount: Number(body.loyaltyPoints || 0) / 2 * 1000 },
-    voucher: body.voucher || null,
-    adminNote: String(body.adminNote || ''),
-    flags: { hideSender: body.hideSender, requestVAT: body.requestVAT, sendZaloPhoto: body.sendZaloPhoto },
-  };
-  return createOrder(req, res);
+  try {
+    const body = req.body || {};
+    const items = Array.isArray(body.items) ? body.items : [];
+    if (items.length === 0) return res.status(400).json({ message: 'Đơn hàng cần có sản phẩm.' });
+
+    const orderCollection = await getCollection<any>('DON_HANG');
+    const detailCollection = await getCollection<any>('DON_HANG_CHI_TIET');
+    const orderId = await getNextPrefixedId('DON_HANG', 'DON_HANG_ID', 'YEN', 5);
+    const subtotal = money(body.subtotal ?? items.reduce((sum: number, item: any) => sum + money(item.price || item.GIA) * Math.max(1, Number(item.quantity || item.qty || item.SO_LUONG || 1)), 0));
+    const shipping = money(body.shipping ?? body.shippingFee);
+    const total = money(body.total ?? subtotal + shipping);
+    const order = {
+      _id: orderId,
+      DON_HANG_ID: orderId,
+      KHACH_HANG_ID: body.customerId || null,
+      NGAY_TAO: new Date(),
+      TRANG_THAI: body.orderStatus || 'Chờ xử lý',
+      TAM_TINH: subtotal,
+      PHI_VAN_CHUYEN: shipping,
+      TIEN_COC: money(body.deposit || body.paid || 0),
+      TONG_TIEN: total,
+      PHUONG_THUC_THANH_TOAN: body.paymentMethod || null,
+      VAT: Number(body.vat || 0),
+      NGAY_MUON_GIAO: parseOptionalDate(body.deliveryDate),
+      KHUNG_GIO_MUON_GIAO: body.deliverySlot || body.deliveryTime || null,
+      LOI_NHAN_THIEP: body.cardMessage || null,
+      AN_THONG_TIN: toBool(body.hideSender),
+      GHI_CHU: [body.customerNote, body.adminNote].filter(Boolean).join(' | ') || null,
+      TEN_NGUOI_NHAN: body.receiverName || body.receiver?.name || null,
+      SDT_NGUOI_NHAN: body.receiverPhone || body.receiver?.phone || null,
+      DIA_CHI_GIAO_HANG: body.deliveryAddress || body.receiver?.address || null,
+      YEU_CAU_VAT: toBool(body.requestVAT),
+      GUI_ANH_QUA_ZALO: toBool(body.sendZaloPhoto),
+      DA_CHINH_SUA_GIAO_HANG: false,
+      DA_TRU_DIEM_THUONG: false,
+    };
+    await orderCollection.insertOne(order);
+    await detailCollection.insertMany(items.map((item: any) => {
+      const productId = String(item.productId || item.id || item.SAN_PHAM_ID || '');
+      return {
+        _id: { DON_HANG_ID: orderId, SAN_PHAM_ID: productId },
+        DON_HANG_ID: orderId,
+        SAN_PHAM_ID: productId,
+        SO_LUONG: Math.max(1, Number(item.quantity || item.qty || item.SO_LUONG || 1)),
+        GIA: money(item.price || item.GIA),
+      };
+    }));
+    const created = await getAdminOrderDetailById(orderId);
+    return res.status(201).json({ message: 'Order created.', order: created, orderId });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot create order: ' + error.message });
+  }
 };
 
 export const getAdminCustomers = async (_req: Request, res: Response) => {
   try {
-    const customerCollection = await getCollection<any>('KHACH_HANG');
+    const [customerCollection, orderCollection] = await Promise.all([
+      getCollection<any>('KHACH_HANG'),
+      getCollection<any>('DON_HANG'),
+    ]);
+
+    const ordersStats = await orderCollection.aggregate([
+      {
+        $group: {
+          _id: '$KHACH_HANG_ID',
+          totalOrders: { $sum: 1 },
+          totalSpent: { $sum: { $ifNull: ['$TONG_TIEN', 0] } },
+          latestOrderDate: { $max: '$NGAY_TAO' }
+        }
+      }
+    ]).toArray();
+
+    const statsMap = new Map<string, { totalOrders: number; totalSpent: number; latestOrderDate: any }>();
+    for (const stat of ordersStats) {
+      if (stat._id) {
+        statsMap.set(String(stat._id), {
+          totalOrders: Number(stat.totalOrders || 0),
+          totalSpent: Number(stat.totalSpent || 0),
+          latestOrderDate: stat.latestOrderDate
+        });
+      }
+    }
+
     const customers = (await customerCollection.find({}).sort({ KHACH_HANG_ID: 1 }).toArray()).map((customer) => {
       const { MAT_KHAU, ...safe } = customer;
+      const stats = statsMap.get(customer.KHACH_HANG_ID) || { totalOrders: 0, totalSpent: 0, latestOrderDate: null };
       return {
         ...safe,
         id: customer.KHACH_HANG_ID,
+        code: customer.KHACH_HANG_ID,
         name: customer.TEN,
         phone: customer.SDT,
         email: customer.EMAIL,
         memberType: customer.LOAI_THANH_VIEN,
+        membershipTier: customer.LOAI_THANH_VIEN,
         points: Number(customer.DIEM_TICH_LUY || 0),
+        status: customer.TRANG_THAI || 'Hoạt động',
+        totalOrders: stats.totalOrders,
+        totalSpent: stats.totalSpent,
+        latestOrderDate: stats.latestOrderDate ? formatDate(stats.latestOrderDate) : '',
+        createdAt: customer.NGAY_DANG_KY,
         selected: false,
       };
     });
@@ -315,25 +427,57 @@ export const getAdminCustomerDetail = async (req: Request, res: Response) => {
 export const updateAdminCustomer = async (req: Request, res: Response) => {
   try {
     const { customerId } = req.params;
-    const { name, phone, email, birthDate, gender, status } = req.body;
+    const { name, phone, email, birthDate, gender, status, note, ghiChuNoiBo } = req.body;
     const customerCollection = await getCollection<any>('KHACH_HANG');
+    const existing = await customerCollection.findOne({ KHACH_HANG_ID: customerId });
+    if (!existing) return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
+
+    const nextPhone = (phone ?? req.body.SDT ?? existing.SDT)?.trim();
+    const nextEmail = (email ?? req.body.EMAIL ?? existing.EMAIL)?.trim();
+
+    if (nextPhone && nextPhone !== existing.SDT) {
+      const dupPhone = await customerCollection.findOne({ KHACH_HANG_ID: { $ne: customerId }, SDT: nextPhone });
+      if (dupPhone) return res.status(409).json({ message: 'Số điện thoại đã thuộc về khách hàng khác.' });
+    }
+    if (nextEmail && nextEmail !== existing.EMAIL) {
+      const dupEmail = await customerCollection.findOne({ KHACH_HANG_ID: { $ne: customerId }, EMAIL: nextEmail });
+      if (dupEmail) return res.status(409).json({ message: 'Email đã thuộc về khách hàng khác.' });
+    }
+
+    const nextStatus = status ?? req.body.TRANG_THAI;
+    const updateDoc: any = {};
+    if (name || req.body.TEN) updateDoc.TEN = (name ?? req.body.TEN).trim();
+    if (nextPhone) updateDoc.SDT = nextPhone;
+    if (nextEmail !== undefined) updateDoc.EMAIL = nextEmail || null;
+    if (birthDate !== undefined || req.body.DOB !== undefined) updateDoc.DOB = parseOptionalDate(birthDate ?? req.body.DOB);
+    if (gender !== undefined || req.body.GIOI_TINH !== undefined) updateDoc.GIOI_TINH = gender ?? req.body.GIOI_TINH;
+    if (nextStatus) updateDoc.TRANG_THAI = nextStatus;
+    if (note !== undefined || ghiChuNoiBo !== undefined || req.body.GHI_CHU_NOI_BO !== undefined) {
+      updateDoc.GHI_CHU_NOI_BO = note ?? ghiChuNoiBo ?? req.body.GHI_CHU_NOI_BO;
+    }
+
     const result = await customerCollection.findOneAndUpdate(
       { KHACH_HANG_ID: customerId },
-      {
-        $set: {
-          TEN: name ?? req.body.TEN,
-          SDT: phone ?? req.body.SDT,
-          EMAIL: email ?? req.body.EMAIL ?? null,
-          DOB: parseOptionalDate(birthDate ?? req.body.DOB),
-          GIOI_TINH: gender ?? req.body.GIOI_TINH,
-          ...(status ? { TRANG_THAI: status } : {}),
-        },
-      },
+      { $set: updateDoc },
       { returnDocument: 'after' },
     );
     if (!result) return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
+
+    if (nextStatus && ['ngừng hoạt động', 'ngung hoat dong', 'khóa', 'khoa'].includes(String(nextStatus).toLowerCase())) {
+      const sessionCol = await getCollection('PHIEN_DANG_NHAP');
+      await sessionCol.updateMany(
+        { TAI_KHOAN_ID: customerId, LOAI_TAI_KHOAN: 'KHACH_HANG' },
+        { $set: { DA_THU_HOI: true } }
+      );
+    }
+
+    await audit(req, nextStatus && nextStatus !== existing.TRANG_THAI ? 'DOI_TRANG_THAI_KHACH_HANG' : 'CAP_NHAT_KHACH_HANG', customerId, {
+      truoc: { TEN: existing.TEN, SDT: existing.SDT, EMAIL: existing.EMAIL, TRANG_THAI: existing.TRANG_THAI },
+      sau: updateDoc,
+    });
+
     const { MAT_KHAU, ...safeCustomer } = result;
-    return res.status(200).json({ message: 'Customer updated.', customer: safeCustomer });
+    return res.status(200).json({ message: 'Cập nhật khách hàng thành công.', customer: safeCustomer });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot update customer: ' + error.message });
   }
@@ -416,22 +560,28 @@ export const deleteAdminCustomerAddress = async (req: Request, res: Response) =>
   }
 };
 
+/** Shared response contract for the list and create/update responses. */
+const adminTransactionView = (row: any) => ({
+  ...row, id: row.THANH_TOAN_ID, code: row.THANH_TOAN_ID,
+  orderId: row.DON_HANG_ID, orderCode: row.DON_HANG_ID,
+  gateway: row.CONG_THANH_TOAN, referenceCode: row.MA_GIAO_DICH || '',
+  amount: Number(row.SO_TIEN || 0), status: row.TRANG_THAI_THANH_TOAN,
+  paidAt: row.NGAY_THANH_TOAN, transactionDate: row.NGAY_THANH_TOAN, selected: false,
+});
+
 export const getAdminTransactions = async (_req: Request, res: Response) => {
   try {
     const paymentCollection = await getCollection<any>('THANH_TOAN');
     const rows = await paymentCollection.find({}).sort({ NGAY_THANH_TOAN: -1 }).toArray();
     const orders = await (await getCollection<any>('DON_HANG')).find({ DON_HANG_ID: { $in: rows.map(r => r.DON_HANG_ID) } }).toArray();
-    const transactions = rows.map((row, index) => {
+    const transactions = rows.map((row) => {
       const order = orders.find(o => o.DON_HANG_ID === row.DON_HANG_ID);
       const paid = Math.max(0, sumVerifiedPayments(rows.filter(p => p.DON_HANG_ID === row.DON_HANG_ID)));
-      return { ...row, id: index + 1, code: row.THANH_TOAN_ID, orderCode: row.DON_HANG_ID,
-        orderId: row.DON_HANG_ID, gateway: row.CONG_THANH_TOAN || '', referenceCode: row.MA_GIAO_DICH || '',
-        amount: Number(row.SO_TIEN || 0), status: row.TRANG_THAI_THANH_TOAN,
-        transactionDate: row.NGAY_THANH_TOAN, paidAt: row.NGAY_THANH_TOAN,
+      return { ...adminTransactionView(row),
         total: Number(order?.TONG_TIEN || 0), deposit: Number(order?.TIEN_COC || 0), paid,
         remaining: Math.max(0, Number(order?.TONG_TIEN || 0) - paid),
         editable: row.TRANG_THAI_THANH_TOAN === 'Chờ thanh toán' && !!order && !['Đã hủy','Đã hoàn tiền'].includes(order.TRANG_THAI),
-        history: row.LICH_SU || [], confirmedAt: row.XAC_NHAN_LUC || null, confirmedBy: row.NGUOI_XAC_NHAN || '', selected: false };
+        history: row.LICH_SU || [], confirmedAt: row.XAC_NHAN_LUC || null, confirmedBy: row.NGUOI_XAC_NHAN || '' };
     });
     return res.status(200).json({ total: transactions.length, transactions });
   } catch (error: any) {
@@ -441,9 +591,13 @@ export const getAdminTransactions = async (_req: Request, res: Response) => {
 
 export const updateAdminTransaction = async (req: Request, res: Response) => {
   try {
-    const transaction = await withTransaction(session => changeCheckoutPayment(session, String(req.params.transactionId), req.body,
-      String(res.locals?.adminEmployee?.NHAN_VIEN_ID || req.headers?.['x-admin-id'] || '')));
-    return res.json({ message: 'Đã xác minh giao dịch.', transaction });
+    const transaction = await withTransaction(async session => {
+      const updated = await changeCheckoutPayment(session, String(req.params.transactionId), req.body,
+        String(res.locals?.adminEmployee?.NHAN_VIEN_ID || req.identity?.id || ''));
+      await syncLuckyOrder(session, updated.DON_HANG_ID);
+      return updated;
+    });
+    return res.json({ message: 'Đã xác minh giao dịch.', transaction: adminTransactionView(transaction) });
   } catch (e: any) {
     return res.status(e instanceof InventoryError ? e.status : e.code === 11000 ? 409 : 500).json({ message: e instanceof InventoryError ? e.message : 'Không thể cập nhật giao dịch.' });
   }
@@ -475,10 +629,12 @@ export const createAdminTransaction = async (req: Request, res: Response) => {
         if (target.TRANG_THAI_THANH_TOAN !== 'Chờ thanh toán' || Number(req.body.amount) !== Number(target.SO_TIEN)) throw new InventoryError(409, 'Không thể mở lại hoặc sửa tiền một giao dịch đã xử lý.');
         return target;
       }
-      return changeCheckoutPayment(session, target.THANH_TOAN_ID, { status: normalizeTransactionStatus(req.body.status), amount: req.body.amount, referenceCode: reference || undefined },
-        String(res.locals?.adminEmployee?.NHAN_VIEN_ID || ''));
+      const updated = await changeCheckoutPayment(session, target.THANH_TOAN_ID, { status: normalizeTransactionStatus(req.body.status), amount: req.body.amount, referenceCode: reference || undefined },
+        String(res.locals?.adminEmployee?.NHAN_VIEN_ID || req.identity?.id || ''));
+      await syncLuckyOrder(session, orderId);
+      return updated;
     });
-    return res.status(201).json({ message: 'Đã ghi nhận khoản thu hợp lệ.', transaction });
+    return res.status(201).json({ message: 'Đã ghi nhận khoản thu hợp lệ.', transaction: adminTransactionView(transaction) });
   } catch (e: any) {
     return res.status(e instanceof InventoryError ? e.status : e.code === 11000 ? 409 : 500).json({ message: e instanceof InventoryError ? e.message : 'Không thể ghi nhận khoản thu.' });
   }
@@ -496,7 +652,8 @@ export const updateAdminOrderPaymentStatus = async (req: Request, res: Response)
         status: normalizeTransactionStatus(req.body.status),
         amount: req.body.paidAmount ?? req.body.amount,
         referenceCode: req.body.referenceCode,
-      }, String(res.locals?.adminEmployee?.NHAN_VIEN_ID || req.headers?.['x-admin-id'] || ''));
+      }, String(res.locals?.adminEmployee?.NHAN_VIEN_ID || req.identity?.id || ''));
+      await syncLuckyOrder(session, orderId);
     });
     const order = await getAdminOrderDetailById(orderId);
     return res.json({ message: 'Đã xác minh thanh toán.', order });
@@ -505,106 +662,321 @@ export const updateAdminOrderPaymentStatus = async (req: Request, res: Response)
   }
 };
 
-export const getAdminProducts = async (_req: Request, res: Response) => {
+export const getAdminProducts = async (req: Request, res: Response) => {
   try {
     const [productCollection, reviewCollection, materialCollection] = await Promise.all([
       getCollection<any>('SAN_PHAM'),
       getCollection<any>('DANH_GIA'),
       getCollection<any>('NGUYEN_VAT_LIEU'),
     ]);
-    const productsRaw = await productCollection.find({}).sort({ SAN_PHAM_ID: -1 }).toArray();
-    const productIds = productsRaw.map((product) => product.SAN_PHAM_ID);
-    const [imageMap, reviews, materials, bomMap] = await Promise.all([
-      getPrimaryImageMap(productIds),
-      reviewCollection.find({}).toArray(),
-      materialCollection.find({}).toArray(),
-      getActiveBomMap(productIds),
-    ]);
-    const materialsById = new Map(materials.map((material) => [material.NGUYEN_VAT_LIEU_ID, material]));
+    const search = String(req.query.search || '').trim();
+    const status = String(req.query.status || '').trim();
+    const sortBy = String(req.query.sortBy || 'code');
+    const sortDirection = String(req.query.sortDirection || 'desc') === 'asc' ? 1 : -1;
+    const paginationRequested = req.query.page !== undefined || req.query.pageSize !== undefined;
+    const page = Math.max(1, Number(req.query.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize || 100)));
+    const filter: any = {};
+    if (search) {
+      const pattern = escapeRegex(search);
+      filter.$or = [
+        { SAN_PHAM_ID: { $regex: pattern, $options: 'i' } },
+        { TEN_SAN_PHAM: { $regex: pattern, $options: 'i' } },
+      ];
+    }
+    if (status && status !== 'all') filter.TRANG_THAI = normalizeProductStatus(status);
+    else if (req.query.includeDeleted !== 'true') filter.TRANG_THAI = { $ne: 'Đã xóa' };
+    const sortFields: Record<string, string> = { code: 'SAN_PHAM_ID', name: 'TEN_SAN_PHAM', price: 'GIA', quantity: 'SO_LUONG', status: 'TRANG_THAI', sold: 'DA_BAN' };
+    const total = await productCollection.countDocuments(filter);
+    const cursor = productCollection.find(filter).sort({ [sortFields[sortBy] || 'SAN_PHAM_ID']: sortDirection });
+    if (paginationRequested) cursor.skip((page - 1) * pageSize).limit(pageSize);
+    const productsRaw = await cursor.toArray();
+    const imageMap = await getPrimaryImageMap(productsRaw.map((product) => product.SAN_PHAM_ID));
+    const reviews = await reviewCollection.find({}).toArray();
     const ratingMap = new Map<string, number>();
     for (const product of productsRaw) {
       const productReviews = reviews.filter((review) => review.SAN_PHAM_ID === product.SAN_PHAM_ID);
       ratingMap.set(product.SAN_PHAM_ID, productReviews.length ? productReviews.reduce((sum, review) => sum + Number(review.SO_SAO || 0), 0) / productReviews.length : 0);
     }
-    const products = productsRaw.map((product) => {
-      const finished = Math.floor(finishedAvailableOf(product));
-      const buildable = computeBuildable(bomMap.get(product.SAN_PHAM_ID) || [], materialsById).buildable;
-      return mapAdminProduct(product, imageMap.get(product.SAN_PHAM_ID), ratingMap.get(product.SAN_PHAM_ID), { finished, buildable });
+    const products = productsRaw.map((product) => mapAdminProduct(product, imageMap.get(product.SAN_PHAM_ID), ratingMap.get(product.SAN_PHAM_ID)));
+    const nextCode = await calculateNextProductCode();
+    return res.status(200).json({
+      total, page, pageSize: paginationRequested ? pageSize : total,
+      totalPages: paginationRequested ? Math.max(1, Math.ceil(total / pageSize)) : 1,
+      products,
+      nextCode,
     });
-    return res.status(200).json({ total: products.length, products });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot load admin products: ' + error.message });
+  }
+};
+
+export const calculateNextProductCode = async (): Promise<string> => {
+  const productCollection = await getCollection<any>('SAN_PHAM');
+  const counterCollection = await getCollection<any>('BO_DEM_MA');
+
+  const rows = await productCollection
+    .find({ SAN_PHAM_ID: { $regex: '^SP\\d+$' } })
+    .project({ SAN_PHAM_ID: 1 })
+    .toArray();
+
+  const existingIds = new Set<string>();
+  let maxNum = 0;
+
+  for (const row of rows) {
+    const id = String(row.SAN_PHAM_ID || '').trim();
+    existingIds.add(id);
+    const match = id.match(/^SP0*(\d+)$/i);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maxNum) {
+        maxNum = num;
+      }
+    }
+  }
+
+  const counter = await counterCollection.findOne({ _id: 'SAN_PHAM:SP' });
+  if (counter && typeof counter.value === 'number' && counter.value > maxNum) {
+    maxNum = counter.value;
+  }
+
+  let nextNum = maxNum + 1;
+  let candidate = `SP${String(nextNum).padStart(4, '0')}`;
+
+  while (existingIds.has(candidate) || (await productCollection.findOne({ SAN_PHAM_ID: candidate }, { projection: { _id: 1 } }))) {
+    nextNum++;
+    candidate = `SP${String(nextNum).padStart(4, '0')}`;
+  }
+
+  return candidate;
+};
+
+export const getAdminNextProductCode = async (_req: Request, res: Response) => {
+  try {
+    const code = await calculateNextProductCode();
+    return res.status(200).json({ code });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Không thể lấy mã sản phẩm tiếp theo: ' + error.message });
   }
 };
 
 export const createAdminProduct = async (req: Request, res: Response) => {
   try {
     const body = req.body || {};
-    const productId = String(body.sku || body.productId || '').trim() || await getNextPrefixedId('SAN_PHAM', 'SAN_PHAM_ID', 'SP', 4);
-    if (!body.name && !body.TEN_SAN_PHAM) return res.status(400).json({ message: 'Missing product fields.' });
-    const productCollection = await getCollection<any>('SAN_PHAM');
-    const product = {
-      _id: productId,
-      SAN_PHAM_ID: productId,
-      CHU_DE_ID: body.topic || body.CHU_DE_ID || null,
-      TEN_SAN_PHAM: body.name || body.TEN_SAN_PHAM,
-      MO_TA: body.description || body.MO_TA || '',
-      GIA: money(body.salePrice ?? body.GIA),
-      GIA_KHUYEN_MAI: money(body.discountPrice ?? body.GIA_KHUYEN_MAI),
-      TRANG_THAI: body.status || 'Đang bán',
-      KIEU_DANG: body.style || body.KIEU_DANG || '',
-      DA_BAN: 0,
-    };
-    await productCollection.insertOne(product);
-    await replaceProductImages(productId, body.images || []);
+    const name = String(body.name || body.TEN_SAN_PHAM || '').trim();
+    const salePrice = money(body.salePrice ?? body.GIA);
+    const discountPrice = money(body.discountPrice ?? body.GIA_KHUYEN_MAI);
+    const categories = [body.topic || body.CHU_DE_ID, ...asCategoryList(body.colors), ...asCategoryList(body.targets), ...asCategoryList(body.flowers), ...asCategoryList(body.collections), body.color, body.target, body.flower].filter((value) => String(value || '').trim());
+    const images = normalizeProductImages(body.images);
+    const validationError = validateProductPayload({ name, salePrice, discountPrice, categories, images });
+    if (validationError) return res.status(400).json({ message: validationError });
+    let productId = '';
+    await withTransaction(async (session) => {
+      const productCollection = await getCollection<any>('SAN_PHAM');
+      const reservationToken = String(body.codeReservationToken || '').trim();
+      if (reservationToken) {
+        const reservationCollection = await getCollection<any>('MA_SAN_PHAM_DA_CAP');
+        const reservation = await reservationCollection.findOne({
+          _id: reservationToken, DA_DUNG: { $ne: true }, HET_HAN_LUC: { $gt: new Date() },
+        }, { session });
+        if (!reservation) throw new InventoryError(409, 'Mã sản phẩm đã hết hạn. Vui lòng mở lại form.');
+        productId = String(reservation.SAN_PHAM_ID || '');
+        if (await productCollection.findOne({ SAN_PHAM_ID: productId }, { session })) throw new InventoryError(409, 'Mã sản phẩm đã tồn tại. Vui lòng mở lại form.');
+        await reservationCollection.updateOne(
+          { _id: reservationToken },
+          { $set: { DA_DUNG: true, DUNG_LUC: new Date() } },
+          { session }
+        );
+      } else productId = await nextCode('SAN_PHAM', 'SAN_PHAM_ID', 'SP', 4);
+
+      const duplicate = await productCollection.findOne({ $or: [
+        { TEN_SAN_PHAM_KEY: normalizeProductName(name) },
+        { TEN_SAN_PHAM: { $regex: `^${escapeRegex(name)}$`, $options: 'i' } },
+      ] }, { session });
+      if (duplicate) throw new InventoryError(409, 'Tên sản phẩm đã tồn tại.');
+      const topicId = await resolveLookupId('topic', body.topic || body.CHU_DE_ID, session);
+      const product = {
+        _id: productId, SAN_PHAM_ID: productId, CHU_DE_ID: topicId,
+        TEN_SAN_PHAM: name, TEN_SAN_PHAM_KEY: normalizeProductName(name),
+        MO_TA: sanitizeProductHtml(body.description ?? body.MO_TA),
+        GIA: salePrice, GIA_KHUYEN_MAI: discountPrice || null,
+        TRANG_THAI: normalizeProductStatus(body.status), KIEU_DANG: String(body.style || body.KIEU_DANG || '').trim(),
+        SO_LUONG: 0, TON_THANH_PHAM: 0, TP_DANG_GIU: 0, DA_BAN: 0,
+        NGUON_TON: 'Tồn thành phẩm khả dụng (TON_THANH_PHAM - TP_DANG_GIU)', NGAY_TAO: new Date(), NGAY_CAP_NHAT: new Date(),
+      };
+      await productCollection.insertOne(product, { session });
+      await replaceProductRelations(productId, body, session);
+      await replaceProductImages(productId, images, session);
+      await replaceProductRecipe(productId, body.materials || [], session);
+    });
     const created = await getAdminProduct(productId);
-    return res.status(201).json({ message: 'Product created.', product: created });
+    return res.status(201).json({ message: 'Tạo sản phẩm thành công.', product: created });
   } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot create product: ' + error.message });
+    return res.status(error instanceof InventoryError ? error.status : error?.code === 11000 ? 409 : 500).json({ message: error.message || 'Không thể tạo sản phẩm.' });
   }
 };
 
-const replaceProductImages = async (productId: string, images: any[]) => {
-  if (!Array.isArray(images)) return;
+export const reserveAdminProductCode = async (_req: Request, res: Response) => {
+  try {
+    const productId = await nextCode('SAN_PHAM', 'SAN_PHAM_ID', 'SP', 4);
+    const token = randomUUID();
+    await (await getCollection<any>('MA_SAN_PHAM_DA_CAP')).insertOne({
+      _id: token, SAN_PHAM_ID: productId, DA_DUNG: false,
+      TAO_LUC: new Date(), HET_HAN_LUC: new Date(Date.now() + 60 * 60 * 1000),
+    });
+    return res.status(200).json({ code: productId, token, expiresInMinutes: 60 });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Không thể cấp mã sản phẩm: ' + error.message });
+  }
+};
+
+const validateProductPayload = ({ name, salePrice, discountPrice, categories, images }: any): string | null => {
+  if (!name) return 'Tên sản phẩm là bắt buộc.';
+  if (!(salePrice > 0)) return 'Giá bán phải lớn hơn 0.';
+  if (discountPrice < 0 || (discountPrice > 0 && discountPrice >= salePrice)) return 'Giá khuyến mãi phải nhỏ hơn giá bán.';
+  if (!categories.length) return 'Sản phẩm phải có ít nhất một danh mục.';
+  if (!images.length) return 'Sản phẩm phải có ít nhất một ảnh.';
+  if (images.filter((image: ProductImageInput) => image.isPrimary).length !== 1) return 'Sản phẩm phải có đúng một ảnh đại diện.';
+  return images.map(validateProductImage).find(Boolean) || null;
+};
+
+const asCategoryList = (value: unknown): unknown[] => Array.isArray(value) ? value : value ? [value] : [];
+
+const resolveLookupId = async (type: string, value: unknown, session: any): Promise<string | null> => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const config = categoryConfig[type];
+  if (!config) return null;
+  const row = await (await getCollection<any>(config.collection)).findOne({
+    $or: [{ [config.idField]: raw }, { [config.nameField]: raw }],
+  }, { session });
+  if (row) return row[config.idField] || null;
+  throw new InventoryError(400, `Giá trị phân loại "${raw}" không tồn tại trong database.`);
+};
+
+const replaceProductRelations = async (productId: string, body: any, session: any) => {
+  for (const [type, singularField, pluralField] of [
+    ['color', 'color', 'colors'], ['target', 'target', 'targets'], ['flower', 'flower', 'flowers'], ['collection', 'collection', 'collections'],
+  ] as const) {
+    const config = categoryConfig[type];
+    const collection = await getCollection<any>(config.linkCollection!);
+    await collection.deleteMany({ SAN_PHAM_ID: productId }, { session });
+    const rawValues = Array.isArray(body[pluralField]) ? body[pluralField] : Array.isArray(body[singularField]) ? body[singularField] : [body[singularField]];
+    const values = [...new Set(rawValues.map((value: unknown) => String(value || '').trim()).filter(Boolean))];
+    const rows = [];
+    for (const value of values) {
+      const lookupId = await resolveLookupId(type, value, session);
+      if (lookupId) rows.push({ SAN_PHAM_ID: productId, [config.idField]: lookupId });
+    }
+    if (rows.length) await collection.insertMany(rows, { session });
+  }
+};
+
+const replaceProductImages = async (productId: string, images: ProductImageInput[], session?: any) => {
   const imageCollection = await getCollection<any>('HINH_ANH_SAN_PHAM');
-  await imageCollection.deleteMany({ SAN_PHAM_ID: productId });
-  let index = 0;
-  for (const image of images.map((item) => typeof item === 'string' ? item : item?.url || item?.URL).filter(Boolean)) {
-    const imageId = await getNextPrefixedId('HINH_ANH_SAN_PHAM', 'HINH_ANH_ID', 'HA', 5);
+  await imageCollection.deleteMany({ SAN_PHAM_ID: productId }, { session });
+  for (let index = 0; index < images.length; index++) {
+    const image = images[index];
+    const imageId = await nextCode('HINH_ANH_SAN_PHAM', 'HINH_ANH_ID', 'HA', 5);
     await imageCollection.insertOne({
       _id: imageId,
       HINH_ANH_ID: imageId,
       SAN_PHAM_ID: productId,
-      URL: image,
-      LA_ANH_CHINH: index === 0,
-    });
-    index += 1;
+      URL: image.url,
+      LA_ANH_CHINH: image.isPrimary,
+      THU_TU: index,
+    }, { session });
   }
+};
+
+const replaceProductRecipe = async (productId: string, materials: any[], session: any) => {
+  const collection = await getCollection<any>('CONG_THUC_SAN_PHAM');
+  await collection.deleteMany({ SAN_PHAM_ID: productId }, { session });
+  const materialCollection = await getCollection<any>('NGUYEN_VAT_LIEU');
+  const rows: any[] = [];
+  for (const item of Array.isArray(materials) ? materials : []) {
+    const value = String(item?.code || item?.name || '').trim();
+    if (!value) continue;
+    const material = await materialCollection.findOne({ $or: [
+      { NGUYEN_VAT_LIEU_ID: value },
+      { TEN_NGUYEN_VAT_LIEU: { $regex: `^${escapeRegex(value)}$`, $options: 'i' } },
+    ] }, { session });
+    if (!material) throw new InventoryError(400, `Nguyên vật liệu "${value}" không tồn tại.`);
+    rows.push({
+      SAN_PHAM_ID: productId, NGUYEN_VAT_LIEU_ID: material.NGUYEN_VAT_LIEU_ID, SO_LUONG_CAN: Number(item.quantity || 0),
+      DON_VI_TINH: String(item.unit || '').trim(), GHI_CHU: String(item.note || '').trim(),
+    });
+  }
+  if (rows.length) await collection.insertMany(rows, { session });
 };
 
 const getAdminProduct = async (productId: string) => {
   const productCollection = await getCollection<any>('SAN_PHAM');
   const product = await productCollection.findOne({ SAN_PHAM_ID: productId });
   if (!product) return null;
-  const [imageMap, images, materials, bomMap] = await Promise.all([
-    getPrimaryImageMap([productId]),
-    (await getCollection<any>('HINH_ANH_SAN_PHAM')).find({ SAN_PHAM_ID: productId }).toArray(),
-    (await getCollection<any>('NGUYEN_VAT_LIEU')).find({}).toArray(),
-    getActiveBomMap([productId]),
+  const imageMap = await getPrimaryImageMap([productId]);
+  const images = await (await getCollection<any>('HINH_ANH_SAN_PHAM')).find({ SAN_PHAM_ID: productId }).sort({ THU_TU: 1, HINH_ANH_ID: 1 }).toArray();
+  return { ...mapAdminProduct(product, imageMap.get(productId)), raw: product, images };
+};
+
+const getLinkedLookupNames = async (productId: string, type: 'color' | 'target' | 'flower' | 'collection'): Promise<string[]> => {
+  const config = categoryConfig[type];
+  const links = await (await getCollection<any>(config.linkCollection!)).find({ SAN_PHAM_ID: productId }).toArray();
+  const ids = links.map((link) => link[config.idField]).filter(Boolean);
+  if (!ids.length) return [];
+  const lookups = await (await getCollection<any>(config.collection)).find({ [config.idField]: { $in: ids } }).toArray();
+  return lookups.map((lookup) => String(lookup[config.nameField] || '')).filter(Boolean);
+};
+
+const buildAdminProductDetail = async (productId: string) => {
+  const summary = await getAdminProduct(productId);
+  if (!summary) return null;
+  const raw = summary.raw;
+  const [topic, colorValues, targetValues, flowerValues, collectionValues, recipeRows, colors, targets, topics, flowers, collections, materials, allProducts] = await Promise.all([
+    raw.CHU_DE_ID ? (await getCollection<any>('CHU_DE')).findOne({ CHU_DE_ID: raw.CHU_DE_ID }) : null,
+    getLinkedLookupNames(productId, 'color'), getLinkedLookupNames(productId, 'target'), getLinkedLookupNames(productId, 'flower'), getLinkedLookupNames(productId, 'collection'),
+    (await getCollection<any>('CONG_THUC_SAN_PHAM')).find({ SAN_PHAM_ID: productId }).toArray(),
+    (await getCollection<any>('MAU_SAC')).find({}).sort({ TEN_MAU_SAC: 1 }).toArray(),
+    (await getCollection<any>('DOI_TUONG')).find({}).sort({ TEN_DOI_TUONG: 1 }).toArray(),
+    (await getCollection<any>('CHU_DE')).find({}).sort({ TEN_CHU_DE: 1 }).toArray(),
+    (await getCollection<any>('HOA_TUOI')).find({}).sort({ TEN_HOA_TUOI: 1 }).toArray(),
+    (await getCollection<any>('BO_SUU_TAP')).find({}).sort({ TEN_BO_SUU_TAP: 1 }).toArray(),
+    (await getCollection<any>('NGUYEN_VAT_LIEU')).find({}).sort({ TEN_NGUYEN_VAT_LIEU: 1 }).toArray(),
+    (await getCollection<any>('SAN_PHAM')).find({ KIEU_DANG: { $nin: [null, ''] } }).project({ KIEU_DANG: 1 }).toArray(),
   ]);
-  const materialsById = new Map(materials.map((material) => [material.NGUYEN_VAT_LIEU_ID, material]));
-  const stock = {
-    finished: Math.floor(finishedAvailableOf(product)),
-    buildable: computeBuildable(bomMap.get(productId) || [], materialsById).buildable,
+  const materialMap = new Map(materials.map((item) => [item.NGUYEN_VAT_LIEU_ID, item]));
+  const mappedRecipe = recipeRows.map((item, index) => ({
+    id: index + 1, code: item.NGUYEN_VAT_LIEU_ID, name: materialMap.get(item.NGUYEN_VAT_LIEU_ID)?.TEN_NGUYEN_VAT_LIEU || item.NGUYEN_VAT_LIEU_ID,
+    image: materialMap.get(item.NGUYEN_VAT_LIEU_ID)?.HINH_ANH || '', quantity: Number(item.SO_LUONG_CAN || 0),
+    unit: item.DON_VI_TINH || materialMap.get(item.NGUYEN_VAT_LIEU_ID)?.DON_VI_TINH || '', note: item.GHI_CHU || '',
+    importPrice: Number(materialMap.get(item.NGUYEN_VAT_LIEU_ID)?.GIA_NHAP || 0),
+  }));
+  return {
+    product: {
+      name: raw.TEN_SAN_PHAM || '', code: raw.SAN_PHAM_ID, note: raw.MO_TA || '',
+      color: colorValues[0] || '', colors: colorValues, target: targetValues[0] || '', targets: targetValues,
+      flower: flowerValues[0] || '', flowers: flowerValues, collections: collectionValues,
+      topic: topic?.TEN_CHU_DE || '', style: raw.KIEU_DANG || '', quantity: finishedAvailableOf(raw),
+      inventorySource: raw.NGUON_TON || 'Tồn thành phẩm khả dụng (TON_THANH_PHAM - TP_DANG_GIU)', status: normalizeProductStatus(raw.TRANG_THAI),
+      isPublished: normalizeProductStatus(raw.TRANG_THAI) === 'Đang bán',
+      images: summary.images.map((image: any, index: number) => ({ url: image.URL, isPrimary: Boolean(image.LA_ANH_CHINH), sortOrder: Number(image.THU_TU ?? index) })),
+      importPrice: mappedRecipe.reduce((sum, item) => sum + item.quantity * Number(item.importPrice || 0), 0),
+      salePrice: Number(raw.GIA || 0), discountPrice: Number(raw.GIA_KHUYEN_MAI || 0), recipe: '',
+    },
+    options: {
+      colors: colors.map((item) => item.TEN_MAU_SAC), targets: targets.map((item) => item.TEN_DOI_TUONG), topics: topics.map((item) => item.TEN_CHU_DE), flowers: flowers.map((item) => item.TEN_HOA_TUOI), collections: collections.map((item) => item.TEN_BO_SUU_TAP),
+      styles: [...new Set(allProducts.map((item) => item.KIEU_DANG).filter(Boolean))].sort(),
+      materials: materials.map((item, index) => ({ id: index + 1, code: item.NGUYEN_VAT_LIEU_ID, name: item.TEN_NGUYEN_VAT_LIEU, image: item.HINH_ANH || '', quantity: 1, unit: item.DON_VI_TINH || '', note: '', importPrice: Number(item.GIA_NHAP || 0) })),
+    },
+    materials: mappedRecipe,
   };
-  return { ...mapAdminProduct(product, imageMap.get(productId), 0, stock), raw: product, images };
 };
 
 export const getAdminProductDetail = async (req: Request, res: Response) => {
   try {
-    const product = await getAdminProduct(req.params.productId);
-    if (!product) return res.status(404).json({ message: 'Không tìm thấy sản phẩm.' });
-    return res.status(200).json({ product });
+    const detail = await buildAdminProductDetail(req.params.productId);
+    if (!detail) return res.status(404).json({ message: 'Không tìm thấy sản phẩm.' });
+    return res.status(200).json(detail);
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot load product: ' + error.message });
   }
@@ -613,38 +985,50 @@ export const getAdminProductDetail = async (req: Request, res: Response) => {
 export const updateAdminProductDetail = async (req: Request, res: Response) => {
   try {
     const { productId } = req.params;
-    const body = req.body || {};
-    const productCollection = await getCollection<any>('SAN_PHAM');
-    const result = await productCollection.findOneAndUpdate(
-      { SAN_PHAM_ID: productId },
-      {
-        $set: {
-          ...(body.topic !== undefined || body.CHU_DE_ID !== undefined ? { CHU_DE_ID: body.topic || body.CHU_DE_ID || null } : {}),
-          ...(body.name !== undefined || body.TEN_SAN_PHAM !== undefined ? { TEN_SAN_PHAM: body.name || body.TEN_SAN_PHAM } : {}),
-          ...(body.description !== undefined || body.MO_TA !== undefined ? { MO_TA: body.description || body.MO_TA || '' } : {}),
-          ...(body.salePrice !== undefined || body.GIA !== undefined ? { GIA: money(body.salePrice ?? body.GIA) } : {}),
-          ...(body.discountPrice !== undefined || body.GIA_KHUYEN_MAI !== undefined ? { GIA_KHUYEN_MAI: money(body.discountPrice ?? body.GIA_KHUYEN_MAI) } : {}),
-          ...(body.status !== undefined ? { TRANG_THAI: body.status } : {}),
-          ...(body.style !== undefined || body.KIEU_DANG !== undefined ? { KIEU_DANG: body.style || body.KIEU_DANG || '' } : {}),
-          // Số lượng bán được là dữ liệu dẫn xuất từ tồn thành phẩm + BOM,
-          // không cho form chi tiết ghi đè vào SO_LUONG cũ.
-        },
-      },
-      { returnDocument: 'after' },
-    );
-    if (!result) return res.status(404).json({ message: 'Không tìm thấy sản phẩm.' });
-    if (Array.isArray(body.images)) await replaceProductImages(productId, body.images);
+    const payload = req.body || {};
+    const body = payload.product ? { ...payload.product, description: payload.product.note, images: payload.product.images, materials: payload.materials } : payload;
+    const name = String(body.name || body.TEN_SAN_PHAM || '').trim();
+    const salePrice = money(body.salePrice ?? body.GIA);
+    const discountPrice = money(body.discountPrice ?? body.GIA_KHUYEN_MAI);
+    const categories = [body.topic, ...asCategoryList(body.colors), ...asCategoryList(body.targets), ...asCategoryList(body.flowers), ...asCategoryList(body.collections), body.color, body.target, body.flower].filter((value) => String(value || '').trim());
+    const images = normalizeProductImages(body.images);
+    const validationError = validateProductPayload({ name, salePrice, discountPrice, categories, images });
+    if (validationError) return res.status(400).json({ message: validationError });
+    await withTransaction(async (session) => {
+      const productCollection = await getCollection<any>('SAN_PHAM');
+      const current = await productCollection.findOne({ SAN_PHAM_ID: productId }, { session });
+      if (!current) throw new InventoryError(404, 'Không tìm thấy sản phẩm.');
+      const duplicate = await productCollection.findOne({ SAN_PHAM_ID: { $ne: productId }, $or: [
+        { TEN_SAN_PHAM_KEY: normalizeProductName(name) },
+        { TEN_SAN_PHAM: { $regex: `^${escapeRegex(name)}$`, $options: 'i' } },
+      ] }, { session });
+      if (duplicate) throw new InventoryError(409, 'Tên sản phẩm đã tồn tại.');
+      const topicId = await resolveLookupId('topic', body.topic, session);
+      await productCollection.updateOne({ SAN_PHAM_ID: productId }, { $set: {
+        CHU_DE_ID: topicId, TEN_SAN_PHAM: name, TEN_SAN_PHAM_KEY: normalizeProductName(name),
+        MO_TA: sanitizeProductHtml(body.description ?? body.note), GIA: salePrice, GIA_KHUYEN_MAI: discountPrice || null,
+        TRANG_THAI: normalizeProductStatus(body.status), KIEU_DANG: String(body.style || '').trim(), NGAY_CAP_NHAT: new Date(),
+      } }, { session });
+      await replaceProductRelations(productId, body, session);
+      await replaceProductImages(productId, images, session);
+      await replaceProductRecipe(productId, body.materials || [], session);
+    });
     const product = await getAdminProduct(productId);
-    return res.status(200).json({ message: 'Product updated.', product });
+    return res.status(200).json({ message: 'Cập nhật sản phẩm thành công.', product });
   } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot update product: ' + error.message });
+    return res.status(error instanceof InventoryError ? error.status : 500).json({ message: error.message || 'Không thể cập nhật sản phẩm.' });
   }
 };
 
 export const updateAdminProductStatus = async (req: Request, res: Response) => {
   try {
     const productCollection = await getCollection<any>('SAN_PHAM');
-    const status = String(req.body.status || req.body.TRANG_THAI || '').trim();
+    const rawStatus = String(req.body.status || req.body.TRANG_THAI || '').trim();
+    const statusKey = normalizeText(rawStatus);
+    if (!rawStatus || !['dang ban', 'active', 'ngung ban', 'inactive', 'stop', 'da xoa', 'deleted'].some((key) => statusKey === key || statusKey.includes(key))) {
+      return res.status(400).json({ message: 'Trạng thái sản phẩm không hợp lệ.' });
+    }
+    const status = normalizeProductStatus(rawStatus);
     const result = await productCollection.updateOne({ SAN_PHAM_ID: req.params.productId }, { $set: { TRANG_THAI: status } });
     if (result.matchedCount === 0) return res.status(404).json({ message: 'Không tìm thấy sản phẩm.' });
     return res.status(200).json({ message: 'Product status updated.' });
@@ -656,11 +1040,12 @@ export const updateAdminProductStatus = async (req: Request, res: Response) => {
 export const deleteAdminProduct = async (req: Request, res: Response) => {
   try {
     const productId = req.params.productId;
-    await Promise.all([
-      (await getCollection<any>('SAN_PHAM')).deleteOne({ SAN_PHAM_ID: productId }),
-      (await getCollection<any>('HINH_ANH_SAN_PHAM')).deleteMany({ SAN_PHAM_ID: productId }),
-    ]);
-    return res.status(200).json({ message: 'Product deleted.' });
+    const result = await (await getCollection<any>('SAN_PHAM')).updateOne(
+      { SAN_PHAM_ID: productId },
+      { $set: { TRANG_THAI: 'Đã xóa', NGAY_XOA: new Date(), NGAY_CAP_NHAT: new Date() } },
+    );
+    if (!result.matchedCount) return res.status(404).json({ message: 'Không tìm thấy sản phẩm.' });
+    return res.status(200).json({ message: 'Sản phẩm đã được ẩn (xóa mềm), dữ liệu liên quan được bảo toàn.' });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot delete product: ' + error.message });
   }
@@ -670,17 +1055,15 @@ export const getAdminCategories = async (req: Request, res: Response) => {
   try {
     const type = String(req.params.type || 'topic');
     if (type === 'style') {
-      const products = await (await getCollection<any>('SAN_PHAM')).find({}).toArray();
+      const products = await (await getCollection<any>('SAN_PHAM')).find({ TRANG_THAI: { $ne: 'Đã xóa' } }).toArray();
       const counts = new Map<string, number>();
       for (const product of products) {
         const name = String(product.KIEU_DANG || 'Chưa phân loại').trim() || 'Chưa phân loại';
         counts.set(name, (counts.get(name) || 0) + 1);
       }
-      const categories = Array.from(counts.entries()).sort().map(([name, total], index) => ({
-        code: `STYLE${String(index + 1).padStart(3, '0')}`,
-        name,
-        total,
-        selected: false,
+      const categories = Array.from(counts.entries()).sort().map(([name, total]) => ({
+        code: `style:${name}`, name, total, selected: false, status: 'Đang hiển thị',
+        description: '', image: '', source: 'SAN_PHAM.KIEU_DANG',
       }));
       return res.status(200).json({ type, categories });
     }
@@ -688,15 +1071,20 @@ export const getAdminCategories = async (req: Request, res: Response) => {
     if (!config) return res.status(400).json({ message: 'Invalid category type.' });
     const rows = await (await getCollection<any>(config.collection)).find({}).sort({ [config.idField]: 1 }).toArray();
     const linkRows = config.linkCollection ? await (await getCollection<any>(config.linkCollection)).find({}).toArray() : [];
-    const products = !config.linkCollection ? await (await getCollection<any>('SAN_PHAM')).find({}).toArray() : [];
+    const products = await (await getCollection<any>('SAN_PHAM')).find({ TRANG_THAI: { $ne: 'Đã xóa' } }).toArray();
+    const visibleProductIds = new Set(products.map((product) => String(product.SAN_PHAM_ID)));
     const categories = rows.map((row) => ({
       code: row[config.idField],
       name: row[config.nameField],
+      description: String(row.MO_TA || ''),
+      image: String(row.HINH_ANH || row.ANH_DAI_DIEN || ''),
+      status: row.AN === true || ['Ẩn', 'Đang ẩn', 'Đã xóa'].includes(String(row.TRANG_THAI || '')) ? 'Đang ẩn' : 'Đang hiển thị',
       total: config.linkCollection
-        ? new Set(linkRows.filter((link) => link[config.idField] === row[config.idField]).map((link) => link.SAN_PHAM_ID)).size
+        ? new Set(linkRows.filter((link) => link[config.idField] === row[config.idField] && visibleProductIds.has(String(link.SAN_PHAM_ID))).map((link) => link.SAN_PHAM_ID)).size
         : products.filter((product) => product[config.idField] === row[config.idField]).length,
       selected: false,
     }));
+    categories.sort((left, right) => String(left.name).localeCompare(String(right.name), 'vi'));
     return res.status(200).json({ type, categories });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot load categories: ' + error.message });
@@ -712,8 +1100,13 @@ export const createAdminCategory = async (req: Request, res: Response) => {
     const config = categoryConfig[type];
     if (!config) return res.status(400).json({ message: 'Invalid category type.' });
     const id = await getNextPrefixedId(config.collection, config.idField, config.prefix, 3);
-    await (await getCollection<any>(config.collection)).insertOne({ _id: id, [config.idField]: id, [config.nameField]: name });
-    return res.status(201).json({ message: 'Category created.', category: { code: id, name, total: 0, selected: false } });
+    const collection = await getCollection<any>(config.collection);
+    const duplicate = await collection.findOne({ [config.nameField]: { $regex: `^${escapeRegex(name)}$`, $options: 'i' } });
+    if (duplicate) return res.status(409).json({ message: 'Tên danh mục đã tồn tại.' });
+    const description = sanitizeProductHtml(req.body.description);
+    const image = String(req.body.image || '').trim();
+    await collection.insertOne({ _id: id, [config.idField]: id, [config.nameField]: name, MO_TA: description, HINH_ANH: image, AN: false, TRANG_THAI: 'Đang hiển thị' });
+    return res.status(201).json({ message: 'Đã thêm danh mục.', category: { code: id, name, description, image, status: 'Đang hiển thị', total: 0, selected: false } });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot create category: ' + error.message });
   }
@@ -725,10 +1118,127 @@ export const deleteAdminCategory = async (req: Request, res: Response) => {
     if (type === 'style') return res.status(400).json({ message: 'Style categories are generated from product data.' });
     const config = categoryConfig[type];
     if (!config) return res.status(400).json({ message: 'Invalid category type.' });
-    await (await getCollection<any>(config.collection)).deleteOne({ [config.idField]: req.params.categoryId });
-    return res.status(200).json({ message: 'Category deleted.' });
+    const result = await (await getCollection<any>(config.collection)).updateOne(
+      { [config.idField]: req.params.categoryId },
+      { $set: { AN: true, TRANG_THAI: 'Đang ẩn', NGAY_CAP_NHAT: new Date() } },
+    );
+    if (!result.matchedCount) return res.status(404).json({ message: 'Không tìm thấy danh mục.' });
+    return res.status(200).json({ message: 'Đã ẩn danh mục; liên kết sản phẩm vẫn được bảo toàn.' });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot delete category: ' + error.message });
+  }
+};
+
+const decodeAdminCategoryId = (type: string, categoryId: string): string =>
+  type === 'style' && categoryId.startsWith('style:') ? categoryId.slice(6) : categoryId;
+
+const categoryProductIds = async (type: string, categoryId: string): Promise<string[]> => {
+  if (type === 'style') {
+    return (await (await getCollection<any>('SAN_PHAM')).find({ KIEU_DANG: categoryId }).project({ SAN_PHAM_ID: 1 }).toArray())
+      .map((row) => String(row.SAN_PHAM_ID));
+  }
+  const config = categoryConfig[type];
+  if (!config) return [];
+  if (config.linkCollection) {
+    return (await (await getCollection<any>(config.linkCollection)).find({ [config.idField]: categoryId }).project({ SAN_PHAM_ID: 1 }).toArray())
+      .map((row) => String(row.SAN_PHAM_ID));
+  }
+  return (await (await getCollection<any>('SAN_PHAM')).find({ [config.idField]: categoryId }).project({ SAN_PHAM_ID: 1 }).toArray())
+    .map((row) => String(row.SAN_PHAM_ID));
+};
+
+export const getAdminCategoryDetail = async (req: Request, res: Response) => {
+  try {
+    const type = String(req.params.type || 'topic');
+    const categoryId = decodeAdminCategoryId(type, String(req.params.categoryId || ''));
+    let category: any;
+    if (type === 'style') {
+      category = { code: `style:${categoryId}`, name: categoryId, description: '', image: '', status: 'Đang hiển thị', source: 'SAN_PHAM.KIEU_DANG' };
+    } else {
+      const config = categoryConfig[type];
+      if (!config) return res.status(400).json({ message: 'Loại danh mục không hợp lệ.' });
+      const row = await (await getCollection<any>(config.collection)).findOne({ [config.idField]: categoryId });
+      if (!row) return res.status(404).json({ message: 'Không tìm thấy danh mục.' });
+      category = {
+        code: row[config.idField], name: row[config.nameField], description: String(row.MO_TA || ''),
+        image: String(row.HINH_ANH || row.ANH_DAI_DIEN || ''),
+        status: row.AN === true || ['Ẩn', 'Đang ẩn', 'Đã xóa'].includes(String(row.TRANG_THAI || '')) ? 'Đang ẩn' : 'Đang hiển thị',
+      };
+    }
+    const ids = await categoryProductIds(type, categoryId);
+    const rows = ids.length ? await (await getCollection<any>('SAN_PHAM')).find({ SAN_PHAM_ID: { $in: ids }, TRANG_THAI: { $ne: 'Đã xóa' } }).toArray() : [];
+    const imageMap = await getPrimaryImageMap(ids);
+    const products = rows.map((row) => ({
+      id: row.SAN_PHAM_ID, code: row.SAN_PHAM_ID, sku: row.SAN_PHAM_ID, name: row.TEN_SAN_PHAM || '',
+      image: imageMap.get(row.SAN_PHAM_ID)?.URL || '', price: Number(row.GIA || 0), status: normalizeProductStatus(row.TRANG_THAI),
+    })).sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+    return res.status(200).json({ type, category: { ...category, total: products.length }, products });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Không thể tải chi tiết danh mục: ' + error.message });
+  }
+};
+
+export const updateAdminCategory = async (req: Request, res: Response) => {
+  try {
+    const type = String(req.params.type || 'topic');
+    const rawId = String(req.params.categoryId || '');
+    const categoryId = decodeAdminCategoryId(type, rawId);
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ message: 'Tên danh mục là bắt buộc.' });
+    const requestedIds = Array.isArray(req.body.productIds) ? [...new Set(req.body.productIds.map((id: unknown) => String(id).trim()).filter(Boolean))] : null;
+    await withTransaction(async (session) => {
+      const products = await getCollection<any>('SAN_PHAM');
+      if (type === 'style') {
+        const currentIds = await categoryProductIds(type, categoryId);
+        const activeCurrentIds = (await products.find({ SAN_PHAM_ID: { $in: currentIds }, TRANG_THAI: { $ne: 'Đã xóa' } }, { session }).project({ SAN_PHAM_ID: 1 }).toArray()).map((row) => String(row.SAN_PHAM_ID));
+        if (requestedIds && activeCurrentIds.some((id) => !requestedIds.includes(id))) {
+          throw new InventoryError(400, 'Không thể gỡ Kiểu dáng làm sản phẩm mất phân loại. Hãy chuyển sản phẩm sang Kiểu dáng khác trong trang sản phẩm.');
+        }
+        await products.updateMany({ KIEU_DANG: categoryId }, { $set: { KIEU_DANG: name, NGAY_CAP_NHAT: new Date() } }, { session });
+        if (requestedIds?.length) await products.updateMany({ SAN_PHAM_ID: { $in: requestedIds } }, { $set: { KIEU_DANG: name, NGAY_CAP_NHAT: new Date() } }, { session });
+        return;
+      }
+      const config = categoryConfig[type];
+      if (!config) throw new InventoryError(400, 'Loại danh mục không hợp lệ.');
+      const collection = await getCollection<any>(config.collection);
+      const duplicate = await collection.findOne({ [config.idField]: { $ne: categoryId }, [config.nameField]: { $regex: `^${escapeRegex(name)}$`, $options: 'i' } }, { session });
+      if (duplicate) throw new InventoryError(409, 'Tên danh mục đã tồn tại.');
+      await collection.updateOne({ [config.idField]: categoryId }, { $set: {
+        [config.nameField]: name, MO_TA: sanitizeProductHtml(req.body.description), HINH_ANH: String(req.body.image || '').trim(),
+        AN: req.body.status === 'Đang ẩn', TRANG_THAI: req.body.status === 'Đang ẩn' ? 'Đang ẩn' : 'Đang hiển thị', NGAY_CAP_NHAT: new Date(),
+      } }, { session });
+      if (!requestedIds) return;
+      const currentIds = await categoryProductIds(type, categoryId);
+      const deletedCurrentIds = (await products.find({ SAN_PHAM_ID: { $in: currentIds }, TRANG_THAI: 'Đã xóa' }, { session }).project({ SAN_PHAM_ID: 1 }).toArray()).map((row) => String(row.SAN_PHAM_ID));
+      const activeCurrentIds = currentIds.filter((id) => !deletedCurrentIds.includes(id));
+      if (!config.linkCollection) {
+        if (activeCurrentIds.some((id) => !requestedIds.includes(id))) throw new InventoryError(400, 'Chủ đề là phân loại bắt buộc. Hãy chuyển sản phẩm sang chủ đề khác trước khi gỡ.');
+        await products.updateMany({ SAN_PHAM_ID: { $in: requestedIds } }, { $set: { [config.idField]: categoryId, NGAY_CAP_NHAT: new Date() } }, { session });
+      } else {
+        const links = await getCollection<any>(config.linkCollection);
+        const effectiveIds = [...new Set([...requestedIds, ...deletedCurrentIds])];
+        const removedIds = activeCurrentIds.filter((id) => !requestedIds.includes(id));
+        for (const productId of removedIds) {
+          const product = await products.findOne({ SAN_PHAM_ID: productId }, { session });
+          if (String(product?.CHU_DE_ID || '').trim()) continue;
+          const otherLinkConfigs = Object.entries(categoryConfig).filter(([otherType, item]) => otherType !== type && Boolean(item.linkCollection));
+          let hasOtherClassification = false;
+          for (const [, item] of otherLinkConfigs) {
+            if (await (await getCollection<any>(item.linkCollection!)).countDocuments({ SAN_PHAM_ID: productId }, { session })) {
+              hasOtherClassification = true;
+              break;
+            }
+          }
+          if (!hasOtherClassification) throw new InventoryError(400, `Không thể gỡ ${productId}: sản phẩm phải còn ít nhất một phân loại.`);
+        }
+        await links.deleteMany({ [config.idField]: categoryId }, { session });
+        if (effectiveIds.length) await links.insertMany(effectiveIds.map((productId) => ({ [config.idField]: categoryId, SAN_PHAM_ID: productId })), { session });
+      }
+    });
+    if (type === 'style') req.params.categoryId = `style:${name}`;
+    return getAdminCategoryDetail(req, res);
+  } catch (error: any) {
+    return res.status(error instanceof InventoryError ? error.status : 500).json({ message: error.message || 'Không thể cập nhật danh mục.' });
   }
 };
 
@@ -885,7 +1395,14 @@ export const getAdminDashboard = async (_req: Request, res: Response) => {
 export const getAdminCampaigns = async (_req: Request, res: Response) => {
   try {
     const campaigns = await (await getCollection<any>('CHIEN_DICH')).find({}).sort({ CHIEN_DICH_ID: 1 }).toArray();
-    return res.status(200).json({ total: campaigns.length, campaigns });
+    return res.status(200).json({ total: campaigns.length, campaigns: campaigns.map((item, index) => ({
+      id: index + 1, code: item.CHIEN_DICH_ID, name: item.TEN_CHIEN_DICH || '', description: item.MO_TA || '',
+      startDate: item.NGAY_BAT_DAU, endDate: item.NGAY_KET_THUC, status: derivePromotionStatus(item),
+      active: item.KICH_HOAT !== false, approved: item.DA_DUYET === true, audience: item.DOI_TUONG || 'Tất cả',
+      membershipTiers: item.HANG_THANH_VIEN || [], totalLimit: Number(item.GIOI_HAN_TONG || 0),
+      perUserLimit: Number(item.GIOI_HAN_MOI_NGUOI || 0), firstOrderOnly: item.DON_DAU_TIEN === true,
+      selected: false,
+    })) });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot load campaigns: ' + error.message });
   }
@@ -893,15 +1410,25 @@ export const getAdminCampaigns = async (_req: Request, res: Response) => {
 
 export const createAdminCampaign = async (req: Request, res: Response) => {
   try {
+    const start = parseOptionalDate(req.body.startDate || req.body.NGAY_BAT_DAU);
+    const end = parseOptionalDate(req.body.endDate || req.body.NGAY_KET_THUC);
+    if (!start || !end || start >= end) return res.status(400).json({ message: 'Ngày bắt đầu phải nhỏ hơn ngày kết thúc.' });
     const campaignId = await getNextPrefixedId('CHIEN_DICH', 'CHIEN_DICH_ID', 'CD', 3);
     const campaign = {
       _id: campaignId,
       CHIEN_DICH_ID: campaignId,
       TEN_CHIEN_DICH: req.body.name || req.body.TEN_CHIEN_DICH,
       MO_TA: req.body.description || req.body.MO_TA || null,
-      NGAY_BAT_DAU: parseOptionalDate(req.body.startDate || req.body.NGAY_BAT_DAU),
-      NGAY_KET_THUC: parseOptionalDate(req.body.endDate || req.body.NGAY_KET_THUC),
+      NGAY_BAT_DAU: start,
+      NGAY_KET_THUC: end,
       TRANG_THAI: req.body.status || req.body.TRANG_THAI || null,
+      KICH_HOAT: req.body.active === true,
+      DA_DUYET: req.body.approved === true,
+      DOI_TUONG: req.body.audience || 'Tất cả',
+      HANG_THANH_VIEN: req.body.membershipTiers || [],
+      GIOI_HAN_TONG: Math.max(0, Number(req.body.totalLimit || 0)),
+      GIOI_HAN_MOI_NGUOI: Math.max(0, Number(req.body.perUserLimit || 0)),
+      DON_DAU_TIEN: req.body.firstOrderOnly === true,
     };
     await (await getCollection<any>('CHIEN_DICH')).insertOne(campaign);
     return res.status(201).json({ message: 'Campaign created.', campaign });
@@ -913,15 +1440,25 @@ export const createAdminCampaign = async (req: Request, res: Response) => {
 export const updateAdminCampaign = async (req: Request, res: Response) => {
   try {
     const body = req.body || {};
+    const start = parseOptionalDate(body.startDate || body.NGAY_BAT_DAU);
+    const end = parseOptionalDate(body.endDate || body.NGAY_KET_THUC);
+    if (!start || !end || start >= end) return res.status(400).json({ message: 'Ngày bắt đầu phải nhỏ hơn ngày kết thúc.' });
     const result = await (await getCollection<any>('CHIEN_DICH')).findOneAndUpdate(
       { CHIEN_DICH_ID: req.params.campaignId },
       {
         $set: {
           TEN_CHIEN_DICH: body.name ?? body.TEN_CHIEN_DICH,
           MO_TA: body.description ?? body.MO_TA ?? null,
-          NGAY_BAT_DAU: parseOptionalDate(body.startDate || body.NGAY_BAT_DAU),
-          NGAY_KET_THUC: parseOptionalDate(body.endDate || body.NGAY_KET_THUC),
+          NGAY_BAT_DAU: start,
+          NGAY_KET_THUC: end,
           TRANG_THAI: body.status ?? body.TRANG_THAI ?? null,
+          KICH_HOAT: body.active === true,
+          DA_DUYET: body.approved === true,
+          DOI_TUONG: body.audience || 'Tất cả',
+          HANG_THANH_VIEN: body.membershipTiers || [],
+          GIOI_HAN_TONG: Math.max(0, Number(body.totalLimit || 0)),
+          GIOI_HAN_MOI_NGUOI: Math.max(0, Number(body.perUserLimit || 0)),
+          DON_DAU_TIEN: body.firstOrderOnly === true,
         },
       },
       { returnDocument: 'after' },
@@ -935,8 +1472,12 @@ export const updateAdminCampaign = async (req: Request, res: Response) => {
 
 export const deleteAdminCampaign = async (req: Request, res: Response) => {
   try {
-    await (await getCollection<any>('CHIEN_DICH')).deleteOne({ CHIEN_DICH_ID: req.params.campaignId });
-    return res.status(200).json({ message: 'Campaign deleted.' });
+    const result = await (await getCollection<any>('CHIEN_DICH')).updateOne(
+      { CHIEN_DICH_ID: req.params.campaignId },
+      { $set: { KICH_HOAT: false, TRANG_THAI: 'Tạm dừng', NGAY_CAP_NHAT: new Date() } },
+    );
+    if (!result.matchedCount) return res.status(404).json({ message: 'Không tìm thấy chiến dịch.' });
+    return res.status(200).json({ message: 'Đã tạm dừng chiến dịch; dữ liệu voucher và đơn cũ được bảo toàn.' });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot delete campaign: ' + error.message });
   }
@@ -945,15 +1486,38 @@ export const deleteAdminCampaign = async (req: Request, res: Response) => {
 export const getAdminVouchers = async (_req: Request, res: Response) => {
   try {
     const vouchers = await (await getCollection<any>('VOUCHER')).find({}).sort({ VOUCHER_ID: 1 }).toArray();
-    return res.status(200).json({ total: vouchers.length, vouchers });
+    const customerIds = [...new Set(vouchers.map(item => item.KHACH_HANG_ID).filter(Boolean))];
+    const customers = customerIds.length ? await (await getCollection<any>('KHACH_HANG')).find({ KHACH_HANG_ID: { $in: customerIds } }).toArray() : [];
+    const customerNames = new Map(customers.map(item => [item.KHACH_HANG_ID, item.HO_TEN || item.TEN_KHACH_HANG || '']));
+    return res.status(200).json({ total: vouchers.length, vouchers: vouchers.map((item, index) => ({
+      id: index + 1, code: item.VOUCHER_ID, voucherCode: item.MA_VOUCHER || '', campaignCode: item.CHIEN_DICH_ID || '',
+      customerId: item.KHACH_HANG_ID || '', customerName: customerNames.get(item.KHACH_HANG_ID) || '',
+      discountType: item.LOAI_GIAM_GIA || '', discountValue: Number(item.GIA_TRI_GIAM || 0),
+      maxDiscount: Number(item.MUC_GIAM_TOI_DA || 0), minimumOrder: Number(item.DON_TOI_THIEU || 0),
+      productIds: item.SAN_PHAM_IDS || [], categoryIds: item.CHU_DE_IDS || [], audience: item.DOI_TUONG || 'Tất cả',
+      membershipTiers: item.HANG_THANH_VIEN || [], totalLimit: Number(item.GIOI_HAN_TONG || 0),
+      perUserLimit: Number(item.GIOI_HAN_MOI_NGUOI || 0), firstOrderOnly: item.DON_DAU_TIEN === true,
+      active: item.KICH_HOAT !== false, startDate: item.NGAY_BAT_DAU, endDate: item.NGAY_KET_THUC,
+      used: item.DA_DUNG === true, usageCount: Number(item.LUOT_DA_DUNG || 0), status: derivePromotionStatus(item), selected: false,
+    })) });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot load vouchers: ' + error.message });
+  }
+};
+
+export const getAdminNextVoucherId = async (_req: Request, res: Response) => {
+  try {
+    const voucherId = await getNextPrefixedId('VOUCHER', 'VOUCHER_ID', 'VC', 4);
+    return res.status(200).json({ voucherId });
+  } catch (error: any) {
+    return res.status(500).json({ message: 'Cannot allocate voucher ID: ' + error.message });
   }
 };
 
 const normalizeAdminDiscountType = (value: unknown): string => {
   const text = String(value || '').trim();
   const key = normalizeText(text);
+  if (key.includes('ship') || key.includes('van chuyen')) return 'Phí vận chuyển';
   if (key.includes('phan') || key.includes('%')) return 'Phần trăm';
   if (key.includes('tien') || key.includes('amount')) return 'Số tiền';
   return text || 'Phần trăm';
@@ -961,24 +1525,52 @@ const normalizeAdminDiscountType = (value: unknown): string => {
 
 export const createAdminVoucher = async (req: Request, res: Response) => {
   try {
+    await ensureVoucherStorage();
     const body = req.body || {};
-    const voucherId = await getNextPrefixedId('VOUCHER', 'VOUCHER_ID', 'VC', 5);
-    const voucher = {
-      _id: voucherId,
-      VOUCHER_ID: voucherId,
-      NHAN_VIEN_ID: body.employeeId || await getFirstEmployeeId(),
-      CHIEN_DICH_ID: body.campaignCode || body.campaignId || null,
-      KHACH_HANG_ID: body.customerId || null,
-      MA_VOUCHER: String(body.voucherCode || body.code || '').trim(),
-      LOAI_GIAM_GIA: normalizeAdminDiscountType(body.discountType),
-      GIA_TRI_GIAM: Number(body.discountValue || body.value || 0),
-      NGAY_BAT_DAU: parseOptionalDate(body.startDate),
-      NGAY_KET_THUC: parseOptionalDate(body.endDate),
-      DA_DUNG: false,
-    };
-    if (!voucher.MA_VOUCHER) return res.status(400).json({ message: 'Missing voucher code.' });
-    await (await getCollection<any>('VOUCHER')).insertOne(voucher);
-    return res.status(201).json({ message: 'Voucher created.', voucher });
+    const code = normalizeVoucherCode(body.voucherCode || body.code);
+    const start = parseOptionalDate(body.startDate);
+    const end = parseOptionalDate(body.endDate);
+    const discountType = normalizeAdminDiscountType(body.discountType);
+    const discountValue = Number(body.discountValue || body.value || 0);
+    if (!code) return res.status(400).json({ message: 'Thiếu mã voucher.' });
+    if (!start || !end || start >= end) return res.status(400).json({ message: 'Ngày bắt đầu phải nhỏ hơn ngày kết thúc.' });
+    if (discountValue <= 0 || (discountType === 'Phần trăm' && discountValue > 100)) return res.status(400).json({ message: 'Giá trị giảm không hợp lệ.' });
+    const customerIds = Array.isArray(body.customerIds) ? [...new Set(body.customerIds.map(String).filter(Boolean))] : body.customerId ? [String(body.customerId)] : [];
+    const quantity = Math.max(1, Math.min(500, Math.floor(Number(body.quantity || 1))));
+    const recipients: Array<string | null> = customerIds.length ? customerIds.flatMap(customerId => Array(quantity).fill(customerId)) : Array(quantity).fill(null);
+    if (recipients.length > 500) return res.status(400).json({ message: 'Mỗi lần chỉ được tạo tối đa 500 voucher.' });
+    const codes = recipients.map((_, index) => recipients.length === 1 ? code : `${code}-${String(index + 1).padStart(3, '0')}`);
+    const voucherCollection = await getCollection<any>('VOUCHER');
+    if (await voucherCollection.findOne({ $or: [{ MA_VOUCHER_CHUAN: { $in: codes } }, { MA_VOUCHER: { $in: codes } }] })) return res.status(409).json({ message: 'Mã voucher đã tồn tại sau chuẩn hóa.' });
+    const firstId = await getNextPrefixedId('VOUCHER', 'VOUCHER_ID', 'VC', 4);
+    const expectedVoucherId = String(body.expectedVoucherId || '').trim().toUpperCase();
+    if (expectedVoucherId && expectedVoucherId !== firstId) {
+      return res.status(409).json({
+        message: `Mã voucher vừa được cập nhật thành ${firstId}. Vui lòng kiểm tra và lưu lại.`,
+        voucherId: firstId,
+      });
+    }
+    const firstNumber = Number(firstId.slice(2));
+    if (firstNumber + recipients.length - 1 > 9999) {
+      return res.status(409).json({ message: 'Đã đạt giới hạn 9.999 ID voucher theo định dạng VC0000.' });
+    }
+    const employeeId = body.employeeId || await getFirstEmployeeId();
+    const vouchers = recipients.map((customerId, index) => {
+      const voucherId = `VC${String(firstNumber + index).padStart(4, '0')}`;
+      return {
+        _id: voucherId, VOUCHER_ID: voucherId, NHAN_VIEN_ID: employeeId,
+        CHIEN_DICH_ID: body.campaignCode || body.campaignId || null, KHACH_HANG_ID: customerId,
+        MA_VOUCHER: codes[index], MA_VOUCHER_CHUAN: codes[index], LOAI_GIAM_GIA: discountType, GIA_TRI_GIAM: discountValue,
+        MUC_GIAM_TOI_DA: Math.max(0, Number(body.maxDiscount || 0)), DON_TOI_THIEU: Math.max(0, Number(body.minimumOrder || 0)),
+        SAN_PHAM_IDS: Array.isArray(body.productIds) ? body.productIds : [], CHU_DE_IDS: Array.isArray(body.categoryIds) ? body.categoryIds : [],
+        DOI_TUONG: customerId ? 'Tài khoản được cấp' : body.audience || 'Tất cả', HANG_THANH_VIEN: Array.isArray(body.membershipTiers) ? body.membershipTiers : [],
+        GIOI_HAN_TONG: Math.max(0, Number(body.totalLimit || (customerId ? 1 : 0))), GIOI_HAN_MOI_NGUOI: Math.max(0, Number(body.perUserLimit || (customerId ? 1 : 0))),
+        DON_DAU_TIEN: body.firstOrderOnly === true, KICH_HOAT: body.active === true,
+        NGAY_BAT_DAU: start, NGAY_KET_THUC: end, DA_DUNG: false,
+      };
+    });
+    await voucherCollection.insertMany(vouchers, { ordered: true });
+    return res.status(201).json({ message: `Đã tạo ${vouchers.length} voucher.`, voucher: vouchers[0], vouchers });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot create voucher: ' + error.message });
   }
@@ -986,17 +1578,36 @@ export const createAdminVoucher = async (req: Request, res: Response) => {
 
 export const updateAdminVoucher = async (req: Request, res: Response) => {
   try {
+    await ensureVoucherStorage();
     const body = req.body || {};
-    const result = await (await getCollection<any>('VOUCHER')).findOneAndUpdate(
+    const code = normalizeVoucherCode(body.voucherCode || body.code);
+    const start = parseOptionalDate(body.startDate);
+    const end = parseOptionalDate(body.endDate);
+    const discountType = normalizeAdminDiscountType(body.discountType);
+    const discountValue = Number(body.discountValue || body.value || 0);
+    if (!code) return res.status(400).json({ message: 'Thiếu mã voucher.' });
+    if (!start || !end || start >= end) return res.status(400).json({ message: 'Ngày bắt đầu phải nhỏ hơn ngày kết thúc.' });
+    if (discountValue <= 0 || (discountType === 'Phần trăm' && discountValue > 100)) return res.status(400).json({ message: 'Giá trị giảm không hợp lệ.' });
+    const voucherCollection = await getCollection<any>('VOUCHER');
+    if (await voucherCollection.findOne({ MA_VOUCHER_CHUAN: code, VOUCHER_ID: { $ne: req.params.voucherId } })) return res.status(409).json({ message: 'Mã voucher đã tồn tại sau chuẩn hóa.' });
+    const result = await voucherCollection.findOneAndUpdate(
       { VOUCHER_ID: req.params.voucherId },
       {
         $set: {
           CHIEN_DICH_ID: body.campaignCode ?? body.campaignId ?? null,
-          MA_VOUCHER: String(body.voucherCode || body.code || '').trim(),
-          LOAI_GIAM_GIA: normalizeAdminDiscountType(body.discountType),
-          GIA_TRI_GIAM: Number(body.discountValue || body.value || 0),
-          NGAY_BAT_DAU: parseOptionalDate(body.startDate),
-          NGAY_KET_THUC: parseOptionalDate(body.endDate),
+          MA_VOUCHER: code, MA_VOUCHER_CHUAN: code,
+          LOAI_GIAM_GIA: discountType, GIA_TRI_GIAM: discountValue,
+          MUC_GIAM_TOI_DA: Math.max(0, Number(body.maxDiscount || 0)),
+          DON_TOI_THIEU: Math.max(0, Number(body.minimumOrder || 0)),
+          SAN_PHAM_IDS: Array.isArray(body.productIds) ? body.productIds : [],
+          CHU_DE_IDS: Array.isArray(body.categoryIds) ? body.categoryIds : [],
+          DOI_TUONG: body.audience || (body.customerId ? 'Tài khoản được cấp' : 'Tất cả'),
+          HANG_THANH_VIEN: Array.isArray(body.membershipTiers) ? body.membershipTiers : [],
+          GIOI_HAN_TONG: Math.max(0, Number(body.totalLimit || (body.customerId ? 1 : 0))),
+          GIOI_HAN_MOI_NGUOI: Math.max(0, Number(body.perUserLimit || (body.customerId ? 1 : 0))),
+          DON_DAU_TIEN: body.firstOrderOnly === true,
+          KICH_HOAT: body.active === true,
+          NGAY_BAT_DAU: start, NGAY_KET_THUC: end,
         },
       },
       { returnDocument: 'after' },
@@ -1010,8 +1621,12 @@ export const updateAdminVoucher = async (req: Request, res: Response) => {
 
 export const deleteAdminVoucher = async (req: Request, res: Response) => {
   try {
-    await (await getCollection<any>('VOUCHER')).deleteOne({ VOUCHER_ID: req.params.voucherId });
-    return res.status(200).json({ message: 'Voucher deleted.' });
+    const result = await (await getCollection<any>('VOUCHER')).updateOne(
+      { VOUCHER_ID: req.params.voucherId },
+      { $set: { KICH_HOAT: false, TRANG_THAI: 'Tạm dừng', NGAY_CAP_NHAT: new Date() } },
+    );
+    if (!result.matchedCount) return res.status(404).json({ message: 'Không tìm thấy voucher.' });
+    return res.status(200).json({ message: 'Đã tạm dừng voucher; lịch sử sử dụng được bảo toàn.' });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot delete voucher: ' + error.message });
   }

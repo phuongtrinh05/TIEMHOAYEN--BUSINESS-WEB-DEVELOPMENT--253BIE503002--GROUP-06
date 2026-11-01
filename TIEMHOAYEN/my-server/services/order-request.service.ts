@@ -1,40 +1,13 @@
+import {getActiveBom,makeBomSnapshot} from './inventory/bom.service.js';
+import {getDesign,isDesignProduct,designFutureDay} from './design3d.service.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { ClientSession } from 'mongodb';
 import { getCollection } from '../mongo.js';
 import { InventoryError, withTransaction } from './inventory/helpers.js';
 import { INVENTORY_CONFIG, RESERVATION_STATUS } from './inventory/constants.js';
-import { reserveProducts, sweepExpiredReservations } from './inventory/stock.service.js';
+import { reserveProducts, reserveMaterialNeeds, sweepExpiredReservations } from './inventory/stock.service.js';
 import { requestWorkflow } from './request-workflow.js';
-import { requestByVerifiedPhone, createRequestAccess } from './order-access.service.js';
-import { checkProductAvailability } from './inventory/availability.service.js';
-
-/** Checkout boundary check on the actual allocated stock; does not change the inventory schema. */
-export async function assertReservedStockUsable(session: ClientSession, orderId: string, deliveryAt: string, salesReviewed = false) {
-  const when = new Date(deliveryAt), now = new Date();
-  const day = (v: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(v);
-  const future = day(when) !== day(now);
-  const holds = await (await getCollection<any>('GIU_TON')).find({ DON_HANG_ID: orderId, TRANG_THAI: { $in: [RESERVATION_STATUS.temporary, RESERVATION_STATUS.official] } }, { session }).toArray();
-  for (const hold of holds) {
-    const product = hold.LOAI_DOI_TUONG === 'THANH_PHAM';
-    const item = await (await getCollection<any>(product ? 'SAN_PHAM' : 'NGUYEN_VAT_LIEU')).findOne(product ? { SAN_PHAM_ID: hold.SAN_PHAM_ID } : { NGUYEN_VAT_LIEU_ID: hold.NGUYEN_VAT_LIEU_ID }, { session });
-    const source = hold.PHIEU_NHAP_NGUON ? await (await getCollection<any>('CHI_TIET_PHIEU_NHAP_NVL')).findOne({ PHIEU_NHAP_ID: hold.PHIEU_NHAP_NGUON, NGUYEN_VAT_LIEU_ID: hold.NGUYEN_VAT_LIEU_ID, LA_NGUON_NHAP: true }, { session }) : item;
-    if (!item || /ngừng|ngưng|khóa|hỏng/i.test(String(item.TRANG_THAI || ''))) throw new InventoryError(409, 'Thành phẩm hoặc nguyên liệu không còn đủ điều kiện sử dụng.');
-    const expiration = source?.NGAY_HET_HAN || source?.HAN_SU_DUNG_DEN || source?.expiresAt;
-    const expires = expiration ? new Date(expiration) : null;
-    if (expires && (!Number.isFinite(expires.getTime()) || expires <= now || expires < when)) throw new InventoryError(409, 'Hàng đã hết hạn hoặc không bảo đảm hạn dùng tới lịch giao.');
-    // The inventory module treats shelf days as a quality-review threshold, not a disposal date.
-    const shelfDays = Number(item.SO_NGAY_BAO_QUAN || 0);
-    const received = source?.THOI_DIEM_NHAN ? new Date(source.THOI_DIEM_NHAN).getTime() : NaN;
-    const qualityUntil = Number.isFinite(received) && shelfDays > 0 ? received + shelfDays * 86400000 : NaN;
-    // Số ngày bảo quản là cờ rà soát cho đơn tương lai, không phải ngày hết hạn
-    // cứng. Đơn cùng ngày đã đủ tồn và giữ được nguồn thực tế thì đi tiếp.
-    if (future && !product && item.NHOM_NVL === 'DE_HU' && !salesReviewed &&
-      (!Number.isFinite(qualityUntil) || qualityUntil <= Math.max(now.getTime(), when.getTime()))) {
-      throw new InventoryError(409, 'Nguồn hoa cần Sales xác minh chất lượng theo thời điểm nhận và số ngày bảo quản trước khi nhận cọc.');
-    }
-    if (future && !salesReviewed && !expires && (product || item.NHOM_NVL === 'DE_HU' && !Number.isFinite(qualityUntil))) throw new InventoryError(409, 'Đơn tương lai cần Sales xác minh hạn dùng, nguồn hoa và lịch chuẩn bị trước khi nhận cọc.');
-  }
-}
+import { requestByVerifiedPhone } from './order-access.service.js';
 
 export const REQUESTS = 'YEU_CAU_DAT_HANG';
 const CHECKOUTS = 'PHIEN_DAT_HANG';
@@ -45,8 +18,7 @@ export async function routeCheckout(
   key: string,
   payload: any,
   items: { productId: string; quantity: number }[],
-  create: (session: ClientSession, orderId: string, prepared?: any) => Promise<any>,
-  prepare?: (session: ClientSession) => Promise<any>,
+  create: (session: ClientSession, orderId: string, snapshots: Record<string, any>, inventory: {futureNoHold:boolean}) => Promise<any>,
 ) {
   if (!/^[\w-]{16,100}$/.test(key)) throw new InventoryError(400, 'Thiếu mã phiên đặt hàng hợp lệ. Vui lòng tải lại trang.');
   const fingerprint = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
@@ -63,27 +35,43 @@ export async function routeCheckout(
   // Unique order ID: scanning max(existing)+1 races between different buyers.
   const orderId = `YEN${randomBytes(8).toString('hex').toUpperCase()}`;
   let shortage: InventoryError | undefined;
-  let prepared = payload;
   try {
     return await withTransaction(async session => {
       await sessions.insertOne({ _id: key, fingerprint, createdAt: new Date() }, { session });
-      if (prepare) prepared = await prepare(session);
+      let snapshots: Record<string, any> = {};
+      let futureNoHold=false;
       try {
-        if (prepared.delivery?.deliveryAt) {
-          const checks = await Promise.all(items.map(item => checkProductAvailability(item.productId, item.quantity, prepared.delivery.deliveryAt)));
-          const review = checks.filter(check => check.decision !== 'available');
-          if (review.length) throw new InventoryError(409, 'Shop cần kiểm tra khả năng đáp ứng lịch giao và nguyên liệu.', { availability: review });
+        const context = {orderId,paymentSessionId:key,status:RESERVATION_STATUS.temporary,actor:{id:payload.customerId || null,role:'customer'}};
+        const designs=[];
+        for(const item of items.filter(i=>isDesignProduct(i.productId))) {
+          const design=await getDesign(item.productId,session);
+          if(design.requiresReview)throw new InventoryError(409,'Thiết kế cần shop duyệt trước thanh toán.',{badges:design.badges});
+          const requested=payload.items?.find((i:any)=>i.id===item.productId);
+          if(Number(requested?.price)!==design.price)throw new InventoryError(400,'Giá thiết kế đã thay đổi. Tải lại giỏ hàng để xác nhận giá mới.');
+          designs.push({item,design});
         }
-        await reserveProducts(items, {
-          orderId, paymentSessionId: key, status: RESERVATION_STATUS.temporary,
-          actor: { id: payload.customerId || null, role: 'customer' },
-        }, session);
-        if (prepared.delivery?.deliveryAt) await assertReservedStockUsable(session, orderId, prepared.delivery.deliveryAt);
+        const catalog=items.filter(i=>!isDesignProduct(i.productId));
+        futureNoHold=designs.length>0 && designFutureDay(payload.delivery?.date);
+        if(catalog.length) {
+          if(futureNoHold)for(const item of catalog)snapshots[item.productId]=makeBomSnapshot(await getActiveBom(item.productId,session));
+          else {const held=await reserveProducts(catalog,context,session);snapshots=held.snapshots || {};}
+        }
+        const needs=new Map<string,number>();
+        for(const {item,design} of designs) {
+          snapshots[item.productId]={materials:design.materials,designFee:design.designFee,extraFee:design.extraFee,designId:design.designId};
+          for(const l of design.materials)needs.set(l.materialId,(needs.get(l.materialId)||0)+l.quantity*item.quantity);
+        }
+        // A reviewed single bouquet does not approve an arbitrary number of bouquets.
+        // Check the complete design quantity even when a future order creates no hold yet.
+        for(const {design} of designs)for(const line of design.materials) {
+          if((needs.get(line.materialId) || 0)>line.available)throw new InventoryError(409,'Số bó thiết kế vượt nguyên liệu khả dụng; cần shop kiểm tra.',{materialId:line.materialId});
+        }
+        if(needs.size && !futureNoHold)await reserveMaterialNeeds(session,needs,context);
       } catch (error) {
         if (error instanceof InventoryError && error.status === 409) shortage = error;
         throw error;
       }
-      const result = { kind: 'order', ...await create(session, orderId, prepared) };
+      const result = { kind: 'order', ...await create(session, orderId, snapshots, {futureNoHold}) };
       await sessions.updateOne({ _id: key }, { $set: { result } }, { session });
       return result;
     });
@@ -97,40 +85,32 @@ export async function routeCheckout(
   }
   // Reservation transaction has rolled back ALL lines. A request creates no payment.
   const requestId = `YC${randomBytes(8).toString('hex').toUpperCase()}`;
-  const shortageDetails: any = shortage?.details || {};
-  const availability = Array.isArray(shortageDetails.availability) ? shortageDetails.availability : [];
-  const futureDelivery = availability.some((check: any) => check.sameDay === false);
-  const reviewReason = futureDelivery
-    ? 'Bạn chọn lịch giao ở ngày tương lai. Shop cần xác minh nguồn hoa, lịch chuẩn bị và khả năng giao trước khi xác nhận đơn.'
-    : 'Tồn thành phẩm hiện không đủ; phần còn lại cũng chưa đủ nguyên vật liệu trong BOM để đáp ứng toàn bộ yêu cầu.';
-  const result: any = { kind: 'sales_request', requestId, status: REQUEST_STATUS.waiting,
-    message: `${reviewReason} Shop đã tiếp nhận yêu cầu để tư vấn. Đây chưa phải đơn đã xác nhận; bạn chưa cần thanh toán.` };
+  const result = { kind: 'sales_request', requestId, status: REQUEST_STATUS.waiting,
+    message: items.some(i=>isDesignProduct(i.productId)) ? 'Thiết kế đã gửi đến shop để kiểm tra và trao đổi phương án trước khi thanh toán.' : 'Số lượng khả dụng đã thay đổi. Yêu cầu đã được chuyển đến nhân viên Sales; shop sẽ liên hệ xác nhận trước khi thanh toán.' };
   try {
     return await withTransaction(async session => {
-      if (!payload.customerId) {
-        const access = await createRequestAccess(requestId, session);
-        Object.assign(result, { requestAccessToken: access.accessToken, requestAccessExpiresAt: access.expiresAt,
-          requestUrl: `/order-request/${requestId}#access=${access.accessToken}` });
-      }
       await sessions.insertOne({ _id: key, fingerprint, result, createdAt: new Date() }, { session });
       const products = await getCollection<any>('SAN_PHAM');
       const snapshot = [];
       for (const item of items) {
-        const product = await products.findOne({ SAN_PHAM_ID: item.productId }, { session });
-        const priced = prepared.items?.find((line: any) => line.id === item.productId);
-        snapshot.push({ ...item, name: priced?.name || product?.TEN_SAN_PHAM || item.productId,
-          price: Number(priced?.price ?? product?.GIA ?? 0), image: priced?.image || '' });
+        if(isDesignProduct(item.productId)) {
+          const d=await getDesign(item.productId,session);
+          snapshot.push({...item,name:d.name,price:d.price,image:d.image,custom:true,designId:d.designId,
+            badges:d.badges,bom:{materials:d.materials,designFee:d.designFee,extraFee:d.extraFee}});
+        } else {
+          const product = await products.findOne({ SAN_PHAM_ID: item.productId }, { session });
+          snapshot.push({ ...item, name: product?.TEN_SAN_PHAM || item.productId, price: Number(product?.GIA || 0) });
+        }
       }
       await (await getCollection<any>(REQUESTS)).insertOne({
         _id: requestId, requestId,
         status: REQUEST_STATUS.waiting, assignedTo: null, assignedName: null,
         sender: payload.sender, receiver: payload.receiver, delivery: payload.delivery,
-        flags: payload.flags || {}, originalSummary: prepared.summary || {},
+        flags: payload.flags || {}, originalSummary: payload.summary || {},
         customerId: payload.customerId || null, items: snapshot,
         reason: shortage!.message, shortages: shortage!.details || null,
-        requestReason: futureDelivery ? 'future_delivery' : 'inventory_shortage', reviewReason,
         createdAt: new Date(), updatedAt: new Date(), version: 0,
-        history: [{ id: randomUUID(), at: new Date(), action: futureDelivery ? 'Tạo yêu cầu do lịch giao tương lai' : 'Tạo yêu cầu do thiếu tồn khả dụng' }],
+        history: [{ id: randomUUID(), at: new Date(), action: items.some(i=>isDesignProduct(i.productId)) ? 'Gửi thiết kế để shop kiểm tra' : 'Tạo yêu cầu do thiếu tồn khả dụng' }],
       }, { session });
       return result;
     });
@@ -145,10 +125,7 @@ export async function routeCheckout(
 
 export function publicRequest(row: any) {
   return { requestId: row.requestId, status: row.status, items: row.items, delivery: row.delivery,
-    requestReason: row.requestReason || null,
-    reviewReason: row.reviewReason || (row.requestReason === 'future_delivery'
-      ? 'Bạn chọn lịch giao ở ngày tương lai. Shop cần xác minh nguồn hoa, lịch chuẩn bị và khả năng giao trước khi xác nhận đơn.'
-      : 'Tồn thành phẩm hiện không đủ; phần còn lại cũng chưa đủ nguyên vật liệu trong BOM để đáp ứng toàn bộ yêu cầu.'),
+    reviewReason: row.items?.some((i:any)=>i.designId) ? 'Thiết kế cần shop kiểm tra khả năng thực hiện, nguyên vật liệu và giá. Shop sẽ trao đổi phương án trước khi mở thanh toán.' : 'Mẫu bạn chọn hiện chưa đủ thành phẩm hoặc nguyên vật liệu khả dụng để đáp ứng toàn bộ yêu cầu. Lượng hàng có thể đã được giữ cho đơn khác trong lúc bạn đặt.',
     createdAt: row.createdAt, updatedAt: row.updatedAt, customerMessage: row.customerMessage || '',
     assignedName: row.assignedName || null, originalTotal: row.originalSummary?.total ?? null, quote: row.quote || null, acceptedQuoteId: row.acceptedQuoteId || null,
     workflow: requestWorkflow(row), orderSummary: row.orderSummary || null,

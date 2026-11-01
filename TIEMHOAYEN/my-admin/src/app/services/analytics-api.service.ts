@@ -113,6 +113,7 @@ export interface MaterialAlert {
 export interface DashboardOverview {
   range: DateRangeDto & { previous: DateRangeDto; compare: CompareMode };
   latestOrderAt: string | null;
+  statusBreakdown: { status: string; count: number }[];
   generatedAt: string;
   kpis: KpiCard[];
   dataQuality: { estimatedCompletionDates: number };
@@ -238,6 +239,87 @@ export interface AnalyticsDictionary {
   config: Record<string, number>;
 }
 
+/* ---------------- Bảng phân tích ---------------- */
+export interface AnalysisKpi { key: string; label: string; unit: string; value: number | null; previous: number | null; change: number | null }
+export interface GroupRow { name: string; revenue: number; quantity: number; orders: number; products: number; share: number | null; grossProfit: number | null; margin: number | null; previous?: number; change?: number | null }
+
+export interface AnalysisPage {
+  range: DateRangeDto & { previous: DateRangeDto; compare: CompareMode };
+  groupBy: GroupBy | 'hour';
+  generatedAt: string;
+  latestOrderAt: string | null;
+  revenue: {
+    reportKey: string;
+    kpis: AnalysisKpi[];
+    series: { labels: string[]; prevLabels: string[]; netRevenue: number[]; netRevenuePrev: number[]; completedOrders: number[]; completedOrdersPrev: number[]; grossProfit: number[]; cashCollected: number[] };
+    byWeekday: { label: string; revenue: number; orders: number }[];
+    coverage: number | null;
+  };
+  occasions: {
+    reportKey: string;
+    byTopic: GroupRow[];
+    byStyle: GroupRow[];
+    topProducts: { productId: string; name: string; topic: string; style: string; quantity: number; revenue: number; grossProfit: number | null; margin: number | null; costMethod: string }[];
+    matrix: { topics: string[]; styles: string[]; cells: number[][] };
+  };
+  customers: {
+    reportKey: string;
+    kpis: AnalysisKpi[];
+    series: { labels: string[]; newBuyers: number[]; returningBuyers: number[] };
+    revenueSplit: { label: string; value: number }[];
+    topCustomers: { customerId: string; name: string; phone: string; orders: number; revenue: number; lastOrderAt: string | null; type: string }[];
+    ratingDist: { stars: number; count: number }[];
+  };
+  costs: {
+    reportKey: string;
+    statement: { key: string; label: string; value: number; previous: number; change: number | null; kind: 'income' | 'cost' | 'result'; note?: string }[];
+    breakdown: { label: string; value: number }[];
+    ratios: AnalysisKpi[];
+    series: { labels: string[]; revenue: number[]; cogs: number[]; loss: number[]; purchases: number[] };
+    bySupplier: { name: string; value: number }[];
+    lossByType: { name: string; value: number }[];
+    coverage: number | null;
+    note: string;
+  };
+  operations: {
+    reportKey: string;
+    kpis: AnalysisKpi[];
+    sample: { explicitCompletions: number; totalCompletions: number };
+    funnel: { label: string; count: number; rate: number | null }[];
+    statusBreakdown: { status: string; count: number }[];
+    deliveryByHour: { label: string; orders: number }[];
+    cancelReasons: { reason: string; count: number }[];
+    paymentMethods: { method: string; amount: number }[];
+  };
+}
+
+/* ---------------- Danh sách báo cáo ---------------- */
+export type ReportColType = 'text' | 'money' | 'number' | 'percent' | 'date' | 'datetime' | 'status';
+export interface ReportMeta {
+  key: string;
+  name: string;
+  category: string;
+  description: string;
+  icon: string;
+  popular?: boolean;
+  snapshot?: boolean;
+  filters: ('groupBy' | 'status')[];
+}
+export interface ReportCatalog { categories: string[]; reports: ReportMeta[] }
+export interface ReportRun extends ReportMeta {
+  range: DateRangeDto;
+  groupBy: GroupBy;
+  generatedAt: string;
+  statusOptions: string[];
+  columns: { key: string; label: string; type: ReportColType; sum?: boolean }[];
+  rows: Record<string, any>[];
+  totalRows: number;
+  truncated: boolean;
+  totals: Record<string, number>;
+  chart: { type: 'line' | 'bar' | 'doughnut'; labels: string[]; series: { label: string; data: number[] }[]; money?: boolean } | null;
+  note: string | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AnalyticsApiService {
   constructor(private http: HttpClient) {}
@@ -271,7 +353,7 @@ export class AnalyticsApiService {
   };
 
   /** fresh=true: bỏ qua cache server (nút Tải lại). */
-  overview(q: RangeQuery, opts: { deliveryMode?: 'window' | 'today'; bestSort?: 'quantity' | 'revenue'; fresh?: boolean } = {}): Observable<DashboardOverview> {
+  overview(q: RangeQuery, opts: { deliveryMode?: 'window' | 'today'; bestSort?: 'quantity' | 'revenue'; groupBy?: GroupBy | 'hour'; fresh?: boolean } = {}): Observable<DashboardOverview> {
     const { fresh, ...rest } = opts;
     return this.http
       .get<DashboardOverview>(`${this.base}/dashboard/overview`, { params: this.rangeParams(q, { ...rest, fresh: fresh ? '1' : undefined }) })
@@ -287,6 +369,26 @@ export class AnalyticsApiService {
   deliveries(mode: 'window' | 'today'): Observable<{ items: DeliveryItem[] }> {
     return this.http
       .get<{ items: DeliveryItem[] }>(`${this.base}/dashboard/deliveries`, { params: new HttpParams().set('mode', mode) })
+      .pipe(catchError(this.fail));
+  }
+
+  /** Trang Bảng phân tích */
+  analysis(q: RangeQuery, groupBy?: GroupBy, fresh = false): Observable<AnalysisPage> {
+    return this.http
+      .get<AnalysisPage>(`${this.base}/dashboard/analysis`, { params: this.rangeParams(q, { groupBy, fresh: fresh ? '1' : undefined }) })
+      .pipe(catchError(this.fail));
+  }
+
+  /** Trang Danh sách báo cáo */
+  reportCatalog(): Observable<ReportCatalog> {
+    return this.http.get<ReportCatalog>(`${this.base}/reports/catalog`).pipe(catchError(this.fail));
+  }
+
+  runReport(key: string, q: RangeQuery, opts: { groupBy?: GroupBy; status?: string; fresh?: boolean } = {}): Observable<ReportRun> {
+    return this.http
+      .get<ReportRun>(`${this.base}/reports/run/${encodeURIComponent(key)}`, {
+        params: this.rangeParams(q, { groupBy: opts.groupBy, status: opts.status || undefined, fresh: opts.fresh ? '1' : undefined }),
+      })
       .pipe(catchError(this.fail));
   }
 

@@ -14,6 +14,7 @@ router.get('/inventory/meta', kho('view'), c.getInventoryMeta);
 
 // NVL (không có API sửa tồn trực tiếp — tồn chỉ đổi qua PN/PX/đánh dấu không đạt)
 router.get('/materials', kho(), c.listMaterials);
+router.get('/materials/:materialId/history', kho('view'), c.getMaterialHistory);
 router.get('/materials/:materialId', kho(), c.getMaterialDetail);
 router.post('/materials', kho(), c.createMaterial);
 router.put('/materials/:materialId', kho(), c.updateMaterial);
@@ -41,6 +42,8 @@ router.get('/imports', kho(), c.listImports);
 router.get('/imports/:receiptId', kho(), c.getImport);
 router.post('/imports', kho(), c.createImport);
 router.put('/imports/:receiptId', kho(), c.updateImport);
+router.post('/imports/:receiptId/adjust', kho('update'), c.adjustImport);
+router.post('/imports/:receiptId/reverse', kho('update'), c.reverseImport);
 router.post('/imports/:receiptId/post', kho('update'), c.postImport);
 router.post('/imports/:receiptId/cancel', kho('update'), c.cancelImport);
 router.delete('/imports/:receiptId', kho(), c.deleteImport);
@@ -51,6 +54,7 @@ router.get('/exports/suggest', kho(), c.suggestExportLines);
 router.get('/exports/:receiptId', kho(), c.getExport);
 router.post('/exports', kho(), c.createExport);
 router.put('/exports/:receiptId', kho(), c.updateExport);
+router.post('/exports/:receiptId/reverse', kho('update'), c.reverseExport);
 router.post('/exports/:receiptId/post', kho('update'), c.postExport);
 router.post('/exports/:receiptId/cancel', kho('update'), c.cancelExport);
 router.delete('/exports/:receiptId', kho(), c.deleteExport);
