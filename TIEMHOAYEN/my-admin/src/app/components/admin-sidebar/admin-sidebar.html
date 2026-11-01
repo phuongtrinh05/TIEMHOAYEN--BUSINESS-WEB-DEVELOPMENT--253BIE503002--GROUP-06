@@ -10,19 +10,32 @@
     </div>
 
     <div class="menu-section">
-        <a
-            *ngFor="let item of mainMenuItems"
-            [routerLink]="canView(item.module) ? item.route : null"
-            [routerLinkActiveOptions]="{ exact: !!item.exact }"
-            routerLinkActive="active"
-            class="menu-item"
-            [class.active]="isItemActive(item)"
-            [class.disabled]="!canView(item.module)"
-            [attr.aria-disabled]="!canView(item.module)"
-            (click)="openMenu(item, $event)">
-            <i class="bi" [ngClass]="item.icon"></i>
-            <span>{{ item.label }}</span>
-        </a>
+        <ng-container *ngFor="let item of mainMenuItems">
+            <a
+                [routerLink]="canView(item.module) ? item.route : null"
+                [routerLinkActiveOptions]="{ exact: !!item.exact }"
+                routerLinkActive="active"
+                class="menu-item"
+                [class.active]="isItemActive(item)"
+                [class.disabled]="!canView(item.module)"
+                [attr.aria-disabled]="!canView(item.module)"
+                (click)="openMenu(item, $event)">
+                <i class="bi" [ngClass]="item.icon"></i>
+                <span>{{ item.label }}</span>
+            </a>
+            <div class="submenu" *ngIf="item.children?.length && !isCollapsed">
+                <a
+                    *ngFor="let child of item.children"
+                    [routerLink]="canView(child.module) ? child.route : null"
+                    routerLinkActive="active"
+                    class="submenu-item"
+                    [class.active]="isItemActive(child)"
+                    [class.disabled]="!canView(child.module)"
+                    (click)="openMenu(child, $event)">
+                    <span>{{ child.label }}</span>
+                </a>
+            </div>
+        </ng-container>
     </div>
 
     <div class="menu-section">

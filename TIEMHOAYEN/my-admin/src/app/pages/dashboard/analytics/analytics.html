@@ -1,0 +1,368 @@
+<div class="db-page">
+  <header class="db-head">
+    <div class="db-title">
+      <h1>Bảng phân tích</h1>
+      @if (data(); as d) {
+        <p class="db-range">
+          <i class="bi bi-calendar3"></i> {{ d.range.label }}
+          <span class="muted">· So với {{ compareShort().toLowerCase() }} ({{ d.range.previous.label }}) · Số liệu lúc {{ f.time(d.generatedAt) }}</span>
+        </p>
+      }
+    </div>
+    <div class="db-actions no-print">
+      <button class="btn-ghost" (click)="load(true)" [disabled]="loading()" title="Tải lại số liệu"><i class="bi bi-arrow-clockwise" [class.spin]="loading()"></i></button>
+      <div class="page-links">
+        <a class="page-link" routerLink="/dashboard" [queryParams]="rangeParams()"><i class="bi bi-house"></i> Tổng quan</a>
+        <a class="page-link" routerLink="/dashboard/reports" [queryParams]="rangeParams()"><i class="bi bi-journal-text"></i> Danh sách báo cáo</a>
+        <button class="page-link" (click)="print()"><i class="bi bi-printer"></i> In / PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="filter-row no-print">
+    <app-range-filter [value]="range()" [busy]="loading()" (changed)="onRange($event)"></app-range-filter>
+    <div class="seg" title="Độ hạt của các biểu đồ theo thời gian">
+      @for (g of groupByOptions; track g.key) {
+        <button [class.active]="(groupBy() || data()?.groupBy) === g.key" (click)="setGroupBy(g.key)">{{ g.label }}</button>
+      }
+    </div>
+  </div>
+
+  <nav class="section-nav no-print">
+    @for (s of sections; track s.id; let i = $index) {
+      <button (click)="scrollTo(s.id)"><i class="bi" [class]="s.icon"></i> {{ s.label }}</button>
+    }
+  </nav>
+
+  @if (error()) {
+    <div class="alert-box no-print">
+      <i class="bi bi-exclamation-triangle"></i><span>{{ error() }}</span>
+      <button class="btn-ghost sm" (click)="useLocalBackend()">Dùng backend local</button>
+      <button class="btn-ghost sm" (click)="error.set('')"><i class="bi bi-x"></i></button>
+    </div>
+  }
+  @if (loading() && !data()) {
+    <div class="skeleton"><div></div><div></div><div></div></div>
+  }
+
+  @if (data(); as d) {
+    <!-- ===================== 1. XU HƯỚNG DOANH THU ===================== -->
+    <div class="section-title" id="doanh-thu">
+      <div>
+        <h2><span class="num">1</span> Xu hướng doanh thu</h2>
+        <p>Doanh thu thuần, lợi nhuận gộp và số đơn hoàn thành theo thời gian — so với {{ compareShort().toLowerCase() }}.</p>
+      </div>
+      <div class="page-links no-print">
+        <a class="card-link" routerLink="/dashboard/reports/sales-by-time" [queryParams]="rangeParams()">Doanh thu theo thời gian <i class="bi bi-arrow-right-short"></i></a>
+        <a class="card-link" routerLink="/dashboard/reports/business-result" [queryParams]="rangeParams()">Kết quả kinh doanh <i class="bi bi-arrow-right-short"></i></a>
+      </div>
+    </div>
+    <section class="kpi-grid cols-6">
+      @for (k of d.revenue.kpis; track k.key) {
+        <article class="kpi">
+          <span class="kpi-label">{{ k.label }}</span>
+          <div class="kpi-value sm">{{ f.kpiValue(k.value, k.unit) }}</div>
+          <div class="kpi-foot">
+            @if (f.changeText(k.change, k.unit)) {<span class="delta" [class]="f.changeClass(k.key, k.change)">{{ f.changeText(k.change, k.unit) }}</span>}
+            <span class="muted">{{ kpiPrev(k) }}</span>
+          </div>
+        </article>
+      }
+    </section>
+    <div class="row-2 wide-left">
+      <section class="card fixed h-md">
+        <div class="card-head">
+          <h3>Diễn biến theo {{ d.groupBy === 'hour' ? 'giờ' : d.groupBy === 'day' ? 'ngày' : d.groupBy === 'week' ? 'tuần' : d.groupBy === 'month' ? 'tháng' : d.groupBy === 'quarter' ? 'quý' : 'năm' }}</h3>
+          <div class="seg no-print">
+            <button [class.active]="revenueMetric() === 'revenue'" (click)="revenueMetric.set('revenue')">Doanh thu</button>
+            <button [class.active]="revenueMetric() === 'profit'" (click)="revenueMetric.set('profit')">LN gộp</button>
+            <button [class.active]="revenueMetric() === 'cash'" (click)="revenueMetric.set('cash')">Tiền đã thu</button>
+          </div>
+        </div>
+        <div class="chart-fill"><canvas baseChart type="bar" [data]="revenueChart()" [options]="revenueOptions"></canvas></div>
+        @if (d.revenue.coverage !== null && d.revenue.coverage < 100) {
+          <p class="muted small foot-note">LN gộp chỉ tính trên {{ d.revenue.coverage }}% doanh thu hàng có đủ giá vốn.</p>
+        }
+      </section>
+      <section class="card fixed h-md">
+        <div class="card-head">
+          <div><h3>Doanh thu theo thứ trong tuần</h3><p class="muted small">Biết ngày nào đông để chuẩn bị hoa & nhân sự</p></div>
+        </div>
+        <div class="chart-fill"><canvas baseChart type="bar" [data]="weekdayChart()" [options]="moneyBar"></canvas></div>
+      </section>
+    </div>
+
+    <!-- ===================== 2. SẢN PHẨM THEO DỊP TẶNG ===================== -->
+    <div class="section-title" id="dip-tang">
+      <div>
+        <h2><span class="num">2</span> Hiệu quả sản phẩm theo dịp tặng</h2>
+        <p>Dịp nào mang lại doanh thu & lợi nhuận, kiểu dáng nào được chọn cho từng dịp.</p>
+      </div>
+      <div class="page-links no-print">
+        <a class="card-link" routerLink="/dashboard/reports/sales-by-occasion" [queryParams]="rangeParams()">Theo dịp tặng <i class="bi bi-arrow-right-short"></i></a>
+        <a class="card-link" routerLink="/dashboard/reports/sales-by-product" [queryParams]="rangeParams()">Theo sản phẩm <i class="bi bi-arrow-right-short"></i></a>
+      </div>
+    </div>
+    <div class="row-3">
+      <section class="card fixed h-md">
+        <div class="card-head"><h3>Cơ cấu doanh thu theo dịp</h3></div>
+        @if (d.occasions.byTopic.length) {
+          <div class="donut-wrap"><canvas baseChart type="doughnut" [data]="topicChart()" [options]="doughnutMoney"></canvas></div>
+          <ul class="legend-list fill">
+            @for (t of d.occasions.byTopic; track t.name; let i = $index) {
+              <li>
+                <span class="dot" [style.background]="f.PALETTE[i % f.PALETTE.length]"></span>
+                <span>{{ t.name }} <span class="muted">({{ f.percent(t.share) }})</span></span>
+                <span class="val">{{ f.compact(t.revenue) }}</span>
+                @if (f.changeText(t.change ?? null)) {<span class="delta" [class]="f.changeClass('x', t.change ?? null)">{{ f.changeText(t.change ?? null) }}</span>}
+              </li>
+            }
+          </ul>
+        } @else { <p class="empty">Chưa có đơn hoàn thành trong kỳ.</p> }
+      </section>
+      <section class="card fixed h-md">
+        <div class="card-head"><h3>Kiểu dáng: doanh thu & lợi nhuận</h3></div>
+        <div class="chart-fill"><canvas baseChart type="bar" [data]="styleChart()" [options]="styleOptions"></canvas></div>
+      </section>
+      <section class="card fixed h-md">
+        <div class="card-head"><div><h3>Dịp tặng × kiểu dáng</h3><p class="muted small">Ô càng đậm doanh thu càng cao</p></div></div>
+        <div class="table-wrap fill">
+          <table class="tbl heat">
+            <thead><tr><th>Dịp \ Kiểu</th>@for (s of d.occasions.matrix.styles; track s) {<th class="r">{{ s }}</th>}</tr></thead>
+            <tbody>
+              @for (t of d.occasions.matrix.topics; track t; let i = $index) {
+                <tr>
+                  <td><b>{{ t }}</b></td>
+                  @for (v of d.occasions.matrix.cells[i]; track $index) {
+                    <td class="r" [style.background]="heat(v)" [class.light]="v > matrixMax() * 0.45">{{ v ? f.compact(v) : '' }}</td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+    <section class="card fixed h-sm">
+      <div class="card-head">
+        <h3>Top 10 sản phẩm theo doanh thu</h3>
+        <a class="card-link no-print" routerLink="/dashboard/reports/sales-by-product" [queryParams]="rangeParams()">Xem tất cả sản phẩm <i class="bi bi-arrow-right-short"></i></a>
+      </div>
+      <div class="table-wrap fill">
+        <table class="tbl num">
+          <thead><tr><th>#</th><th>Sản phẩm</th><th>Dịp tặng</th><th>Kiểu dáng</th><th class="r">SL</th><th class="r">Doanh thu hàng</th><th class="r">LN gộp</th><th class="r">Biên</th><th>Giá vốn</th></tr></thead>
+          <tbody>
+            @for (p of d.occasions.topProducts; track p.productId; let i = $index) {
+              <tr class="click" [routerLink]="'/products/product-detail'" [queryParams]="{ id: p.productId }">
+                <td>{{ i + 1 }}</td><td><b>{{ p.name }}</b></td><td>{{ p.topic }}</td><td>{{ p.style }}</td>
+                <td class="r">{{ f.num(p.quantity) }}</td><td class="r">{{ f.money(p.revenue) }}</td>
+                <td class="r">{{ p.grossProfit === null ? 'Chưa đủ dữ liệu' : f.money(p.grossProfit) }}</td><td class="r">{{ f.percent(p.margin) }}</td>
+                <td><span class="method">{{ p.costMethod }}</span></td>
+              </tr>
+            } @empty { <tr><td colspan="9" class="empty">Chưa có đơn hoàn thành trong kỳ.</td></tr> }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===================== 3. KHÁCH HÀNG ===================== -->
+    <div class="section-title" id="khach-hang">
+      <div>
+        <h2><span class="num">3</span> Khách hàng</h2>
+        <p>Khách mới hay khách quay lại tạo ra doanh thu, mức độ hài lòng qua đánh giá.</p>
+      </div>
+      <div class="page-links no-print">
+        <a class="card-link" routerLink="/dashboard/reports/sales-by-customer" [queryParams]="rangeParams()">Theo khách hàng <i class="bi bi-arrow-right-short"></i></a>
+        <a class="card-link" routerLink="/dashboard/reports/reviews" [queryParams]="rangeParams()">Đánh giá <i class="bi bi-arrow-right-short"></i></a>
+      </div>
+    </div>
+    <section class="kpi-grid cols-6">
+      @for (k of d.customers.kpis; track k.key) {
+        <article class="kpi">
+          <span class="kpi-label">{{ k.label }}</span>
+          <div class="kpi-value sm">{{ f.kpiValue(k.value, k.unit) }}</div>
+          <div class="kpi-foot">
+            @if (f.changeText(k.change, k.unit)) {<span class="delta" [class]="f.changeClass(k.key, k.change)">{{ f.changeText(k.change, k.unit) }}</span>}
+            <span class="muted">{{ kpiPrev(k) }}</span>
+          </div>
+        </article>
+      }
+    </section>
+    <div class="row-3">
+      <section class="card fixed h-md">
+        <div class="card-head"><h3>Khách mua lần đầu vs quay lại</h3></div>
+        <div class="chart-fill"><canvas baseChart type="bar" [data]="customerChart()" [options]="stackedBar"></canvas></div>
+      </section>
+      <section class="card fixed h-md">
+        <div class="card-head"><h3>Doanh thu theo nhóm khách</h3></div>
+        <div class="donut-wrap"><canvas baseChart type="doughnut" [data]="splitChart()" [options]="doughnutMoney"></canvas></div>
+        <ul class="legend-list">
+          @for (s of d.customers.revenueSplit; track s.label; let i = $index) {
+            <li><span class="dot" [style.background]="f.PALETTE[i]"></span><span>{{ s.label }}</span><span class="val">{{ f.compact(s.value) }}</span></li>
+          }
+        </ul>
+      </section>
+      <section class="card fixed h-md">
+        <div class="card-head"><div><h3>Đánh giá trong kỳ</h3><p class="muted small">{{ ratingTotal() }} đánh giá</p></div></div>
+        <ul class="rating-list fill">
+          @for (r of d.customers.ratingDist; track r.stars) {
+            <li>
+              <span class="stars">{{ r.stars }} ★</span>
+              <div class="bar"><span [style.width]="barPct(r.count, ratingTotal())" [class.low]="r.stars <= 2"></span></div>
+              <span class="val">{{ r.count }}</span>
+            </li>
+          }
+        </ul>
+        <a class="card-link no-print" routerLink="/dashboard/reports/reviews" [queryParams]="rangeParams()">Đọc các đánh giá thấp <i class="bi bi-arrow-right-short"></i></a>
+      </section>
+    </div>
+    <section class="card fixed h-sm">
+      <div class="card-head">
+        <h3>Khách hàng mang lại doanh thu cao nhất</h3>
+        <a class="card-link no-print" routerLink="/dashboard/reports/sales-by-customer" [queryParams]="rangeParams()">Xem tất cả khách <i class="bi bi-arrow-right-short"></i></a>
+      </div>
+      <div class="table-wrap fill">
+        <table class="tbl num">
+          <thead><tr><th>Khách hàng</th><th>SĐT</th><th>Loại</th><th class="r">Số đơn</th><th class="r">Doanh thu thuần</th><th>Mua gần nhất</th></tr></thead>
+          <tbody>
+            @for (c of d.customers.topCustomers; track c.customerId) {
+              <tr class="click" routerLink="/customers/detail" [queryParams]="{ id: c.customerId }">
+                <td><b>{{ c.name }}</b></td><td>{{ c.phone }}</td>
+                <td><span class="tag" [class.t-green]="c.type === 'Mới'">{{ c.type }}</span></td>
+                <td class="r">{{ c.orders }}</td><td class="r">{{ f.money(c.revenue) }}</td><td>{{ f.dateOnly(c.lastOrderAt) }}</td>
+              </tr>
+            } @empty { <tr><td colspan="6" class="empty">Chưa có khách mua trong kỳ.</td></tr> }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===================== 4. CHI PHÍ ===================== -->
+    <div class="section-title" id="chi-phi">
+      <div>
+        <h2><span class="num">4</span> Chi phí</h2>
+        <p>{{ d.costs.note }}</p>
+      </div>
+      <div class="page-links no-print">
+        <a class="card-link" routerLink="/dashboard/reports/business-result" [queryParams]="rangeParams()">Kết quả kinh doanh <i class="bi bi-arrow-right-short"></i></a>
+        <a class="card-link" routerLink="/dashboard/reports/material-usage" [queryParams]="rangeParams()">Xuất dùng & hao hụt NVL <i class="bi bi-arrow-right-short"></i></a>
+      </div>
+    </div>
+    <section class="kpi-grid cols-4">
+      @for (k of d.costs.ratios; track k.key) {
+        <article class="kpi">
+          <span class="kpi-label">{{ k.label }}</span>
+          <div class="kpi-value sm">{{ f.kpiValue(k.value, k.unit) }}</div>
+          <div class="kpi-foot">
+            @if (f.changeText(k.change, k.unit)) {<span class="delta" [class]="f.changeClass(k.key, k.change)">{{ f.changeText(k.change, k.unit) }}</span>}
+            <span class="muted">{{ kpiPrev(k) }}</span>
+          </div>
+        </article>
+      }
+    </section>
+    <div class="row-2">
+      <section class="card fixed h-md">
+        <div class="card-head"><div><h3>Kết quả kinh doanh rút gọn</h3><p class="muted small">Từ doanh thu đến lợi nhuận sau hao hụt</p></div></div>
+        <ul class="statement fill">
+          @for (s of d.costs.statement; track s.key) {
+            <li [class]="s.kind">
+              <div class="st-label">{{ s.label }} @if (s.note) {<span class="muted small">· {{ s.note }}</span>}</div>
+              <div class="st-bar"><span [style.width]="barPct(s.value, statementMax())"></span></div>
+              <div class="st-val">{{ f.money(s.value) }}</div>
+              <div class="st-chg">@if (f.changeText(s.change)) {<span class="delta" [class]="f.changeClass(s.key, s.change)">{{ f.changeText(s.change) }}</span>}</div>
+            </li>
+          }
+        </ul>
+      </section>
+      <section class="card fixed h-md">
+        <div class="card-head"><h3>Cơ cấu chi phí</h3></div>
+        <div class="split">
+          <div class="donut-wrap tall"><canvas baseChart type="doughnut" [data]="costBreakdownChart()" [options]="doughnutMoney"></canvas></div>
+          <div>
+            <ul class="legend-list">
+              @for (b of d.costs.breakdown; track b.label; let i = $index) {
+                <li><span class="dot" [style.background]="f.PALETTE[i]"></span><span>{{ b.label }}</span><span class="val">{{ f.compact(b.value) }}</span></li>
+              }
+            </ul>
+            @if (d.costs.bySupplier.length) {
+              <h4 class="mini-head">Tiền nhập NVL theo NCC</h4>
+              <ul class="legend-list">
+                @for (s of d.costs.bySupplier; track s.name) {<li><span>{{ s.name }}</span><span class="val">{{ f.compact(s.value) }}</span></li>}
+              </ul>
+            }
+          </div>
+        </div>
+      </section>
+    </div>
+    <section class="card fixed h-sm">
+      <div class="card-head"><div><h3>Doanh thu so với chi phí NVL theo thời gian</h3><p class="muted small">Cột chồng: giá vốn + hao hụt; cột xanh: tiền nhập NVL</p></div></div>
+      <div class="chart-fill"><canvas baseChart type="bar" [data]="costChart()" [options]="costLine"></canvas></div>
+    </section>
+
+    <!-- ===================== 5. HIỆU QUẢ VẬN HÀNH ===================== -->
+    <div class="section-title" id="van-hanh">
+      <div>
+        <h2><span class="num">5</span> Hiệu quả vận hành</h2>
+        <p>Tốc độ xử lý, tỷ lệ hủy / hoàn, phễu đơn hàng và khung giờ giao cao điểm.</p>
+      </div>
+      <div class="page-links no-print">
+        <a class="card-link" routerLink="/dashboard/reports/cancellations" [queryParams]="rangeParams()">Đơn hủy & lý do <i class="bi bi-arrow-right-short"></i></a>
+        <a class="card-link" routerLink="/dashboard/reports/delivery-schedule" [queryParams]="rangeParams()">Lịch giao <i class="bi bi-arrow-right-short"></i></a>
+      </div>
+    </div>
+    <section class="kpi-grid cols-5">
+      @for (k of d.operations.kpis; track k.key) {
+        <article class="kpi">
+          <span class="kpi-label">{{ k.label }}</span>
+          <div class="kpi-value sm">{{ f.kpiValue(k.value, k.unit) }}</div>
+          <div class="kpi-foot">
+            @if (f.changeText(k.change, k.unit)) {<span class="delta" [class]="f.changeClass(k.key, k.change)">{{ f.changeText(k.change, k.unit) }}</span>}
+            <span class="muted">{{ kpiPrev(k) }}</span>
+          </div>
+        </article>
+      }
+    </section>
+    @if (d.operations.sample.explicitCompletions < d.operations.sample.totalCompletions) {
+      <p class="muted small">Thời gian xử lý & đúng hẹn tính trên {{ d.operations.sample.explicitCompletions }}/{{ d.operations.sample.totalCompletions }} đơn có ngày hoàn thành thật.</p>
+    }
+    <div class="row-2">
+      <section class="card fixed h-md">
+        <div class="card-head"><div><h3>Phễu đơn hàng</h3><p class="muted small">Đơn tạo trong kỳ đi được tới bước nào</p></div></div>
+        <ul class="funnel fill">
+          @for (s of d.operations.funnel; track s.label; let i = $index) {
+            <li>
+              <div class="fn-text"><span>{{ s.label }}</span><b>{{ s.count }}</b><span class="muted">{{ f.percent(s.rate) }}</span></div>
+              <div class="fn-track"><div class="fn-bar" [style.width]="(s.rate ?? 0) + '%'" [style.background]="f.PALETTE[i]"></div></div>
+            </li>
+          }
+        </ul>
+      </section>
+      <section class="card fixed h-md">
+        <div class="card-head"><div><h3>Khung giờ giao cao điểm</h3><p class="muted small">Số đơn theo giờ hẹn giao</p></div></div>
+        <div class="chart-fill"><canvas baseChart type="bar" [data]="hourChart()" [options]="countBar"></canvas></div>
+      </section>
+    </div>
+    <div class="row-2">
+      <section class="card fixed h-sm">
+        <div class="card-head"><h3>Lý do hủy đơn</h3></div>
+        @if (d.operations.cancelReasons.length) {
+          <div class="chart-fill"><canvas baseChart type="bar" [data]="cancelChart()" [options]="countBarH"></canvas></div>
+        } @else { <p class="empty">Không có đơn hủy trong kỳ.</p> }
+      </section>
+      <section class="card fixed h-sm">
+        <div class="card-head">
+          <h3>Tiền đã thu theo phương thức</h3>
+          <a class="card-link no-print" routerLink="/dashboard/reports/payments-by-method" [queryParams]="rangeParams()">Chi tiết <i class="bi bi-arrow-right-short"></i></a>
+        </div>
+        <div class="split">
+          <div class="donut-wrap tall"><canvas baseChart type="doughnut" [data]="methodChart()" [options]="doughnutMoney"></canvas></div>
+          <ul class="legend-list">
+            @for (m of d.operations.paymentMethods; track m.method; let i = $index) {
+              <li><span class="dot" [style.background]="f.PALETTE[i]"></span><span>{{ m.method }}</span><span class="val">{{ f.compact(m.amount) }}</span></li>
+            }
+          </ul>
+        </div>
+      </section>
+    </div>
+  }
+</div>

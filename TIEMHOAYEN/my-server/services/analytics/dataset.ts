@@ -48,6 +48,10 @@ export interface OrderRow {
   cancelledAt: Date | null;
   refundRequestedAt: Date | null;
   total: number;
+  /** Tạm tính hàng (trước giảm giá, chưa ship) */
+  subtotal: number;
+  /** Giảm giá voucher / điểm = TAM_TINH + ship − TONG_TIEN (≥ 0) */
+  discount: number;
   shipping: number;
   vat: number;
   deposit: number;
@@ -86,7 +90,8 @@ export interface Dataset {
   detailsByOrder: Map<string, DetailRow[]>;
   payments: PaymentRow[]; // đã đánh dấu trùng
   paidByOrder: Map<string, number>; // chỉ giao dịch thành công, không trùng
-  customers: { id: string; registeredAt: Date | null }[];
+  customers: { id: string; name: string; phone: string; registeredAt: Date | null }[];
+  customersById: Map<string, { id: string; name: string; phone: string; registeredAt: Date | null }>;
   products: Map<string, any>;
   loadedAt: Date;
 }
@@ -101,6 +106,7 @@ export const mapOrder = (o: any): OrderRow => {
   const fallbackDone = win?.end || toDate(o.NGAY_CAP_NHAT) || created;
   const total = num(o.TONG_TIEN);
   const shipping = num(o.PHI_VAN_CHUYEN);
+  const subtotal = num(o.TAM_TINH);
   return {
     id: String(o.DON_HANG_ID),
     customerId: o.KHACH_HANG_ID || null,
@@ -112,6 +118,8 @@ export const mapOrder = (o: any): OrderRow => {
     cancelledAt: toDate(o.NGAY_HUY),
     refundRequestedAt: toDate(o.NGAY_YEU_CAU_HOAN_TIEN_TRA_HANG),
     total,
+    subtotal,
+    discount: subtotal > 0 ? Math.max(0, subtotal + shipping - total) : 0,
     shipping,
     vat: num(o.VAT),
     deposit: num(o.TIEN_COC),
@@ -133,18 +141,19 @@ export const mapOrder = (o: any): OrderRow => {
 export const loadDataset = async (): Promise<Dataset> => {
   const [orders, details, payments, customers, products] = await Promise.all([
     (await getCollection<any>('DON_HANG')).find({}).project({
-      DON_HANG_ID: 1, KHACH_HANG_ID: 1, TRANG_THAI: 1, NGAY_TAO: 1, NGAY_HOAN_THANH: 1, NGAY_HOAN_THANH_UOC_TINH: 1, LY_DO_HOAN_TIEN_TRA_HANG: 1, DIEM_THUONG_SU_DUNG: 1, NGAY_CAP_NHAT: 1, NGAY_HUY: 1, LY_DO_HUY: 1,
+      DON_HANG_ID: 1, KHACH_HANG_ID: 1, TRANG_THAI: 1, NGAY_TAO: 1, NGAY_HOAN_THANH: 1, NGAY_HOAN_THANH_UOC_TINH: 1, LY_DO_HOAN_TIEN_TRA_HANG: 1, DIEM_THUONG_SU_DUNG: 1, TAM_TINH: 1, NGAY_CAP_NHAT: 1, NGAY_HUY: 1, LY_DO_HUY: 1,
       NGAY_YEU_CAU_HOAN_TIEN_TRA_HANG: 1, TONG_TIEN: 1, PHI_VAN_CHUYEN: 1, VAT: 1, TIEN_COC: 1, PHUONG_THUC_THANH_TOAN: 1,
       NGAY_MUON_GIAO: 1, KHUNG_GIO_MUON_GIAO: 1, TEN_NGUOI_NHAN: 1, DIA_CHI_GIAO_HANG: 1, SDT_NGUOI_NHAN: 1,
       THOI_DIEM_BAT_DAU_CHUAN_BI: 1, DA_XUAT_NVL: 1, KIEM_TRA_TON_KHO: 1,
     }).toArray(),
     (await getCollection<any>('DON_HANG_CHI_TIET')).find({}).project({ DON_HANG_ID: 1, SAN_PHAM_ID: 1, SO_LUONG: 1, GIA: 1 }).toArray(),
     (await getCollection<any>('THANH_TOAN')).find({}).project({ THANH_TOAN_ID: 1, DON_HANG_ID: 1, SO_TIEN: 1, CONG_THANH_TOAN: 1, TRANG_THAI_THANH_TOAN: 1, NGAY_THANH_TOAN: 1, MA_GIAO_DICH: 1 }).toArray(),
-    (await getCollection<any>('KHACH_HANG')).find({}).project({ KHACH_HANG_ID: 1, NGAY_DANG_KY: 1, NGAY_TAO: 1 }).toArray(),
+    (await getCollection<any>('KHACH_HANG')).find({}).project({ KHACH_HANG_ID: 1, TEN: 1, SDT: 1, NGAY_DANG_KY: 1, NGAY_TAO: 1 }).toArray(),
     (await getCollection<any>('SAN_PHAM')).find({}).project({ SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1, KIEU_DANG: 1, CHU_DE_ID: 1, GIA: 1, GIA_KHUYEN_MAI: 1, TRANG_THAI: 1 }).toArray(),
   ]);
 
   const orderRows = orders.map(mapOrder);
+  const customerRows = customers.map((c: any) => ({ id: String(c.KHACH_HANG_ID), name: String(c.TEN || ''), phone: String(c.SDT || ''), registeredAt: toDate(c.NGAY_DANG_KY || c.NGAY_TAO) }));
   const ordersById = new Map(orderRows.map((o) => [o.id, o]));
   const detailRows: DetailRow[] = details.map((d: any) => ({
     orderId: String(d.DON_HANG_ID), productId: String(d.SAN_PHAM_ID), quantity: num(d.SO_LUONG), price: num(d.GIA), amount: num(d.SO_LUONG) * num(d.GIA),
@@ -178,7 +187,8 @@ export const loadDataset = async (): Promise<Dataset> => {
     detailsByOrder,
     payments: paymentRows,
     paidByOrder,
-    customers: customers.map((c: any) => ({ id: String(c.KHACH_HANG_ID), registeredAt: toDate(c.NGAY_DANG_KY || c.NGAY_TAO) })),
+    customers: customerRows,
+    customersById: new Map(customerRows.map((c) => [c.id, c])),
     products: new Map(products.map((p: any) => [String(p.SAN_PHAM_ID), p])),
     loadedAt: new Date(),
   };

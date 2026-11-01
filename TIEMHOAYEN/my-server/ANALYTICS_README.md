@@ -1,6 +1,16 @@
 # Dashboard · Báo cáo · Thông báo Admin (AD02–AD07, AD09, AD60)
 
-Phụ trách: Thế Vinh, Giai đoạn code 1. Trang Admin **Tổng quan** (`/dashboard`) gom mọi phần trên **một trang**, dùng **một bộ lọc thời gian chung**.
+Phụ trách: Thế Vinh, Giai đoạn code 1. Tham khảo cách tổ chức của Haravan (Tổng quan · Bảng phân tích · Danh sách báo cáo).
+
+## 0. Ba trang — mỗi trang một mục đích, không trùng chức năng
+
+| Trang (sidebar) | Route | Phục vụ | Nội dung | Đi tiếp |
+|---|---|---|---|---|
+| **Tổng quan** | `/dashboard` | Việc hằng ngày (mặc định **hôm nay**) | Kết quả kinh doanh (doanh thu thuần, tiền đã thu, đơn mới, tiền cọc), cần xử lý ngay, tình trạng đơn, lịch giao hoa, thông báo, đơn cần chú ý, cảnh báo NVL, bán chạy | Mỗi thẻ KPI → khối tương ứng ở Bảng phân tích hoặc báo cáo chi tiết |
+| ▸ **Bảng phân tích** | `/dashboard/analytics` | Quyết định kinh doanh (mặc định 30 ngày) | 5 khối: xu hướng doanh thu · sản phẩm theo dịp tặng · khách hàng · chi phí · hiệu quả vận hành (biểu đồ, so sánh kỳ) | Mỗi khối có link "Báo cáo chi tiết" → Danh sách báo cáo |
+| ▸ **Danh sách báo cáo** | `/dashboard/reports`, `/dashboard/reports/:key` | Tra cứu & đối soát | 19 báo cáo (Bán hàng, Sản phẩm, Khách hàng, Tài chính, Vận hành, Kho, Đối soát): tìm, lọc danh mục, yêu thích, xem gần đây; trong báo cáo: lọc ngày / trạng thái / độ hạt, tìm, sắp xếp, phân trang, dòng tổng, biểu đồ, xuất Excel / CSV / PDF | Nút "Xem xu hướng" quay lại khối phân tích tương ứng |
+
+Khoảng ngày được mang theo qua query `?from=&to=&compare=` khi chuyển trang. "Chi phí" chỉ dùng dữ liệu có sẵn: giá vốn NVL (phiếu xuất / định mức BOM), hao hụt – hủy – kiểm kê NVL, giảm giá trên đơn, tiền đã thu của đơn đã hoàn, tiền nhập NVL. Chưa có chi phí vận hành (mặt bằng, lương…).
 
 ## 1. Chạy lần đầu
 
@@ -31,6 +41,9 @@ Biến môi trường (tùy chọn, có giá trị mặc định):
 | GET | `/dashboard/dictionary` | dashboard.view | D05/D07 |
 | GET | `/reports/analytics?preset=&groupBy=day\|week\|month\|quarter\|year` | dashboard.view | AD04, AD60 |
 | GET | `/reports/reconciliation` | dashboard.view | Đối chiếu đơn–tiền–kho |
+| GET | `/dashboard/analysis?preset=custom&from=&to=&compare=&groupBy=` | dashboard.view | Bảng phân tích (5 khối) |
+| GET | `/reports/catalog` | dashboard.view | Danh mục báo cáo |
+| GET | `/reports/run/:key?from=&to=&status=&groupBy=` | dashboard.view | Chạy 1 báo cáo → `columns`, `rows`, `totals`, `chart` |
 | GET | `/notifications?group=&unread=` | lọc theo quyền từng module | AD09 |
 | POST | `/notifications/:id/read`, `/notifications/read-all` | theo `x-admin-id` | AD09 |
 
@@ -61,9 +74,9 @@ Ví dụ: đơn 1.000.000đ đã cọc 300.000đ nhưng chưa giao thì K05 = 30
 
 ## 4. D06: Báo cáo và xuất file
 
-- **Tab báo cáo:** theo thời gian, theo sản phẩm, theo chủ đề/kiểu dáng, theo phương thức thanh toán, lý do hủy, lợi nhuận gộp.
-- **Xuất Excel:** 11 sheet (KPI, các tab báo cáo, đơn cần chú ý, lịch giao, đối chiếu).
-- **Xuất CSV:** bảng của tab đang mở, có UTF-8 BOM.
+- **Danh mục 19 báo cáo** (`services/analytics/report-catalog.service.ts`): doanh thu theo thời gian, chi tiết đơn hàng, theo sản phẩm, theo dịp tặng, theo kiểu dáng, theo khách hàng, khách đăng ký mới, đánh giá, kết quả hoạt động kinh doanh, dòng tiền theo ngày giao dịch, tiền đã thu theo phương thức, tiền cọc đang giữ, lịch giao, đơn hủy & lý do, trả/hoàn, xuất dùng & hao hụt NVL, nhập NVL theo NCC, NVL hết/sắp hết, đối chiếu đơn–tiền–kho.
+- **Thêm báo cáo mới:** thêm 1 phần tử vào mảng `REPORTS` (key, tên, danh mục, mô tả, hàm `run` trả `columns` + `rows`) — giao diện tự có tìm kiếm, sắp xếp, xuất file.
+- **Xuất Excel / CSV:** đúng các hàng đang lọc + dòng tổng; Excel có dòng tiêu đề ghi khoảng ngày và bộ lọc. CSV có UTF-8 BOM.
 - **PDF:** dùng hộp thoại In của trình duyệt, chọn "Lưu dưới dạng PDF" (khổ A4 ngang, đã ẩn sidebar). Cách này giữ đúng font tiếng Việt.
 
 ## 5. D07: Thông báo Admin

@@ -268,6 +268,9 @@ export const getDashboardOverview = async (query: any) => {
     kpis,
     dataQuality: { estimatedCompletionDates: cur.estimatedCompletionDates },
     // Kỳ đang xem trống → FE gợi ý nhảy tới thời điểm có đơn gần nhất
+    // Tình trạng đơn tạo trong kỳ (biểu đồ tròn ở trang Tổng quan)
+    statusBreakdown: [...ds.orders.filter((o) => inRange(o.createdAt, range)).reduce((m, o) => m.set(o.status, (m.get(o.status) || 0) + 1), new Map<string, number>()).entries()]
+      .map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count),
     latestOrderAt: ds.orders.reduce<Date | null>((m, o) => (o.createdAt && (!m || o.createdAt > m) ? o.createdAt : m), null),
     series: computeSeries(ds, range, prev, autoBucket(range)),
     needAction: await computeNeedAction(ds, salesRequests),

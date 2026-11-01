@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
 
 import { Dashboard } from './dashboard';
+import * as F from './shared/format';
 
 describe('Dashboard', () => {
   let component: Dashboard;
@@ -26,8 +27,7 @@ describe('Dashboard', () => {
   });
 
   it('phân biệt chiều tốt/xấu của KPI tỷ lệ', () => {
-    const base = { code: '', label: '', unit: '%', snapshot: false, formula: '', dateField: '', notes: '', value: 5, previous: 8 };
-    expect(component.changeClass({ ...base, key: 'cancelRate', change: -3 })).toBe('up');
-    expect(component.changeClass({ ...base, key: 'newOrders', unit: 'đơn', change: -3 })).toBe('down');
+    expect(F.changeClass('cancelRate', -3)).toBe('up');
+    expect(F.changeClass('newOrders', -3)).toBe('down');
   });
 });

@@ -15,6 +15,9 @@ router.get('/dashboard/deliveries', view, c.getDeliveries);
 router.get('/dashboard/dictionary', view, c.getDictionary);
 router.get('/reports/analytics', view, c.getReport);
 router.get('/reports/reconciliation', view, c.getReconcile);
+router.get('/dashboard/analysis', view, c.getAnalysisPage);
+router.get('/reports/catalog', view, c.getCatalog);
+router.get('/reports/run/:key', view, c.getReportRun);
 
 // Thông báo: mọi nhân viên đăng nhập đều xem được (đã lọc theo quyền từng module bên trong)
 router.get('/notifications', c.getNotifications);

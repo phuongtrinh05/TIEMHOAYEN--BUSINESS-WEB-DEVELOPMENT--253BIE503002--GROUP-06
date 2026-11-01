@@ -58,8 +58,8 @@ const buildCostModel = async () => {
   return { productStandard, actualByOrder };
 };
 
-const getCostModel = (fresh = false) => swr('costModel', { ttlMs: CACHE_TTL.heavyMs, maxStaleMs: CACHE_TTL.heavyMaxStaleMs, fresh }, buildCostModel);
-const getTopics = () =>
+export const getCostModel = (fresh = false) => swr('costModel', { ttlMs: CACHE_TTL.heavyMs, maxStaleMs: CACHE_TTL.heavyMaxStaleMs, fresh }, buildCostModel);
+export const getTopics = () =>
   swr('topics', { ttlMs: CACHE_TTL.heavyMs * 5, maxStaleMs: CACHE_TTL.heavyMaxStaleMs * 6 }, async () => (await getCollection<any>('CHU_DE')).find({}).toArray().catch(() => [] as any[]));
 
 /** Làm nóng các cache phụ (gọi ngầm sau mỗi lượt quét thông báo) → lần mở Dashboard kế tiếp không phải chờ DB. */
@@ -67,7 +67,8 @@ export const warmAnalyticsCaches = () =>
   Promise.allSettled([getCostModel(), getTopics(), getSalesRequestCount(), getProductImages()]);
 
 /** Giá vốn từng dòng đơn đã hoàn thành. */
-const costLines = (ds: Dataset, orderIds: string[], model: Awaited<ReturnType<typeof buildCostModel>>) => {
+export type CostModel = Awaited<ReturnType<typeof buildCostModel>>;
+export const costLines = (ds: Dataset, orderIds: string[], model: CostModel) => {
   const out: { orderId: string; productId: string; quantity: number; revenue: number; cost: number | null; method: 'Thực tế (phiếu xuất)' | 'Định mức BOM' | 'Chưa đủ dữ liệu'; note: string }[] = [];
   orderIds.forEach((orderId) => {
     const lines = ds.detailsByOrder.get(orderId) || [];

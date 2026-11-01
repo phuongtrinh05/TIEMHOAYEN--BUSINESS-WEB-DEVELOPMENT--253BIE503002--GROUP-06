@@ -34,7 +34,10 @@ export class AdminHeader implements OnInit, OnDestroy {
   private productCountLoaded = false;
 
   private readonly routeTitles: Array<{ match: string; title: string; exact?: boolean }> = [
-    { match: '/dashboard', title: 'Dashboard', exact: true },
+    { match: '/dashboard/analytics', title: 'Bảng phân tích' },
+    { match: '/dashboard/reports/', title: 'Chi tiết báo cáo' },
+    { match: '/dashboard/reports', title: 'Danh sách báo cáo' },
+    { match: '/dashboard', title: 'Tổng quan', exact: true },
     { match: '/orders/requests', title: 'Yêu cầu đặt hàng' },
     { match: '/orders/order-list', title: 'Đơn hàng' },
     { match: '/orders/create-order', title: 'Tạo đơn hàng' },

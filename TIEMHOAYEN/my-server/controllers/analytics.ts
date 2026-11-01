@@ -5,6 +5,8 @@ import { listAdminNotifications, markAdminNotificationsRead, NOTIFICATION_EVENT_
 import { ANALYTICS_CONFIG, ATTENTION_RULES, KPI_DICTIONARY } from '../services/analytics/constants.js';
 import { getDataset } from '../services/analytics/dataset.js';
 import { resolveRange } from '../services/analytics/period.js';
+import { getAnalysis } from '../services/analytics/analysis.service.js';
+import { getReportCatalog, runReport } from '../services/analytics/report-catalog.service.js';
 
 const handle = (fn: (req: Request) => Promise<unknown>) => async (req: Request, res: Response) => {
   try {
@@ -47,3 +49,10 @@ export const getNotifications = handle((req) => listAdminNotifications(staffOf(r
 export const readNotification = handle((req) => markAdminNotificationsRead(staffOf(req).id, [String(req.params.id)]));
 export const readAllNotifications = handle((req) => markAdminNotificationsRead(staffOf(req).id, 'all', req.body?.group || undefined));
 export const syncNotifications = handle(() => syncAdminNotifications(true));
+
+/** Trang Bảng phân tích — xu hướng, dịp tặng, khách hàng, chi phí, vận hành. */
+export const getAnalysisPage = handle((req) => getAnalysis(req.query));
+
+/** Trang Danh sách báo cáo — danh mục + chạy 1 báo cáo. */
+export const getCatalog = handle(async () => getReportCatalog());
+export const getReportRun = handle((req) => runReport(String(req.params.key), req.query));
