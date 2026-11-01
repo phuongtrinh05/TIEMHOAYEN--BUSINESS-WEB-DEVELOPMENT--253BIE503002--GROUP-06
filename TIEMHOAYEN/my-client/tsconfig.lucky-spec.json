@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.spec.json","include":["src/**/*.d.ts","src/app/components/lucky-order-spin/lucky-order-spin.spec.ts"]}
