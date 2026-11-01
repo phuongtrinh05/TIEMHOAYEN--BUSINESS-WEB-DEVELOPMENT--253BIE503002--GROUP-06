@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.spec.json",
+  "include": ["src/**/*.d.ts", "src/app/pages/design3d/design3d.spec.ts"]
+}

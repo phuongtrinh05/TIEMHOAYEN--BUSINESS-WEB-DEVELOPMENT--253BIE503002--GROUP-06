@@ -1,3 +1,4 @@
+import {getDesign,isDesignProduct} from '../services/design3d.service.js';
 import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
 
@@ -75,7 +76,15 @@ const buildCartItems = async (cartId: string) => {
     }
   }
 
-  return products
+  const designItems=[];
+  for(const detail of details.filter(d=>isDesignProduct(String(d.SAN_PHAM_ID)))) {
+    const design=await getDesign(detail.SAN_PHAM_ID);
+    const quantity=Number(detail.SO_LUONG || 1);
+    const short=design.materials.some((l:any)=>l.quantity*quantity>l.available);
+    designItems.push({SAN_PHAM_ID:detail.SAN_PHAM_ID,THIET_KE_3D_ID:design.designId,TEN_SAN_PHAM:design.name,GIA:design.price,SO_LUONG:quantity,
+      KIEU_DANG:'Thiết kế 3D',HINH_ANH:design.image,SO_LUONG_TON:null,CAN_SHOP_DUYET:design.requiresReview || short,BADGES:[...design.badges,...(short?['Số bó vượt NVL khả dụng']:[])]});
+  }
+  return [...designItems,...products
     .map((product) => {
       const detail = detailMap.get(product.SAN_PHAM_ID);
       const topic = topicMap.get(product.CHU_DE_ID);
@@ -93,7 +102,7 @@ const buildCartItems = async (cartId: string) => {
         HINH_ANH: image?.URL || null,
       };
     })
-    .sort((left, right) => String(left.TEN_SAN_PHAM || '').localeCompare(String(right.TEN_SAN_PHAM || ''), 'vi'));
+    ].sort((left, right) => String(left.TEN_SAN_PHAM || '').localeCompare(String(right.TEN_SAN_PHAM || ''), 'vi'));
 };
 
 export const getCartByCustomer = async (req: Request, res: Response) => {
@@ -131,16 +140,18 @@ export const addCartItem = async (req: Request, res: Response) => {
     const productCollection = await getCollection<any>('SAN_PHAM');
     const product = await productCollection.findOne({ SAN_PHAM_ID: productId }, { projection: { SAN_PHAM_ID: 1 } });
 
-    if (!product) {
+    if(isDesignProduct(productId)) await getDesign(productId);
+    else if (!product) {
       return res.status(404).json({ message: 'Không tìm thấy sản phẩm.' });
     }
+    if(!Number.isSafeInteger(quantity)||quantity<1||quantity>1000)return res.status(400).json({message:'Số bó phải là số nguyên từ 1–1000.'});
 
     const cartId = await getOrCreateCart(customerId);
     const detailCollection = await getCollection<any>('GIO_HANG_CHI_TIET');
     await detailCollection.updateOne(
       { GIO_HANG_ID: cartId, SAN_PHAM_ID: productId },
       {
-        $setOnInsert: { _id: { GIO_HANG_ID: cartId, SAN_PHAM_ID: productId } },
+        $setOnInsert: { _id: { GIO_HANG_ID: cartId, SAN_PHAM_ID: productId }, ...(isDesignProduct(productId)?{THIET_KE_3D_ID:productId.slice(5)}:{}) },
         $inc: { SO_LUONG: quantity },
       },
       { upsert: true },
