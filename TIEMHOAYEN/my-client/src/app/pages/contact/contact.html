@@ -22,13 +22,13 @@
                 <input
                     type="text"
                     placeholder="Nhập Họ và Tên"
-                    [(ngModel)]="fullName">
+                    [(ngModel)]="fullName" maxlength="100"><small class="field-error" *ngIf="fieldErrors['name']">{{fieldErrors['name']}}</small>
 
                 <label>Số điện thoại / Email</label>
                 <input
                     type="text"
                     placeholder="Nhập số điện thoại hoặc email"
-                    [(ngModel)]="phone">
+                    [(ngModel)]="phone" maxlength="200"><small class="field-error" *ngIf="fieldErrors['phone']">{{fieldErrors['phone']}}</small>
 
                 <label>Chủ đề</label>
                 <div class="custom-select">
@@ -64,11 +64,12 @@
                     }
                 </div>
 
+                <small class="field-error" *ngIf="fieldErrors['subject']">{{fieldErrors['subject']}}</small>
                 <label>Nội dung</label>
                 <textarea
                     rows="8"
                     placeholder="Nhập nội dung tin nhắn của bạn..."
-                    [(ngModel)]="message"></textarea>
+                    [(ngModel)]="message" maxlength="2000"></textarea><small class="field-error" *ngIf="fieldErrors['message']">{{fieldErrors['message']}}</small>
 
                 <button
                     type="button"
@@ -76,7 +77,7 @@
                     [disabled]="isSending"
                     (click)="sendContact()">
                     <i class="bi" [ngClass]="isSending ? 'bi-hourglass-split' : 'bi-send'"></i>
-                    {{ isSending ? 'Đang gửi...' : 'Gửi' }}
+                    {{ isSending ? 'Đang gửi…' : 'Gửi yêu cầu hỗ trợ' }}
                 </button>
 
                 <p
@@ -99,18 +100,14 @@
                 <div class="info-item">
                     <i class="bi bi-telephone"></i>
                     <div>
-                        Hotline:
-                        <br>
-                        0909 477 488
+                        <a href="tel:0909477488">0909 477 488</a>
                     </div>
                 </div>
 
                 <div class="info-item">
                     <i class="bi bi-envelope"></i>
                     <div>
-                        Email:
-                        <br>
-                        tiemhoayen@gmail.com
+                        <a href="mailto:tiemhoayen@gmail.com">tiemhoayen@gmail.com</a>
                     </div>
                 </div>
 

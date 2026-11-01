@@ -10,6 +10,8 @@ interface SidebarItem {
   route: string;
   module: string;
   exact?: boolean;
+  /** Mục con (vd. Tổng quan ▸ Bảng phân tích, Danh sách báo cáo) */
+  children?: SidebarItem[];
 }
 
 @Component({
@@ -32,7 +34,13 @@ export class AdminSidebar implements OnInit, OnDestroy {
   }
 
   mainMenuItems: SidebarItem[] = [
-    { label: 'Dashboard', icon: 'bi-house', route: '/dashboard', module: 'dashboard', exact: true },
+    {
+      label: 'Tổng quan', icon: 'bi-house', route: '/dashboard', module: 'dashboard', exact: true,
+      children: [
+        { label: 'Bảng phân tích', icon: 'bi-bar-chart-line', route: '/dashboard/analytics', module: 'dashboard' },
+        { label: 'Danh sách báo cáo', icon: 'bi-journal-text', route: '/dashboard/reports', module: 'dashboard' },
+      ],
+    },
     { label: 'Đơn hàng', icon: 'bi-cart', route: '/orders/order-list', module: 'orders' },
     { label: 'Yêu cầu đặt hàng', icon: 'bi-inbox', route: '/orders/requests', module: 'orders' },
     { label: 'Thanh toán', icon: 'bi-credit-card', route: '/transactions', module: 'payments' },
@@ -91,7 +99,8 @@ export class AdminSidebar implements OnInit, OnDestroy {
   }
 
   isItemActive(item: SidebarItem): boolean {
-    if (item.exact) return this.router.url === item.route;
+    const path = this.router.url.split('?')[0].split('#')[0];
+    if (item.exact) return path === item.route;
     if (item.module === 'products') return this.router.url.startsWith('/products');
     return this.router.url.startsWith(item.route);
   }

@@ -1,6 +1,8 @@
 import luckyWheelRoutes from './routes/lucky-wheel.js';
 import {startLuckyJobs} from './services/lucky-wheel-jobs.js';
 import design3dRoutes from './routes/design3d.js';
+import contentRoutes from './routes/content.js';
+import { startContentJobs } from './services/content.service.js';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { connectMongo } from './mongo.js';
@@ -55,6 +57,8 @@ import supportRoutes from './routes/support.js';
 import adminRoutes from './routes/admin.js';
 import rolePermissionRoutes from './routes/rolePermission.js';
 import inventoryRoutes from './routes/inventory.js';
+import analyticsRoutes from './routes/analytics.js';
+import { ensureNotificationIndexes, startNotificationJobs } from './services/analytics/notifications.service.js';
 import { getProductAvailability } from './controllers/inventory.js';
 import { ensureInventoryIndexes, startInventoryJobs } from './services/inventory/setup.js';
 
@@ -83,6 +87,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '8mb' }));
 app.use('/api/support', supportRoutes);
+app.use('/api/content', contentRoutes);
 app.use('/uploads', express.static('uploads'));
 
 app.use('/api/customers', customerRoutes);
@@ -149,6 +154,7 @@ app.use('/api/styles', styleRoutes);
 app.use('/api/category-products', categoryProductRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/admin', inventoryRoutes);
+app.use('/api/admin', analyticsRoutes);
 app.use('/api/admin', rolePermissionRoutes);
 app.use('/api/admin', adminRoutes);
 
@@ -169,8 +175,12 @@ const PORT = Number(process.env.PORT ?? 3000);
     await ensureSalesRequestIndexes();
     await (await import('./services/order-access.service.js')).ensureOrderAccessIndexes();
     await (await import('./services/support.service.js')).ensureSupportIndexes();
+    await (await import('./mongo.js')).getCollection('NOI_DUNG_WEBSITE').then(c=>c.createIndex({MA_NOI_DUNG:1},{unique:true}));
+    startContentJobs();
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startInventoryJobs();
     startLuckyJobs();
+    if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureNotificationIndexes();
+    if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startNotificationJobs();
 
     app.listen(PORT, () => {
       console.log(`\nServer: http://localhost:${PORT}`);

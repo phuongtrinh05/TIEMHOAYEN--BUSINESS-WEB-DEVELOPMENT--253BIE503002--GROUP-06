@@ -1,6 +1,9 @@
+import {HttpClient} from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, ChangeDetectorRef, ViewEncapsulation } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink, Router } from '@angular/router';
+import { FormsModule } from '@angular/forms';
+import { apiBaseUrl } from '../../services/api-config';
 import { BlogService, Blog } from '../../services/blog.service';
 
 interface BlogPost {
@@ -13,7 +16,7 @@ interface BlogPost {
 @Component({
   selector: 'app-blog-detail',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './blog-detail.html',
   styleUrl: './blog-detail.css',
   encapsulation: ViewEncapsulation.None
@@ -27,6 +30,11 @@ export class BlogDetailComponent implements OnInit {
     content: string;
   } | null = null;
 
+  author = ''; category = ''; search = ''; categories:string[]=[];
+  returnFilters: any = {};
+  image(url: string) { return url?.startsWith('/') ? apiBaseUrl().replace(/\/api$/, '')+url : url || 'assets/images/blog.png'; }
+  fallback(e: Event) { const img=e.target as HTMLImageElement; if(!img.src.endsWith('/assets/images/blog.png'))img.src='assets/images/blog.png'; }
+  find() { this.router.navigate(['/blog'],{queryParams:{keyword:this.search,category:this.category||null,page:1}}); }
   latestPosts: BlogPost[] = [];
   loading = true;
   copyLabel = 'Copy link';
@@ -36,11 +44,14 @@ export class BlogDetailComponent implements OnInit {
 
   constructor(
     private route: ActivatedRoute,
+    private router: Router,
+    private http:HttpClient,
     private blogService: BlogService,
     private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
+    this.http.get<string[]>(apiBaseUrl()+'/blogs/categories').subscribe({next:r=>{this.categories=r;this.cdr.markForCheck();}});
     this.route.paramMap.subscribe((params) => {
       this.scrollToTopInstant();
 
@@ -67,11 +78,12 @@ export class BlogDetailComponent implements OnInit {
 
     this.blogService.getById(id).subscribe({
       next: (data: Blog) => {
+        this.author=data.TEN_NHAN_VIEN||'Tiệm Hoa Yên'; this.category=data.DANH_MUC_BLOG;
         this.post = {
           id: data.BAI_VIET_ID,
           title: data.TIEU_DE,
           date: this.formatDate(data.NGAY_DANG),
-          image: data.ANH_BIA,
+          image: this.image(data.ANH_BIA),
           content: data.NOI_DUNG
         };
 
@@ -90,19 +102,16 @@ export class BlogDetailComponent implements OnInit {
   }
 
   private loadLatestPosts(currentId: string): void {
-    this.blogService.getAll().subscribe({
+    this.blogService.getRelated(currentId).subscribe({
       next: (data: Blog[]) => {
         this.latestPosts = data
           .filter((item: Blog) => item.BAI_VIET_ID !== currentId)
-          .sort((a: Blog, b: Blog) => {
-            return new Date(b.NGAY_DANG).getTime() - new Date(a.NGAY_DANG).getTime();
-          })
           .slice(0, 4)
           .map((item: Blog) => ({
             id: item.BAI_VIET_ID,
             title: item.TIEU_DE,
             date: this.formatDate(item.NGAY_DANG),
-            image: item.ANH_BIA
+            image: this.image(item.ANH_BIA)
           }));
 
         this.cdr.detectChanges();

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId } from '../mongo.js';
+import { invalidateAnalyticsCache } from '../services/analytics/cache.js';
 
 interface ReviewableOrderRow {
   DON_HANG_ID: string;
@@ -405,6 +406,12 @@ export const createReview = async (req: Request, res: Response) => {
         { DON_HANG_ID: normalizedOrderId },
         { $set: { TRANG_THAI: 'Hoàn thành' } },
       );
+      // Ghi ngày hoàn thành cho Dashboard (chỉ lần đầu)
+      await orderCollection.updateOne(
+        { DON_HANG_ID: normalizedOrderId, $or: [{ NGAY_HOAN_THANH: { $exists: false } }, { NGAY_HOAN_THANH: null }] },
+        { $set: { NGAY_HOAN_THANH: new Date() } },
+      );
+      invalidateAnalyticsCache();
     }
 
     return res.status(201).json({

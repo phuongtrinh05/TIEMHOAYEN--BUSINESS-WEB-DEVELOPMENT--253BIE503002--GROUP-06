@@ -1,14 +1,14 @@
-<section class="blog-detail-page">
+<section class="blog-detail-page"><form class="detail-search" (ngSubmit)="find()"><label for="detail-blog-search">Tìm bài viết</label><input id="detail-blog-search" [(ngModel)]="search" name="search" maxlength="150" placeholder="Nhập từ khóa"><select [(ngModel)]="category" name="category" aria-label="Chủ đề bài viết"><option value="">Tất cả chủ đề</option>@for(c of categories;track c){<option>{{c}}</option>}</select><button type="submit">Tìm kiếm →</button></form>
     <main class="detail-layout" *ngIf="post">
-        <article class="detail-main">
+        <article class="detail-main"><a class="back-link" routerLink="/blog" [queryParams]="returnFilters">← Quay lại Blog</a>
             <h1>{{ post.title }}</h1>
 
             <p class="detail-date">
-                Ngày đăng tải: {{ post.date }}
+                {{ post.date }} · {{ author }} · {{ category }}
             </p>
 
             <img
-                class="detail-hero-img"
+                class="detail-hero-img" (error)="fallback($event)"
                 [src]="post.image"
                 [alt]="post.title"
             >
@@ -18,14 +18,14 @@
 
         <aside class="detail-sidebar">
             <section class="sidebar-box">
-                <h2>Bài mới nhất</h2>
+                <h2>Bài viết liên quan</h2>
 
                 <a                
                     class="latest-item"
                     *ngFor="let item of latestPosts"
                     [routerLink]="['/blog-detail', item.id]"
                 >
-                    <img [src]="item.image" [alt]="item.title">
+                    <img (error)="fallback($event)" [src]="item.image" [alt]="item.title">
 
                     <div>
                         <h4>{{ item.title }}</h4>
@@ -49,12 +49,12 @@
 
                 <div class="copy-link-wrap">
                     <button
-                        class="copy-btn"
+                        class="copy-btn" aria-label="Sao chép liên kết" title="Sao chép liên kết"
                         type="button"
                         [class.is-copied]="copyStatus === 'success'"
                         [class.is-error]="copyStatus === 'error'"
                         (click)="copyCurrentLink()">
-                        {{ copyLabel }}
+                        <i class="bi bi-link-45deg" aria-hidden="true"></i>
                     </button>
 
                     <span class="copy-status" *ngIf="copyStatusMessage">
@@ -66,6 +66,6 @@
     </main>
 
     <p *ngIf="!post && !loading" style="text-align:center; padding: 60px 0;">
-        Không tìm thấy bài viết.
+        Bài viết không khả dụng. <a routerLink="/blog">Quay lại Blog</a>
     </p>
 </section>

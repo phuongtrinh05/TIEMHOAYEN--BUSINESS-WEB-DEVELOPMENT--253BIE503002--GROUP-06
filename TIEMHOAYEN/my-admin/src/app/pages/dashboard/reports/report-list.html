@@ -1,0 +1,100 @@
+<div class="db-page">
+  <header class="db-head">
+    <div class="db-title">
+      <h1>Danh sách báo cáo</h1>
+      <p class="db-range muted">Tra cứu & đối soát: mỗi báo cáo có bộ lọc ngày, tìm kiếm, sắp xếp và xuất Excel / CSV / PDF.</p>
+    </div>
+    <div class="db-actions no-print">
+      <app-export-menu [disabled]="!catalog()" [busy]="exporting()" excelHint="mỗi báo cáo 1 sheet" csvHint="gộp 1 file" (export)="onExport($event)"></app-export-menu>
+    </div>
+  </header>
+
+  <section class="card range-card no-print">
+    <app-range-filter [value]="range()" [showCompare]="false" (changed)="onRange($event)"></app-range-filter>
+    <p class="muted small">Khoảng ngày này được dùng khi mở từng báo cáo và khi xuất file. Xuất file sẽ gộp <b>{{ filtered().length }}</b> báo cáo đang hiển thị trong bảng bên dưới (lọc theo danh mục / tìm kiếm / yêu thích).</p>
+  </section>
+  @if (exportError()) {<div class="alert-box no-print"><i class="bi bi-exclamation-triangle"></i><span>{{ exportError() }}</span></div>}
+
+  @if (error()) {
+    <div class="alert-box">
+      <i class="bi bi-exclamation-triangle"></i><span>{{ error() }}</span>
+      <button class="btn-ghost sm" (click)="useLocalBackend()">Dùng backend local</button>
+    </div>
+  }
+
+  @if (catalog(); as c) {
+    <h2 class="list-title">Báo cáo phổ biến</h2>
+    <div class="popular-grid">
+      @for (r of popular(); track r.key) {
+        <a class="pop-card" [routerLink]="['/dashboard/reports', r.key]" [queryParams]="rangeParams()">
+          <span class="pop-icon"><i class="bi" [class]="r.icon"></i></span>
+          <div class="pop-body">
+            <span class="cat-tag" [class]="categoryClass(r.category)">{{ r.category }}</span>
+            <b>{{ r.name }}</b>
+          </div>
+          <button class="star" [class.on]="isFav(r)" (click)="toggleFavorite(r, $event)" [attr.aria-label]="isFav(r) ? 'Bỏ yêu thích' : 'Yêu thích'">
+            <i class="bi" [class.bi-star-fill]="isFav(r)" [class.bi-star]="!isFav(r)"></i>
+          </button>
+        </a>
+      }
+    </div>
+
+    @if (recent().length) {
+      <div class="recent">
+        <span class="muted small"><i class="bi bi-clock-history"></i> Xem gần đây:</span>
+        @for (r of recent(); track r.key) {
+          <a class="recent-chip" [routerLink]="['/dashboard/reports', r.key]" [queryParams]="rangeParams()">{{ r.name }}</a>
+        }
+      </div>
+    }
+
+    <h2 class="list-title">Tất cả báo cáo <span class="muted small">({{ c.reports.length }})</span></h2>
+    <section class="card">
+      <div class="search-box">
+        <i class="bi bi-search"></i>
+        <input type="search" placeholder="Nhập tên báo cáo bạn muốn tìm…" [ngModel]="q()" (ngModelChange)="q.set($event)" />
+      </div>
+      <div class="chip-row">
+        <button class="chip" [class.active]="onlyFavorites()" (click)="onlyFavorites.set(!onlyFavorites())"><i class="bi bi-star"></i> Yêu thích ({{ favorites().length }})</button>
+        <button class="chip" [class.active]="!category()" (click)="category.set('')">Tất cả</button>
+        @for (cat of c.categories; track cat) {
+          <button class="chip" [class.active]="category() === cat" (click)="category.set(category() === cat ? '' : cat)">{{ cat }} <span class="muted">{{ countBy()[cat] || 0 }}</span></button>
+        }
+      </div>
+      <!-- Khung bảng cố định chiều cao: đổi danh mục không làm trang nhảy lên đầu -->
+      <div class="table-wrap list-scroll">
+        <table class="tbl report-table">
+          <thead>
+            <tr>
+              <th class="w-star"></th>
+              <th class="sortable" (click)="sortKey.set('name')">Báo cáo @if (sortKey() === 'name') {<i class="bi bi-sort-alpha-down"></i>}</th>
+              <th class="sortable" (click)="sortKey.set('category')">Danh mục @if (sortKey() === 'category') {<i class="bi bi-sort-down"></i>}</th>
+              <th>Phạm vi</th>
+              <th class="sortable" (click)="sortKey.set('viewed')">Xem gần nhất @if (sortKey() === 'viewed') {<i class="bi bi-sort-down"></i>}</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of filtered(); track r.key) {
+              <tr>
+                <td class="w-star">
+                  <button class="star" [class.on]="isFav(r)" (click)="toggleFavorite(r)"><i class="bi" [class.bi-star-fill]="isFav(r)" [class.bi-star]="!isFav(r)"></i></button>
+                </td>
+                <td>
+                  <a class="report-name" [routerLink]="['/dashboard/reports', r.key]" [queryParams]="rangeParams()"><i class="bi" [class]="r.icon"></i> {{ r.name }}</a>
+                  <div class="muted small">{{ r.description }}</div>
+                </td>
+                <td><span class="cat-tag" [class]="categoryClass(r.category)">{{ r.category }}</span></td>
+                <td class="small">{{ r.snapshot ? 'Tại thời điểm xem' : 'Theo khoảng ngày' }}</td>
+                <td class="small">{{ viewed()[r.key] ? f.dateTime(viewed()[r.key]) : '—' }}</td>
+              </tr>
+            } @empty {
+              <tr><td colspan="5" class="empty">Không tìm thấy báo cáo phù hợp.</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  } @else if (!error()) {
+    <div class="skeleton"><div></div><div></div><div></div></div>
+  }
+</div>

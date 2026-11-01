@@ -285,3 +285,54 @@
 .store-btn i{
     font-size:20px;
 }
+
+/* Mục con của Tổng quan: Bảng phân tích, Danh sách báo cáo */
+.submenu{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    margin:2px 0 6px;
+}
+
+.submenu-item{
+    display:block;
+    padding:8px 12px 8px 48px;
+    border-radius:8px;
+    font-size:15px;
+    color:#3d3d3d;
+    text-decoration:none;
+    cursor:pointer;
+    position:relative;
+}
+
+.submenu-item::before{
+    content:'';
+    position:absolute;
+    left:30px;
+    top:50%;
+    width:6px;
+    height:6px;
+    border-radius:50%;
+    background:#d6c3b6;
+    transform:translateY(-50%);
+}
+
+.submenu-item:hover{
+    background:#f7efe9;
+    color:#731919;
+}
+
+.submenu-item.active{
+    background:#f4e4dc;
+    color:#731919;
+    font-weight:700;
+}
+
+.submenu-item.active::before{
+    background:#731919;
+}
+
+.submenu-item.disabled{
+    color:#9d9d9d;
+    pointer-events:none;
+}

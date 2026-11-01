@@ -12,6 +12,7 @@ export interface Blog {
   NGAY_DANG: string;
   TRANG_THAI: string;
   LUOT_XEM: number;
+  TEN_NHAN_VIEN?: string;
 }
 
 @Injectable({
@@ -25,6 +26,8 @@ export class BlogService {
   getAll(): Observable<Blog[]> {
     return this.http.get<Blog[]>(this.apiUrl);
   }
+
+  getRelated(id: string): Observable<Blog[]> { return this.http.get<Blog[]>(this.apiUrl+'/'+id+'/related'); }
 
   getById(id: string): Observable<Blog> {
     return this.http.get<Blog>(`${this.apiUrl}/${id}`);

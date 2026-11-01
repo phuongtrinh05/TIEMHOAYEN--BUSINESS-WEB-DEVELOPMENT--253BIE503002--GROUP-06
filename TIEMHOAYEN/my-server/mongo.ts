@@ -17,17 +17,37 @@ if (!mongoDatabase) {
 
 let client: MongoClient | null = null;
 let database: Db | null = null;
+let connecting: Promise<Db> | null = null;
+
+/**
+ * Tùy chọn kết nối giúp đọc nhanh hơn khi DB ở xa (Atlas):
+ * - compressors zlib: nén dữ liệu trả về (có sẵn trong Node, không cần cài thêm) — tắt bằng MONGO_COMPRESSORS=none
+ * - minPoolSize: giữ sẵn vài kết nối TLS, khỏi bắt tay lại cho mỗi truy vấn song song
+ */
+const clientOptions = () => {
+  const compressors = (process.env.MONGO_COMPRESSORS || 'zlib').split(',').map((x) => x.trim()).filter((x) => x && x !== 'none');
+  return {
+    ...(compressors.length ? { compressors: compressors as ('zlib' | 'zstd' | 'snappy' | 'none')[] } : {}),
+    minPoolSize: Number(process.env.MONGO_MIN_POOL_SIZE || 3),
+    maxIdleTimeMS: 10 * 60_000,
+  };
+};
 
 export const connectMongo = async (): Promise<Db> => {
   if (database) {
     return database;
   }
-
-  client = new MongoClient(mongoUri);
-  await client.connect();
-  database = client.db(mongoDatabase);
-  console.log(`Đã kết nối thành công tới MongoDB database ${mongoDatabase}!`);
-  return database;
+  // Nhiều request đến cùng lúc lúc khởi động → chỉ tạo 1 kết nối (trước đây mỗi request tạo 1 MongoClient)
+  if (connecting) return connecting;
+  connecting = (async () => {
+    const c = new MongoClient(mongoUri, clientOptions());
+    await c.connect();
+    client = c;
+    database = c.db(mongoDatabase);
+    console.log(`Đã kết nối thành công tới MongoDB database ${mongoDatabase}!`);
+    return database;
+  })().finally(() => { connecting = null; });
+  return connecting;
 };
 
 export const getDb = async (): Promise<Db> => {

@@ -1,0 +1,170 @@
+<div class="db-page">
+  <nav class="crumbs no-print">
+    <a routerLink="/dashboard/reports" [queryParams]="rangeParams()"><i class="bi bi-journal-text"></i> Danh sách báo cáo</a>
+    <i class="bi bi-chevron-right"></i>
+    <span>{{ report()?.name || '…' }}</span>
+  </nav>
+
+  <header class="db-head">
+    <div class="db-title">
+      <h1 class="rep-title">
+        @if (report(); as r) {<i class="bi" [class]="r.icon"></i>}
+        {{ report()?.name || 'Báo cáo' }}
+        <button class="star big no-print" [class.on]="favorite()" (click)="toggleFavorite()" [title]="favorite() ? 'Bỏ yêu thích' : 'Thêm vào yêu thích'">
+          <i class="bi" [class.bi-star-fill]="favorite()" [class.bi-star]="!favorite()"></i>
+        </button>
+      </h1>
+      @if (report(); as r) {
+        <p class="db-range">
+          <span class="cat-tag">{{ r.category }}</span>
+          {{ r.snapshot ? 'Tại thời điểm xem · ' + f.dateTime(r.generatedAt) : r.range.label }}
+          <span class="muted">· {{ r.description }}</span>
+        </p>
+      }
+    </div>
+    <div class="db-actions no-print">
+      @if (analysisSection(); as sec) {
+        <a class="page-link" routerLink="/dashboard/analytics" [fragment]="sec" [queryParams]="rangeParams()"><i class="bi bi-bar-chart-line"></i> Xem xu hướng</a>
+      }
+      <button class="btn-ghost" (click)="load(true)" [disabled]="loading()" title="Tải lại"><i class="bi bi-arrow-clockwise" [class.spin]="loading()"></i></button>
+      <div class="export">
+        <button class="btn-primary" (click)="exportOpen.set(!exportOpen())" [disabled]="!report()">
+          <i class="bi bi-download"></i> Xuất file <i class="bi bi-chevron-down small"></i>
+        </button>
+        @if (exportOpen()) {
+          <div class="export-menu">
+            <button (click)="exportExcel()"><i class="bi bi-file-earmark-excel"></i> Excel (.xlsx)</button>
+            <button (click)="exportCsv()"><i class="bi bi-filetype-csv"></i> CSV</button>
+            <button (click)="print()"><i class="bi bi-printer"></i> PDF / In</button>
+          </div>
+        }
+      </div>
+    </div>
+  </header>
+
+  <!-- Bộ lọc -->
+  <section class="card filters no-print">
+    @if (!report()?.snapshot) {
+      <app-range-filter [value]="range()" [busy]="loading()" [showCompare]="false" (changed)="onRange($event)"></app-range-filter>
+    } @else {
+      <p class="muted small"><i class="bi bi-info-circle"></i> Báo cáo này lấy số liệu tại thời điểm xem, không theo khoảng ngày.</p>
+    }
+    <div class="filter-line">
+      @if (report()?.filters?.includes('groupBy')) {
+        <div class="seg">
+          @for (g of groupByOptions; track g.key) {
+            <button [class.active]="(groupBy() || report()?.groupBy) === g.key" (click)="setGroupBy(g.key)">{{ g.label }}</button>
+          }
+        </div>
+      }
+      @if (report()?.filters?.includes('status') && report()?.statusOptions?.length) {
+        <label class="select">
+          <span>{{ key() === 'reconciliation' ? 'Mức độ' : 'Trạng thái' }}</span>
+          <select [ngModel]="status()" (ngModelChange)="setStatus($event)">
+            <option value="">Tất cả</option>
+            @for (s of report()?.statusOptions || []; track s) {<option [value]="s">{{ s }}</option>}
+          </select>
+        </label>
+      }
+      <div class="search-box inline">
+        <i class="bi bi-search"></i>
+        <input type="search" placeholder="Tìm trong báo cáo (mã đơn, tên, SĐT…)" [ngModel]="search()" (ngModelChange)="onSearch($event)" />
+      </div>
+    </div>
+  </section>
+
+  @if (error()) {
+    <div class="alert-box no-print">
+      <i class="bi bi-exclamation-triangle"></i><span>{{ error() }}</span>
+      <button class="btn-ghost sm" (click)="useLocalBackend()">Dùng backend local</button>
+    </div>
+  }
+
+  @if (report(); as r) {
+    <!-- Tóm tắt -->
+    <div class="summary-strip">
+      <div class="mini-stat"><b>{{ f.num(rows().length) }}</b><span>dòng{{ search() ? ' khớp tìm kiếm' : '' }}</span></div>
+      @for (c of r.columns; track c.key) {
+        @if (c.sum && (c.type === 'money')) {
+          <div class="mini-stat"><b>{{ f.money(totals()[c.key]) }}</b><span>{{ c.label }}</span></div>
+        }
+      }
+    </div>
+
+    @if (r.note) {<p class="note-box"><i class="bi bi-info-circle"></i> {{ r.note }}</p>}
+
+    @if (chartData(); as cd) {
+      <section class="card chart-card" [class.collapsed]="!showChart()">
+        <div class="card-head">
+          <h3>Biểu đồ</h3>
+          <button class="card-link no-print" (click)="showChart.set(!showChart())">{{ showChart() ? 'Ẩn biểu đồ' : 'Hiện biểu đồ' }}</button>
+        </div>
+        @if (showChart()) {
+          <div class="rep-chart"><canvas baseChart [type]="r.chart!.type" [data]="cd" [options]="chartOptions()"></canvas></div>
+        }
+      </section>
+    }
+
+    <!-- Bảng dữ liệu -->
+    <section class="card table-card">
+      <div class="table-wrap rep-table-wrap" [class.print-all]="printing()">
+        <table class="tbl num rep-table">
+          <thead>
+            <tr>
+              @for (c of r.columns; track c.key) {
+                <th [class.r]="isNumeric(c)" class="sortable" (click)="sortBy(c)">
+                  {{ c.label }}
+                  @if (sortCol() === c.key) {<i class="bi" [class.bi-caret-up-fill]="sortDir() === 1" [class.bi-caret-down-fill]="sortDir() === -1"></i>}
+                </th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of printing() ? rows() : pageRows(); track $index) {
+              <tr [class.click]="!!row['_link']" (click)="open(row)">
+                @for (c of r.columns; track c.key; let first = $first) {
+                  <td [class.r]="isNumeric(c)">
+                    @if (c.type === 'status') {
+                      <span class="tag" [class]="statusClass(row[c.key])">{{ cell(row, c) }}</span>
+                    } @else if (first && row['_link']) {
+                      <a class="row-link">{{ cell(row, c) }}</a>
+                    } @else {
+                      {{ cell(row, c) }}
+                    }
+                  </td>
+                }
+              </tr>
+            } @empty {
+              <tr><td [attr.colspan]="r.columns.length" class="empty">Không có dữ liệu phù hợp bộ lọc.</td></tr>
+            }
+          </tbody>
+          @if (hasTotals() && rows().length) {
+            <tfoot>
+              <tr>
+                @for (c of r.columns; track c.key; let first = $first) {
+                  <td [class.r]="isNumeric(c)">{{ c.sum ? (c.type === 'money' ? f.money(totals()[c.key]) : f.num(totals()[c.key])) : first ? 'Tổng' : '' }}</td>
+                }
+              </tr>
+            </tfoot>
+          }
+        </table>
+      </div>
+      <div class="pager no-print">
+        <span class="muted small">
+          {{ rows().length ? (page() - 1) * pageSize() + 1 : 0 }}–{{ Math.min(page() * pageSize(), rows().length) }} / {{ f.num(rows().length) }} dòng
+          @if (r.truncated) { · chỉ hiển thị 5.000 dòng đầu, thu hẹp khoảng ngày để xem đủ }
+        </span>
+        <div class="pager-ctrl">
+          <select [ngModel]="pageSize()" (ngModelChange)="setPageSize($event)">
+            @for (n of pageSizes; track n) {<option [ngValue]="n">{{ n }} / trang</option>}
+          </select>
+          <button class="btn-ghost sm" [disabled]="page() <= 1" (click)="page.set(page() - 1)"><i class="bi bi-chevron-left"></i></button>
+          <span class="small">Trang {{ page() }} / {{ totalPages() }}</span>
+          <button class="btn-ghost sm" [disabled]="page() >= totalPages()" (click)="page.set(page() + 1)"><i class="bi bi-chevron-right"></i></button>
+        </div>
+      </div>
+    </section>
+  } @else if (loading()) {
+    <div class="skeleton"><div></div><div></div><div></div></div>
+  }
+</div>

@@ -1,5 +1,7 @@
+import {HttpClient} from '@angular/common/http';
+import {apiBaseUrl} from '../../services/api-config';
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, ViewEncapsulation } from '@angular/core';
+import { Component, HostListener, ViewEncapsulation, ChangeDetectorRef } from '@angular/core';
 import { ActivatedRoute, RouterLink, RouterLinkActive } from '@angular/router';
 
 import { OrderPolicyComponent } from './order-policy';
@@ -39,6 +41,11 @@ interface PolicyNavItem {
     encapsulation: ViewEncapsulation.None
 })
 export class PolicyLayoutComponent {
+    remote: any = null;
+    remoteLoading = true;
+    remoteError = false;
+    fileUrl(s:string){return s?.startsWith('/')?apiBaseUrl().replace(/\/api$/,'')+s:s;}
+    private codes:Record<string,string>={order:'chinh-sach-dat-hang',payment:'chinh-sach-thanh-toan',delivery:'chinh-sach-giao-hang',membership:'chinh-sach-thanh-vien',return:'chinh-sach-doi-tra',privacy:'chinh-sach-bao-mat','customer-support':'chinh-sach-cham-soc-khach-hang','registration-terms':'dieu-khoan-dang-ky'};
     currentSlug = 'order';
     isHeaderCompact = false;
 
@@ -85,9 +92,11 @@ export class PolicyLayoutComponent {
         }
     ];
 
-    constructor(private route: ActivatedRoute) {
+    constructor(private route: ActivatedRoute, private http:HttpClient, private cdr:ChangeDetectorRef) {
         this.route.paramMap.subscribe((params) => {
             this.currentSlug = params.get('slug') || 'order';
+            this.remoteLoading=true;this.remote=null;this.remoteError=false;const slug=this.currentSlug;
+            this.http.get(apiBaseUrl()+'/content/website-slot/'+(this.codes[slug]||slug)).subscribe({next:r=>{if(this.currentSlug!==slug)return;this.remote=r;this.remoteLoading=false;this.cdr.markForCheck();},error:()=>{if(this.currentSlug!==slug)return;this.remoteLoading=false;this.remoteError=true;this.cdr.markForCheck();}});
             this.updateHeaderCompactState();
         });
     }
