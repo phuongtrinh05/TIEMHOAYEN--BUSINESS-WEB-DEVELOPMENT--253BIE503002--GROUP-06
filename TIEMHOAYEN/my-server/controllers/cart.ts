@@ -179,7 +179,6 @@ export const addCartItem = async (req: Request, res: Response) => {
     const totalQuantity = Number(existing?.SO_LUONG || 0) + quantity;
     if (totalQuantity > 1000) return res.status(400).json({ message: 'Tổng số lượng trong giỏ không được vượt quá 1000.' });
     const availability = await checkProductAvailability(productId, totalQuantity, null);
-    if (availability.decision === 'unavailable') return res.status(409).json({ message: availability.reasons.join(' '), availability });
     await detailCollection.updateOne(
       lineFilter,
       {
@@ -221,7 +220,6 @@ export const updateCartItem = async (req: Request, res: Response) => {
     }
     if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000) return res.status(400).json({ message: 'Số lượng phải là số nguyên từ 1–1000.' });
     const availability = await checkProductAvailability(productId, quantity, null);
-    if (availability.decision === 'unavailable') return res.status(409).json({ message: availability.reasons.join(' '), availability });
 
     const cartId = await getOrCreateCart(customerId);
     const detailCollection = await getCollection<any>('GIO_HANG_CHI_TIET');

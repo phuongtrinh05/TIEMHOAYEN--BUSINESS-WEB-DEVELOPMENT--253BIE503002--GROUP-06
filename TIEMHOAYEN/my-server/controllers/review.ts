@@ -4,6 +4,7 @@ import { invalidateAnalyticsCache } from '../services/analytics/cache.js';
 import { randomUUID } from 'node:crypto';
 import { lookupAccess } from '../services/order-access.service.js';
 import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
+import { awardCompletedOrderPoints } from '../services/loyalty-policy.service.js';
 
 let reviewStorageReady: Promise<void> | null = null;
 export const ensureReviewStorage = async () => {
@@ -514,14 +515,17 @@ export const createReview = async (req: Request, res: Response) => {
     }
 
     if (isReviewableOrder(order) && !String(order.LY_DO_HOAN_TIEN_TRA_HANG || '').trim()) {
-      await orderCollection.updateOne(
-        { DON_HANG_ID: normalizedOrderId },
-        { $set: { TRANG_THAI: 'Hoàn thành' } },
-      );
-      await orderCollection.updateOne(
-        { DON_HANG_ID: normalizedOrderId, $or: [{ NGAY_HOAN_THANH: { $exists: false } }, { NGAY_HOAN_THANH: null }] },
-        { $set: { NGAY_HOAN_THANH: new Date() } },
-      );
+      await withTransaction(async session => {
+        await awardCompletedOrderPoints(session, order);
+        await orderCollection.updateOne(
+          { DON_HANG_ID: normalizedOrderId },
+          { $set: { TRANG_THAI: 'Hoàn thành' } }, { session },
+        );
+        await orderCollection.updateOne(
+          { DON_HANG_ID: normalizedOrderId, $or: [{ NGAY_HOAN_THANH: { $exists: false } }, { NGAY_HOAN_THANH: null }] },
+          { $set: { NGAY_HOAN_THANH: new Date() } }, { session },
+        );
+      });
       invalidateAnalyticsCache();
     }
 

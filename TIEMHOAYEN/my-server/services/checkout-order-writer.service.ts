@@ -16,7 +16,7 @@ const dateOnly = (value: unknown): Date | null => {
 const bit = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true';
 
 /** Shared persistence for regular checkout and accepted Sales proposals. Caller validates prices and holds stock in this transaction. */
-export async function writeCheckoutOrder(session: ClientSession, orderId: string, payload: any, options: { voucher?: any; loyaltyPoints?: number; requestId?: string; quote?: any } = {}) {
+export async function writeCheckoutOrder(session: ClientSession, orderId: string, payload: any, options: { voucher?: any; loyaltyPoints?: number; loyaltyExpiresAt?: any; requestId?: string; quote?: any } = {}) {
   const { sender, receiver, delivery, summary, payment, flags } = payload;
   if (String(delivery?.message || '').length > 2000 || String(delivery?.noteShop || '').length > 2000) throw new InventoryError(400, 'Nội dung thiệp và ghi chú tối đa 2.000 ký tự.');
   let frozenProductValue=0;
@@ -69,7 +69,8 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
     TEN_NGUOI_NHAN: receiver.name, SDT_NGUOI_NHAN: receiver.phone, DIA_CHI_GIAO_HANG: receiver.address,
     DA_CHINH_SUA_GIAO_HANG: false, LY_DO_HUY: null, NGAY_HUY: null, LY_DO_HOAN_TIEN_TRA_HANG: null,
     NGAY_YEU_CAU_HOAN_TIEN_TRA_HANG: null, DIEM_THUONG_SU_DUNG: options.loyaltyPoints || null,
-    DA_TRU_DIEM_THUONG: false, LY_DO_TU_CHOI: null,
+    DA_TRU_DIEM_THUONG: Number(options.loyaltyPoints || 0) > 0, DA_HOAN_DIEM_THUONG: false,
+    DIEM_HET_HAN_TRUOC_KHI_DUNG: options.loyaltyExpiresAt || null, LY_DO_TU_CHOI: null,
     ...(options.requestId ? { YEU_CAU_DAT_HANG_ID: options.requestId, PHUONG_AN_SNAPSHOT: options.quote } : {}),
   };
   await (await getCollection<any>('DON_HANG')).insertOne(order, { session });

@@ -10,8 +10,14 @@ declare global { namespace Express { interface Request { identity?: Identity } }
 export class AuthError extends Error { constructor(public status: number, message: string) { super(message); } }
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 export const accountKey = (type: AccountType) => type === 'KHACH_HANG' ? 'KHACH_HANG_ID' : 'NHAN_VIEN_ID';
-// Trạng thái trống được coi là hoạt động (dữ liệu cũ của main không có TRANG_THAI).
-export const active = (row: any) => !!row && !row.DA_XOA && ['', 'hoạt động', 'hoat dong'].includes(String(row.TRANG_THAI || '').trim().toLowerCase());
+// Dữ liệu cũ dùng nhiều nhãn trạng thái hoạt động (Hoạt động, Đang hoạt động,
+// Đang làm việc hoặc để trống). Chỉ từ chối các trạng thái vô hiệu đã biết để
+// việc xác thực phiên nhất quán với luồng đăng nhập hiện tại.
+export const active = (row: any) => {
+  if (!row || row.DA_XOA === true || row.DA_XOA === 1) return false;
+  const status = String(row.TRANG_THAI || '').trim().toLowerCase();
+  return !/(chờ xác minh|cho xac minh|bị khóa|bi khoa|khóa|khoa|ngừng|ngung|inactive|vô hiệu|vo hieu|đã xóa|da xoa|nghỉ việc|nghi viec)/i.test(status);
+};
 const collection = (name: string) => getCollection<any>(name);
 export const endpoint = (handler: (req: Request, res: Response) => Promise<any>) => async (req: Request, res: Response) => {
   try { await handler(req, res); } catch (e) {

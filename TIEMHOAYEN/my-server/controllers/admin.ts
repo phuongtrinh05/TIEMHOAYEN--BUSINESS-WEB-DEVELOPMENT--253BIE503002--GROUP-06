@@ -9,6 +9,7 @@ import { invalidateAnalyticsCache } from '../services/analytics/cache.js';
 import { audit } from '../services/auth.service.js';
 import { randomUUID } from 'node:crypto';
 import { derivePromotionStatus, ensureVoucherStorage, normalizeVoucherCode } from '../services/pricing-voucher.service.js';
+import { awardCompletedOrderPoints, restoreOrderPoints } from '../services/loyalty-policy.service.js';
 
 const toDate = (value: unknown): Date | null => {
   if (!value) return null;
@@ -1294,6 +1295,8 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
     if (current?.KIEM_TRA_TON_KHO && status === 'Đã hủy') {
       await releaseReservations({ orderId }, { id: String(req.headers['x-admin-id'] || ''), role: 'Admin' }, 'Admin hủy đơn', session);
     }
+    if (status === 'Đã hủy') await restoreOrderPoints(session, current);
+    if (status === 'Hoàn thành') await awardCompletedOrderPoints(session, current);
     await (await getCollection<any>('DON_HANG')).updateOne(
       { DON_HANG_ID: orderId },
       {

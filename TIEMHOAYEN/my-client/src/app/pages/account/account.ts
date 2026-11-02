@@ -631,6 +631,10 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi load voucher:', err);
+        if (err?.status === 401) {
+          this.router.navigate(['/login']);
+          return;
+        }
       }
     });
   }
@@ -679,7 +683,10 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi load wishlist:', err);
-        alert(err?.error?.message || 'Chưa tải được danh sách yêu thích. Vui lòng thử lại.');
+        if (err?.status === 401) {
+          this.router.navigate(['/login']);
+          return;
+        }
       }
     });
   }
@@ -687,6 +694,11 @@ export class AccountComponent implements OnInit, OnDestroy {
   changeWishlistPage(page: number): void {
     if (page < 1 || page > this.wishlistTotalPages || page === this.wishlistPage) return;
     this.loadCustomerWishlist(page);
+  }
+
+  openWishlistProduct(item: WishlistItem): void {
+    if (!item?.id || item.linkAvailable === false) return;
+    this.router.navigate(['/product-detail', item.id]);
   }
   onAvatarSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -714,6 +726,10 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi upload avatar:', err);
+        if (err?.status === 401) {
+          this.router.navigate(['/login']);
+          return;
+        }
       }
     });
   }
@@ -1302,7 +1318,6 @@ export class AccountComponent implements OnInit, OnDestroy {
 
         error: (err) => {
           console.error(err);
-          alert(err?.error?.message || 'Chưa thể xóa sản phẩm khỏi danh sách yêu thích. Vui lòng thử lại.');
         }
       });
   }

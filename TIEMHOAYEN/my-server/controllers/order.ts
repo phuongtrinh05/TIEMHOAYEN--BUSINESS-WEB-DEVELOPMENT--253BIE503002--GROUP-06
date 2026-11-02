@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { reserveOrderLines } from '../services/order-stock.service.js';
 import { lookupAccess } from '../services/order-access.service.js';
 import { calculateCheckoutQuote, claimVoucherUsage, derivePromotionStatus, type VoucherIdentity } from '../services/pricing-voucher.service.js';
+import { redeemOrderPoints, restoreOrderPoints } from '../services/loyalty-policy.service.js';
 
 interface CreateOrderItem {
   id: string;
@@ -41,8 +42,8 @@ const RETURN_REFUND_REASONS = [
 ];
 
 const PAYMENT_WINDOW_MINUTES = INVENTORY_CONFIG.holdMinutes;
-const REWARD_POINTS_PER_UNIT = 2;
-const REWARD_UNIT_VALUE = 1000;
+const REWARD_POINTS_PER_UNIT = 1;
+const REWARD_UNIT_VALUE = 500;
 
 const normalizeReason = (value: unknown): string => String(value || '').trim();
 
@@ -338,13 +339,6 @@ export const createOrder = async (req: Request, res: Response) => {
     const loyaltyPointsToUse = normalizeRewardPoints(summary?.loyaltyPoints ?? inferredLoyaltyPoints);
     const expectedLoyaltyDiscount = convertRewardPointsToMoney(loyaltyPointsToUse);
 
-    if (loyaltyPointsToUse > 0) {
-      return res.status(409).json({
-        code: 'LOYALTY_POLICY_PENDING_APPROVAL',
-        message: 'Chức năng sử dụng điểm đang tạm khóa cho đến khi chính sách điểm và kết hợp voucher được phê duyệt.',
-      });
-    }
-
     if (loyaltyDiscount !== expectedLoyaltyDiscount) {
       return res.status(400).json({
         message: 'Số điểm thưởng và số tiền giảm từ điểm thưởng không khớp.',
@@ -357,6 +351,7 @@ export const createOrder = async (req: Request, res: Response) => {
       });
     }
 
+    let availableLoyaltyPoints = 0;
     if (loyaltyPointsToUse > 0) {
       const customerCollection = await getCollection<any>('KHACH_HANG');
       const customer = await customerCollection.findOne({ KHACH_HANG_ID: normalizedCustomerId });
@@ -365,9 +360,9 @@ export const createOrder = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Không tìm thấy khách hàng để sử dụng điểm thưởng.' });
       }
 
-      const availablePoints = normalizeRewardPoints(customer.DIEM_TICH_LUY);
-      if (loyaltyPointsToUse > availablePoints) {
-        return res.status(400).json({ message: 'Số điểm thưởng sử dụng vượt quá điểm hiện có.' });
+      availableLoyaltyPoints = normalizeRewardPoints(customer.DIEM_TICH_LUY);
+      if (loyaltyPointsToUse !== availableLoyaltyPoints) {
+        return res.status(409).json({ message: 'Khi sử dụng điểm, cần dùng toàn bộ số điểm hiện có. Vui lòng tải lại trang.' });
       }
     }
 
@@ -380,6 +375,9 @@ export const createOrder = async (req: Request, res: Response) => {
       voucher,
       identity,
     });
+    if (loyaltyPointsToUse > 0 && expectedLoyaltyDiscount > Math.max(0, quote.subtotal - quote.productDiscount)) {
+      return res.status(400).json({ message: 'Giá trị đơn hàng chưa đủ để sử dụng toàn bộ điểm hiện có.' });
+    }
     const authoritativeItems = quote.items.map(item => ({
       id: item.id, lineKey: item.lineKey, variantId: item.variantId, designId: item.designId, configuration: item.configuration,
       qty: item.quantity, price: item.unitPrice, regularPrice: item.regularPrice, lineTotal: item.lineTotal,
@@ -402,6 +400,9 @@ export const createOrder = async (req: Request, res: Response) => {
     const outcome = await routeCheckout(String(req.body.checkoutSessionId || ''), req.body,
       [...reserveQuantities.entries()].map(([productId, quantity]) => ({ productId, quantity })), async (session, orderId, snapshots, inventory) => {
       await claimVoucherUsage(session, quote.voucherResult, orderId);
+      const loyaltyExpiresAt = loyaltyPointsToUse > 0 && normalizedCustomerId
+        ? await redeemOrderPoints(session, normalizedCustomerId, orderId, loyaltyPointsToUse)
+        : null;
       const checkoutItems = authoritativeItems.map(item => ({
         ...item,
         bom: snapshots[item.id],
@@ -412,7 +413,7 @@ export const createOrder = async (req: Request, res: Response) => {
         inventoryMode: inventory.futureNoHold ? 'FUTURE_DEMAND' : undefined,
         items: checkoutItems,
         summary: authoritativeSummary,
-      }, { voucher: quote.voucherResult?.voucher || null, loyaltyPoints: loyaltyPointsToUse });
+      }, { voucher: quote.voucherResult?.voucher || null, loyaltyPoints: loyaltyPointsToUse, loyaltyExpiresAt });
     });
     if (outcome.kind === 'order' && outcome.paymentAmount <= 0) await finalizeSuccessfulPayment(outcome.orderId);
     return res.status(201).json(outcome);
@@ -786,6 +787,7 @@ export const cancelOrder = async (req: Request, res: Response) => {
     const fresh = await orderCollection.findOne({ DON_HANG_ID: orderId }, { session });
     if (fresh?.TRANG_THAI !== 'Chờ xử lý') throw new InventoryError(409, 'Đơn vừa thay đổi trạng thái.');
     if (fresh.KIEM_TRA_TON_KHO) await releaseReservations({ orderId }, { id: 'CUSTOMER', role: 'customer' }, 'Khách hủy đơn', session);
+    await restoreOrderPoints(session, fresh);
     await orderCollection.updateOne(
       { DON_HANG_ID: orderId, TRANG_THAI: 'Chờ xử lý' },
       { $set: { TRANG_THAI: 'Đã hủy', LY_DO_HUY: reason, NGAY_HUY: new Date() } },

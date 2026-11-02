@@ -166,8 +166,8 @@ export class OrderRegistrantComponent implements OnInit {
    * 2 điểm = 1.000đ
    * Chỉ dùng theo từng cặp 2 điểm, điểm lẻ sẽ không được tính.
    */
-  private readonly pointsPerRewardUnit = 2;
-  private readonly rewardUnitValue = 1000;
+  private readonly pointsPerRewardUnit = 1;
+  private readonly rewardUnitValue = 500;
   private readonly largeOrderQuantityThreshold = 10;
 
   private readonly specialDepositKeywords = [
@@ -996,12 +996,7 @@ export class OrderRegistrantComponent implements OnInit {
     if (!this.useLoyaltyPoints) {
       return 0;
     }
-
-    const maxPointsByBalance = this.getMaxRedeemablePointsByBalance();
-    const maxPointsByOrder =
-      Math.floor(this.getMaxLoyaltyDiscountBase() / this.rewardUnitValue) * this.pointsPerRewardUnit;
-
-    return Math.min(maxPointsByBalance, maxPointsByOrder);
+    return this.getMaxRedeemablePointsByBalance();
   }
 
   get loyaltyDiscount(): number {
@@ -1747,7 +1742,13 @@ export class OrderRegistrantComponent implements OnInit {
       return;
     }
 
+    if (!this.useLoyaltyPoints && this.convertPointsToMoney(this.getMaxRedeemablePointsByBalance()) > this.getMaxLoyaltyDiscountBase()) {
+      this.submitOrderError = 'Giá trị sản phẩm của đơn chưa đủ để sử dụng toàn bộ điểm thưởng hiện có.';
+      return;
+    }
+
     this.useLoyaltyPoints = !this.useLoyaltyPoints;
+    this.submitOrderError = '';
 
     if (this.useLoyaltyPoints && this.loyaltyPointsToUse <= 0) {
       this.useLoyaltyPoints = false;

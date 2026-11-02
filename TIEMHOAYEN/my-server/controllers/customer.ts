@@ -4,6 +4,7 @@ import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordH
 import { createCustomerOrderAccess } from '../services/order-access.service.js';
 import { audit } from '../services/auth.service.js';
 import { derivePromotionStatus } from '../services/pricing-voucher.service.js';
+import { expireCustomerPoints } from '../services/loyalty-policy.service.js';
 
 
 const normalizeAddressText = (value: unknown): string => {
@@ -233,6 +234,7 @@ export const loginCustomer = async (req: Request, res: Response) => {
 
 export const getCustomerById = async (req: Request, res: Response) => {
   try {
+    await expireCustomerPoints(String(res.locals.customerId || req.params.id));
     const customer = await readCustomerById(req.params.id);
 
     if (!customer) {
@@ -569,15 +571,16 @@ export const getCustomerWishlist = async (req: Request, res: Response) => {
         }
         const deleted = product.DA_XOA === true || product.DA_XOA === 1;
         const selling = String(product.TRANG_THAI || '').trim() === 'Đang bán';
-        const stock = Number(product.TON_THANH_PHAM ?? product.SO_LUONG_TON ?? 0);
         return {
               SAN_PHAM_ID: item.SAN_PHAM_ID,
               TEN_SAN_PHAM: product.TEN_SAN_PHAM,
               GIA: product.GIA,
               GIA_KHUYEN_MAI: product.GIA_KHUYEN_MAI,
               HINH_ANH: image?.URL || null,
-              TRANG_THAI_HIEN_THI: deleted ? 'Đã xóa' : !selling ? 'Ngừng bán' : stock <= 0 ? 'Hết hàng' : 'Đang bán',
-              CO_THE_MUA: !deleted && selling && stock > 0,
+              // Không suy luận khả năng đặt hàng chỉ từ tồn thành phẩm. Sản phẩm
+              // đang bán vẫn đi qua luồng kho/BOM/Sales khi khách tạo đơn.
+              TRANG_THAI_HIEN_THI: deleted ? 'Đã xóa' : !selling ? 'Ngừng bán' : 'Đang bán',
+              CO_THE_MUA: !deleted && selling,
               DA_XOA: deleted,
               LIEN_KET_CON_HIEU_LUC: !deleted,
               _WISHLIST_CREATED_AT: item.NGAY_TAO,

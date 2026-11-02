@@ -261,7 +261,14 @@
           <div class="section-title">Wishlist</div>
 
           <div class="wishlist-grid">
-            <article class="product-card wishlist-item" *ngFor="let item of displayedWishlistItems">
+            <article
+              class="product-card wishlist-item"
+              *ngFor="let item of displayedWishlistItems"
+              role="link"
+              tabindex="0"
+              (click)="openWishlistProduct(item)"
+              (keydown.enter)="openWishlistProduct(item)"
+              (keydown.space)="$event.preventDefault(); openWishlistProduct(item)">
               <div class="product-card-media">
                 <img [src]="item.image" [alt]="item.name" loading="lazy" />
 
@@ -272,7 +279,7 @@
                 <button
                   class="btn-wishlist active"
                   type="button"
-                  (click)="toggleFavorite(item)"
+                  (click)="$event.stopPropagation(); toggleFavorite(item)"
                   [attr.aria-label]="'Xóa ' + item.name + ' khỏi Wishlist'"
                 >
                   <i [ngClass]="item.isFavorite ? 'bi bi-heart-fill' : 'bi bi-heart'"></i>
@@ -293,7 +300,7 @@
                 </div>
 
                 <div class="product-action">
-                  <button class="btn-buy" type="button" [disabled]="!item.canPurchase" (click)="buyWishlistItem(item)">
+                  <button class="btn-buy" type="button" [disabled]="!item.canPurchase" (click)="$event.stopPropagation(); buyWishlistItem(item)">
                     {{ item.canPurchase ? 'MUA NGAY' : item.status.toUpperCase() }}
                   </button>
 
@@ -301,7 +308,7 @@
                     class="btn-cart"
                     type="button"
                     [disabled]="!item.canPurchase"
-                    (click)="addToCart(item, $event)"
+                    (click)="$event.stopPropagation(); addToCart(item, $event)"
                     [attr.aria-label]="'Thêm ' + item.name + ' vào giỏ hàng'"
                   >
                     <i class="bi bi-cart3"></i>

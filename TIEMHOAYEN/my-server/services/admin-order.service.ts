@@ -140,8 +140,8 @@ export async function priceCheckout(payload: any, session?: ClientSession, colle
     else throw new InventoryError(409, 'Loại voucher chưa có quy tắc được hỗ trợ.');
   }
   const loyaltyPoints = Number(payload.summary?.loyaltyPoints || 0);
-  if (!Number.isSafeInteger(loyaltyPoints) || loyaltyPoints < 0 || loyaltyPoints % 2) throw new InventoryError(400, 'Điểm sử dụng phải là số chẵn không âm.');
-  const loyaltyDiscount = loyaltyPoints / 2 * 1000;
+  if (!Number.isSafeInteger(loyaltyPoints) || loyaltyPoints < 0) throw new InventoryError(400, 'Điểm sử dụng phải là số nguyên không âm.');
+  const loyaltyDiscount = loyaltyPoints * 500;
   if (loyaltyPoints) {
     if (!customer || loyaltyPoints > Number(customer.DIEM_TICH_LUY || 0) || loyaltyDiscount > subtotal - productDiscount) throw new InventoryError(400, 'Không đủ điểm hoặc mức giảm vượt tiền hàng.');
   }

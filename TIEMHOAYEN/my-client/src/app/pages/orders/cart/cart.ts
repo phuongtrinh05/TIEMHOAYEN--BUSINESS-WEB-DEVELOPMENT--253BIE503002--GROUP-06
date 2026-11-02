@@ -350,10 +350,7 @@ export class CartComponent implements OnInit {
       quantity: Math.max(1, Number(item.SO_LUONG || 1)),
       image: this.getCartProductImage(item.TEN_SAN_PHAM, item.HINH_ANH),
       selected: true,
-      maxQuantity:
-        item.SO_LUONG_TON === null || item.SO_LUONG_TON === undefined
-          ? undefined
-          : Number(item.SO_LUONG_TON),
+      maxQuantity: undefined,
       priceChanged: Boolean(item.GIA_DA_THAY_DOI),
       priceWhenAdded: Number(item.GIA_LUC_THEM || 0),
       availabilityDecision: String(item.QUYET_DINH_KHA_DUNG || ''),
@@ -387,10 +384,7 @@ export class CartComponent implements OnInit {
       quantity: Math.max(1, Number(data.quantity || 1)),
       image: String(data.image || this.defaultImage),
       selected: data.selected !== false,
-      maxQuantity:
-        data.maxQuantity === null || data.maxQuantity === undefined
-          ? undefined
-          : Number(data.maxQuantity),
+      maxQuantity: undefined,
     };
   }
 
@@ -580,7 +574,7 @@ export class CartComponent implements OnInit {
           item.price = serverItem.unitPrice;
           item.originalPrice = serverItem.regularPrice > serverItem.unitPrice ? serverItem.regularPrice : null;
           item.availabilityDecision = String(serverItem.availability?.decision || '');
-          if (Number.isFinite(Number(serverItem.availability?.sellable))) item.maxQuantity = Number(serverItem.availability?.sellable);
+          item.maxQuantity = undefined;
         });
         this.serverQuote = quote; this.quoteError = ''; this.cdr.detectChanges();
       },
@@ -594,8 +588,7 @@ export class CartComponent implements OnInit {
   canCheckout(): boolean {
     const hasSelectedVoucher = !!(this.selectedProductVoucher || this.selectedShippingVoucher);
     return this.getSelectedCount() > 0 &&
-      (!hasSelectedVoucher || !this.quoteError) &&
-      !this.cartItems.some(item => item.selected && item.availabilityDecision === 'unavailable');
+      (!hasSelectedVoucher || !this.quoteError);
   }
 
   private normalizeText(value: string): string {
@@ -1000,7 +993,7 @@ export class CartComponent implements OnInit {
         this.suggestedProducts = products
           .filter(item => !item.TRANG_THAI || this.normalizeText(String(item.TRANG_THAI)) === this.normalizeText('Đang bán'))
           .map((item: SuggestedProductResponse) => this.mapSuggestedProductResponse(item))
-          .filter(product => product.id.startsWith('SP') && !existingIds.has(product.id) && product.maxQuantity !== 0)
+          .filter(product => product.id.startsWith('SP') && !existingIds.has(product.id))
           .slice(0, 4);
         this.suggestedMobileStartIndex = 0;
 
@@ -1030,7 +1023,7 @@ export class CartComponent implements OnInit {
       image: this.getCartProductImage(item.TEN_SAN_PHAM, item.HINH_ANH),
       style: String(item.KIEU_DANG || 'Sản phẩm mua kèm'),
       status: this.getCartTopicName(item.TEN_CHU_DE || item.TRANG_THAI),
-      maxQuantity: Number(item.SO_LUONG ?? item.SO_LUONG_TON ?? 0),
+      maxQuantity: undefined,
     };
   }
 
