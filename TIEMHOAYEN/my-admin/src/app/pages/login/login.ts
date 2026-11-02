@@ -28,6 +28,7 @@ export class Login implements AfterViewInit {
   recoveryBusy = false;
   recoveryError = '';
   otpChecking = false;
+  otpDeliveryMessage = '';
   challengeId = '';
   otpSeconds = 0;
   private otpTimer?: ReturnType<typeof setInterval>;
@@ -64,6 +65,7 @@ export class Login implements AfterViewInit {
   forgotSubmitted = false;
   forgotEmailError = '';
 
+  trackOtpIndex(index: number): number { return index; }
   otpValues: string[] = ['', '', '', '', '', ''];
   otpSubmitted = false;
 
@@ -213,7 +215,7 @@ export class Login implements AfterViewInit {
     }
 
     this.recoveryRequest('send-otp', { EMAIL: email }, result => {
-    this.challengeId = result.challengeId; this.startOtpCountdown();
+    this.challengeId = result.challengeId; this.otpDeliveryMessage = result.delivery === 'console' ? result.message : ''; this.startOtpCountdown();
     this.showForgotPopup = false;
     this.showOtpPopup = true;
     this.forgotSubmitted = false;

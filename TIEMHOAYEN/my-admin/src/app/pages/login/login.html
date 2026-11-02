@@ -171,6 +171,7 @@
       </button>
     </div>
 
+    <p role="status" *ngIf="otpDeliveryMessage">{{ otpDeliveryMessage }}</p>
     <h2 class="auth-popup__title">Xác thực</h2>
     <p role="status">{{ otpSeconds > 0 ? 'Mã hết hạn sau ' + otpSeconds + ' giây. Tối đa 5 lần nhập sai.' : 'Mã đã hết hạn. Vui lòng gửi mã mới.' }}</p>
     <p class="error-msg" role="alert" *ngIf="recoveryError">{{ recoveryError }}</p>
@@ -183,7 +184,7 @@
 
     <div class="otp-inputs">
       <input
-        *ngFor="let v of otpValues; let i = index"
+        *ngFor="let v of otpValues; let i = index; trackBy: trackOtpIndex"
         [id]="'otp-' + i"
         type="text"
         inputmode="numeric"
