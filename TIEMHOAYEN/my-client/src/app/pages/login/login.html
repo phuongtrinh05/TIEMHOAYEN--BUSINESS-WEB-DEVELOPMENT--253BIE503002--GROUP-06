@@ -263,7 +263,7 @@
         type="button"
         class="otp-popup__resend-button"
         (click)="resendOtp()"
-        [disabled]="otpSeconds > 0"
+        [disabled]="otpSending || otpChecking"
       >
         Gửi mã mới
       </button>

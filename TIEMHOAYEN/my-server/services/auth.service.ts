@@ -171,19 +171,24 @@ export async function sendChallenge(type: AccountType, req: Request, purpose = '
     throw new AuthError(403, purpose === 'DANG_KY' ? 'Tài khoản không ở trạng thái chờ xác minh.' : 'Tài khoản chưa xác minh hoặc đã bị khóa.');
   }
   const challenges = await collection('XAC_THUC_TAI_KHOAN');
-  const now = new Date();
-  // One document per purpose/account; compare-and-set prevents simultaneous resend.
-  let lock;
-  try { lock = await challenges.findOneAndUpdate({ _id: id, $or: [{ GUI_LAI_SAU: { $lte: now } }, { GUI_LAI_SAU: { $exists: false } }] },
-    { $set: { GUI_LAI_SAU: new Date(Date.now() + 60000), HET_HAN: new Date(Date.now() + 3600000), DA_SU_DUNG: true } }, { upsert: true, returnDocument: 'after' }); }
-  catch (error: any) { if (error.code === 11000) throw new AuthError(429, 'Vui lòng chờ 60 giây trước khi gửi lại.'); throw error; }
   const ttl = 60;
-  if ((sms ? account.SDT : account.EMAIL) && !account.DA_XOA && (purpose === 'DANG_KY' ? account.TRANG_THAI === 'Chờ xác minh' : active(account))) {
-    const code = String(randomInt(100000, 1000000));
-    await challenges.updateOne({ _id: id }, { $set: { MA_BAM: otpDigest(id, code), LOAI_TAI_KHOAN: type, TAI_KHOAN_ID: account[accountKey(type)], MUC_DICH: purpose, HET_HAN: new Date(Date.now() + ttl * 1000), SO_LAN_SAI: 0, GIOI_HAN_SAI: 5, DA_SU_DUNG: false } });
-    try { if (sms) await deliverSmsOtp(account.SDT, code); else await deliverOtp(account.EMAIL, code); } catch (error) { await challenges.updateOne({ _id: id }, { $set: { DA_SU_DUNG: true } }); throw error; }
+  let code = '';
+  let stored = false;
+  for (let attempt = 0; attempt < 5 && !stored; attempt++) {
+    const previous = await challenges.findOne({ _id: id });
+    do { code = String(randomInt(100000, 1000000)); } while (previous?.MA_BAM === otpDigest(id, code));
+    try {
+      const result = await challenges.updateOne(
+        { _id: id, MA_BAM: previous?.MA_BAM ?? { $exists: false } },
+        { $set: { MA_BAM: otpDigest(id, code), LOAI_TAI_KHOAN: type, TAI_KHOAN_ID: account[accountKey(type)], MUC_DICH: purpose, HET_HAN: new Date(Date.now() + ttl * 1000), SO_LAN_SAI: 0, GIOI_HAN_SAI: 5, DA_SU_DUNG: false, GUI_LAI_SAU: new Date() } },
+        { upsert: !previous });
+      stored = !!(result.matchedCount || result.upsertedCount);
+    } catch (error: any) { if (error.code !== 11000) throw error; }
   }
-  return { challengeId: id, expiresIn: ttl, resendAfter: 60, delivery: process.env.AUTH_OTP_DELIVERY === 'console' ? 'console' : sms ? 'sms' : 'email', message: process.env.AUTH_OTP_DELIVERY === 'console' ? 'Mã xác minh có hiệu lực trong 60 giây.' : sms ? 'Mã OTP đã được gửi qua SMS đến số điện thoại đã đăng ký.' : 'Mã xác minh đã được gửi đến email đã đăng ký.' };
+  if (!stored) throw new AuthError(409, 'Có yêu cầu gửi mã mới hơn. Vui lòng thử lại.');
+  try { if (sms) await deliverSmsOtp(account.SDT, code); else await deliverOtp(account.EMAIL, code); }
+  catch (error) { await challenges.updateOne({ _id: id, MA_BAM: otpDigest(id, code) }, { $set: { DA_SU_DUNG: true } }); throw error; }
+  return { challengeId: id, expiresIn: ttl, resendAfter: 0, delivery: process.env.AUTH_OTP_DELIVERY === 'console' ? 'console' : sms ? 'sms' : 'email', message: process.env.AUTH_OTP_DELIVERY === 'console' ? 'Mã xác minh có hiệu lực trong 60 giây.' : sms ? 'Mã OTP đã được gửi qua SMS đến số điện thoại đã đăng ký.' : 'Mã xác minh đã được gửi đến email đã đăng ký.' };
 }
 export async function verifyChallenge(type: AccountType, req: Request, purpose = 'KHOI_PHUC_MAT_KHAU') {
   const id = String(req.body.challengeId || '');

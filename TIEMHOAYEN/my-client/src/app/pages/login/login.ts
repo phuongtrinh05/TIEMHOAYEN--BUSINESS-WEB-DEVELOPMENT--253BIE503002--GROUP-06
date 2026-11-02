@@ -26,6 +26,7 @@ constructor(
   loginError = '';
   isLoggingIn = false;
   otpChecking = false;
+  otpSending = false;
   challengeId = '';
   otpSeconds = 0;
   private otpTimer?: ReturnType<typeof setInterval>;
@@ -91,6 +92,7 @@ constructor(
   }
 
   sendOtp(): void {
+    if (this.otpSending || this.otpChecking) return;
 
     this.forgotPhoneError = '';
 
@@ -106,9 +108,10 @@ constructor(
       return;
     }
 
+    this.otpSending = true;
     this.loginService.sendOtp({
       SDT: this.forgotPhone
-    }).subscribe({
+    }).pipe(timeout(20000), finalize(() => { this.otpSending = false; this.cdr.markForCheck(); })).subscribe({
 
       next: (response: any) => {
         this.challengeId = response.challengeId; this.startOtpCountdown();
@@ -259,11 +262,12 @@ verifyOtp(): void {
 }
 
   resendOtp(): void {
-    if (this.otpSeconds > 0) return;
+    if (this.otpSending || this.otpChecking) return;
     this.resetOtp();
+    this.otpSending = true;
     this.loginService.sendOtp({
       SDT: this.forgotPhone
-    }).subscribe({
+    }).pipe(timeout(20000), finalize(() => { this.otpSending = false; this.cdr.markForCheck(); })).subscribe({
       next: (res: any) => { this.challengeId = res.challengeId; this.startOtpCountdown(); },
       error: (err) => {
         console.warn(err.error?.message || 'Gửi lại OTP thất bại.');

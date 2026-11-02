@@ -204,7 +204,7 @@
 
     <p class="otp-resend">
       Bạn chưa nhận được mã?
-      <button type="button" class="resend-btn" [disabled]="otpSeconds > 0 || recoveryBusy" (click)="resendOtp()">Gửi lại!</button>
+      <button type="button" class="resend-btn" [disabled]="recoveryBusy" (click)="resendOtp()">Gửi lại!</button>
     </p>
 
   </div>

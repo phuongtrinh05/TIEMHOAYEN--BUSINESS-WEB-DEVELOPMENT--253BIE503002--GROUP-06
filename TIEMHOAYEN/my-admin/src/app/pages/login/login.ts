@@ -305,7 +305,7 @@ export class Login implements AfterViewInit {
   }
 
   resendOtp(): void {
-    if (this.otpSeconds > 0) return;
+    if (this.recoveryBusy) return;
     this.resetOtp();
     this.sendResetEmail();
   }
