@@ -26,7 +26,6 @@ constructor(
   loginError = '';
   isLoggingIn = false;
   otpChecking = false;
-  otpDeliveryMessage = '';
   challengeId = '';
   otpSeconds = 0;
   private otpTimer?: ReturnType<typeof setInterval>;
@@ -112,7 +111,7 @@ constructor(
     }).subscribe({
 
       next: (response: any) => {
-        this.challengeId = response.challengeId; this.otpDeliveryMessage = response.delivery === 'console' ? response.message : ''; this.startOtpCountdown();
+        this.challengeId = response.challengeId; this.startOtpCountdown();
 
         this.showForgotPasswordPopup = false;
         this.showOtpPopup = true;
@@ -200,6 +199,7 @@ constructor(
   }
 
 verifyOtp(): void {
+    if (this.otpSeconds <= 0) { this.otpError = 'Mã đã hết hạn. Vui lòng gửi mã mới.'; this.cdr.markForCheck(); return; }
   if (this.otpChecking || !this.isOtpValid()) return;
 
   this.otpError = '';
@@ -264,7 +264,7 @@ verifyOtp(): void {
     this.loginService.sendOtp({
       SDT: this.forgotPhone
     }).subscribe({
-      next: (res: any) => { this.challengeId = res.challengeId; this.otpDeliveryMessage = res.delivery === 'console' ? res.message : ''; this.startOtpCountdown(); },
+      next: (res: any) => { this.challengeId = res.challengeId; this.startOtpCountdown(); },
       error: (err) => {
         console.warn(err.error?.message || 'Gửi lại OTP thất bại.');
       }

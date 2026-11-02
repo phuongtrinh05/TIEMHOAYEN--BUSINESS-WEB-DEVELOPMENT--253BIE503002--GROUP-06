@@ -28,7 +28,6 @@ export class Login implements AfterViewInit {
   recoveryBusy = false;
   recoveryError = '';
   otpChecking = false;
-  otpDeliveryMessage = '';
   challengeId = '';
   otpSeconds = 0;
   private otpTimer?: ReturnType<typeof setInterval>;
@@ -215,7 +214,7 @@ export class Login implements AfterViewInit {
     }
 
     this.recoveryRequest('send-otp', { EMAIL: email }, result => {
-    this.challengeId = result.challengeId; this.otpDeliveryMessage = result.delivery === 'console' ? result.message : ''; this.startOtpCountdown();
+    this.challengeId = result.challengeId; this.startOtpCountdown();
     this.showForgotPopup = false;
     this.showOtpPopup = true;
     this.forgotSubmitted = false;
@@ -292,6 +291,7 @@ export class Login implements AfterViewInit {
   }
 
   verifyOtp(): void {
+    if (this.otpSeconds <= 0) { this.recoveryError = 'Mã đã hết hạn. Vui lòng gửi mã mới.'; this.cdr.markForCheck(); return; }
     if (this.recoveryBusy || !this.isOtpValid()) return;
     this.otpSubmitted = true;
 
