@@ -25,7 +25,28 @@
     padding:12px;
     font-family:var(--font-body);
     transition:.3s ease;
-    overflow:hidden;
+    overflow-x:hidden;
+    overflow-y:auto;
+    overscroll-behavior-y:contain;
+    scrollbar-width:thin;
+    scrollbar-color:#D9B382 transparent;
+}
+
+.admin-sidebar > *{
+    flex-shrink:0;
+}
+
+.admin-sidebar::-webkit-scrollbar{
+    width:6px;
+}
+
+.admin-sidebar::-webkit-scrollbar-thumb{
+    background:#D9B382;
+    border-radius:6px;
+}
+
+.admin-sidebar::-webkit-scrollbar-track{
+    background:transparent;
 }
 
 /* Thu gọn */
