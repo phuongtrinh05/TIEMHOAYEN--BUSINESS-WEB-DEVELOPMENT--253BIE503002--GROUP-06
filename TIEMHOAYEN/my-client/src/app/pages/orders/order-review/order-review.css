@@ -26,7 +26,7 @@
 
 .review-selected-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   padding: 14px 18px;
@@ -58,6 +58,21 @@
 .selected-product-meta {
   margin-top: 4px;
   color: #757575;
+}
+
+.order-review-products {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.order-review-products span {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #fff8f0;
+  color: #731919;
+  font-size: 13px;
 }
 
 .btn-change-product,
@@ -435,6 +450,13 @@ textarea {
   display: block;
   color: #757575;
   margin-top: 4px;
+}
+
+.order-option-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .product-option img {

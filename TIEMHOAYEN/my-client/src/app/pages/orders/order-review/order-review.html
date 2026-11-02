@@ -7,19 +7,21 @@
     <span>#{{ selectedOrder.orderId }}</span>
   </div>
 
-  <div class="review-selected-bar" *ngIf="selectedOrder && selectedProduct && !showPicker">
-    <div class="selected-product-mini">
-      <img [src]="selectedProduct.image || defaultImage" [alt]="selectedProduct.productName">
-      <div>
-        <div class="selected-product-title">{{ selectedProduct.productName }}</div>
-        <div class="selected-product-meta">
-          Đơn {{ selectedOrder.orderId }} · {{ formatDate(selectedOrder.createdAt) }} · x{{ selectedProduct.quantity }}
-        </div>
+  <div class="review-selected-bar" *ngIf="selectedOrder && !showPicker">
+    <div>
+      <div class="selected-product-title">Đánh giá toàn bộ đơn hàng {{ selectedOrder.orderId }}</div>
+      <div class="selected-product-meta">
+        {{ formatDate(selectedOrder.createdAt) }} · {{ selectedOrder.items.length }} sản phẩm
+      </div>
+      <div class="order-review-products">
+        <span *ngFor="let product of selectedOrder.items">
+          {{ product.productName }} · x{{ product.quantity }}
+        </span>
       </div>
     </div>
 
-    <button type="button" class="btn-change-product" (click)="onChangeProductClick()">
-      Đổi sản phẩm đánh giá
+    <button type="button" class="btn-change-product" [disabled]="submitting" (click)="onChangeOrderClick()">
+      Đổi đơn hàng
     </button>
   </div>
 
@@ -28,21 +30,21 @@
       <h1>Viết đánh giá của bạn</h1>
 
       <div class="review-card">
-        <ng-container *ngIf="!selectedOrder || !selectedProduct || showPicker">
+        <ng-container *ngIf="!selectedOrder || showPicker">
           <div class="picker-header">
-            <h3>Chọn sản phẩm cần đánh giá</h3>
+            <h3>{{ isLoggedIn ? 'Chọn đơn hàng cần đánh giá' : 'Tra cứu đơn hàng cần đánh giá' }}</h3>
 
             <button
               type="button"
               class="btn-link-back"
-              *ngIf="selectedOrder && selectedProduct"
-              (click)="goBack()">
+              *ngIf="selectedOrder"
+              (click)="goBackToOrderPicker()">
               <i class="bi bi-chevron-left"></i> Quay lại
             </button>
           </div>
 
           <p class="modal-desc" *ngIf="isLoggedIn">
-            Chọn đơn hàng đã giao thành công, sau đó chọn sản phẩm bạn muốn đánh giá.
+            Chọn đơn hàng đã giao thành công. Bạn chỉ cần gửi một đánh giá cho toàn bộ sản phẩm trong đơn.
           </p>
 
           <p class="modal-desc" *ngIf="!isLoggedIn">
@@ -82,40 +84,28 @@
               type="button"
               class="order-option"
               *ngFor="let order of orders"
+              [class.is-reviewed]="isOrderReviewed(order)"
               (click)="selectOrder(order)">
               <span>
                 <strong>{{ order.orderId }}</strong>
                 <small>{{ formatDate(order.createdAt) }} · {{ order.items.length }} sản phẩm</small>
               </span>
-              <span>{{ formatPrice(order.total) }}</span>
-            </button>
-          </div>
-
-          <div class="product-picker" *ngIf="pickerStep === 'product' && selectedOrder">
-            <div class="selected-order-title">
-              Đơn {{ selectedOrder.orderId }} · {{ formatDate(selectedOrder.createdAt) }}
-            </div>
-
-            <button
-              type="button"
-              class="product-option"
-              *ngFor="let product of selectedOrder.items"
-              [class.is-reviewed]="product.reviewed"
-              (click)="selectProduct(product)">
-              <img [src]="product.image || defaultImage" [alt]="product.productName">
-              <span class="product-option-info">
-                <strong>{{ product.productName }}</strong>
-                <small>x{{ product.quantity }} · {{ formatPrice(product.price) }}</small>
+              <span class="order-option-status">
+                {{ formatPrice(order.total) }}
+                <small class="reviewed-badge" *ngIf="isOrderReviewed(order)">Đã đánh giá</small>
               </span>
-              <span class="reviewed-badge" *ngIf="product.reviewed">Đã đánh giá</span>
             </button>
           </div>
 
           <p class="picker-error" *ngIf="pickerError">{{ pickerError }}</p>
         </ng-container>
 
-        <ng-container *ngIf="selectedOrder && selectedProduct && !showPicker">
-          <h3>Đánh giá của bạn</h3>
+        <ng-container *ngIf="selectedOrder && !showPicker">
+          <h3>Đánh giá toàn bộ đơn hàng</h3>
+          <div class="submit-message" *ngIf="isOrderReviewed(selectedOrder)">
+            {{ submitMessage || 'Đơn hàng này đã được đánh giá. Đánh giá đã được hiển thị trên từng sản phẩm trong đơn.' }}
+          </div>
+          <ng-container *ngIf="!isOrderReviewed(selectedOrder)">
 
           <div class="rating-stars">
             <i
@@ -133,7 +123,8 @@
           <textarea
             rows="6"
             [(ngModel)]="reviewText"
-            placeholder="Chia sẻ cảm nhận của bạn về sản phẩm của Tiệm Hoa Yên nhé...">
+            (ngModelChange)="saveCurrentDraft()"
+            placeholder="Chia sẻ cảm nhận của bạn về toàn bộ đơn hàng và các sản phẩm của Tiệm Hoa Yên nhé...">
           </textarea>
 
           <h3>Thêm hình ảnh</h3>
@@ -171,7 +162,7 @@
             Tối đa 5 ảnh, mỗi ảnh tối đa 5MB. Hỗ trợ JPG, PNG, WEBP.
           </p>
 
-          <div class="checkbox-row" (click)="hideReviewer = !hideReviewer">
+          <div class="checkbox-row" (click)="hideReviewer = !hideReviewer; saveCurrentDraft()">
             <i
               class="bi"
               [class.bi-square]="!hideReviewer"
@@ -190,6 +181,7 @@
             <i class="bi" [ngClass]="submitting ? 'bi-hourglass-split' : 'bi-send'"></i>
             {{ submitting ? 'Đang gửi...' : 'Gửi đánh giá' }}
           </button>
+          </ng-container>
         </ng-container>
       </div>
     </div>

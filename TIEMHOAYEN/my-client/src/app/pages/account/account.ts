@@ -26,6 +26,7 @@ interface Order {
   subtotal: number;
   total: number;
   status: string;
+  reviewLabel: string;
 }
 
 interface WishlistItem {
@@ -36,6 +37,9 @@ interface WishlistItem {
   discountPercent: number | null;
   image: string;
   isFavorite: boolean;
+  status: string;
+  canPurchase: boolean;
+  linkAvailable: boolean;
 }
 
 interface Address {
@@ -101,6 +105,10 @@ interface WardOption extends Ward {
 export class AccountComponent implements OnInit, OnDestroy {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly cartStorageKey = 'tiemHoaYenCart';
+  private readonly wishlistChangedHandler = (event: Event) => {
+    const detail = (event as CustomEvent<{ favorite?: boolean }>).detail;
+    if (detail?.favorite !== false) this.loadCustomerWishlist(1);
+  };
   private sectionSubscription: Subscription | null = null;
 
   constructor(
@@ -245,9 +253,9 @@ export class AccountComponent implements OnInit, OnDestroy {
   }
 
   // ===== TODO: replace with API call GET /api/user/membership =====
-  membershipTier = 'Kim cương';
-  rewardPoints = 1250;
-  rewardValue = this.calculateRewardValue(this.rewardPoints);
+  membershipTier = 'Đồng';
+  rewardPoints = 0;
+  rewardValue = 0;
   readonly moneyPerPoint = 10000;
   readonly rankConfigs: MemberRankConfig[] = [
     { name: 'Đồng', minAmount: 0, targetAmount: 1000000, nextRank: 'Bạc' },
@@ -325,7 +333,11 @@ export class AccountComponent implements OnInit, OnDestroy {
 
   // ===== TODO: replace with API call GET /api/user/wishlist =====
   wishlistItems: WishlistItem[] = [];
-  showAllWishlist = false;
+  showAllWishlist = true;
+  wishlistPage = 1;
+  wishlistTotalPages = 1;
+  wishlistTotal = 0;
+  readonly wishlistPageSize = 12;
 
   // ===== TODO: replace with API call GET /api/user/addresses =====
   addresses: Address[] = [];
@@ -348,9 +360,7 @@ export class AccountComponent implements OnInit, OnDestroy {
     return this.currentAddressIndex < this.maxAddressStartIndex;
   }
   get displayedWishlistItems(): WishlistItem[] {
-    return this.showAllWishlist
-      ? this.wishlistItems
-      : this.wishlistItems.slice(0, 4);
+    return this.wishlistItems;
   }
 
   // ===== TODO: replace with API call GET /api/user/vouchers =====
@@ -404,6 +414,7 @@ export class AccountComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
       if (isPlatformBrowser(this.platformId)) {
+        window.addEventListener('wishlist-changed', this.wishlistChangedHandler);
         this.restoreAccountSnapshot();
         this.loadVietnamAddressData();
         this.loadAccountData();
@@ -412,6 +423,10 @@ export class AccountComponent implements OnInit, OnDestroy {
     }
 
   ngOnDestroy(): void {
+    if (isPlatformBrowser(this.platformId)) {
+      window.removeEventListener('wishlist-changed', this.wishlistChangedHandler);
+    }
+
     if (this.sectionSubscription) {
       this.sectionSubscription.unsubscribe();
       this.sectionSubscription = null;
@@ -568,6 +583,7 @@ export class AccountComponent implements OnInit, OnDestroy {
             subtotal: Number(item.TAM_TINH || 0),
             total: item.TONG_TIEN || 0,
             status: item.TRANG_THAI as Order['status'],
+            reviewLabel: this.reviewProgressLabel(Number(item.DANH_GIA_DA_GUI || 0), Number(item.DANH_GIA_TONG_SAN_PHAM || 0)),
           }))
           .filter(order => !this.isExpiredPaymentOrder(order));
 
@@ -577,6 +593,11 @@ export class AccountComponent implements OnInit, OnDestroy {
         console.error('Lỗi load đơn hàng:', err);
       }
     });
+  }
+  private reviewProgressLabel(reviewed: number, total: number): string {
+    if (!total || reviewed <= 0) return 'Chưa đánh giá';
+    if (reviewed >= total) return 'Đã đánh giá';
+    return `Đã đánh giá ${reviewed}/${total} sản phẩm`;
   }
   loadCustomerVouchers(): void {
     const saved = localStorage.getItem('khachHang');
@@ -613,7 +634,7 @@ export class AccountComponent implements OnInit, OnDestroy {
       }
     });
   }
-  loadCustomerWishlist(): void {
+  loadCustomerWishlist(page = this.wishlistPage): void {
     const saved = localStorage.getItem('khachHang');
 
     if (!saved) {
@@ -623,9 +644,12 @@ export class AccountComponent implements OnInit, OnDestroy {
 
     const khachHang = JSON.parse(saved);
 
-    this.customerService.getWishlist(khachHang.KHACH_HANG_ID).subscribe({
-      next: (data) => {
-        this.wishlistItems = data.items.map((item: CustomerWishlistItem) => {
+    this.customerService.getWishlist(khachHang.KHACH_HANG_ID, page, this.wishlistPageSize).subscribe({
+      next: (response) => {
+        this.wishlistPage = response.page;
+        this.wishlistTotalPages = response.totalPages;
+        this.wishlistTotal = response.total;
+        this.wishlistItems = response.items.map((item: CustomerWishlistItem) => {
           const originalPrice = Number(item.GIA || 0);
           const salePrice = Number(item.GIA_KHUYEN_MAI || 0);
           const hasSalePrice = salePrice > 0 && salePrice < originalPrice;
@@ -645,6 +669,9 @@ export class AccountComponent implements OnInit, OnDestroy {
               ? 'assets/images/tui-qua-cao-cap.png'
               : item.HINH_ANH || 'assets/images/product-default.png',
             isFavorite: true,
+            status: item.TRANG_THAI_HIEN_THI,
+            canPurchase: item.CO_THE_MUA,
+            linkAvailable: item.LIEN_KET_CON_HIEU_LUC,
           };
         });
 
@@ -652,8 +679,14 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi load wishlist:', err);
+        alert(err?.error?.message || 'Chưa tải được danh sách yêu thích. Vui lòng thử lại.');
       }
     });
+  }
+
+  changeWishlistPage(page: number): void {
+    if (page < 1 || page > this.wishlistTotalPages || page === this.wishlistPage) return;
+    this.loadCustomerWishlist(page);
   }
   onAvatarSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -1261,22 +1294,21 @@ export class AccountComponent implements OnInit, OnDestroy {
       )
       .subscribe({
         next: () => {
-
-          this.wishlistItems =
-            this.wishlistItems.filter(
-              p => p.id !== item.id
-            );
-
-          this.cdr.detectChanges();
+          const targetPage = this.wishlistItems.length === 1 && this.wishlistPage > 1
+            ? this.wishlistPage - 1
+            : this.wishlistPage;
+          this.loadCustomerWishlist(targetPage);
         },
 
         error: (err) => {
           console.error(err);
+          alert(err?.error?.message || 'Chưa thể xóa sản phẩm khỏi danh sách yêu thích. Vui lòng thử lại.');
         }
       });
   }
 
   buyWishlistItem(item: WishlistItem): void {
+    if (!item.canPurchase) return;
     if (isPlatformBrowser(this.platformId)) {
       localStorage.setItem(
         'tiemHoaYenCheckoutItems',
@@ -1306,6 +1338,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   addToCart(item: WishlistItem, event?: Event): void {
     event?.stopPropagation();
     event?.preventDefault();
+    if (!item.canPurchase) return;
 
     if (!this.isBrowser()) {
       return;

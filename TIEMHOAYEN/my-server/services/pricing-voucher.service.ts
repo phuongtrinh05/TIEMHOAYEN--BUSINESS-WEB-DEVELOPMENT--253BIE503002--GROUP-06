@@ -14,9 +14,20 @@ export const ensureVoucherStorage = async () => {
   if (!voucherStorageReady) voucherStorageReady = (async () => {
     const vouchers = await getCollection<any>('VOUCHER');
     const missing = await vouchers.find({ $or: [{ MA_VOUCHER_CHUAN: { $exists: false } }, { MA_VOUCHER_CHUAN: null }] }).project({ _id: 1, MA_VOUCHER: 1 }).toArray();
-    if (missing.length) await vouchers.bulkWrite(missing.map(row => ({ updateOne: { filter: { _id: row._id }, update: { $set: { MA_VOUCHER_CHUAN: normalizeVoucherCode(row.MA_VOUCHER) } } } })));
-    await vouchers.createIndex({ MA_VOUCHER_CHUAN: 1 }, { unique: true, partialFilterExpression: { MA_VOUCHER_CHUAN: { $type: 'string' } }, name: 'uniq_voucher_code_normalized' });
-  })();
+    if (missing.length) await vouchers.bulkWrite(missing.map(row => ({ updateOne: { filter: { _id: row._id }, update: { $set: { MA_VOUCHER_CHUAN: normalizeVoucherCode(row.MA_VOUCHER) } } } }))); 
+    try {
+      await vouchers.createIndex({ MA_VOUCHER_CHUAN: 1 }, { unique: true, partialFilterExpression: { MA_VOUCHER_CHUAN: { $type: 'string' } }, name: 'uniq_voucher_code_normalized' });
+    } catch (error: any) {
+      // Dữ liệu cũ có thể đã chứa mã trùng (ví dụ YEN10). Không được để việc
+      // xây index làm sập báo giá/giỏ hàng. Form Admin vẫn chặn tạo hoặc sửa
+      // trùng mã; dữ liệu cũ sẽ được rà soát riêng thay vì tự ý xóa voucher.
+      if (error?.code !== 11000) throw error;
+      console.warn('[voucher] Chưa thể tạo unique index vì dữ liệu cũ có mã trùng.');
+    }
+  })().catch(error => {
+    voucherStorageReady = null;
+    throw error;
+  });
   return voucherStorageReady;
 };
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;

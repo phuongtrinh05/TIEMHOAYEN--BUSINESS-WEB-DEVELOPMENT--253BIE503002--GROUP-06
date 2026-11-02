@@ -39,9 +39,23 @@ const getCustomerCollection = () => getCollection<any>('KHACH_HANG');
 const getAddressCollection = () => getCollection<any>('DIA_CHI_GIAO_HANG');
 
 let wishlistIndexReady: Promise<string> | null = null;
+const findWishlistUniqueIndex = (indexes: any[]): any | undefined => indexes.find(index => {
+  const key = index?.key || {};
+  return index?.unique === true &&
+    Object.keys(key).length === 2 &&
+    key.KHACH_HANG_ID === 1 &&
+    key.SAN_PHAM_ID === 1;
+});
+
 const ensureWishlistIndex = () => {
   if (!wishlistIndexReady) {
     wishlistIndexReady = getCollection<any>('YEU_THICH').then(async (collection) => {
+      const indexes = await collection.listIndexes().toArray().catch(error => {
+        if (error.code === 26) return []; // Collection has not been created yet.
+        throw error;
+      });
+      const existing = findWishlistUniqueIndex(indexes);
+      if (existing?.name) return existing.name;
       const duplicates = await collection.aggregate([
         { $group: { _id: { customerId: '$KHACH_HANG_ID', productId: '$SAN_PHAM_ID' }, ids: { $push: '$_id' }, count: { $sum: 1 } } },
         { $match: { count: { $gt: 1 } } },
@@ -50,10 +64,20 @@ const ensureWishlistIndex = () => {
         const [, ...redundantIds] = duplicate.ids;
         if (redundantIds.length) await collection.deleteMany({ _id: { $in: redundantIds } });
       }
-      return collection.createIndex(
-        { KHACH_HANG_ID: 1, SAN_PHAM_ID: 1 },
-        { unique: true, name: 'uniq_wishlist_customer_product' },
-      );
+      try {
+        return await collection.createIndex(
+          { KHACH_HANG_ID: 1, SAN_PHAM_ID: 1 },
+          { unique: true, name: 'uniq_wishlist_customer_product' },
+        );
+      } catch (error: any) {
+        // Dữ liệu import từ SQL đã có thể mang index cùng khóa với tên pk_...
+        // MongoDB không cho tạo lại cùng đặc tả dưới một tên khác. Xác minh lại
+        // index thực tế rồi tái sử dụng, thay vì làm thao tác Wishlist thất bại.
+        const currentIndexes = await collection.listIndexes().toArray();
+        const current = findWishlistUniqueIndex(currentIndexes);
+        if (current?.name) return current.name;
+        throw error;
+      }
     }).catch((error) => {
       wishlistIndexReady = null;
       throw error;

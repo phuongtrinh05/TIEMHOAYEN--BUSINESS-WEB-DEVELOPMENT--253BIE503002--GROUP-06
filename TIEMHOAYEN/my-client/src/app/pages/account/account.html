@@ -145,6 +145,7 @@
                   <th>Ngày đặt</th>
                   <th>Tổng tiền</th>
                   <th>Trạng thái</th>
+                  <th>Đánh giá</th>
                   <th>Thao tác</th>
                 </tr>
               </thead>
@@ -159,6 +160,7 @@
                       {{ order.status }}
                     </span>
                   </td>
+                  <td>{{ order.reviewLabel }}</td>
                   <td>
                     <button
                       class="btn-view-detail"
@@ -226,11 +228,9 @@
                       <span>{{ memberProgressTitle }}</span>
                       <strong>{{ memberProgressPercent }}%</strong>
                     </div>
-
                     <div class="account-progress-bar">
                       <div [style.width.%]="memberProgressPercent"></div>
                     </div>
-
                     <p>{{ memberProgressAmountText }}</p>
                   </div>
                 </div>
@@ -250,7 +250,6 @@
                     <div class="reward-value">Tương đương {{ formatPrice(rewardValue) }}</div>
                   </div>
                 </div>
-
                 <button class="btn-redeem" type="button" (click)="redeemPoints()">Đổi thưởng</button>
               </div>
             </div>
@@ -282,6 +281,9 @@
 
               <div class="product-card-body">
                 <h3>{{ item.name }}</h3>
+                <span class="wishlist-status" [class.unavailable]="!item.canPurchase">
+                  {{ item.status }}
+                </span>
 
                 <div class="price-row">
                   <span class="price">{{ formatPrice(item.price) }}</span>
@@ -291,11 +293,14 @@
                 </div>
 
                 <div class="product-action">
-                  <button class="btn-buy" type="button" (click)="buyWishlistItem(item)">MUA NGAY</button>
+                  <button class="btn-buy" type="button" [disabled]="!item.canPurchase" (click)="buyWishlistItem(item)">
+                    {{ item.canPurchase ? 'MUA NGAY' : item.status.toUpperCase() }}
+                  </button>
 
                   <button
                     class="btn-cart"
                     type="button"
+                    [disabled]="!item.canPurchase"
                     (click)="addToCart(item, $event)"
                     [attr.aria-label]="'Thêm ' + item.name + ' vào giỏ hàng'"
                   >
@@ -306,15 +311,12 @@
             </article>
           </div>
 
-          <div class="text-center mt-3" id="diachi">
-            <button
-              class="btn-xemthem"
-              type="button"
-              *ngIf="wishlistItems.length > 4"
-              (click)="toggleWishlistView()"
-            >
-              {{ showAllWishlist ? 'Thu gọn' : 'Xem thêm' }}
-            </button>
+          <p class="wishlist-empty" *ngIf="wishlistItems.length === 0">Chưa có sản phẩm yêu thích.</p>
+
+          <div class="wishlist-pagination" *ngIf="wishlistTotalPages > 1" id="diachi">
+            <button type="button" [disabled]="wishlistPage === 1" (click)="changeWishlistPage(wishlistPage - 1)">Trước</button>
+            <span>Trang {{ wishlistPage }}/{{ wishlistTotalPages }} · {{ wishlistTotal }} sản phẩm</span>
+            <button type="button" [disabled]="wishlistPage === wishlistTotalPages" (click)="changeWishlistPage(wishlistPage + 1)">Sau</button>
           </div>
         </div>
 
@@ -384,7 +386,7 @@
         </div>
 
         <!-- 6. VOUCHER CỦA TÔI -->
-        <div class="section-card mb-4" id="voucher">
+        <div class="section-card mb-4" id="voucher" *ngIf="vouchers.length > 0">
           <div class="section-title">Voucher của tôi</div>
 
           <div class="voucher-list">

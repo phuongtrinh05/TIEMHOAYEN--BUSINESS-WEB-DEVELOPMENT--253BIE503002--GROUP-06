@@ -8,11 +8,22 @@ import { InventoryError, withTransaction } from '../services/inventory/helpers.j
 let reviewStorageReady: Promise<void> | null = null;
 export const ensureReviewStorage = async () => {
   if (!reviewStorageReady) reviewStorageReady = (async () => {
-    await (await getCollection<any>('DANH_GIA')).createIndex(
+    const collection = await getCollection<any>('DANH_GIA');
+    const indexes = await collection.listIndexes().toArray().catch((error: any) => {
+      if (error?.code === 26) return [];
+      throw error;
+    });
+    const existing = indexes.find((index: any) => index.unique && !index.partialFilterExpression && !index.sparse &&
+      Object.keys(index.key || {}).length === 2 && index.key.DON_HANG_ID === 1 && index.key.SAN_PHAM_ID === 1);
+    if (existing) return;
+    await collection.createIndex(
       { DON_HANG_ID: 1, SAN_PHAM_ID: 1 },
       { unique: true, name: 'uniq_review_order_product' },
     );
-  })();
+  })().catch((error) => {
+    reviewStorageReady = null;
+    throw error;
+  });
   return reviewStorageReady;
 };
 
@@ -31,6 +42,9 @@ interface ReviewableOrderRow {
 }
 
 const normalizePhone = (phone: string) => String(phone || '').replace(/\D/g, '');
+const detailProductId = (detail: any): string => String(
+  detail?.SAN_PHAM_ID || detail?.PRODUCT_ID || detail?.MA_SAN_PHAM || detail?._id?.SAN_PHAM_ID || '',
+).trim();
 
 const normalizeText = (value: unknown): string => {
   return String(value || '')
@@ -64,7 +78,7 @@ const isReviewableOrder = (order: any): boolean => {
   const status = normalizeText(order?.TRANG_THAI);
   const refundReason = String(order?.LY_DO_HOAN_TIEN_TRA_HANG || '').trim();
 
-  return (status === 'giao hang thanh cong' && !refundReason) || status === 'hoan thanh';
+  return ['giao hang thanh cong', 'da giao', 'hoan thanh'].includes(status) && !refundReason;
 };
 
 const mapOrderRows = (rows: ReviewableOrderRow[]) => {
@@ -146,7 +160,7 @@ const buildReviewableOrderRows = async (orders: any[]): Promise<ReviewableOrderR
     getCollection<any>('DANH_GIA'),
   ]);
   const details = await detailCollection.find({ DON_HANG_ID: { $in: orderIds } }).toArray();
-  const productIds = details.map((item) => item.SAN_PHAM_ID).filter(Boolean);
+  const productIds = details.map(detailProductId).filter(Boolean);
   const [products, imageMap, reviews] = await Promise.all([
     productCollection.find({ SAN_PHAM_ID: { $in: productIds } }).toArray(),
     getPrimaryImageMap(productIds),
@@ -158,9 +172,14 @@ const buildReviewableOrderRows = async (orders: any[]): Promise<ReviewableOrderR
 
   const groupedDetails = new Map<string, any>();
   for (const detail of details) {
-    const key = `${detail.DON_HANG_ID}:${detail.SAN_PHAM_ID}`;
+    const normalizedProductId = detailProductId(detail);
+    if (!normalizedProductId) continue;
+    const normalizedDetail = { ...detail, SAN_PHAM_ID: normalizedProductId };
+    const key = `${detail.DON_HANG_ID}:${normalizedProductId}`;
     const current = groupedDetails.get(key);
-    groupedDetails.set(key, current ? { ...current, SO_LUONG: Number(current.SO_LUONG || 0) + Number(detail.SO_LUONG || 0) } : detail);
+    groupedDetails.set(key, current
+      ? { ...current, SO_LUONG: Number(current.SO_LUONG || 0) + Number(detail.SO_LUONG || 0) }
+      : normalizedDetail);
   }
   return [...groupedDetails.values()]
     .sort((left, right) => {
@@ -180,10 +199,10 @@ const buildReviewableOrderRows = async (orders: any[]): Promise<ReviewableOrderR
         TRANG_THAI: order?.TRANG_THAI,
         SDT_NGUOI_NHAN: order?.SDT_NGUOI_NHAN,
         SAN_PHAM_ID: detail.SAN_PHAM_ID,
-        TEN_SAN_PHAM: product?.TEN_SAN_PHAM || '',
+        TEN_SAN_PHAM: product?.TEN_SAN_PHAM || detail.TEN_SAN_PHAM_SNAPSHOT || detail.TEN_SAN_PHAM || detail.SAN_PHAM_ID,
         SO_LUONG: detail.SO_LUONG,
         GIA: detail.GIA,
-        HINH_ANH: image?.URL || null,
+        HINH_ANH: image?.URL || detail.HINH_ANH_SNAPSHOT || detail.HINH_ANH || null,
         DA_DANH_GIA: reviewedPairs.has(`${detail.DON_HANG_ID}:${detail.SAN_PHAM_ID}`) ? 1 : 0,
       };
     });
@@ -400,7 +419,7 @@ export const createReview = async (req: Request, res: Response) => {
       }
     }
 
-    const productIds = [...new Set(orderDetail.map((item) => String(item.SAN_PHAM_ID || '')).filter(Boolean))];
+    const productIds = [...new Set(orderDetail.map(detailProductId).filter(Boolean))];
     if (productIds.length === 0) {
       return res.status(400).json({ message: 'Đơn hàng không có sản phẩm để đánh giá.' });
     }
@@ -499,7 +518,6 @@ export const createReview = async (req: Request, res: Response) => {
         { DON_HANG_ID: normalizedOrderId },
         { $set: { TRANG_THAI: 'Hoàn thành' } },
       );
-      // Ghi ngày hoàn thành cho Dashboard (chỉ lần đầu)
       await orderCollection.updateOne(
         { DON_HANG_ID: normalizedOrderId, $or: [{ NGAY_HOAN_THANH: { $exists: false } }, { NGAY_HOAN_THANH: null }] },
         { $set: { NGAY_HOAN_THANH: new Date() } },

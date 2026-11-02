@@ -2,8 +2,7 @@ import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { ChangeDetectorRef, Component, OnDestroy, OnInit, PLATFORM_ID, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
-import { orderAccessSession } from '../../../services/api-config';
-import { memberAccessToken } from '../../../services/session-auth';
+import { apiBaseUrl, getCustomerOrderAccessToken } from '../../../services/api-config';
 
 interface ReviewProduct {
   productId: string;
@@ -50,7 +49,7 @@ export class OrderReview implements OnInit, OnDestroy {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly route = inject(ActivatedRoute);
-  private readonly apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/reviews';
+  private readonly apiUrl = `${apiBaseUrl()}/reviews`;
   private readonly orderCacheTtlMs = 5 * 60 * 1000;
 
   public readonly defaultImage = 'assets/images/hoa.jpg';
@@ -60,7 +59,7 @@ export class OrderReview implements OnInit, OnDestroy {
   currentCustomerName = '';
 
   showPicker = false;
-  pickerStep: 'guest-lookup' | 'order' | 'product' = 'guest-lookup';
+  pickerStep: 'guest-lookup' | 'order' = 'guest-lookup';
   loadingOrders = false;
   loadingGuestLookup = false;
   loadingReviews = false;
@@ -73,7 +72,6 @@ export class OrderReview implements OnInit, OnDestroy {
 
   orders: ReviewOrder[] = [];
   selectedOrder: ReviewOrder | null = null;
-  selectedProduct: ReviewProduct | null = null;
 
   selectedRating = 0;
   reviewText = '';
@@ -86,6 +84,7 @@ export class OrderReview implements OnInit, OnDestroy {
 
   private routeOrderId = '';
   private routePhone = '';
+  private drafts = new Map<string, { rating: number; text: string; hide: boolean; files: File[]; previews: string[] }>();
 
 
   ngOnInit(): void {
@@ -99,7 +98,8 @@ export class OrderReview implements OnInit, OnDestroy {
     if (this.isLoggedIn && this.currentCustomerId) {
       this.pickerStep = 'order';
       this.showPicker = true;
-      this.loadCustomerReviewHistory();
+      if (this.isLoggedIn) this.loadCustomerReviewHistory();
+      else this.loadGuestReviewHistory(this.normalizePhone(this.guestPhone || this.selectedOrder?.receiverPhone || ''));
       this.loadReviewableOrdersForCustomer(this.routeOrderId);
       return;
     }
@@ -112,7 +112,7 @@ export class OrderReview implements OnInit, OnDestroy {
       this.guestPhone = this.formatPhoneInput(this.routePhone);
 
       if (this.routePhone) {
-        this.lookupGuestOrder(true);
+        this.lookupGuestOrder();
       } else {
         this.showPicker = true;
         this.pickerError = 'Vui lòng nhập số điện thoại người nhận để tiếp tục đánh giá đơn này.';
@@ -125,32 +125,22 @@ export class OrderReview implements OnInit, OnDestroy {
   }
 
   closePicker(): void {
+    if (this.submitting) return;
     this.showPicker = false;
     this.pickerError = '';
   }
 
-  goBack(): void {
-    this.pickerError = '';
-
-    if (this.pickerStep === 'product') {
-      this.pickerStep = this.isLoggedIn ? 'order' : 'guest-lookup';
-      return;
-    }
-
-    if (this.selectedOrder && this.selectedProduct) {
-      this.showPicker = false;
-    }
-  }
-
-  onChangeProductClick(): void {
+  onChangeOrderClick(): void {
     this.openPicker();
   }
 
   goBackToOrderPicker(): void {
+    if (this.submitting) return;
     this.showPicker = true;
     this.pickerError = '';
+    this.saveCurrentDraft();
     this.selectedOrder = null;
-    this.selectedProduct = null;
+    this.resetForm(false);
     this.pickerStep = this.isLoggedIn ? 'order' : 'guest-lookup';
 
     if (this.isLoggedIn && this.orders.length === 0 && !this.loadingOrders) {
@@ -191,35 +181,7 @@ export class OrderReview implements OnInit, OnDestroy {
       return;
     }
 
-    this.selectedOrder = order;
-    this.selectedProduct = null;
-    this.pickerError = '';
-    this.pickerStep = 'product';
-    this.pickProductForSelectedOrder();
-  }
-
-  private pickProductForSelectedOrder(): void {
-    if (!this.selectedOrder) {
-      return;
-    }
-
-    const availableProducts = this.selectedOrder.items.filter(item => !item.reviewed);
-
-    if (availableProducts.length === 0) {
-      this.showPicker = true;
-      this.pickerStep = 'product';
-      this.pickerError = 'Tất cả sản phẩm trong đơn này đã được đánh giá.';
-      return;
-    }
-
-    if (availableProducts.length === 1) {
-      this.selectProduct(availableProducts[0]);
-      return;
-    }
-
-    this.showPicker = true;
-    this.pickerStep = 'product';
-    this.pickerError = 'Vui lòng chọn sản phẩm trong đơn này để đánh giá.';
+    this.selectOrder(order);
   }
 
 
@@ -261,16 +223,15 @@ export class OrderReview implements OnInit, OnDestroy {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
-    // fetch() không đi qua HttpInterceptor: tự gắn phiên tra cứu/đăng nhập để backend xác thực quyền.
-    const headers = new Headers(init.headers || {});
-    const access = memberAccessToken() || orderAccessSession()?.accessToken || '';
-    if (access && !headers.has('x-order-access')) headers.set('x-order-access', access);
-
     return fetch(input, {
       ...init,
-      headers,
       signal: controller.signal,
     }).finally(() => window.clearTimeout(timeoutId));
+  }
+
+  private sessionHeaders(json = false): Record<string, string> {
+    const token = getCustomerOrderAccessToken();
+    return { ...(json ? { 'Content-Type': 'application/json' } : {}), ...(token ? { 'x-order-access': token } : {}) };
   }
 
   private normalizePhone(phone: string): string {
@@ -297,7 +258,7 @@ export class OrderReview implements OnInit, OnDestroy {
   }
 
   private get reviewableOrdersCacheKey(): string {
-    return `tiemHoaYen:reviewable-orders:${this.currentCustomerId}`;
+    return `tiemHoaYen:reviewable-orders:v2:${this.currentCustomerId}`;
   }
 
   private restoreReviewableOrders(): boolean {
@@ -347,7 +308,8 @@ export class OrderReview implements OnInit, OnDestroy {
     }
 
     this.fetchWithTimeout(
-      `${this.apiUrl}/customer/${encodeURIComponent(this.currentCustomerId)}/reviewable-orders`
+      `${this.apiUrl}/customer/${encodeURIComponent(this.currentCustomerId)}/reviewable-orders`,
+      { headers: this.sessionHeaders() }
     )
       .then(async response => {
         const data = await response.json().catch(() => ({}));
@@ -384,7 +346,7 @@ export class OrderReview implements OnInit, OnDestroy {
       });
   }
 
-  lookupGuestOrder(fromRoute = false): void {
+  lookupGuestOrder(): void {
     const orderCode = this.guestOrderCode.trim().toUpperCase();
     const phone = this.normalizePhone(this.guestPhone);
 
@@ -403,7 +365,7 @@ export class OrderReview implements OnInit, OnDestroy {
 
     this.fetchWithTimeout(`${this.apiUrl}/guest/lookup`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.sessionHeaders(true),
       body: JSON.stringify({ orderId: orderCode, phone }),
     })
       .then(async response => {
@@ -424,13 +386,7 @@ export class OrderReview implements OnInit, OnDestroy {
         }
 
         this.orders = [data.order];
-        this.selectedOrder = data.order;
-        this.pickerStep = 'product';
-        this.loadGuestReviewHistory(phone);
-
-        if (fromRoute) {
-          this.pickProductForSelectedOrder();
-        }
+        this.selectOrder(data.order);
 
         this.refreshView();
       })
@@ -445,30 +401,13 @@ export class OrderReview implements OnInit, OnDestroy {
   }
 
   selectOrder(order: ReviewOrder): void {
+    if (this.submitting) return;
+    this.saveCurrentDraft();
     this.selectedOrder = order;
-    this.selectedProduct = null;
-    this.pickerError = '';
-    this.pickerStep = 'product';
-  }
-
-  backToOrderList(): void {
-    this.selectedOrder = null;
-    this.selectedProduct = null;
-    this.pickerError = '';
-    this.pickerStep = this.isLoggedIn ? 'order' : 'guest-lookup';
-  }
-
-  selectProduct(product: ReviewProduct): void {
-    if (product.reviewed) {
-      this.pickerError = 'Sản phẩm này trong đơn đã được đánh giá rồi.';
-      return;
-    }
-
-    this.selectedProduct = product;
     this.showPicker = false;
     this.pickerError = '';
     this.submitMessage = '';
-    this.resetForm(false);
+    this.restoreDraft();
 
     if (this.isLoggedIn && this.currentCustomerId) {
       this.loadCustomerReviewHistory();
@@ -481,22 +420,25 @@ export class OrderReview implements OnInit, OnDestroy {
   }
 
   openPicker(): void {
+    if (this.submitting) return;
     this.showPicker = true;
     this.pickerError = '';
+    this.saveCurrentDraft();
 
     if (this.isLoggedIn) {
-      this.pickerStep = this.selectedOrder ? 'product' : 'order';
+      this.pickerStep = 'order';
 
       if (this.orders.length === 0 && !this.loadingOrders) {
         this.loadReviewableOrdersForCustomer();
       }
     } else {
-      this.pickerStep = this.selectedOrder ? 'product' : 'guest-lookup';
+      this.pickerStep = 'guest-lookup';
     }
   }
 
   setRating(star: number): void {
     this.selectedRating = star;
+    this.saveCurrentDraft();
   }
 
   onReviewImagesSelected(event: Event): void {
@@ -532,6 +474,7 @@ export class OrderReview implements OnInit, OnDestroy {
     }
 
     input.value = '';
+    this.saveCurrentDraft();
   }
 
   removeReviewImage(index: number): void {
@@ -543,6 +486,7 @@ export class OrderReview implements OnInit, OnDestroy {
 
     this.selectedFiles.splice(index, 1);
     this.imagePreviewUrls.splice(index, 1);
+    this.saveCurrentDraft();
   }
 
   private revokeImagePreviews(): void {
@@ -603,7 +547,8 @@ export class OrderReview implements OnInit, OnDestroy {
     this.loadingReviews = !hasCachedReviews;
 
     this.fetchWithTimeout(
-      `${this.apiUrl}/customer/${encodeURIComponent(this.currentCustomerId)}/history`
+      `${this.apiUrl}/customer/${encodeURIComponent(this.currentCustomerId)}/history`,
+      { headers: this.sessionHeaders() }
     )
       .then(async response => {
         const data = await response.json().catch(() => ({}));
@@ -640,7 +585,7 @@ export class OrderReview implements OnInit, OnDestroy {
 
     this.fetchWithTimeout(`${this.apiUrl}/guest/history`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.sessionHeaders(true),
       body: JSON.stringify({ phone: normalizedPhone }),
     })
       .then(async response => {
@@ -665,39 +610,71 @@ export class OrderReview implements OnInit, OnDestroy {
       });
   }
 
-  private buildLocalSubmittedReview(reviewId: string, imageUrls: string[]): ProductReview | null {
-    if (!this.selectedOrder || !this.selectedProduct) {
-      return null;
-    }
-
+  private buildLocalSubmittedReview(
+    order: ReviewOrder,
+    product: ReviewProduct,
+    reviewId: string,
+    imageUrls: string[],
+    rating: number,
+    content: string,
+    hideReviewer: boolean,
+  ): ProductReview {
     return {
       reviewId: reviewId || `local-${Date.now()}`,
-      orderId: this.selectedOrder.orderId,
-      productId: this.selectedProduct.productId,
-      productName: this.selectedProduct.productName,
-      productImage: this.selectedProduct.image || this.defaultImage,
-      customerId: this.hideReviewer ? null : (this.isLoggedIn ? this.currentCustomerId : null),
-      customerName: this.hideReviewer
+      orderId: order.orderId,
+      productId: product.productId,
+      productName: product.productName,
+      productImage: product.image || this.defaultImage,
+      customerId: hideReviewer ? null : (this.isLoggedIn ? this.currentCustomerId : null),
+      customerName: hideReviewer
         ? 'Khách hàng ẩn danh'
         : (this.currentCustomerName || 'Khách hàng'),
-      rating: this.selectedRating,
-      content: this.reviewText.trim(),
+      rating,
+      content,
       createdAt: new Date().toISOString(),
       images: imageUrls || [],
     };
   }
 
-  private prependSubmittedReview(review: ProductReview | null): void {
-    if (!review) {
-      return;
-    }
-
+  private prependSubmittedReviews(reviews: ProductReview[]): void {
     this.previousReviews = [
-      review,
-      ...this.previousReviews.filter(item => item.reviewId !== review.reviewId),
+      ...reviews,
+      ...this.previousReviews.filter(item => !reviews.some(review => item.reviewId === review.reviewId)),
     ];
 
     if (this.isLoggedIn) this.cacheCustomerReviewHistory();
+  }
+
+  private async postOrderReview(
+    order: ReviewOrder,
+    productIds: string[],
+    rating: number,
+    content: string,
+    hideReviewer: boolean,
+    files: File[],
+  ): Promise<{ reviews?: { reviewId: string; productId: string }[]; reviewId?: string; imageUrls?: string[] }> {
+    const formData = new FormData();
+    formData.append('orderId', order.orderId);
+    formData.append('productIds', JSON.stringify(productIds));
+    formData.append('actorCustomerId', this.isLoggedIn ? this.currentCustomerId : '');
+    formData.append('phone', this.isLoggedIn ? '' : this.normalizePhone(this.guestPhone || order.receiverPhone || ''));
+    formData.append('hideReviewer', String(hideReviewer));
+    formData.append('rating', String(rating));
+    formData.append('content', content);
+    files.forEach(file => formData.append('images', file));
+
+    const response = await this.fetchWithTimeout(this.apiUrl, {
+      method: 'POST',
+      headers: this.sessionHeaders(),
+      body: formData,
+    }, 30000);
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data?.message || 'Không thể lưu đánh giá.');
+    }
+
+    return data as { reviews?: { reviewId: string; productId: string }[]; reviewId?: string; imageUrls?: string[] };
   }
 
   private loadProductReviews(productId: string): void {
@@ -727,9 +704,15 @@ export class OrderReview implements OnInit, OnDestroy {
   }
 
   submitReview(): void {
-    if (!this.selectedOrder || !this.selectedProduct) {
+    const order = this.selectedOrder;
+    if (!order) {
       this.showPicker = true;
-      this.submitMessage = 'Vui lòng chọn đơn hàng và sản phẩm cần đánh giá.';
+      this.submitMessage = 'Vui lòng chọn đơn hàng cần đánh giá.';
+      return;
+    }
+
+    if (this.isOrderReviewed(order)) {
+      this.submitMessage = 'Đơn hàng này đã được đánh giá.';
       return;
     }
 
@@ -738,64 +721,112 @@ export class OrderReview implements OnInit, OnDestroy {
       return;
     }
 
-    const phone = this.normalizePhone(this.guestPhone || this.selectedOrder.receiverPhone || '');
-    const formData = new FormData();
-
-    formData.append('orderId', this.selectedOrder.orderId);
-    formData.append('productId', this.selectedProduct.productId);
-    formData.append('actorCustomerId', this.isLoggedIn ? this.currentCustomerId : '');
-    formData.append('phone', this.isLoggedIn ? '' : phone);
-    formData.append('hideReviewer', String(this.hideReviewer));
-    formData.append('rating', String(this.selectedRating));
-    formData.append('content', this.reviewText.trim());
-
-    this.selectedFiles.forEach(file => {
-      formData.append('images', file);
-    });
+    if (order.items.length === 0) {
+      this.submitMessage = 'Đơn hàng này đã được đánh giá.';
+      return;
+    }
 
     this.submitting = true;
-    this.submitMessage = '';
+    this.submitMessage = 'Đang gửi đánh giá cho toàn bộ sản phẩm trong đơn...';
+    void this.submitOrderReview(
+      order,
+      order.items,
+      this.selectedRating,
+      this.reviewText.trim(),
+      this.hideReviewer,
+      [...this.selectedFiles],
+    );
+  }
 
-    this.fetchWithTimeout(`${this.apiUrl}`, {
-      method: 'POST',
-      body: formData,
-    }, 30000)
-      .then(async response => {
-        const data = await response.json().catch(() => ({}));
+  private async submitOrderReview(
+    order: ReviewOrder,
+    products: ReviewProduct[],
+    rating: number,
+    content: string,
+    hideReviewer: boolean,
+    files: File[],
+  ): Promise<void> {
+    try {
+      const response = await this.postOrderReview(
+        order,
+        products.map(product => product.productId),
+        rating,
+        content,
+        hideReviewer,
+        files,
+      );
+      const orderReviews = response.reviews || [];
+      const reviewsByProduct = new Map(orderReviews.map(review => [review.productId, review]));
+      if (products.some(product => !reviewsByProduct.has(product.productId))) {
+        throw new Error('Máy chủ chưa hỗ trợ lưu đánh giá toàn đơn. Vui lòng cập nhật backend rồi thử lại.');
+      }
 
-        if (!response.ok) {
-          throw new Error(data?.message || 'Không thể lưu đánh giá.');
-        }
+      order.items.forEach(item => item.reviewed = true);
+      this.finishOrderReview(
+        order,
+        order.items.map(product => ({
+          ...reviewsByProduct.get(product.productId)!,
+          imageUrls: Array.isArray(response.imageUrls) ? response.imageUrls : [],
+        })),
+        rating,
+        content,
+        hideReviewer,
+      );
+      this.submitMessage = 'Đánh giá cho toàn bộ đơn hàng đã được gửi thành công.';
+      this.loadReviewHistoryForSelectedOrder(order);
+    } catch (error) {
+      console.error('Lỗi gửi đánh giá:', error);
+      this.submitMessage = this.getReviewErrorMessage(error);
+    } finally {
+      this.submitting = false;
+      this.refreshView();
+    }
+  }
 
-        return data as { reviewId?: string; imageUrls?: string[]; orderStatus?: string };
-      })
-      .then((data) => {
-        const submittedReview = this.buildLocalSubmittedReview(
-          data.reviewId || '',
-          Array.isArray(data.imageUrls) ? data.imageUrls : []
-        );
+  private finishOrderReview(
+    order: ReviewOrder,
+    savedReviews: { reviewId: string; productId: string; imageUrls: string[] }[],
+    rating: number,
+    content: string,
+    hideReviewer: boolean,
+  ): void {
+    const reviewByProduct = new Map(savedReviews.map(review => [review.productId, review]));
+    this.prependSubmittedReviews(order.items.map((product, index) => {
+      const saved = reviewByProduct.get(product.productId);
+      return this.buildLocalSubmittedReview(
+        order,
+        product,
+        saved?.reviewId || `local-${Date.now()}-${index}`,
+        saved?.imageUrls || [],
+        rating,
+        content,
+        hideReviewer,
+      );
+    }));
 
-        this.submitting = false;
-        this.submitMessage = 'Đánh giá đã được gửi thành công. Đơn hàng đã chuyển sang Hoàn thành.';
+    const completedDraftKey = this.draftKey();
+    this.drafts.delete(completedDraftKey);
+    localStorage.removeItem(`tiemHoaYen:review-draft:${completedDraftKey}`);
+    this.resetForm(true);
+    this.persistReviewableOrders();
+  }
 
-        if (this.selectedOrder) {
-          this.selectedOrder.status = data.orderStatus || 'Hoàn thành';
-          this.selectedOrder.items.forEach(item => item.reviewed = true);
-          if (this.isLoggedIn) this.cacheReviewableOrders();
-        }
+  private persistReviewableOrders(): void {
+    if (this.isLoggedIn) this.cacheReviewableOrders();
+  }
 
-        this.prependSubmittedReview(submittedReview);
-        this.resetForm(true);
-        this.refreshView();
-      })
-      .catch(error => {
-        console.error('Lỗi gửi đánh giá:', error);
-        this.submitting = false;
-        this.submitMessage = error?.name === 'AbortError'
-          ? 'Máy chủ phản hồi quá lâu. Vui lòng kiểm tra backend tại cổng 3000.'
-          : (error?.message || 'Không thể lưu đánh giá.');
-        this.refreshView();
-      });
+  private loadReviewHistoryForSelectedOrder(order: ReviewOrder): void {
+    if (this.isLoggedIn) {
+      this.loadCustomerReviewHistory();
+    } else {
+      this.loadGuestReviewHistory(this.normalizePhone(this.guestPhone || order.receiverPhone || ''));
+    }
+  }
+
+  private getReviewErrorMessage(error: any): string {
+    return error?.name === 'AbortError'
+      ? 'Máy chủ phản hồi quá lâu. Vui lòng thử lại.'
+      : (error?.message || 'Không thể lưu đánh giá.');
   }
 
   private resetForm(keepSelection: boolean): void {
@@ -807,6 +838,35 @@ export class OrderReview implements OnInit, OnDestroy {
     if (!keepSelection) {
       return;
     }
+  }
+
+  saveCurrentDraft(): void {
+    const key = this.draftKey();
+    if (!key) return;
+    this.drafts.set(key, { rating: this.selectedRating, text: this.reviewText, hide: this.hideReviewer, files: [...this.selectedFiles], previews: [...this.imagePreviewUrls] });
+    try {
+      localStorage.setItem(`tiemHoaYen:review-draft:${key}`, JSON.stringify({ rating: this.selectedRating, text: this.reviewText, hide: this.hideReviewer }));
+    } catch {}
+  }
+
+  private restoreDraft(): void {
+    this.resetForm(false);
+    const key = this.draftKey();
+    if (!key) return;
+    let draft = this.drafts.get(key);
+    if (!draft) {
+      try {
+        const stored = JSON.parse(localStorage.getItem(`tiemHoaYen:review-draft:${key}`) || 'null');
+        if (stored) draft = { rating: Number(stored.rating || 0), text: String(stored.text || ''), hide: Boolean(stored.hide), files: [], previews: [] };
+      } catch {}
+    }
+    if (!draft) return;
+    this.selectedRating = draft.rating; this.reviewText = draft.text; this.hideReviewer = draft.hide;
+    this.selectedFiles = [...draft.files]; this.imagePreviewUrls = [...draft.previews];
+  }
+
+  private draftKey(): string {
+    return this.selectedOrder?.orderId || '';
   }
 
   formatPrice(value: number): string {
@@ -831,15 +891,15 @@ export class OrderReview implements OnInit, OnDestroy {
     return this.selectedOrder?.orderId || 'Chưa chọn đơn';
   }
 
-  get selectedProductName(): string {
-    return this.selectedProduct?.productName || 'Chưa chọn sản phẩm';
+  isOrderReviewed(order: ReviewOrder): boolean {
+    return order.items.length > 0 && order.items.every(item => item.reviewed);
   }
 
   get canSubmit(): boolean {
     return !!this.selectedOrder &&
-      !!this.selectedProduct &&
-      !this.selectedProduct.reviewed &&
+      !this.isOrderReviewed(this.selectedOrder) &&
       this.selectedRating > 0 &&
+      !!this.reviewText.trim() &&
       !this.submitting;
   }
 }
