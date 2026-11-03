@@ -197,7 +197,7 @@ describe('CreateOrder', () => {
       component.productSearchQuery = '';
       component.onProductSearch();
       expect(component.productSearchResults).toEqual([]);
-      expect(component.showProductSearch).toBeFalse();
+      expect(component.showProductSearch).toBe(false);
     });
 
     it('tìm theo tên sản phẩm (case-insensitive)', () => {
@@ -210,7 +210,7 @@ describe('CreateOrder', () => {
     it('tìm theo mã sản phẩm', () => {
       component.productSearchQuery = 'PRD000001';
       component.onProductSearch();
-      expect(component.productSearchResults.some(p => p.id === 'PRD000001')).toBeTrue();
+      expect(component.productSearchResults.some(p => p.id === 'PRD000001')).toBe(true);
     });
 
     it('trả về rỗng nếu không tìm thấy', () => {
@@ -225,7 +225,7 @@ describe('CreateOrder', () => {
     it('ẩn dropdown nếu query rỗng', () => {
       component.customerSearchQuery = '';
       component.onCustomerSearch();
-      expect(component.showCustomerSearch).toBeFalse();
+      expect(component.showCustomerSearch).toBe(false);
     });
 
     it('tìm theo tên khách hàng', () => {
@@ -273,7 +273,7 @@ describe('CreateOrder', () => {
       component.customerSearchQuery = 'Anh Thoa';
       component.onCustomerSearch();
       component.selectCustomer(component.customerSearchResults[0]);
-      expect(component.useLoyalty).toBeFalse();
+      expect(component.useLoyalty).toBe(false);
     });
 
     it('đóng dropdown sau khi chọn', () => {
@@ -281,7 +281,7 @@ describe('CreateOrder', () => {
       component.customerSearchQuery = 'Anh Thoa';
       component.onCustomerSearch();
       component.selectCustomer(component.customerSearchResults[0]);
-      expect(component.showCustomerSearch).toBeFalse();
+      expect(component.showCustomerSearch).toBe(false);
     });
   });
 
@@ -329,11 +329,11 @@ describe('CreateOrder', () => {
   // ===== SHIPPER =====
   describe('Shipper', () => {
     it('toggleShipperDropdown mở/đóng dropdown', () => {
-      expect(component.showShipperDropdown).toBeFalse();
+      expect(component.showShipperDropdown).toBe(false);
       component.toggleShipperDropdown();
-      expect(component.showShipperDropdown).toBeTrue();
+      expect(component.showShipperDropdown).toBe(true);
       component.toggleShipperDropdown();
-      expect(component.showShipperDropdown).toBeFalse();
+      expect(component.showShipperDropdown).toBe(false);
     });
 
     it('selectShipper cập nhật selectedShipper và đóng dropdown', () => {
@@ -341,23 +341,23 @@ describe('CreateOrder', () => {
       const shipper = component.shippers[1];
       component.selectShipper(shipper);
       expect(component.selectedShipper).toEqual(shipper);
-      expect(component.showShipperDropdown).toBeFalse();
+      expect(component.showShipperDropdown).toBe(false);
     });
   });
 
   // ===== STATUS DROPDOWN =====
   describe('Status dropdown', () => {
     it('toggleStatusDropdown mở/đóng', () => {
-      expect(component.showStatusDropdown).toBeFalse();
+      expect(component.showStatusDropdown).toBe(false);
       component.toggleStatusDropdown();
-      expect(component.showStatusDropdown).toBeTrue();
+      expect(component.showStatusDropdown).toBe(true);
     });
 
     it('selectStatus cập nhật orderStatus và đóng dropdown', () => {
       component.showStatusDropdown = true;
       component.selectStatus('Đang giao');
       expect(component.form.orderStatus).toBe('Đang giao');
-      expect(component.showStatusDropdown).toBeFalse();
+      expect(component.showStatusDropdown).toBe(false);
     });
   });
 
@@ -366,7 +366,7 @@ describe('CreateOrder', () => {
     it('openAddCustomerPopup reset form và mở popup', () => {
       component.newCustomer = { name: 'test', phone: '123', email: 'x', address: 'y' };
       component.openAddCustomerPopup();
-      expect(component.showAddCustomerPopup).toBeTrue();
+      expect(component.showAddCustomerPopup).toBe(true);
       expect(component.newCustomer.name).toBe('');
       expect(component.newCustomer.phone).toBe('');
     });
@@ -374,14 +374,14 @@ describe('CreateOrder', () => {
     it('closeAddCustomerPopup đóng popup', () => {
       component.showAddCustomerPopup = true;
       component.closeAddCustomerPopup();
-      expect(component.showAddCustomerPopup).toBeFalse();
+      expect(component.showAddCustomerPopup).toBe(false);
     });
 
     it('confirmAddCustomer báo lỗi nếu thiếu tên', () => {
       component.newCustomer = { name: '', phone: '0901234567', email: '', address: '' };
       component.confirmAddCustomer();
       expect(component.newCustomerErrors['name']).toBeTruthy();
-      expect(component.showAddCustomerPopup).toBeTrue();
+      expect(component.showAddCustomerPopup).toBe(true);
     });
 
     it('confirmAddCustomer báo lỗi nếu thiếu số điện thoại', () => {
@@ -395,7 +395,7 @@ describe('CreateOrder', () => {
       component.confirmAddCustomer();
       expect(component.form.senderName).toBe('Nguyễn Văn A');
       expect(component.form.senderPhone).toBe('0901234567');
-      expect(component.showAddCustomerPopup).toBeFalse();
+      expect(component.showAddCustomerPopup).toBe(false);
     });
   });
 
@@ -403,7 +403,7 @@ describe('CreateOrder', () => {
   describe('validate()', () => {
     it('trả về false và set errors nếu form rỗng', () => {
       const result = component.validate();
-      expect(result).toBeFalse();
+      expect(result).toBe(false);
       expect(component.errors['senderName']).toBeTruthy();
       expect(component.errors['senderPhone']).toBeTruthy();
       expect(component.errors['receiverName']).toBeTruthy();
@@ -422,7 +422,7 @@ describe('CreateOrder', () => {
       component.form.deliverySlot = '09:00 AM–11:00 AM';
       component.form.deliveryAddress = '123 Nguyễn Huệ, Q1, HCM';
       const result = component.validate();
-      expect(result).toBeTrue();
+      expect(result).toBe(true);
       expect(Object.keys(component.errors).length).toBe(0);
     });
 

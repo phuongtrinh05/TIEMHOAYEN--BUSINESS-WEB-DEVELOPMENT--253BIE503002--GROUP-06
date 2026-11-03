@@ -44,9 +44,9 @@ router.get('/reports/catalog', view, c.getCatalog);
 router.get('/reports/run/:key', view, c.getReportRun);
 
 // Thông báo: mọi nhân viên đăng nhập đều xem được (đã lọc theo quyền từng module bên trong)
-router.get('/notifications', c.getNotifications);
-router.post('/notifications/read-all', c.readAllNotifications);
+router.get('/notifications', view, c.getNotifications);
+router.post('/notifications/read-all', view, c.readAllNotifications);
 router.post('/notifications/sync', view, c.syncNotifications);
-router.post('/notifications/:id/read', c.readNotification);
+router.post('/notifications/:id/read', view, c.readNotification);
 
 export default router;

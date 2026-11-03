@@ -1,3 +1,6 @@
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { ChangeDetectorRef, Component, Inject, OnDestroy, OnInit, PLATFORM_ID } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -5,7 +8,8 @@ import { interval, Subscription } from 'rxjs';
 import { AdminApiService, AdminTransaction } from '../../services/admin-api.service';
 
 interface TransactionItem {
-    id: string | number;
+    total?: number; deposit?: number; paid?: number; remaining?: number; editable?: boolean; confirmedAt?: string; confirmedBy?: string; history?: any[];
+    id: number;
     code: string;
     orderCode: string;
     gateway: string;
@@ -28,6 +32,8 @@ interface TransactionItem {
 })
 export class TransactionListComponent implements OnInit, OnDestroy {
     errorMessage = '';
+    fromDate = ''; toDate = '';
+    get canCreate(): boolean { return this.adminApi.can('payments','create'); }
     searchKeyword = '';
     selectedGateway = 'Tất cả';
     selectedStatus = 'Tất cả';
@@ -55,14 +61,17 @@ export class TransactionListComponent implements OnInit, OnDestroy {
 
     editableStatusOptions = [
         'Đã thanh toán',
-        'Thanh toán thất bại'
+        'Thanh toán thất bại',
+        'Hết hạn'
     ];
 
     currentPage = 1;
     pageSize = 10;
 
-    editingTransactionIds = new Set<string | number>();
-    private readonly liveRefreshMs = 10000;
+    editingTransactionIds = new Set<number>();
+    expandedHistoryIds = new Set<number>();
+    editReasons: Record<string, string> = {};
+    private readonly liveRefreshMs = 30000;
     private liveRefreshSub?: Subscription;
     private isLiveRefreshInFlight = false;
 
@@ -116,7 +125,7 @@ export class TransactionListComponent implements OnInit, OnDestroy {
                     this.currentPage = previousPage;
                     this.ensureValidPage();
                 } else {
-                    this.filteredTransactions = [...this.transactions];
+                    this.applyFilters();
                     this.currentPage = 1;
                     this.editingTransactionIds.clear();
                 }
@@ -151,6 +160,7 @@ export class TransactionListComponent implements OnInit, OnDestroy {
 
     private shouldPauseLiveRefresh(): boolean {
         return (
+            (typeof document !== 'undefined' && document.hidden) ||
             this.isAddModalOpen ||
             this.editingTransactionIds.size > 0 ||
             this.hasSelectedTransactions ||
@@ -183,6 +193,8 @@ export class TransactionListComponent implements OnInit, OnDestroy {
             return '';
         }
 
+        if (key === 'momo') return 'Momo';
+        if (key === 'vnpay') return 'VNPay';
         if (raw === 'COD' || key.includes('cod') || key.includes('nhan hang')) {
             return 'Thanh toán khi nhận hàng (COD)';
         }
@@ -316,7 +328,8 @@ export class TransactionListComponent implements OnInit, OnDestroy {
                 this.selectedStatus === 'Tất cả' ||
                 item.status === this.selectedStatus;
 
-            return matchesKeyword && matchesGateway && matchesStatus;
+            const date = this.formatShortDate(item.transactionDate).split('/').reverse().join('-');
+            return matchesKeyword && matchesGateway && matchesStatus && (!this.fromDate || date >= this.fromDate) && (!this.toDate || date <= this.toDate);
         });
 
         if (resetPage) {
@@ -392,6 +405,7 @@ export class TransactionListComponent implements OnInit, OnDestroy {
     }
 
     canEditTransaction(transaction: TransactionItem): boolean {
+        if (!this.adminApi.can('payments','update') || !transaction.editable) return false;
         if (!this.hasSelectedTransactions) {
             return true;
         }
@@ -405,6 +419,10 @@ export class TransactionListComponent implements OnInit, OnDestroy {
 
     transactionStatusClass(status: string): string {
         const normalized = this.statusKey(status);
+
+        if (normalized.includes('het han') || normalized.includes('expired')) {
+            return 'status-badge--failed';
+        }
 
         if (normalized.includes('that bai') || normalized.includes('fail')) {
             return 'status-badge--failed';
@@ -429,12 +447,34 @@ export class TransactionListComponent implements OnInit, OnDestroy {
         return 'status-badge--default';
     }
 
+    reconciliationLabel(item: TransactionItem): string {
+        const required = Number(item.deposit || item.total || 0);
+        const paid = Number(item.paid || 0);
+        if (paid <= 0) return 'Chưa ghi nhận thu';
+        if (paid < required) return `Thiếu ${this.formatPrice(required - paid)}`;
+        if (paid > Number(item.total || 0)) return `Thừa ${this.formatPrice(paid - Number(item.total || 0))}`;
+        return Number(item.remaining || 0) > 0 ? 'Đã đủ cọc · còn số dư' : 'Đã thu đủ';
+    }
+
+    reconciliationClass(item: TransactionItem): string {
+        const label = this.reconciliationLabel(item);
+        if (label.startsWith('Thiếu') || label.startsWith('Chưa')) return 'reconciliation--warning';
+        if (label.startsWith('Thừa')) return 'reconciliation--danger';
+        return 'reconciliation--ok';
+    }
+
+    toggleHistory(item: TransactionItem): void {
+        this.expandedHistoryIds.has(item.id) ? this.expandedHistoryIds.delete(item.id) : this.expandedHistoryIds.add(item.id);
+    }
+
     toggleEditTransaction(transaction: TransactionItem): void {
         if (!this.canEditTransaction(transaction)) {
             return;
         }
 
         if (this.editingTransactionIds.has(transaction.id)) {
+            const reason = String(this.editReasons[transaction.code] || '').trim();
+            if (!reason) { alert('Vui lòng nhập căn cứ đối soát giao dịch.'); return; }
             this.editingTransactionIds.delete(transaction.id);
             const amount = this.parseMoneyAmount(transaction.amount);
 
@@ -448,19 +488,17 @@ export class TransactionListComponent implements OnInit, OnDestroy {
             this.adminApi.updateTransaction(transaction.code, {
                 gateway: transaction.gateway,
                 status: transaction.status,
-                amount: transaction.amount
+                amount: transaction.amount,
+                referenceCode: transaction.referenceCode,
+                reason,
+                source: 'ADMIN_MANUAL'
             }).subscribe({
                 next: (response) => {
-                    const updatedTransaction = this.mapTransaction(response.transaction);
-                    this.transactions = this.transactions.map((item) => {
-                        return item.code === updatedTransaction.code ? updatedTransaction : item;
-                    });
-                    this.applyFilters();
+                    delete this.editReasons[transaction.code]; this.loadTransactions();
                 },
                 error: (error) => {
                     console.error('Cannot update transaction', error);
-                    this.errorMessage = error.error?.message || 'Không thể lưu giao dịch. Vui lòng thử lại.';
-                    this.cdr.detectChanges();
+                    alert(error?.error?.message || 'Không thể lưu giao dịch. Vui lòng thử lại.');
                     this.loadTransactions();
                 }
             });
@@ -479,24 +517,18 @@ export class TransactionListComponent implements OnInit, OnDestroy {
     }
 
     deleteSelectedTransactions(): void {
-        if (!this.hasSelectedTransactions) {
-            return;
-        }
+        alert('Giao dịch được giữ để đối soát; không hỗ trợ xóa.');
+    }
 
-        if (!confirm(`Bạn có chắc muốn xóa ${this.selectedCount} giao dịch đã chọn?`)) {
-            return;
-        }
-
-        const selectedIds = this.transactions
-            .filter((item) => item.selected)
-            .map((item) => item.id);
-
-        this.transactions = this.transactions.filter((item) => {
-            return !selectedIds.includes(item.id);
-        });
-
-        this.editingTransactionIds.clear();
-        this.applyFilters();
+    exportTransactions(format: 'excel' | 'pdf'): void {
+        const ids = new Set((this.selectedCount ? this.filteredTransactions.filter(t => t.selected) : this.filteredTransactions).map(t => t.code));
+        this.adminApi.getTransactions().subscribe({ next: response => {
+            const rows = response.transactions.filter(t => ids.has(t.code)).map(t => [t.code, t.orderCode, t.gateway, t.status, t.amount, t.referenceCode, t.transactionDate, t.total || 0, t.deposit || 0, t.paid || 0, t.remaining || 0]);
+            const headers = ['Ma GD','Ma don','Phuong thuc','Trang thai','So tien GD','Tham chieu','Ngay GD','Tong don','Coc yeu cau','Da thu cua don','Con lai cua don'];
+            if (format === 'excel') { const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([headers, ...rows]), 'Giao dich'); XLSX.writeFile(book, 'TiemHoaYen-GiaoDich.xlsx'); }
+            else { const pdf = new jsPDF({orientation:'landscape'}); autoTable(pdf,{head:[headers],body:rows.map(r => r.map(v => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/Đ/g,'D')))}); pdf.save('TiemHoaYen-GiaoDich.pdf'); }
+            this.isExportMenuOpen = false;
+        }, error: e => alert(e?.error?.message || 'Chưa xuất được dữ liệu từ backend.') });
     }
 
     previousPage(): void {
@@ -553,6 +585,7 @@ export class TransactionListComponent implements OnInit, OnDestroy {
     }
 
     openAddModal(): void {
+        if (!this.canCreate) return;
         this.isFilterMenuOpen = false;
         this.isSortMenuOpen = false;
         this.isExportMenuOpen = false;
@@ -580,6 +613,7 @@ export class TransactionListComponent implements OnInit, OnDestroy {
     }
 
     saveNewTransaction(): void {
+        if (!this.canCreate) return;
         if (!this.newTransaction) {
             return;
         }
@@ -626,8 +660,7 @@ export class TransactionListComponent implements OnInit, OnDestroy {
             },
             error: (error) => {
                 console.error('Cannot create transaction', error);
-                this.errorMessage = error.error?.message || 'Không thể thêm giao dịch. Vui lòng kiểm tra mã đơn hàng rồi thử lại.';
-                this.cdr.detectChanges();
+                alert(error?.error?.message || 'Không thể thêm giao dịch. Vui lòng kiểm tra mã đơn hàng rồi thử lại.');
             }
         });
 

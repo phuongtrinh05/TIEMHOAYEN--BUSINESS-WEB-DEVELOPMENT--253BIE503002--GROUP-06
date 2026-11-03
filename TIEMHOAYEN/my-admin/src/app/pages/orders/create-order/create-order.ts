@@ -1,10 +1,11 @@
-  import { Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AdminApiService, AdminCustomer, AdminProduct, AdminVoucher } from '../../../services/admin-api.service';
 
 // ===== TYPES =====
 export type OrderStatus =
+  | 'Đã đặt hàng thành công'
   | 'Chờ xử lý'
   | 'Đang chuẩn bị hàng'
   | 'Chờ vận chuyển'
@@ -61,6 +62,7 @@ export interface CreateOrderForm {
   products: CreateOrderProduct[];
   customerNote: string;
   cardTemplate: string;
+  cardWritingMode: 'customer' | 'shop';
   cardMessage: string;
   voucher: string | null;
   adminNote: string;
@@ -80,12 +82,13 @@ export interface CreateOrderForm {
 })
 export class CreateOrder implements OnInit {
 
-  constructor(private readonly adminApi: AdminApiService) {}
+  constructor(private readonly adminApi: AdminApiService, private readonly cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.loadCustomers();
     this.loadVouchers();
     this.loadProducts();
+    this.loadCardTemplates();
   }
 
   // ===== FORM STATE =====
@@ -103,11 +106,12 @@ export class CreateOrder implements OnInit {
     products: [],
     customerNote: '',
     cardTemplate: 'Không có thiệp',
+    cardWritingMode: 'customer',
     cardMessage: '',
     voucher: null,
     adminNote: '',
     paymentMethod: 'Chuyển khoản full',
-    orderStatus: 'Chờ xử lý',
+    orderStatus: 'Đã đặt hàng thành công',
   };
 
   errors: Partial<Record<keyof CreateOrderForm, string>> = {};
@@ -119,6 +123,7 @@ export class CreateOrder implements OnInit {
   private loadCustomers(): void {
     this.adminApi.getCustomers().subscribe({
       next: (data) => {
+        this.cdr.markForCheck();
         this.customers = (data.customers || []).map((customer: AdminCustomer) => ({
           id: customer.code,
           name: customer.name,
@@ -140,6 +145,7 @@ export class CreateOrder implements OnInit {
   private loadVouchers(): void {
     this.adminApi.getVouchers().subscribe({
       next: (data) => {
+        this.cdr.markForCheck();
         this.allVouchers = (data.vouchers || [])
           .filter((voucher: AdminVoucher) => this.isVoucherAvailable(voucher))
           .map((voucher: AdminVoucher) => ({
@@ -164,6 +170,7 @@ export class CreateOrder implements OnInit {
   private loadProducts(): void {
     this.adminApi.getProducts().subscribe({
       next: (data) => {
+        this.cdr.markForCheck();
         this.shopProducts = (data.products || []).map((product: AdminProduct) => ({
           id: product.sku,
           name: product.name,
@@ -186,7 +193,7 @@ export class CreateOrder implements OnInit {
 
   // ===== STATIC DATA =====
   statusOptions: OrderStatus[] = [
-    'Chờ xử lý',
+    'Đã đặt hàng thành công',
     'Đang chuẩn bị hàng',
     'Chờ vận chuyển',
     'Đang giao',
@@ -205,27 +212,35 @@ export class CreateOrder implements OnInit {
     '07:00 PM–09:00 PM',
   ];
 
-  cardTemplates: string[] = [
-    'Thiệp Happy Birthday',
-    'Thiệp Valentine',
-    'Thiệp Chúc Mừng',
-    'Thiệp Cảm Ơn',
-    'Thiệp Xin Lỗi',
-    'Thiệp Kỷ Niệm',
-  ];
+  cardTemplates: Array<{ id: string; code: string; name: string; image?: string; fee: number }> = [];
+
+  private loadCardTemplates(): void {
+    this.adminApi.getCardTemplates().subscribe({
+      next: response => { this.cardTemplates = response.templates || []; this.cdr.markForCheck(); },
+      error: () => { this.cardTemplates = []; this.cdr.markForCheck(); },
+    });
+  }
+
+  onCardTemplateChange(): void {
+    delete this.errors.cardMessage;
+    if (this.form.cardTemplate === 'Không có thiệp') {
+      this.form.cardWritingMode = 'customer';
+      this.form.cardMessage = '';
+    }
+  }
+
+  onCardWritingModeChange(): void {
+    delete this.errors.cardMessage;
+    if (this.form.cardWritingMode === 'customer') this.form.cardMessage = '';
+  }
 
   paymentMethods: string[] = [
     'Chuyển khoản full',
     'Tiền mặt',
-    'Cọc 50%',
     'COD',
   ];
 
-  shippers: Shipper[] = [
-    { name: 'Nguyễn Quang Huy', phone: '0553851470', avatar: 'assets/images/nguyen_quang_huy.jpg' },
-    { name: 'Trần Minh Khang', phone: '0908123456', avatar: 'assets/images/logo-main.png' },
-    { name: 'Lê Hoàng Nam', phone: '0934567890', avatar: 'assets/images/logo-main.png' },
-  ];
+  shippers: Shipper[] = [];
 
   // ===== PAYMENT =====
   shippingFee = 40000;
@@ -255,7 +270,7 @@ export class CreateOrder implements OnInit {
   // ===== STATUS =====
   showStatusDropdown = false;
   showShipperDropdown = false;
-  selectedShipper: Shipper | null = this.shippers[0];
+  selectedShipper: Shipper | null = null;
   deliveryDateDisplay = '';
   statusSelected = false;
 
@@ -273,10 +288,16 @@ export class CreateOrder implements OnInit {
     return this.form.products.reduce((sum, p) => sum + p.qty * p.price, 0);
   }
 
+  get selectedCardFee(): number {
+    if (this.form.cardTemplate === 'Không có thiệp') return 0;
+    return Number(this.cardTemplates.find(card => card.id === this.form.cardTemplate)?.fee || 0);
+  }
+
   get computedTotalBeforeTax(): number {
     return (
       this.computedSubtotal +
-      this.shippingFee -
+      this.shippingFee +
+      this.selectedCardFee -
       (this.form.voucher ? this.voucherDiscount : 0) -
       (this.useLoyalty ? this.loyaltyDiscount : 0)
     );
@@ -286,10 +307,7 @@ export class CreateOrder implements OnInit {
     return this.computedTotalBeforeTax + this.tax;
   }
 
-  get computedRemaining(): number {
-    const paid = parseInt(this.paidInput.replace(/\D/g, ''), 10) || 0;
-    return Math.max(this.computedGrandTotal - paid, 0);
-  }
+  get computedRemaining(): number { return Math.max(this.computedGrandTotal, 0); }
 
   // ===== CUSTOMER SEARCH =====
   onCustomerSearch(): void {
@@ -561,6 +579,7 @@ export class CreateOrder implements OnInit {
   orderStatusBadgeClass(status: OrderStatus): string {
     const map: Record<OrderStatus, string> = {
       'Chờ xử lý': 'order-status-badge--pending',
+      'Đã đặt hàng thành công': 'order-status-badge--pending',
       'Đang chuẩn bị hàng': 'order-status-badge--preparing',
       'Chờ vận chuyển': 'order-status-badge--waiting-ship',
       'Đang giao': 'order-status-badge--shipping',
@@ -574,6 +593,7 @@ export class CreateOrder implements OnInit {
   orderStatusIcon(status: OrderStatus): string {
     const map: Record<OrderStatus, string> = {
       'Chờ xử lý': 'bi-gift-fill',
+      'Đã đặt hàng thành công': 'bi-check-circle-fill',
       'Đang chuẩn bị hàng': 'bi-box-seam',
       'Chờ vận chuyển': 'bi-boxes',
       'Đang giao': 'bi-truck',
@@ -671,9 +691,10 @@ export class CreateOrder implements OnInit {
     if (!this.form.deliverySlot) this.errors.deliverySlot = 'Vui lòng chọn khung giờ giao';
     if (!this.form.deliveryAddress.trim()) this.errors.deliveryAddress = 'Vui lòng nhập địa chỉ giao hàng';
 
-    // Trạng thái đơn hàng — bắt buộc phải bấm "Cập nhật trạng thái" và chọn 1 mục
-    if (!this.statusSelected) {
-      this.errors.orderStatus = 'Vui lòng cập nhật trạng thái đơn hàng';
+    if (this.form.cardTemplate !== 'Không có thiệp' && this.form.cardWritingMode === 'shop') {
+      const message = this.form.cardMessage.trim();
+      if (!message) this.errors.cardMessage = 'Vui lòng nhập nội dung để shop viết lên thiệp';
+      else if (message.length > 500) this.errors.cardMessage = 'Nội dung thiệp tối đa 500 ký tự';
     }
 
     // Danh sách sản phẩm — phải có ít nhất 1 sản phẩm mới được tạo đơn
@@ -684,8 +705,13 @@ export class CreateOrder implements OnInit {
     return Object.keys(this.errors).length === 0;
   }
 
+  creationResult: any = null;
+  get canCreateOrder(): boolean { return this.adminApi.can('orders','create'); }
+  isSubmitting = false;
   submitOrder(): void {
+    if (this.isSubmitting || !this.adminApi.can('orders','create')) return;
     if (!this.validate()) return;
+    this.isSubmitting = true;
     this.adminApi.createOrder({
       senderName: this.form.senderName,
       senderPhone: this.form.senderPhone,
@@ -704,6 +730,11 @@ export class CreateOrder implements OnInit {
       })),
       customerNote: this.form.customerNote,
       cardMessage: this.form.cardMessage,
+      giftCard: this.form.cardTemplate === 'Không có thiệp' ? null : {
+        templateId: this.form.cardTemplate,
+        writingMode: this.form.cardWritingMode,
+        message: this.form.cardWritingMode === 'shop' ? this.form.cardMessage : '',
+      },
       adminNote: this.form.adminNote,
       paymentMethod: this.form.paymentMethod,
       orderStatus: this.form.orderStatus,
@@ -716,10 +747,14 @@ export class CreateOrder implements OnInit {
           }
         : null,
       voucherDiscount: this.form.voucher ? this.voucherDiscount : 0,
+      loyaltyPoints: this.useLoyalty ? Math.min(Math.floor(this.selectedCustomerLoyalty / 2) * 2, Math.floor(Math.max(0, this.computedSubtotal - (this.form.voucher ? this.voucherDiscount : 0)) / 1000) * 2) : 0,
       loyaltyDiscount: this.useLoyalty ? this.loyaltyDiscount : 0
     }).subscribe({
       next: (result) => {
-        this.showToast(`Đơn hàng ${result.orderId} đã được tạo!`);
+        this.isSubmitting = false; this.creationResult = result;
+        this.showToast(result.kind === 'sales_request'
+          ? `Đã tiếp nhận yêu cầu ${result.requestId}. Sales cần tư vấn trước khi thu tiền.`
+          : `Đơn hàng ${result.orderId} đã được tạo, chờ xác minh thanh toán.`);
       },
       error: (error) => {
         console.error('Cannot create order', error);
@@ -735,10 +770,12 @@ export class CreateOrder implements OnInit {
   showToast(message: string): void {
     this.toastMessage = message;
     this.toastVisible = true;
+    this.cdr.markForCheck();
 
     if (this.toastTimeoutId) clearTimeout(this.toastTimeoutId);
     this.toastTimeoutId = setTimeout(() => {
       this.toastVisible = false;
+      this.cdr.markForCheck();
     }, 2500);
   }
 

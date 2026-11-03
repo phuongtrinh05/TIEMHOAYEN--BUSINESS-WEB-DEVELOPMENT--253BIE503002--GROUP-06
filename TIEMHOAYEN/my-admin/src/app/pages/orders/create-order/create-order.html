@@ -8,7 +8,7 @@
       {{ toastMessage }}
     </div>
 
-    <!-- ===== PAGE META ===== -->
+    <p>Giá đang hiển thị là dự tính. Backend sẽ tính lại giá, phí giao, ưu đãi và cọc; tạo đơn không ghi nhận đã thu tiền.</p><p *ngIf="creationResult?.summary">Kết quả backend: Tổng {{creationResult.summary.total | number:'1.0-0'}}đ · Trả trước {{creationResult.paymentAmount | number:'1.0-0'}}đ · Chưa ghi nhận thanh toán.</p><!-- ===== PAGE META ===== -->
     <div class="order-meta">
       <div class="order-meta__left">
         <div class="order-meta__title">
@@ -16,7 +16,7 @@
         </div>
       </div>
       <div class="order-meta__right">
-        <div class="status-field-wrap">
+        <div class="status-field-wrap" *ngIf="false">
           <div class="status-btn-wrap">
             <button
               class="btn-icon-text btn-icon-text--secondary"
@@ -41,14 +41,14 @@
           <div class="form-error" *ngIf="errors.orderStatus">{{ errors.orderStatus }}</div>
         </div>
         <span
-          *ngIf="statusSelected"
+          *ngIf="false"
           class="badge-status order-status-badge"
           [ngClass]="orderStatusBadgeClass(form.orderStatus)"
         >
           <i class="bi order-status-badge__icon" [ngClass]="orderStatusIcon(form.orderStatus)"></i>
           {{ form.orderStatus }}
         </span>
-        <button class="btn-icon-text btn-icon-text--primary" type="button" (click)="submitOrder()">
+        <button class="btn-icon-text btn-icon-text--primary" type="button" (click)="submitOrder()" [disabled]="isSubmitting || !canCreateOrder">
           <i class="bi bi-plus-lg"></i> Tạo đơn hàng
         </button>
       </div>
@@ -271,21 +271,36 @@
           <div class="form-field-row">
             <label class="form-label">Mẫu thiệp</label>
             <div class="form-select-wrap">
-              <select class="form-select" [(ngModel)]="form.cardTemplate">
+              <select class="form-select" [(ngModel)]="form.cardTemplate" (ngModelChange)="onCardTemplateChange()">
                 <option value="Không có thiệp">Không có thiệp</option>
-                <option *ngFor="let t of cardTemplates" [value]="t">{{ t }}</option>
+                <option *ngFor="let t of cardTemplates" [value]="t.id">{{ t.name }}{{ t.fee ? ' (+' + (t.fee | number:'1.0-0') + 'đ)' : ' (Miễn phí)' }}</option>
               </select>
               <i class="bi bi-chevron-down form-select-chevron"></i>
             </div>
           </div>
           <div class="form-field-row" *ngIf="form.cardTemplate !== 'Không có thiệp'">
-            <label class="form-label">Nội dung lời nhắn</label>
+            <label class="form-label">Cách chuẩn bị nội dung</label>
+            <div class="form-select-wrap">
+              <select class="form-select" [(ngModel)]="form.cardWritingMode" (ngModelChange)="onCardWritingModeChange()">
+                <option value="customer">Khách tự viết</option>
+                <option value="shop">Nhờ shop viết</option>
+              </select>
+              <i class="bi bi-chevron-down form-select-chevron"></i>
+            </div>
+          </div>
+          <div class="form-field-row" *ngIf="form.cardTemplate !== 'Không có thiệp' && form.cardWritingMode === 'shop'">
+            <label class="form-label">Nội dung lời nhắn <span class="required">*</span></label>
             <textarea
               class="form-textarea"
-              placeholder="Nhập nội dung lời nhắn..."
+              [class.form-input--error]="errors.cardMessage"
+              placeholder="Nhập chính xác nội dung shop cần viết lên thiệp"
               [(ngModel)]="form.cardMessage"
+              maxlength="500"
+              [attr.aria-invalid]="!!errors.cardMessage"
               rows="2"
             ></textarea>
+            <div class="form-error" *ngIf="errors.cardMessage">{{ errors.cardMessage }}</div>
+            <div class="card-message-count">{{ form.cardMessage.length }}/500 ký tự</div>
           </div>
         </div>
 
@@ -304,6 +319,10 @@
             <div class="payment-row">
               <span class="payment-label payment-label--italic">Phí ship</span>
               <span class="payment-val-italic">{{ formatVND(shippingFee) }}</span>
+            </div>
+            <div class="payment-row" *ngIf="selectedCardFee > 0">
+              <span class="payment-label payment-label--italic">Phụ phí thiệp</span>
+              <span class="payment-val-italic">{{ formatVND(selectedCardFee) }}</span>
             </div>
 
             <!-- Voucher: label + input trên cùng 1 dòng -->
@@ -368,7 +387,7 @@
               <input
                 type="text"
                 class="payment-text-input payment-text-input--highlight"
-                [(ngModel)]="paidInput"
+                [(ngModel)]="paidInput" [disabled]="true"
                 (ngModelChange)="onPaidInputChange()"
                 placeholder="Nhập số tiền..."
               />
@@ -508,7 +527,7 @@
                 <div class="shipper-name">{{ selectedShipper?.name || 'Chưa chọn shipper' }}</div>
                 <div class="shipper-phone">{{ selectedShipper?.phone || '' }}</div>
               </div>
-              <button class="btn-icon-sm" type="button" (click)="toggleShipperDropdown()">
+              <button class="btn-icon-sm" type="button" (click)="toggleShipperDropdown()" [disabled]="true">
                 <i class="bi" [ngClass]="showShipperDropdown ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
               </button>
             </div>

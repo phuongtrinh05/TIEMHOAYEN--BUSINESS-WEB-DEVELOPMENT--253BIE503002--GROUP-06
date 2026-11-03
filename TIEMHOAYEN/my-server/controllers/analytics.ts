@@ -46,8 +46,8 @@ export const getDictionary = handle(async () => ({ kpis: KPI_DICTIONARY, attenti
 
 /** AD09 — Thông báo Admin (đã đọc theo từng nhân viên). */
 export const getNotifications = handle((req) => listAdminNotifications(staffOf(req), req.query));
-export const readNotification = handle((req) => markAdminNotificationsRead(staffOf(req).id, [String(req.params.id)]));
-export const readAllNotifications = handle((req) => markAdminNotificationsRead(staffOf(req).id, 'all', req.body?.group || undefined));
+export const readNotification = handle((req) => markAdminNotificationsRead(staffOf(req).id, [String(req.params.id)], undefined, req.body?.viewedOnly === true));
+export const readAllNotifications = handle((req) => markAdminNotificationsRead(staffOf(req).id, 'all', req.body?.group || undefined, req.body?.viewedOnly === true));
 export const syncNotifications = handle(() => syncAdminNotifications(true));
 
 /** Trang Bảng phân tích — xu hướng, dịp tặng, khách hàng, chi phí, vận hành. */

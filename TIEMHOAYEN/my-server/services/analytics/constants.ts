@@ -28,6 +28,7 @@ export const ANALYTICS_CONFIG = {
 export const ORDER_STATUS = {
   waitingPayment: 'Chờ thanh toán',
   pending: 'Chờ xử lý',
+  ordered: 'Đã đặt hàng thành công',
   confirmed: 'Đã xác nhận',
   preparing: 'Đang chuẩn bị hàng',
   waitingShip: 'Chờ vận chuyển',
@@ -42,7 +43,7 @@ export const ORDER_STATUS = {
 } as const;
 
 /** Đơn đã xác nhận, cần giao — dùng cho Lịch giao (AD05). */
-export const DELIVERY_ACTIVE_STATUSES = [ORDER_STATUS.confirmed, ORDER_STATUS.preparing, ORDER_STATUS.waitingShip, ORDER_STATUS.shipping];
+export const DELIVERY_ACTIVE_STATUSES = [ORDER_STATUS.ordered, ORDER_STATUS.confirmed, ORDER_STATUS.preparing, ORDER_STATUS.waitingShip, ORDER_STATUS.shipping];
 /** Đơn đã kết thúc vòng đời. */
 export const ORDER_FINAL_STATUSES = [ORDER_STATUS.completed, ORDER_STATUS.cancelled, ORDER_STATUS.refunded, ORDER_STATUS.paymentFailed];
 /** Đơn không còn hiệu lực bán hàng. */

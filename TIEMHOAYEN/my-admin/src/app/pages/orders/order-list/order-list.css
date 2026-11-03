@@ -285,6 +285,11 @@
   transform: translateY(1px);
 }
 
+.toolbar-btn--edit i {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
 
 
 /* =========================
@@ -844,3 +849,4 @@
     justify-content: center;
   }
 }
+.after-sales-manager{margin:0 0 18px;padding:14px;border:1px solid #e6d4c9;border-radius:12px;background:#fff}.after-sales-manager summary{color:#731919;font-weight:800;cursor:pointer}.after-sales-manager summary b{display:inline-flex;margin-left:6px;padding:3px 8px;border-radius:999px;background:#f3e7df}.after-sales-filters{display:grid;grid-template-columns:minmax(220px,1fr) repeat(4,minmax(145px,190px)) auto;gap:9px;margin-top:14px}.after-sales-filters input,.after-sales-filters select{padding:10px;border:1px solid #ddc9bd;border-radius:8px;background:#fff}.after-sales-queue{display:grid;gap:8px;margin-top:12px}.after-sales-queue>button{display:grid;grid-template-columns:1fr auto;gap:6px;padding:12px;text-align:left;background:#fffaf7;color:#4d2924;border:1px solid #ead9d0}.after-sales-queue span small{display:block;color:#8b7067}.after-sales-queue>button>span:last-of-type{padding:4px 8px;border-radius:999px;background:#f0e5dd;font-size:11px}.after-sales-queue p{grid-column:1/-1;margin:0}@media(max-width:1100px){.after-sales-filters{grid-template-columns:repeat(2,1fr)}}@media(max-width:800px){.after-sales-filters{grid-template-columns:1fr}}

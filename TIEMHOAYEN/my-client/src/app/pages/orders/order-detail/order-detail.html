@@ -1,4 +1,22 @@
-<div class="order-page">
+<div class="order-page"><section class="order-card after-sales-card" *ngIf="order.id">
+  <div class="after-sales-heading"><div><span>TIỆM HOA YÊN ĐỒNG HÀNH CÙNG BẠN</span><h2>Hỗ trợ đơn hàng</h2><p>Gửi phản ánh và theo dõi phương án xử lý ngay tại đây.</p></div><i class="bi bi-flower1"></i></div>
+  <article class="after-sales-case" *ngFor="let r of afterSales">
+    <div class="case-head"><div><small>MÃ HỒ SƠ</small><strong>{{r.requestId}}</strong></div><span [attr.data-status]="r.status">{{afterSalesStatusLabel(r.status)}}</span></div>
+    <p>{{r.description || r.reason}}</p><div class="case-items"><span *ngFor="let item of r.items">{{item.productId}} × {{item.quantity}}</span></div>
+    <div class="case-media" *ngIf="r.evidence?.length"><a *ngFor="let media of r.evidence" [href]="media" target="_blank" rel="noopener noreferrer">Xem bằng chứng</a></div>
+    <p class="need-info" *ngIf="r.additionalRequest"><b>Shop cần bạn bổ sung:</b> {{r.additionalRequest.reason}}</p>
+    <p class="decision" *ngIf="r.decision"><b>Phương án xử lý:</b> {{r.decision.reason}}<span *ngIf="r.decision.maxRefund"> · Dự kiến hoàn {{r.decision.maxRefund|number:'1.0-0'}}đ</span></p>
+    <p class="refund-success" *ngIf="r.refund?.status==='Succeeded'||r.refund"><b>Đã hoàn thực tế:</b> {{r.refund.amount|number:'1.0-0'}}đ · {{r.refund.at|date:'dd/MM/yyyy HH:mm'}}</p>
+    <ol class="case-timeline"><li *ngFor="let h of r.history"><b>{{afterSalesStatusLabel(h.to || h.status || h.action)}}</b><small>{{h.at|date:'dd/MM/yyyy HH:mm'}}</small></li></ol>
+    <div class="after-sales-supplement" *ngIf="r.status==='Cần bổ sung thông tin'||r.status==='Cần bổ sung'"><textarea [(ngModel)]="afterSalesEvidence" placeholder="Dán liên kết ảnh/video bổ sung, mỗi dòng một liên kết"></textarea><button type="button" (click)="supplementAfterSales(r)" [disabled]="afterSalesBusy">{{afterSalesBusy?'Đang gửi…':'Gửi bổ sung'}}</button></div>
+  </article>
+  <details class="support-form" *ngIf="canRequestReturnRefund() && !afterSales.some(r=>r.active)"><summary>Gửi yêu cầu hỗ trợ</summary>
+    <div class="support-grid"><label>Vấn đề gặp phải<select [(ngModel)]="afterSalesIssueType"><option value="wrong_item">Giao sai mẫu đã xác nhận</option><option value="damaged">Hoa hư hỏng nghiêm trọng</option><option value="missing_accessory">Thiếu thiệp hoặc phụ kiện</option><option value="wrong_address">Giao sai địa chỉ do shop</option><option value="shop_unable">Shop không thể thực hiện/giao đơn</option><option value="overpayment">Thanh toán dư</option><option value="charged_no_order">Đã trừ tiền nhưng chưa ghi nhận đơn</option><option value="other">Vấn đề khác</option></select></label><label>Hướng xử lý mong muốn<select [(ngModel)]="afterSalesType"><option value="exchange">Đổi hoặc giao bổ sung</option><option value="return">Trả lại sản phẩm</option><option value="refund">Đề nghị hoàn tiền</option></select></label><label>Thời điểm phát hiện<input type="datetime-local" [(ngModel)]="afterSalesDetectedAt"></label><label *ngIf="afterSalesIssueType==='missing_accessory'">Phụ kiện còn thiếu<input [(ngModel)]="afterSalesAccessory" maxlength="120" placeholder="Ví dụ: thiệp, nơ, hộp quà"></label></div>
+    <h3>Sản phẩm liên quan</h3><div class="after-sales-items" *ngFor="let product of products"><span>{{product.name}}</span><input type="number" min="0" [max]="product.quantity" step="1" [(ngModel)]="afterSalesQuantities[product.id]"><small>/ {{product.quantity}}</small></div>
+    <label class="full-field">Mô tả chi tiết<textarea [(ngModel)]="afterSalesReason" maxlength="2000" placeholder="Mô tả tình trạng thực tế và hỗ trợ bạn mong muốn"></textarea></label><label class="full-field">Ảnh/video bằng chứng<textarea [(ngModel)]="afterSalesEvidence" placeholder="Mỗi dòng một liên kết ảnh hoặc video"></textarea></label>
+    <div class="request-summary" *ngIf="afterSalesConfirming"><h3>Kiểm tra trước khi gửi</h3><p>{{afterSalesReason}}</p><p>Shop sẽ xem xét bằng chứng và phản hồi; gửi hồ sơ chưa đồng nghĩa đã được hoàn tiền.</p><button type="button" class="secondary-action" (click)="afterSalesConfirming=false">Quay lại</button><button type="button" (click)="sendAfterSales()" [disabled]="afterSalesBusy">{{afterSalesBusy?'Đang gửi…':'Xác nhận gửi'}}</button></div><button *ngIf="!afterSalesConfirming" type="button" (click)="prepareAfterSales()">Xem lại yêu cầu</button>
+  </details><p class="after-sales-message" role="status">{{afterSalesMessage}}</p>
+</section>
   <div class="breadcrumb">
     <span routerLink="/">Trang chủ</span>
     <i class="bi bi-chevron-right"></i>
@@ -20,6 +38,16 @@
       Đặt ngày: {{ order.date }}
     </p>
 
+    <a *ngIf="order.requestId" class="request-origin-card" [routerLink]="['/order-request', order.requestId]">
+      <span class="request-origin-icon"><i class="bi bi-flower1"></i></span>
+      <span class="request-origin-copy">
+        <small>ĐƠN ĐƯỢC TẠO TỪ YÊU CẦU ĐẶT HOA</small>
+        <strong>#{{ order.requestId }}</strong>
+        <em>Xem lại yêu cầu ban đầu, phương án đã chốt và lịch sử tư vấn</em>
+      </span>
+      <span class="request-origin-arrow">Xem yêu cầu <i class="bi bi-arrow-right"></i></span>
+    </a>
+
     <div class="status-box">
       @for(step of steps; track $index){
       <div class="status-item" [class.done]="step.done" [class.current]="step.current"
@@ -28,7 +56,7 @@
           <i class="bi {{ step.icon }}"></i>
         </div>
         <div class="status-text">
-          {{ step.text }}
+          {{ step.text }}<small *ngIf="step.time"> · {{step.time}}</small>
         </div>
       </div>
       }
@@ -166,9 +194,13 @@
       </div>
 
       <div>
-        <div class="card-message">
-          <h3>Lời nhắn thiệp</h3>
-          <p>"{{ order.cardMessage || 'Không có lời nhắn' }}"</p>
+        <div class="card-message" *ngIf="order.giftCard || order.cardMessage || order.noteShop">
+          <div class="gift-card-snapshot" *ngIf="order.giftCard">
+            <button type="button" class="gift-card-image" *ngIf="order.giftCard.image" (click)="openImage(order.giftCard.image)" aria-label="Xem ảnh thiệp lớn"><img [src]="order.giftCard.image" [alt]="order.giftCard.name || 'Thiệp tặng'"></button>
+            <div><small>THIỆP TẶNG ĐÃ CHỌN</small><h3>{{ order.giftCard.name || 'Thiệp tặng' }}</h3><span>{{ order.giftCard.writingMode === 'shop' ? 'Shop viết thiệp' : 'Khách tự viết' }}</span></div>
+          </div>
+          <h3 *ngIf="order.cardMessage">Lời nhắn trên thiệp</h3>
+          <p *ngIf="order.cardMessage">“{{ order.cardMessage }}”</p>
 
           <ng-container *ngIf="order.noteShop">
             <h3>Ghi chú cho shop</h3>
@@ -180,6 +212,12 @@
             <span *ngIf="order.requestVAT">Yêu cầu hóa đơn VAT</span>
             <span *ngIf="order.sendZaloPhoto">Gửi ảnh hoàn thành qua Zalo</span>
           </div>
+        </div>
+
+        <div class="shipper-customer-card" *ngIf="isOrderDelivering()">
+          <div class="shipper-customer-icon"><i class="bi bi-truck"></i></div>
+          <div *ngIf="order.shipperName; else pendingShipper"><small>NGƯỜI GIAO HÀNG</small><h3>{{ order.shipperName }}</h3><a *ngIf="order.shipperPhone" [href]="'tel:' + order.shipperPhone.replaceAll(' ', '')"><i class="bi bi-telephone"></i> {{ order.shipperPhone }}</a></div>
+          <ng-template #pendingShipper><div><small>NGƯỜI GIAO HÀNG</small><h3>Thông tin đang được cập nhật</h3><p>Shop sẽ hiển thị thông tin liên hệ ngay khi hoàn tất phân công.</p></div></ng-template>
         </div>
 
 
@@ -195,7 +233,7 @@
             </span>
           </div>
 
-          <div class="delivery-map">
+          <div class="delivery-map" *ngIf="false">
             <div class="map-grid"></div>
             <div class="map-street map-street-1"></div>
             <div class="map-street map-street-2"></div>
@@ -235,6 +273,13 @@
           </div>
         </div>
 
+        <div class="product-card" *ngIf="order.handoverMedia?.length">
+          <h3 class="section-title">Hình ảnh hoa trước khi giao</h3>
+          <div class="handover-media-list">
+            <a *ngFor="let media of order.handoverMedia" [href]="media" target="_blank" rel="noopener noreferrer">Xem ảnh/video từ shop</a>
+          </div>
+        </div>
+
         <div class="product-card">
           <h3 class="section-title">Danh sách sản phẩm</h3>
 
@@ -253,7 +298,7 @@
               @for(product of products; track product.id){
               <tr>
                 <td class="product-info" data-label="Sản phẩm">
-                  <img [src]="product.image" [alt]="product.name">
+                  <button type="button" class="product-zoom" (click)="openImage(product.image)" [attr.aria-label]="'Xem ảnh lớn ' + product.name"><img [src]="product.image" [alt]="product.name"><span><i class="bi bi-zoom-in"></i></span></button>
                   <div>
                     <span>{{ product.name }}</span>
                     <small *ngIf="product.style">{{ product.style }}</small>
@@ -297,6 +342,21 @@
               <span>{{ order.depositAmount | number:'1.0-0' }}đ</span>
             </div>
 
+            <div>
+              <span>Đã thanh toán</span>
+              <span>{{ order.paid | number:'1.0-0' }}đ</span>
+            </div>
+
+            <div *ngIf="(order.refunded || 0) > 0">
+              <span>Đã hoàn</span>
+              <span class="discount">-{{ order.refunded | number:'1.0-0' }}đ</span>
+            </div>
+
+            <div *ngIf="(order.remaining || 0) > 0">
+              <span>Còn lại</span>
+              <span>{{ order.remaining | number:'1.0-0' }}đ</span>
+            </div>
+
             <div *ngIf="vouchers.length > 0">
               <span>Voucher</span>
               <span>{{ vouchers[0].code }}</span>
@@ -334,7 +394,7 @@
               Hủy đơn hàng
             </button>
 
-            <button type="button" *ngIf="canRequestReturnRefund()" (click)="openReturnRefundReasonModal()">
+            <button type="button" *ngIf="false" (click)="loadAfterSales()">
               <i class="bi bi-arrow-counterclockwise"></i>
               Yêu cầu hoàn tiền/trả hàng
             </button>
@@ -412,5 +472,10 @@
         </button>
       </div>
     </div>
+  </div>
+
+  <div class="image-lightbox" *ngIf="zoomedImage" (click)="closeImage()" role="dialog" aria-modal="true" aria-label="Xem ảnh sản phẩm">
+    <button type="button" class="image-lightbox__close" (click)="closeImage()" aria-label="Đóng ảnh"><i class="bi bi-x-lg"></i></button>
+    <img [src]="zoomedImage" alt="Ảnh sản phẩm phóng lớn" (click)="$event.stopPropagation()">
   </div>
 </div>

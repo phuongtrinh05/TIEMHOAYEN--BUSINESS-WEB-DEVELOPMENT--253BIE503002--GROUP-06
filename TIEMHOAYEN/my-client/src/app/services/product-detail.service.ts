@@ -15,6 +15,9 @@ export interface ProductDetailData {
   TRANG_THAI: string;
   KIEU_DANG: string;
   SO_LUONG: number;
+  TON_KHA_DUNG?: number;
+  TON_THANH_PHAM_KHA_DUNG?: number;
+  SO_BO_CO_THE_LAM?: number;
   DA_BAN: number;
   HINH_ANH: string | null;
 }

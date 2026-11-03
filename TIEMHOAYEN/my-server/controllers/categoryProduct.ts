@@ -65,7 +65,7 @@ const enrichProducts = async (products: any[], extraByProduct = new Map<string, 
   const productIds = products.map((product) => product.SAN_PHAM_ID).filter(Boolean);
   const topicCollection = await getCollection<any>('CHU_DE');
   const [topics, imageMap, flowerListMap, targetListMap, colorListMap, stockMap] = await Promise.all([
-    topicCollection.find(PUBLIC_CATEGORY_FILTER).toArray(),
+    topicCollection.find({}).toArray(),
     getPrimaryImageMap(productIds),
     buildNameListMap('HOA_TUOI_SAN_PHAM', 'HOA_TUOI', 'HOA_TUOI_ID', 'TEN_HOA_TUOI', productIds),
     buildNameListMap('DOI_TUONG_SAN_PHAM', 'DOI_TUONG', 'DOI_TUONG_ID', 'TEN_DOI_TUONG', productIds),

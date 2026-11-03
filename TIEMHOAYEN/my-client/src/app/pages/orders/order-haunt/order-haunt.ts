@@ -4,11 +4,14 @@ import {
   inject,
   PLATFORM_ID,
   HostListener,
+  ChangeDetectorRef,
 } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule, NgForm } from '@angular/forms';
 import { Router } from '@angular/router';
 import { CreateOrderPayload, CreateOrderResponse, OrderService } from '../../../services/order.service';
+import { apiBaseUrl } from '../../../services/api-config';
+import { SalesRequestResultComponent } from '../sales-request-result/sales-request-result';
 import { PricingService, ServerQuote } from '../../../services/pricing.service';
 
 export interface OrderItem {
@@ -50,6 +53,7 @@ export interface Voucher {
   type: string;
   value: number;
   discountAmount?: number;
+  endDate?: string | null;
 }
 
 export interface PaymentMethod {
@@ -95,15 +99,19 @@ type AddrDropdownType = 'province' | 'district' | 'ward' | null;
 @Component({
   selector: 'app-order',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SalesRequestResultComponent],
   templateUrl: './order-haunt.html',
   styleUrl: './order-haunt.css',
 })
 export class OrderHauntComponent implements OnInit {
+  private readonly pricingService = inject(PricingService);
   private platformId = inject(PLATFORM_ID);
   private router = inject(Router);
   private orderService = inject(OrderService);
-  private pricingService = inject(PricingService);
+  private cdr = inject(ChangeDetectorRef);
+  cardTemplates: any[] = [];
+  selectedCardTemplateId = '';
+  cardWritingMode: '' | 'customer' | 'shop' = '';
 
   private static publicVouchersCache: Voucher[] | null = null;
   private static provincesCache: Province[] | null = null;
@@ -171,7 +179,7 @@ export class OrderHauntComponent implements OnInit {
     {
       value: 'fast',
       label: 'Giao nhanh',
-      desc: 'Ưu tiên xử lý và giao sớm hơn',
+      desc: 'Ưu tiên xử lý; thời gian thực tế theo khung giao đã chọn',
     },
   ];
 
@@ -180,6 +188,7 @@ export class OrderHauntComponent implements OnInit {
   paymentError = '';
   submitOrderError = '';
   salesRequestId = '';
+  salesRequestMessage = '';
   voucherError = '';
   isSubmitting = false;
 
@@ -300,6 +309,7 @@ export class OrderHauntComponent implements OnInit {
     this.loadVietnamAddressData();
     this.loadOrderItemsFromCart();
     this.loadPublicVouchers();
+    this.orderService.getCardTemplates().subscribe({ next: value => this.cardTemplates = value.templates || [], error: () => this.cardTemplates = [] });
   }
 
   private loadOrderItemsFromCart(): void {
@@ -355,7 +365,7 @@ export class OrderHauntComponent implements OnInit {
       return;
     }
 
-    fetch('https://tiem-hoa-yen-api.onrender.com/api/orders/public-vouchers')
+    fetch(`${apiBaseUrl()}/orders/public-vouchers`)
       .then((response) => {
         if (!response.ok) {
           throw new Error(`Không thể lấy voucher công khai: ${response.status}`);
@@ -378,8 +388,10 @@ export class OrderHauntComponent implements OnInit {
             desc: this.buildVoucherDesc(type, value),
             type,
             value,
+            endDate: item.NGAY_KET_THUC || item.endDate || null,
           };
-        });
+        }).sort((left, right) => this.estimateVoucherDiscount(right) - this.estimateVoucherDiscount(left)
+          || this.voucherExpiry(left) - this.voucherExpiry(right));
 
         OrderHauntComponent.publicVouchersCache = this.availableVouchers;
         this.isLoadingPublicVouchers = false;
@@ -396,7 +408,7 @@ export class OrderHauntComponent implements OnInit {
       return `Giảm ${value}% đơn hàng`;
     }
 
-    return `Giảm ${value.toLocaleString('vi-VN')}đ phí ship`;
+    return `Giảm ${value.toLocaleString('vi-VN')}đ ${this.isCashVoucherType(type) ? 'phí ship' : 'tiền hàng'}`;
   }
 
   private buildVoucherDesc(type: string, value: number): string {
@@ -404,7 +416,7 @@ export class OrderHauntComponent implements OnInit {
       return 'Áp dụng cho khách vãng lai';
     }
 
-    return 'Áp dụng cho phí vận chuyển';
+    return this.isCashVoucherType(type) ? 'Áp dụng cho phí vận chuyển' : 'Áp dụng cho tiền hàng';
   }
 
 
@@ -606,10 +618,10 @@ export class OrderHauntComponent implements OnInit {
       return true;
     }
 
-    const minimumDeliveryTime = new Date(Date.now() + 3 * 60 * 60 * 1000);
+    const minimumDeliveryTime = new Date(Date.now() + 60 * 60 * 1000);
 
     if (deliveryDateTime.getTime() < minimumDeliveryTime.getTime()) {
-      this.deliveryScheduleError = 'Thời gian giao hàng phải sau thời điểm hiện tại ít nhất 3 giờ.';
+      this.deliveryScheduleError = 'Đơn giao gấp cần chọn thời gian sau hiện tại ít nhất 1 giờ. Lịch dưới 3 giờ sẽ được chuyển Sales kiểm tra.';
       return false;
     }
 
@@ -690,10 +702,27 @@ export class OrderHauntComponent implements OnInit {
     this.router.navigate(['/login']);
   }
 
-  selectVoucher(_voucher: Voucher): void {
-    // Khách vãng lai không chọn voucher từ dropdown.
-    // Voucher công khai chỉ được nhập bằng mã ở ô bên trái.
+  selectVoucher(voucher: Voucher): void {
+    this.selectedVoucher = this.selectedVoucher?.id === voucher.id ? null : voucher;
+    this.formData.voucherCode = this.selectedVoucher?.code || '';
+    this.voucherError = '';
     this.showVoucherDropdown = false;
+  }
+
+  voucherEstimatedText(voucher: Voucher): string {
+    const value = this.estimateVoucherDiscount(voucher);
+    return value > 0 ? `Ước giảm ${value.toLocaleString('vi-VN')}đ` : voucher.desc;
+  }
+
+  private estimateVoucherDiscount(voucher: Voucher): number {
+    if (this.isPercentVoucherType(voucher.type)) return Math.min(this.subtotal, Math.round(this.subtotal * voucher.value / 100));
+    if (this.isCashVoucherType(voucher.type)) return Math.min(this.shippingFee, Math.max(0, voucher.value));
+    return Math.min(this.subtotal, Math.max(0, voucher.value));
+  }
+
+  private voucherExpiry(voucher: Voucher): number {
+    const value = voucher.endDate ? new Date(voucher.endDate).getTime() : Number.MAX_SAFE_INTEGER;
+    return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
   }
 
   applyVoucher(): void {
@@ -748,7 +777,7 @@ export class OrderHauntComponent implements OnInit {
 
   private isCashVoucherType(type: string): boolean {
     const value = this.normalizeText(type);
-    return value.includes('tien mat') || value.includes('cash') || value.includes('fixed');
+    return value.includes('freeship') || value.includes('van chuyen');
   }
 
   private getSelectedVoucherPayload(): any | null {
@@ -796,6 +825,27 @@ export class OrderHauntComponent implements OnInit {
       (sum, item) => sum + item.price * item.qty,
       0
     );
+  }
+
+  get selectedCardTemplate(): any | null {
+    return this.cardTemplates.find(card => card.id === this.selectedCardTemplateId) || null;
+  }
+
+  get selectedCardFee(): number {
+    return Math.max(0, Number(this.selectedCardTemplate?.fee || 0));
+  }
+
+  onCardTemplateChange(templateId: string): void {
+    this.selectedCardTemplateId = templateId;
+    this.cardWritingMode = '';
+    this.formData.noteReceiver = '';
+    this.submitOrderError = '';
+  }
+
+  chooseCardWritingMode(mode: 'customer' | 'shop'): void {
+    this.cardWritingMode = mode;
+    if (mode === 'customer') this.formData.noteReceiver = '';
+    this.submitOrderError = '';
   }
 
   get shippingFee(): number {
@@ -919,12 +969,10 @@ export class OrderHauntComponent implements OnInit {
   }
 
   get productVoucherDiscount(): number {
-    if (this.serverQuote) return this.serverQuote.productDiscount;
-    if (!this.selectedVoucher || !this.isPercentVoucherType(this.selectedVoucher.type)) {
-      return 0;
-    }
-
-    return Math.round((this.subtotal * this.selectedVoucher.value) / 100);
+    if (!this.selectedVoucher) return 0;
+    if (this.isPercentVoucherType(this.selectedVoucher.type)) return Math.min(this.subtotal, Math.round(this.subtotal * this.selectedVoucher.value / 100));
+    return ['tien mat', 'so tien', 'tien co dinh', 'cash', 'fixed'].includes(this.normalizeText(this.selectedVoucher.type))
+      ? Math.min(this.subtotal, Math.max(0, this.selectedVoucher.value)) : 0;
   }
 
   get shippingVoucherDiscount(): number {
@@ -941,8 +989,7 @@ export class OrderHauntComponent implements OnInit {
   }
 
   get total(): number {
-    if (this.serverQuote) return this.serverQuote.total;
-    return Math.max(0, this.subtotal + this.shippingFee - this.discount);
+    return Math.max(0, this.subtotal + this.shippingFee + this.selectedCardFee - this.discount);
   }
 
   private get depositPolicyBaseAmount(): number {
@@ -1025,7 +1072,7 @@ export class OrderHauntComponent implements OnInit {
   }
 
   get showDepositPolicy(): boolean {
-    return this.isCodPayment && !this.isCashPaymentBlocked && !!this.currentPaymentPolicy;
+    return this.subtotal >= 50000 && this.isCodPayment && !this.isCashPaymentBlocked && !!this.currentPaymentPolicy;
   }
 
   get currentPaymentPolicy(): PaymentPolicy | null {
@@ -1050,6 +1097,7 @@ export class OrderHauntComponent implements OnInit {
   }
 
   get depositAmount(): number {
+    if (this.subtotal < 50000) return 0;
     if (!this.isCodPayment || this.isCashPaymentBlocked) {
       return 0;
     }
@@ -1097,7 +1145,7 @@ export class OrderHauntComponent implements OnInit {
   }
 
   onSubmit(form?: NgForm): void {
-    if (this.salesRequestId) { this.orderService.openSalesChat(this.salesRequestId); return; }
+    if (this.salesRequestId) return;
     if (!isPlatformBrowser(this.platformId)) {
       return;
     }
@@ -1120,6 +1168,16 @@ export class OrderHauntComponent implements OnInit {
     }
 
     if (!this.validateDeliverySchedule()) {
+      return;
+    }
+
+    if (this.selectedCardTemplateId && !this.cardWritingMode) {
+      this.submitOrderError = 'Vui lòng chọn tự viết thiệp hoặc nhờ shop viết.';
+      return;
+    }
+
+    if (this.selectedCardTemplateId && this.cardWritingMode === 'shop' && !this.formData.noteReceiver.trim()) {
+      this.submitOrderError = 'Vui lòng nhập nội dung thiệp.';
       return;
     }
 
@@ -1150,11 +1208,21 @@ export class OrderHauntComponent implements OnInit {
       next: (createdOrder: CreateOrderResponse) => {
         if (createdOrder.kind === 'sales_request') {
           this.salesRequestId = createdOrder.requestId || '';
+          this.salesRequestMessage = createdOrder.message || '';
           this.isSubmitting = false;
+          // Display the Sales-request result as soon as the single checkout
+          // request returns; no second click is part of the business flow.
+          this.cdr.detectChanges();
           return;
         }
         const finalOrderForCheckout = {
           ...orderForCheckout,
+          ...(createdOrder.summary ? { subtotal: createdOrder.summary.subtotal, shippingFee: createdOrder.summary.shippingFee,
+            baseShippingFee: createdOrder.summary.baseShippingFee, shippingVoucherDiscount: createdOrder.summary.shippingDiscount,
+            productVoucherDiscount: createdOrder.summary.productDiscount, loyaltyDiscount: createdOrder.summary.loyaltyDiscount,
+            discount: createdOrder.summary.productDiscount + createdOrder.summary.shippingDiscount,
+            total: createdOrder.summary.total, depositAmount: createdOrder.summary.depositAmount,
+            remainingAmount: createdOrder.summary.total - createdOrder.paymentAmount, items: createdOrder.items } : {}),
           orderCode: createdOrder.orderId,
           orderId: createdOrder.orderId,
           paymentId: createdOrder.paymentId,
@@ -1171,7 +1239,7 @@ export class OrderHauntComponent implements OnInit {
         // Không xóa giỏ hàng tại đây. Giỏ chỉ nên xóa sau khi thanh toán thành công.
         // Checkout sẽ dùng dữ liệu trong tiemHoaYenRegistrantOrder và tiemHoaYenCreatedOrder.
         this.isSubmitting = false;
-        this.router.navigate(['/checkout']);
+        void this.router.navigate(['/checkout']);
       },
       error: (err: any) => {
         console.error('Lỗi tạo đơn khách vãng lai:', err);
@@ -1231,7 +1299,7 @@ export class OrderHauntComponent implements OnInit {
       delivery: {
         date: this.formData.deliveryDate,
         time: this.formData.deliveryTime,
-        message: this.formData.noteReceiver,
+        message: this.cardWritingMode === 'shop' ? this.formData.noteReceiver.trim() : '',
         noteShop: this.formData.noteShop,
       },
       shippingAreaName: this.shippingAreaName,
@@ -1271,10 +1339,13 @@ export class OrderHauntComponent implements OnInit {
   ): CreateOrderPayload {
     return {
       customerId: null,
+      shippingMethod: this.formData.shippingMethod,
       receiver: {
         name: this.formData.receiverName,
         phone: receiverPhone,
         address: receiverAddress,
+        districtName: this.availableDistricts.find(d => d.code === this.formData.districtCode)?.name,
+        provinceName: this.provinces.find(p => p.code === this.formData.provinceCode)?.name,
       },
       sender: {
         name: this.formData.senderName,
@@ -1284,9 +1355,14 @@ export class OrderHauntComponent implements OnInit {
       delivery: {
         date: this.formData.deliveryDate,
         time: this.formData.deliveryTime,
-        message: this.formData.noteReceiver,
+        message: this.cardWritingMode === 'shop' ? this.formData.noteReceiver.trim() : '',
         noteShop: this.formData.noteShop,
       },
+      giftCard: this.selectedCardTemplateId ? {
+        templateId: this.selectedCardTemplateId,
+        writingMode: this.cardWritingMode as 'customer' | 'shop',
+        message: this.cardWritingMode === 'shop' ? this.formData.noteReceiver.trim() : '',
+      } : null,
       items: this.orderItems.map(item => ({
         id: item.id,
         lineKey: item.lineKey,

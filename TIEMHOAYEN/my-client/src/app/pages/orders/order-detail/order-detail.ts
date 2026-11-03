@@ -1,5 +1,5 @@
+import { apiBaseUrl, orderAccessSession } from '../../../services/api-config';
 import { memberAccessToken } from '../../../services/session-auth';
-import { orderAccessSession } from '../../../services/api-config';
 import { CommonModule, isPlatformBrowser } 
 from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -22,6 +22,9 @@ import {
 } from '../../../services/order.service';
 
 interface OrderDetailView {
+  requestId?: string;
+  paid?: number; refunded?: number; remaining?: number; history?: any[]; senderName?: string; senderPhone?: string; preparationAt?: string; handoverMedia?: string[]; giftCard?: any;
+  shipperName?: string; shipperPhone?: string; shipperAvatar?: string;
   id: string;
   customerId: string;
   date: string;
@@ -88,8 +91,8 @@ export class OrderDetail implements OnInit, OnDestroy {
   private readonly orderService = inject(OrderService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly cdr = inject(ChangeDetectorRef);
-  private readonly ordersApiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/orders';
-  private readonly cartApiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/cart';
+  private get ordersApiUrl() { return apiBaseUrl()+'/orders'; }
+  private get cartApiUrl() { return apiBaseUrl()+'/cart'; }
 
   isLoading = false;
   errorMessage = '';
@@ -98,6 +101,59 @@ export class OrderDetail implements OnInit, OnDestroy {
   products: OrderDetailProduct[] = [];
   vouchers: OrderDetailVoucher[] = [];
   steps: any[] = [];
+  afterSales: any[]=[]; afterSalesType='refund'; afterSalesIssueType='damaged'; afterSalesReasonCode='SHOP_FAULT'; afterSalesReason='';
+  afterSalesAccessory=''; afterSalesDetectedAt=''; afterSalesEvidence=''; afterSalesBusy=false; afterSalesMessage=''; afterSalesConfirming=false;
+  afterSalesQuantities: Record<string, number> = {}; private afterSalesIdempotencyKey='';
+  zoomedImage = '';
+  openImage(image: string): void { if (image) this.zoomedImage = image; }
+  closeImage(): void { this.zoomedImage = ''; }
+  loadAfterSales() { if(!this.order.id)return;this.orderService.getAfterSales(this.order.id).subscribe({next:r=>{this.afterSales=r.requests||[];this.cdr.markForCheck();},error:()=>{}}); }
+  prepareAfterSales() {
+    const items=this.products.map(p=>({productId:p.id,quantity:Number(this.afterSalesQuantities[p.id]||0)})).filter(x=>x.quantity>0);
+    if(!items.length){this.afterSalesMessage='Vui lòng chọn ít nhất một sản phẩm và số lượng.';return;}
+    if(!this.afterSalesReason.trim()){this.afterSalesMessage='Vui lòng mô tả chi tiết vấn đề cần hỗ trợ.';return;}
+    if(this.afterSalesIssueType==='missing_accessory'&&!this.afterSalesAccessory.trim()){this.afterSalesMessage='Vui lòng chọn hoặc ghi rõ phụ kiện còn thiếu.';return;}
+    this.afterSalesMessage='';this.afterSalesConfirming=true;
+  }
+  sendAfterSales() {
+    if(this.afterSalesBusy)return;
+    const items=this.products.map(p=>({productId:p.id,quantity:Number(this.afterSalesQuantities[p.id]||0)})).filter(x=>x.quantity>0);
+    if(!items.length||!this.afterSalesReason.trim())return;
+    if(!this.afterSalesIdempotencyKey)this.afterSalesIdempotencyKey=crypto.randomUUID();
+    this.afterSalesBusy=true;
+    this.orderService.createAfterSales(this.order.id,{type:this.afterSalesType,issueType:this.afterSalesIssueType,reasonCode:this.afterSalesReasonCode,
+      reason:this.afterSalesReason,description:this.afterSalesReason,accessory:this.afterSalesAccessory||null,
+      detectedAt:this.afterSalesDetectedAt?new Date(this.afterSalesDetectedAt).toISOString():null,items,
+      evidence:this.afterSalesEvidence.split('\n').map(s=>s.trim()).filter(Boolean),idempotencyKey:this.afterSalesIdempotencyKey}).subscribe({
+      next:()=>{this.afterSalesBusy=false;this.afterSalesConfirming=false;this.afterSalesIdempotencyKey='';this.afterSalesMessage='Đã gửi yêu cầu hỗ trợ. Shop sẽ kiểm tra và phản hồi trong hồ sơ này.';this.loadAfterSales();this.cdr.markForCheck();},
+      error:e=>{this.afterSalesBusy=false;this.afterSalesMessage=e?.error?.message||'Chưa gửi được hồ sơ.';this.cdr.markForCheck();}});
+  }
+  afterSalesStatusLabel(status:string){return status==='Chờ tiếp nhận'?'Đã gửi yêu cầu':status==='Cần bổ sung'?'Cần bổ sung thông tin':status==='Đã chấp nhận'?'Đã phê duyệt':status==='Bị từ chối'?'Đã từ chối':status==='Đã xử lý'?'Đã xử lý xong':status==='Đã hoàn tiền'?'Đã xử lý xong':status;}
+  supplementAfterSales(request: any): void {
+    if (this.afterSalesBusy) return;
+    const evidence = this.afterSalesEvidence.split('\n').map(value => value.trim()).filter(Boolean);
+    if (!evidence.length) {
+      this.afterSalesMessage = 'Vui lòng bổ sung ít nhất một liên kết ảnh hoặc video.';
+      return;
+    }
+    this.afterSalesBusy = true;
+    this.afterSalesMessage = '';
+    this.orderService.supplementAfterSales(this.order.id, request.requestId, { version: request.version, evidence }).subscribe({
+      next: () => {
+        this.afterSalesBusy = false;
+        this.afterSalesEvidence = '';
+        this.afterSalesMessage = 'Shop đã nhận bằng chứng bổ sung và sẽ tiếp tục xem xét.';
+        this.loadAfterSales();
+        this.cdr.markForCheck();
+      },
+      error: error => {
+        this.afterSalesBusy = false;
+        this.afterSalesMessage = error?.error?.message || 'Chưa bổ sung được bằng chứng.';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
   private autoRefreshTimer: number | null = null;
 
   ngOnInit(): void {
@@ -143,9 +199,14 @@ export class OrderDetail implements OnInit, OnDestroy {
       const res: OrderDetailResponse = await response.json();
 
       this.order = this.mapOrder(res);
+      this.loadAfterSales();
       this.products = this.mapProducts(res.products || []);
+      for (const product of this.products) if (!(product.id in this.afterSalesQuantities)) this.afterSalesQuantities[product.id] = 0;
       this.vouchers = this.mapVouchers(res.vouchers || []);
-      this.steps = this.buildSteps(this.order.status);
+      this.steps = this.buildSteps(this.order.status).map(step => {
+        const event = [...(this.order.history || [])].reverse().find(item => this.normalizeStatus(item.to) === step.key);
+        return { ...step, time: event?.at ? new Date(event.at).toLocaleString('vi-VN') : '' };
+      });
 
       this.errorMessage = '';
     } catch (error: any) {
@@ -214,7 +275,14 @@ export class OrderDetail implements OnInit, OnDestroy {
     const discount = Number(summary.GIAM_GIA ?? Math.max(0, subtotal + shippingFee - total));
 
     return {
+      paid:Number(summary.DA_THU||0), refunded:Number(summary.DA_HOAN||0), remaining:Number(summary.CON_LAI ?? total), history:row.LICH_SU_TRANG_THAI||[], senderName:row.AN_THONG_TIN?'':String(row.TEN_NGUOI_DAT||''), senderPhone:row.AN_THONG_TIN?'':String(row.SDT_NGUOI_DAT||''), preparationAt:row.THOI_DIEM_BAT_DAU_THUC_TE,
+      handoverMedia: Array.isArray(row.MEDIA_BAN_GIAO) ? row.MEDIA_BAN_GIAO : [],
+      giftCard: row.THIEP_TANG || null,
+      shipperName: String(row.NHAN_VIEN_GIAO_HANG?.name || ''),
+      shipperPhone: this.formatPhone(String(row.NHAN_VIEN_GIAO_HANG?.phone || '')),
+      shipperAvatar: String(row.NHAN_VIEN_GIAO_HANG?.avatar || ''),
       id: String(row.DON_HANG_ID || ''),
+      requestId: String(row.YEU_CAU_DAT_HANG_ID || ''),
       customerId: String(row.KHACH_HANG_ID || ''),
       date: this.formatDateTime(row.NGAY_TAO),
       status: String(row.TRANG_THAI || 'Chờ thanh toán'),
@@ -223,7 +291,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       deliveryDate: this.formatDate(row.NGAY_MUON_GIAO),
       deliveryTime: String(row.KHUNG_GIO_MUON_GIAO || ''),
       address: String(row.DIA_CHI_GIAO_HANG || ''),
-      cardMessage: String(row.LOI_NHAN_THIEP || ''),
+      cardMessage: String(row.THIEP_TANG?.message || row.LOI_NHAN_THIEP || ''),
       noteShop: String(row.GHI_CHU || ''),
       paymentMethod: String(row.PHUONG_THUC_THANH_TOAN || payment.CONG_THANH_TOAN || ''),
       paymentStatus: String(payment.TRANG_THAI_THANH_TOAN || 'Chưa có'),
@@ -609,7 +677,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     this.orderService.retryPayment(this.order.id).subscribe({
       next: (res: CreateOrderResponse) => {
         if (isPlatformBrowser(this.platformId)) {
-          localStorage.setItem('tiemHoaYenCreatedOrder', JSON.stringify(res));
+          localStorage.setItem('tiemHoaYenCreatedOrder', JSON.stringify({...res,customerId:this.order.customerId,source:this.order.customerId?'registrant':'guest'}));
           localStorage.setItem(
             'tiemHoaYenRegistrantOrder',
             JSON.stringify(this.mapCurrentOrderForCheckout())
@@ -626,7 +694,7 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   private mapCurrentOrderForCheckout(): any {
     return {
-      customerId: '',
+      customerId: this.order.customerId,
       selectedAddress: {
         name: this.order.receiver,
         phone: this.order.phone,
@@ -662,7 +730,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       productVoucherDiscount: this.order.discount,
       loyaltyDiscount: 0,
       depositAmount: this.order.depositAmount,
-      remainingAmount: Math.max(0, this.order.total - this.order.depositAmount),
+      remainingAmount: Math.max(0, this.order.total - (this.order.paid || 0)),
       total: this.order.total,
       paymentMethod: this.detectPaymentMethod(this.order.paymentMethod),
       paymentMethodName: this.order.paymentMethod,
@@ -933,11 +1001,11 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   canCancel(): boolean {
-    return this.normalizeStatus(this.order.status) === 'created';
+    return this.normalizeStatus(this.order.status) === 'created' && (!this.order.preparationAt || new Date(this.order.preparationAt).getTime()>Date.now());
   }
 
   canRequestReturnRefund(): boolean {
-    return this.normalizeStatus(this.order.status) === 'delivered';
+    return ['delivered','completed','cancelled','delivery_failed'].includes(this.normalizeStatus(this.order.status)) || Number(this.order.paid)>0;
   }
 
 
@@ -949,7 +1017,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     if (status === 'completed') return 'Hoàn thành';
     if (status === 'waiting_shipping') return 'Chờ vận chuyển';
     if (status === 'preparing') return 'Đang chuẩn bị';
-    if (status === 'created') return 'Chờ xử lý';
+    if (status === 'created') return 'Đã đặt hàng thành công';
     if (status === 'delivery_failed') return 'Giao không thành công';
     if (status === 'cancelled') return 'Đơn đã hủy';
     if (status === 'payment' || status === 'payment_failed') return 'Chờ thanh toán';
@@ -1068,6 +1136,8 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   private getEmptyOrder(): OrderDetailView {
     return {
+      reviewedCount: 0,
+      reviewableProductCount: 0,
       id: '',
       customerId: '',
       date: '',
@@ -1097,8 +1167,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       returnRefundReason: '',
       rejectReason: '',
       hasReviewed: false,
-      reviewedCount: 0,
-      reviewableProductCount: 0,
+      handoverMedia: [],
     };
   }
   isEditingShipping = false;

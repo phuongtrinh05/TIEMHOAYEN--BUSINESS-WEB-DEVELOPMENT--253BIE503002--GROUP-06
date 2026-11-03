@@ -70,6 +70,8 @@ const mapNotificationRow = (row: any) => ({
   image: row.HINH_ANH,
   link: row.DUONG_DAN,
   isRead: Boolean(row.DA_DOC), isViewed:Boolean(row.DA_XEM || row.DA_DOC),
+  seenAt: row.DA_XEM_LUC || row.DA_DOC_LUC || null,
+  readAt: row.DA_DOC_LUC || null,
   createdAt: row.NGAY_TAO,
   orderCode: row.DON_HANG_ID,
 });
@@ -85,13 +87,14 @@ const sortNotifications = (left: any, right: any): number => {
 
 export const getNotifications = async (req: Request, res: Response) => {
   try {
-    const customerId = String(req.query.customerId || '').trim();
+    const customerId = String(res.locals.orderAccess?.customerId || '');
+    if (!customerId || res.locals.orderAccess?.authType !== 'member') return res.status(403).json({ message: 'Cần đăng nhập để xem thông báo cá nhân.' });
     const limit = normalizeLimit(req.query.limit);
     const collection = await getNotificationCollection();
     const query = customerId
-      ? { $or: [{ KHACH_HANG_ID: customerId }, { KHACH_HANG_ID: null, DON_HANG_ID: null }] }
-      : { $or: [{ KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }] };
-    const notifications = (await collection.find({ $and: [query, await marketingVisibility(req)] }).toArray()).sort(sortNotifications).slice(0, limit);
+      ? { KENH_THONG_BAO: { $ne: 'ADMIN' }, $or: [{ KHACH_HANG_ID: customerId }, { KHACH_HANG_ID: null, DON_HANG_ID: null }] }
+      : { KENH_THONG_BAO: { $ne: 'ADMIN' }, $or: [{ KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }] };
+    const notifications = (await collection.find(query).toArray()).sort(sortNotifications).slice(0, limit);
 
     return res.status(200).json({
       total: notifications.length,
@@ -108,6 +111,7 @@ export const getPublicNotifications = async (req: Request, res: Response) => {
     const limit = normalizeLimit(req.query.limit);
     const collection = await getNotificationCollection();
     const notifications = (await collection.find({
+      KENH_THONG_BAO: { $ne: 'ADMIN' },
       DON_HANG_ID: null,
       $or: [{ KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }],
     }).toArray()).sort(sortNotifications).slice(0, limit);
@@ -158,6 +162,7 @@ export const createNotification = async (req: Request, res: Response) => {
       NOI_DUNG: message,
       HINH_ANH: image,
       DUONG_DAN: link,
+      KENH_THONG_BAO: 'CUSTOMER',
       DA_DOC: false,
       NGAY_TAO: new Date(),
     });
@@ -189,9 +194,10 @@ export const markNotificationAsRead = async (req: Request, res: Response) => {
     }
 
     const collection = await getNotificationCollection();
+    const now = new Date();
     const result = await collection.updateOne(
-      { THONG_BAO_ID: notificationId, KHACH_HANG_ID: req.identity!.id },
-      { $set: req.body?.viewedOnly === true ? { DA_XEM: true } : { DA_DOC: true, DA_XEM: true } },
+      { THONG_BAO_ID: notificationId, KHACH_HANG_ID: res.locals.orderAccess?.customerId || '__DENIED__' },
+      { $set: req.body?.viewedOnly === true ? { DA_XEM: true, DA_XEM_LUC: now } : { DA_DOC: true, DA_XEM: true, DA_XEM_LUC: now, DA_DOC_LUC: now } },
     );
 
     if (result.matchedCount === 0) {
@@ -210,20 +216,22 @@ export const markNotificationAsRead = async (req: Request, res: Response) => {
 
 export const markAllNotificationsAsRead = async (req: Request, res: Response) => {
   try {
-    const customerId = String(req.params.customerId || req.query.customerId || '').trim();
+    const customerId = String(res.locals.orderAccess?.customerId || '');
+    if (res.locals.orderAccess?.authType !== 'member' || customerId !== req.params.customerId) return res.status(403).json({ message: 'Không được sửa thông báo tài khoản khác.' });
 
     if (!customerId) {
       return res.status(400).json({ message: 'Thiếu mã khách hàng.' });
     }
 
     const collection = await getNotificationCollection();
+    const now = new Date();
     const result = await collection.updateMany(
       { KHACH_HANG_ID: customerId },
-      { $set: { DA_DOC: true } },
+      { $set: req.body?.viewedOnly === true ? { DA_XEM: true, DA_XEM_LUC: now } : { DA_DOC: true, DA_XEM: true, DA_XEM_LUC: now, DA_DOC_LUC: now } },
     );
 
     return res.status(200).json({
-      message: 'Đã đánh dấu tất cả thông báo là đã đọc.',
+      message: req.body?.viewedOnly === true ? 'Đã đánh dấu thông báo là đã xem.' : 'Đã đánh dấu tất cả thông báo là đã đọc.',
       affectedRows: result.modifiedCount,
     });
   } catch (error: any) {
@@ -253,6 +261,7 @@ export const createOrderNotification = async (
     NOI_DUNG: message,
     HINH_ANH: null,
     DUONG_DAN: link || `/order-detail/${orderId}`,
+    KENH_THONG_BAO: 'CUSTOMER',
     DA_DOC: false,
     NGAY_TAO: new Date(),
   });

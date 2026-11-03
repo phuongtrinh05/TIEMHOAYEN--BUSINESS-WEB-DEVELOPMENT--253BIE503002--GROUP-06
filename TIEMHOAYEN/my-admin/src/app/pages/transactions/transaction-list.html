@@ -5,7 +5,7 @@
             <div class="search-box">
                 <input
                     type="text"
-                    placeholder="Tìm kiếm giao dịch"
+                    placeholder="Tìm mã đơn, mã giao dịch hoặc nội dung chuyển khoản"
                     [(ngModel)]="searchKeyword"
                     (ngModelChange)="applyFilters()"
                 >
@@ -21,7 +21,7 @@
                 </span>
 
                 <button
-                    class="tool-btn delete-selected-btn"
+                    class="tool-btn delete-selected-btn" *ngIf="false"
                     type="button"
                     title="Xóa giao dịch đã chọn"
                     [disabled]="!hasSelectedTransactions"
@@ -73,6 +73,17 @@
                                 <option value="Thanh toán thất bại">Thanh toán thất bại</option>
                             </select>
                         </div>
+                        <div class="filter-group">
+                            <label>Từ ngày</label>
+                            <input type="date" [(ngModel)]="fromDate" (change)="applyFilters()">
+                        </div>
+                        <div class="filter-group">
+                            <label>Đến ngày</label>
+                            <input type="date" [(ngModel)]="toDate" (change)="applyFilters()">
+                        </div>
+                        <button type="button" class="filter-reset" (click)="fromDate=''; toDate=''; selectedGateway='Tất cả'; selectedStatus='Tất cả'; applyFilters()">
+                            Xóa bộ lọc
+                        </button>
                     </div>
                 </div>
 
@@ -132,8 +143,8 @@
                         *ngIf="isExportMenuOpen"
                         (click)="$event.stopPropagation()"
                     >
-                        <button type="button">Xuất PDF</button>
-                        <button type="button">Xuất Excel</button>
+                        <button type="button" (click)="exportTransactions('pdf')">Xuất PDF</button>
+                        <button type="button" (click)="exportTransactions('excel')">Xuất Excel</button>
                     </div>
                 </div>
             </div>
@@ -155,7 +166,7 @@
                         <th>Mã đơn hàng</th>
                         <th>Cổng thanh toán</th>
                         <th>Trạng thái</th>
-                        <th>Số tiền</th>
+                        <th>Số tiền GD</th><th>Tổng đơn / cọc</th><th>Đã thu / còn lại của đơn</th><th>Đối soát</th>
                         <th>Mã tham chiếu</th>
                         <th>Ngày giao dịch</th>
                         <th class="action-col">Thao tác</th>
@@ -163,8 +174,8 @@
                 </thead>
 
                 <tbody>
+                  <ng-container *ngFor="let item of pagedTransactions">
                     <tr
-                        *ngFor="let item of pagedTransactions"
                         [class.selected-row]="item.selected"
                         [class.editing-row]="isEditingTransaction(item)"
                     >
@@ -216,15 +227,17 @@
                         </td>
 
                         <td>
-                            <span>{{ formatPrice(item.amount) }}</span>
+                            <span>{{ formatPrice(item.amount) }}</span></td><td>{{formatPrice(item.total || 0)}}<br>Cọc: {{formatPrice(item.deposit || 0)}}</td><td>{{formatPrice(item.paid || 0)}}<br>Còn: {{formatPrice(item.remaining || 0)}}
                         </td>
 
+                        <td><span class="reconciliation-badge" [ngClass]="reconciliationClass(item)">{{ reconciliationLabel(item) }}</span></td>
+
                         <td class="code-text">
-                            {{ item.referenceCode }}
+                            <input *ngIf="isEditingTransaction(item)" [(ngModel)]="item.referenceCode" aria-label="Mã tham chiếu xác minh" placeholder="Mã tham chiếu"><input *ngIf="isEditingTransaction(item)" [(ngModel)]="editReasons[item.code]" aria-label="Căn cứ đối soát" placeholder="Căn cứ đối soát bắt buộc"><span *ngIf="!isEditingTransaction(item)">{{ item.referenceCode }}</span>
                         </td>
 
                         <td>
-                            {{ item.transactionDate | date: 'dd/MM/yyyy' }}
+                            {{ item.transactionDate | date: 'dd/MM/yyyy' }}<br><small *ngIf="item.confirmedAt">Xác nhận: {{item.confirmedAt | date:'dd/MM/yyyy HH:mm'}} · {{item.confirmedBy}}</small>
                         </td>
 
                         <td class="action-col">
@@ -241,8 +254,21 @@
                                     [class.bi-check2]="isEditingTransaction(item)"
                                 ></i>
                             </button>
+                            <button class="edit-row-btn" type="button" title="Xem lịch sử giao dịch" (click)="toggleHistory(item)">
+                                <i class="bi bi-clock-history"></i>
+                            </button>
                         </td>
                     </tr>
+                    <tr class="transaction-history-row" *ngIf="expandedHistoryIds.has(item.id)">
+                        <td colspan="12">
+                            <div class="transaction-history">
+                                <b>Lịch sử giao dịch</b>
+                                <span *ngIf="!item.history?.length">Chưa có lần điều chỉnh.</span>
+                                <span *ngFor="let h of item.history">{{ h.at | date:'dd/MM/yyyy HH:mm' }} · {{ h.actor || 'Hệ thống' }} · {{ h.action || h.status || 'Cập nhật' }}<ng-container *ngIf="h.reason"> · {{h.reason}}</ng-container></span>
+                            </div>
+                        </td>
+                    </tr>
+                  </ng-container>
                 </tbody>
             </table>
         </div>
@@ -372,7 +398,7 @@
                 type="text"
                 placeholder="DD/MM/YYYY"
                 maxlength="10"
-                [(ngModel)]="newTransactionDateText"
+                [(ngModel)]="newTransactionDateText" [readonly]="true"
             >
             <i class="bi bi-calendar3"></i>
         </div>

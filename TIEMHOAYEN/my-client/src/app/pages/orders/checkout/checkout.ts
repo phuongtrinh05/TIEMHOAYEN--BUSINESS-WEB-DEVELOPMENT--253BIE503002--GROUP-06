@@ -1,5 +1,5 @@
-import {LuckyOrderSpin} from '../../../components/lucky-order-spin/lucky-order-spin';
-import { orderAccessSession } from '../../../services/api-config';
+import { currentOrderAccountKey, orderAccessSession } from '../../../services/api-config';
+import { LuckyOrderSpin } from '../../../components/lucky-order-spin/lucky-order-spin';
 ﻿import { CommonModule, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectorRef,
@@ -106,6 +106,10 @@ export class CheckoutComponent implements OnInit, OnDestroy {
   remainingSeconds = 300;
 
   isPaymentSuccess = false;
+  isOrderAccepted = false;
+  connectionNotice = '';
+  private checkingPayment = false;
+  private expiringPayment = false;
   isPaymentFailed = false;
   checkoutResultError = '';
   checkoutResultDismissed = false;
@@ -149,6 +153,10 @@ export class CheckoutComponent implements OnInit, OnDestroy {
     }
     const source = this.resolveCheckoutSource(createdOrder, registrantOrder, guestOrder);
     const storedOrder = source === 'guest' ? guestOrder : registrantOrder;
+    const owner = String(createdOrder.customerId || storedOrder?.customerId || '');
+    if (owner !== currentOrderAccountKey()) {
+      this.order = null; this.router.navigate(['/order-requests']); return;
+    }
 
     if (!storedOrder) {
       console.warn('Không tìm thấy thông tin đơn hàng. Vui lòng quay lại đặt hàng.');
@@ -502,7 +510,7 @@ export class CheckoutComponent implements OnInit, OnDestroy {
     this.stopCountdown();
 
     this.countdownTimerId = window.setInterval(() => {
-      if (!this.order || this.isPaymentSuccess || this.isPaymentFailed) {
+      if (!this.order || this.isPaymentSuccess || this.isOrderAccepted || this.isPaymentFailed) {
         return;
       }
 
@@ -527,15 +535,20 @@ export class CheckoutComponent implements OnInit, OnDestroy {
   }
 
   private checkPaymentStatus(): void {
-    if (!this.order?.orderId || this.isPaymentSuccess || this.isPaymentFailed) {
+    if (!this.order?.orderId || this.isPaymentSuccess || this.isOrderAccepted || this.isPaymentFailed || this.checkingPayment) {
       return;
     }
 
+    this.checkingPayment = true;
     this.orderService.getPaymentStatus(this.order.orderId).subscribe({
       next: (res: OrderPaymentStatusResponse) => {
+        this.checkingPayment = false; this.connectionNotice = '';
         this.applyPaymentStatus(res);
       },
       error: (err: unknown) => {
+        this.checkingPayment = false;
+        this.connectionNotice = 'Chưa kết nối được để xác minh. Hệ thống sẽ kiểm tra lại; chưa thể kết luận thanh toán thất bại.';
+        this.cdr.markForCheck();
         console.error('Lỗi kiểm tra trạng thái thanh toán:', err);
       },
     });
@@ -546,7 +559,17 @@ export class CheckoutComponent implements OnInit, OnDestroy {
     this.orderStatus = String(res.orderStatus || this.orderStatus);
     this.remainingSeconds = Math.max(0, Number(res.remainingSeconds ?? this.remainingSeconds));
 
-    if (this.isSuccessText(this.paymentStatus) || this.normalizeStatus(this.orderStatus) === 'processing') {
+    if (this.order && res.summary) {
+      Object.assign(this.order.summary, { subtotal: res.summary.subtotal, shipping: res.summary.shippingFee,
+        total: res.summary.total, depositAmount: res.summary.depositAmount, productVoucherDiscount: res.summary.productDiscount || 0,
+        loyaltyDiscount: res.summary.loyaltyDiscount || 0, remainingAmount: res.remainingBalance ?? res.summary.total });
+    }
+    if (res.requiresPayment === false && !this.isSuccessText(this.paymentStatus) && !/hủy|từ chối/i.test(this.orderStatus)) {
+      this.isOrderAccepted = true; this.stopTimers(); this.saveCompletedOrderInfo();
+      if (this.order?.source === 'guest') this.cleanGuestCartAfterSuccess();
+      this.cdr.markForCheck(); return;
+    }
+    if (this.isSuccessText(this.paymentStatus)) {
       this.handlePaymentSuccess();
       return;
     }
@@ -560,17 +583,21 @@ export class CheckoutComponent implements OnInit, OnDestroy {
   }
 
   private handlePaymentExpired(): void {
-    if (!this.order?.orderId || this.isPaymentSuccess || this.isPaymentFailed) {
+    if (!this.order?.orderId || this.isPaymentSuccess || this.isOrderAccepted || this.isPaymentFailed || this.expiringPayment) {
       return;
     }
 
+    this.expiringPayment = true;
     this.orderService.expirePayment(this.order.orderId).subscribe({
       next: (res: OrderPaymentStatusResponse) => {
+        this.expiringPayment = false;
         this.applyPaymentStatus(res);
       },
       error: (err: unknown) => {
         console.error('Lỗi cập nhật hết hạn thanh toán:', err);
-        this.handlePaymentFailed();
+        this.expiringPayment = false;
+        this.connectionNotice = 'Chưa xác định được kết quả. Đang kiểm tra lại trạng thái với shop.';
+        this.checkPaymentStatus(); this.cdr.markForCheck();
       },
     });
   }
@@ -585,7 +612,6 @@ export class CheckoutComponent implements OnInit, OnDestroy {
     this.isPaymentSuccess = true;
     this.isPaymentFailed = false;
     this.paymentStatus = 'Thành công';
-    this.orderStatus = 'Chờ xử lý';
     this.stopTimers();
 
     this.saveCompletedOrderInfo();
@@ -593,13 +619,7 @@ export class CheckoutComponent implements OnInit, OnDestroy {
 
     if (this.order.source === 'guest') {
       this.cleanGuestCartAfterSuccess();
-      localStorage.removeItem(this.guestOrderStorageKey);
-    } else {
-      localStorage.removeItem(this.registrantOrderStorageKey);
     }
-
-    localStorage.removeItem(this.createdOrderStorageKey);
-
     this.cdr.detectChanges();
   }
 
@@ -623,14 +643,21 @@ export class CheckoutComponent implements OnInit, OnDestroy {
   }
 
   closeCheckoutResultPopup(): void {
-    this.checkoutResultDismissed = true;
-  }
-
-  continueShopping(): void {
+    this.endCompletedCheckoutIntent();
     this.router.navigate(['/']);
   }
 
+  continueShopping(): void {
+    this.endCompletedCheckoutIntent();
+    this.router.navigate(['/']);
+  }
+
+  private endCompletedCheckoutIntent(): void {
+    if (this.isPaymentSuccess || this.isOrderAccepted) sessionStorage.removeItem('pendingOrderSession');
+  }
+
   viewOrderDetail(): void {
+    this.endCompletedCheckoutIntent();
     const orderId = String(this.order?.orderId || '').trim();
 
     if (!orderId) {
@@ -643,6 +670,7 @@ export class CheckoutComponent implements OnInit, OnDestroy {
   }
 
   retryPayment(): void {
+    if (this.isRetryingPayment) return;
     this.checkoutResultError = '';
 
     const orderId = String(this.order?.orderId || '').trim();
@@ -680,6 +708,11 @@ export class CheckoutComponent implements OnInit, OnDestroy {
       error: (err: any) => {
         console.error('Lỗi tạo lại mã thanh toán:', err);
         this.isRetryingPayment = false;
+        if (!err.status || err.status >= 500) {
+          this.isPaymentFailed = false;
+          this.connectionNotice = 'Kết nối gián đoạn. Đang kiểm tra phiên hiện hành để tránh tạo thanh toán trùng.';
+          this.checkPaymentStatus(); this.startPaymentPolling();
+        }
         this.checkoutResultError = err?.error?.message || 'Không thể tạo lại mã thanh toán. Vui lòng thử lại.';
         this.cdr.detectChanges();
       },

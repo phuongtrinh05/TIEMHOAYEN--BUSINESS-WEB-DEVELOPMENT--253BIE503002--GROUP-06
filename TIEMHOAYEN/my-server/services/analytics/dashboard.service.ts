@@ -119,7 +119,7 @@ export const computeNeedAction = async (ds: Dataset, salesRequests?: number) => 
   const requests = salesRequests ?? (await getSalesRequestCount());
   return [
     { key: 'waitingPayment', label: 'Chờ thanh toán', count: count(ORDER_STATUS.waitingPayment), link: '/orders/order-list', status: ORDER_STATUS.waitingPayment },
-    { key: 'pending', label: 'Chờ xử lý', count: count(ORDER_STATUS.pending) + count(ORDER_STATUS.confirmed), link: '/orders/order-list', status: ORDER_STATUS.pending },
+    { key: 'pending', label: 'Đơn mới', count: count(ORDER_STATUS.ordered) + count(ORDER_STATUS.pending) + count(ORDER_STATUS.confirmed), link: '/orders/order-list', status: ORDER_STATUS.ordered },
     { key: 'preparing', label: 'Đang chuẩn bị', count: count(ORDER_STATUS.preparing), link: '/orders/order-list', status: ORDER_STATUS.preparing },
     { key: 'shipping', label: 'Chờ / đang giao', count: count(ORDER_STATUS.waitingShip) + count(ORDER_STATUS.shipping), link: '/orders/order-list', status: ORDER_STATUS.shipping },
     { key: 'salesRequests', label: 'Yêu cầu đặt hàng (Sales)', count: requests, link: '/orders/requests', status: null },
@@ -167,13 +167,13 @@ export const computeAttentionOrders = (ds: Dataset, forecastShortageOrders: Set<
     if (ORDER_FINAL_STATUSES.includes(o.status as any) && o.status !== ORDER_STATUS.paymentFailed) return;
     const reasons: { code: string; label: string; detail: string }[] = [];
     const ageMin = o.createdAt ? (now.getTime() - o.createdAt.getTime()) / 60_000 : 0;
-    if ([ORDER_STATUS.pending, ORDER_STATUS.confirmed].includes(o.status as any) && ageMin > ANALYTICS_CONFIG.pendingTooLongMinutes) {
+    if ([ORDER_STATUS.ordered, ORDER_STATUS.pending, ORDER_STATUS.confirmed].includes(o.status as any) && ageMin > ANALYTICS_CONFIG.pendingTooLongMinutes) {
       reasons.push({ code: 'pendingTooLong', label: ATTENTION_RULES.pendingTooLong, detail: `Đã chờ ${formatDuration(ageMin)}` });
     }
     if (o.status === ORDER_STATUS.paymentFailed && ageMin < ANALYTICS_CONFIG.notificationLookbackDays * 1440) {
       reasons.push({ code: 'paymentFailed', label: ATTENTION_RULES.paymentFailed, detail: 'Liên hệ khách thanh toán lại hoặc hủy' });
     }
-    if (o.deliveryStart && [ORDER_STATUS.pending, ORDER_STATUS.confirmed, ORDER_STATUS.preparing, ORDER_STATUS.waitingShip].includes(o.status as any)) {
+    if (o.deliveryStart && [ORDER_STATUS.ordered, ORDER_STATUS.pending, ORDER_STATUS.confirmed, ORDER_STATUS.preparing, ORDER_STATUS.waitingShip].includes(o.status as any)) {
       const left = (o.deliveryStart.getTime() - now.getTime()) / 60_000;
       if (left <= ANALYTICS_CONFIG.deliveryOrangeMinutes && (o.deliveryEnd || o.deliveryStart).getTime() > now.getTime() - 7 * 86_400_000) {
         reasons.push({ code: 'deliveryAtRisk', label: ATTENTION_RULES.deliveryAtRisk, detail: left < 0 ? `Quá giờ giao ${formatDuration(-left)}` : `Còn ${Math.round(left)} phút, đang "${o.status}"` });
@@ -184,7 +184,7 @@ export const computeAttentionOrders = (ds: Dataset, forecastShortageOrders: Set<
     }
     if (forecastShortageOrders.has(o.id)) {
       reasons.push({ code: 'stockRisk', label: ATTENTION_RULES.stockRisk, detail: 'Dự báo thiếu NVL trước lịch chuẩn bị T' });
-    } else if (o.deliveryStart && !o.prepStartAt && !o.materialIssued && [ORDER_STATUS.pending, ORDER_STATUS.confirmed, ORDER_STATUS.preparing].includes(o.status as any)) {
+    } else if (o.deliveryStart && !o.prepStartAt && !o.materialIssued && [ORDER_STATUS.ordered, ORDER_STATUS.pending, ORDER_STATUS.confirmed, ORDER_STATUS.preparing].includes(o.status as any)) {
       const hours = (o.deliveryStart.getTime() - now.getTime()) / 3_600_000;
       if (hours >= 0 && hours <= ANALYTICS_CONFIG.missingPrepHours) {
         reasons.push({ code: 'stockRisk', label: ATTENTION_RULES.stockRisk, detail: `Giao trong ${Math.round(hours)} giờ nhưng chưa nhập thời điểm chuẩn bị T` });

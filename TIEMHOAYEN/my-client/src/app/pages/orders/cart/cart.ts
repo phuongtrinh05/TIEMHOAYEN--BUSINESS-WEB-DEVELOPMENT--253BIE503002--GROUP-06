@@ -74,6 +74,7 @@ interface SuggestedProductResponse {
   GIA_KHUYEN_MAI?: number | string | null;
   HINH_ANH?: string | null;
   SO_LUONG?: number | string | null;
+  TON_KHA_DUNG?: number | string | null;
   KIEU_DANG?: string | null;
   TRANG_THAI?: string | null;
   CHU_DE_ID?: string | null;
@@ -355,13 +356,14 @@ export class CartComponent implements OnInit {
       originalPrice: item.GIA_KHUYEN_MAI ? Number(item.GIA || 0) : null,
       quantity: Math.max(1, Number(item.SO_LUONG || 1)),
       image: this.getCartProductImage(item.TEN_SAN_PHAM, item.HINH_ANH),
-      selected: purchasable,
-      maxQuantity: undefined,
-      priceChanged: Boolean(item.GIA_DA_THAY_DOI),
-      priceWhenAdded: Number(item.GIA_LUC_THEM || 0),
-      availabilityDecision: String(item.QUYET_DINH_KHA_DUNG || ''),
-      status,
+      selected: true,
       purchasable,
+      maxQuantity:
+        item.TON_KHA_DUNG === null || item.TON_KHA_DUNG === undefined
+          ? item.SO_LUONG_TON === null || item.SO_LUONG_TON === undefined
+          ? undefined
+          : Number(item.SO_LUONG_TON)
+          : Number(item.TON_KHA_DUNG),
     };
   }
 
@@ -1045,7 +1047,7 @@ export class CartComponent implements OnInit {
       image: this.getCartProductImage(item.TEN_SAN_PHAM, item.HINH_ANH),
       style: String(item.KIEU_DANG || 'Sản phẩm mua kèm'),
       status: this.getCartTopicName(item.TEN_CHU_DE || item.TRANG_THAI),
-      maxQuantity: undefined,
+      maxQuantity: Number(item.TON_KHA_DUNG ?? item.SO_LUONG ?? item.SO_LUONG_TON ?? 0),
     };
   }
 
