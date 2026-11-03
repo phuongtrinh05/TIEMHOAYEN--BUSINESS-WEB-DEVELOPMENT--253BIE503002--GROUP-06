@@ -81,6 +81,7 @@ export interface AdminRolePermissionsResponse {
 }
 
 export interface AdminLoginResponse {
+  adminSessionToken?: string;
   accessToken: string;
   expiresAt: string;
   employee: {

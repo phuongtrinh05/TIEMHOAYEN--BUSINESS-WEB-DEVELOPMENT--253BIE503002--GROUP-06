@@ -1,6 +1,6 @@
-import { apiBaseUrl } from '../../../services/api-config';
 import { memberAccessToken } from '../../../services/session-auth';
 import {LuckyRewardPicker} from '../../../components/lucky-reward-picker/lucky-reward-picker';
+import { PricingService, ServerQuote } from '../../../services/pricing.service';
 import { Component, OnInit, ViewChild, inject, PLATFORM_ID, HostListener, ChangeDetectorRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule, NgForm } from '@angular/forms';
@@ -126,7 +126,7 @@ export interface WardOption extends Ward {
 @Component({
   selector: 'app-order-registrant',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, PageHeader, PageFooter, SalesRequestResultComponent],
+  imports: [CommonModule, FormsModule, RouterLink, PageHeader, PageFooter, SalesRequestResultComponent, LuckyRewardPicker],
   templateUrl: './order-registrant.html',
   styleUrl: './order-registrant.css',
 })

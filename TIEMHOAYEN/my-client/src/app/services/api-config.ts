@@ -45,7 +45,7 @@ export const apiEndpointInterceptor: HttpInterceptorFn = (request, next) => {
   return next(target).pipe(tap({
     error: (error: unknown) => {
       // Phiên thành viên hết hạn/bị thu hồi: đăng xuất để người dùng đăng nhập lại.
-      if (member && error instanceof HttpErrorResponse && error.status === 401 && !target.url.includes('/customers/login')) endSession();
+      if (currentOrderAccountKey() && error instanceof HttpErrorResponse && error.status === 401 && !target.url.includes('/customers/login')) endSession();
     },
   }));
 };

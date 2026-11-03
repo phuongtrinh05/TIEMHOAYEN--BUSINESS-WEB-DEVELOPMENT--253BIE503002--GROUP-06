@@ -31,6 +31,7 @@ interface TransactionItem {
     styleUrls: ['./transaction-list.css']
 })
 export class TransactionListComponent implements OnInit, OnDestroy {
+    errorMessage = '';
     fromDate = ''; toDate = '';
     get canCreate(): boolean { return this.adminApi.can('payments','create'); }
     searchKeyword = '';

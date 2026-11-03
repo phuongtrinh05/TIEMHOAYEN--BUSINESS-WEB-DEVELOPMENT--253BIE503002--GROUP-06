@@ -22,7 +22,6 @@
 ========================= */
 
 .admin-login-card {
-  box-sizing: border-box;
   width: 100%;
   max-width: 500px;
   background: rgba(255, 255, 255, 0.92);
@@ -211,7 +210,6 @@
 ========================= */
 
 .auth-popup-overlay {
-  box-sizing: border-box;
   position: fixed;
   inset: 0;
   z-index: 9999;
@@ -487,7 +485,6 @@ input[type="password"]::-ms-clear {
   }
 
   .admin-login-card {
-    width: 100%;
     max-width: 100%;
     padding: 28px 24px 32px;
   }
@@ -533,3 +530,19 @@ input[type="password"]::-ms-clear {
     font-size: 1.1rem;
   }
 }
+.login-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: 8px;
+  vertical-align: -2px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: login-spin .7s linear infinite;
+}
+@keyframes login-spin { to { transform: rotate(360deg); } }
+button[aria-busy="true"] { cursor: wait; opacity: .8; }
+@media (prefers-reduced-motion: reduce) { .login-spinner { animation-duration: 2s; } }
+
+.otp-input.is-invalid, .otp-popup__input.is-invalid { border: 2px solid #dc3545; color: #dc3545; background: #fff5f5; }

@@ -9,6 +9,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { filter } from 'rxjs';
 import { AdminApiService } from '../../services/admin-api.service';
+import { endSession as endAdminSession } from '../../services/session-auth';
 
 @Component({
   selector: 'app-admin-header',

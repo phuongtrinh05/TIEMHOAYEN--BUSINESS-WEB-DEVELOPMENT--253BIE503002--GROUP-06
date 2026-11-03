@@ -145,7 +145,6 @@ export class Login implements AfterViewInit {
       this.cdr.markForCheck();
     })).subscribe({
       next: (response) => {
-        localStorage.setItem('adminToken', response.accessToken);
         localStorage.setItem('adminLoggedIn', 'true');
         if(response.adminSessionToken)localStorage.setItem('adminSessionToken',response.adminSessionToken);
         localStorage.setItem('adminEmail', response.employee.email);

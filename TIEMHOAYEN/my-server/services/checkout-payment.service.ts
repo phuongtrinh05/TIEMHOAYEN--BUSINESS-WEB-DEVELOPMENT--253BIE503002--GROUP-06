@@ -3,6 +3,8 @@ import type { ClientSession } from 'mongodb';
 import { getCollection } from '../mongo.js';
 import { InventoryError } from './inventory/helpers.js';
 import { confirmReservations, releaseReservations } from './inventory/stock.service.js';
+import { recordOrderDemand } from './inventory/stock.service.js';
+import { INVENTORY_CONFIG } from './inventory/constants.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { paymentSucceeded, sumVerifiedPayments } from './admin-order.service.js';
 

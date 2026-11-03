@@ -12,6 +12,7 @@ import { Router } from '@angular/router';
 import { CreateOrderPayload, CreateOrderResponse, OrderService } from '../../../services/order.service';
 import { apiBaseUrl } from '../../../services/api-config';
 import { SalesRequestResultComponent } from '../sales-request-result/sales-request-result';
+import { PricingService, ServerQuote } from '../../../services/pricing.service';
 
 export interface OrderItem {
   requiresReview?: boolean;
@@ -103,6 +104,7 @@ type AddrDropdownType = 'province' | 'district' | 'ward' | null;
   styleUrl: './order-haunt.css',
 })
 export class OrderHauntComponent implements OnInit {
+  private readonly pricingService = inject(PricingService);
   private platformId = inject(PLATFORM_ID);
   private router = inject(Router);
   private orderService = inject(OrderService);

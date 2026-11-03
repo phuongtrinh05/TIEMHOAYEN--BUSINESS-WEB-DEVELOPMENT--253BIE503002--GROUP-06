@@ -91,7 +91,10 @@ export const resolveBomSnapshot = (snapshot: any): ResolvedBom => {
     if (!id || seen.has(id) || !Number.isFinite(quantity) || quantity <= 0) throw new InventoryError(409, 'BOM snapshot có dòng không hợp lệ.');
     seen.add(id);
     return { NGUYEN_VAT_LIEU_ID: id, DINH_LUONG: quantity, DON_VI_TINH: l.DON_VI_TINH ?? l.unit ?? '',
-      VAI_TRO: l.VAI_TRO ?? l.role ?? 'Chính', DS_THAY_THE: l.DS_THAY_THE ?? l.substitutes ?? [], GHI_CHU: l.GHI_CHU ?? l.note ?? '' };
+      VAI_TRO: l.VAI_TRO ?? l.role ?? 'Chính', DS_THAY_THE: l.DS_THAY_THE ?? l.substitutes ?? [], GHI_CHU: l.GHI_CHU ?? l.note ?? '',
+      BAT_BUOC: l.BAT_BUOC ?? l.required ?? true,
+      CHO_PHEP_THAY_THE: l.CHO_PHEP_THAY_THE ?? l.allowSubstitution ?? false,
+      QUY_TAC_THAY_THE: l.QUY_TAC_THAY_THE ?? l.substitutionRules ?? [] };
   });
   return { bom: { BOM_ID: snapshot.id ?? snapshot.BOM_ID ?? null, PHIEN_BAN: snapshot.version ?? null }, lines, legacy: false };
 };

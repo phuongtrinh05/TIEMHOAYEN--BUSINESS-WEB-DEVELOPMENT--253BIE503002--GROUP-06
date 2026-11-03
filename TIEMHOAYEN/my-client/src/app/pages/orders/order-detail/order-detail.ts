@@ -1,4 +1,5 @@
 import { apiBaseUrl, orderAccessSession } from '../../../services/api-config';
+import { memberAccessToken } from '../../../services/session-auth';
 import { CommonModule, isPlatformBrowser } 
 from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -1135,6 +1136,8 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   private getEmptyOrder(): OrderDetailView {
     return {
+      reviewedCount: 0,
+      reviewableProductCount: 0,
       id: '',
       customerId: '',
       date: '',

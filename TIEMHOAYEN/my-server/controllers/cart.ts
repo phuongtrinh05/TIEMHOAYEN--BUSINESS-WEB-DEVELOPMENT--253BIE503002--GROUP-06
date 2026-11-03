@@ -2,6 +2,9 @@ import {getDesign,isDesignProduct} from '../services/design3d.service.js';
 import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
 import { getProductSellableStockMap, sellableStockFields } from '../services/inventory/availability.service.js';
+import { checkProductAvailability } from '../services/inventory/availability.service.js';
+import { InventoryError } from '../services/inventory/helpers.js';
+import { createHash } from 'node:crypto';
 
 const createCartId = (): string => `GH${Date.now().toString().slice(-8)}`;
 const cartLine = (body: any) => {

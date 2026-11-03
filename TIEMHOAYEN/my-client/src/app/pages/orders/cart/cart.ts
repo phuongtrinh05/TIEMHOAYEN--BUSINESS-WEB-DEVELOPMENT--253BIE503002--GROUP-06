@@ -357,6 +357,7 @@ export class CartComponent implements OnInit {
       quantity: Math.max(1, Number(item.SO_LUONG || 1)),
       image: this.getCartProductImage(item.TEN_SAN_PHAM, item.HINH_ANH),
       selected: true,
+      purchasable,
       maxQuantity:
         item.TON_KHA_DUNG === null || item.TON_KHA_DUNG === undefined
           ? item.SO_LUONG_TON === null || item.SO_LUONG_TON === undefined

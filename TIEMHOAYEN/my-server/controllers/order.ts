@@ -13,6 +13,10 @@ import { lookupAccess } from '../services/order-access.service.js';
 import { priceCheckout, sumVerifiedPayments, validateCheckoutDelivery } from '../services/admin-order.service.js';
 import { getActiveBom } from '../services/inventory/bom.service.js';
 import { checkProductAvailability } from '../services/inventory/availability.service.js';
+import { synchronizeLuckyOrder, syncLuckyOrder } from '../services/lucky-wheel.service.js';
+import { getDesign, isDesignProduct } from '../services/design3d.service.js';
+import { derivePromotionStatus } from '../services/pricing-voucher.service.js';
+import { restoreOrderPoints } from '../services/loyalty-policy.service.js';
 
 interface CreateOrderItem {
   id: string;

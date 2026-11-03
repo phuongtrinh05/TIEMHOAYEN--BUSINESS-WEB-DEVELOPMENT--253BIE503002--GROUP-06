@@ -1,15 +1,17 @@
 import { AFTER_SALES,afterSalesChange,afterSalesRead,orderEvent } from '../services/admin-order.service.js';
 import { Request, Response } from 'express';
-import { getCollection, getNextPrefixedId } from '../mongo.js';
+import { getCollection, getNextPrefixedId, escapeRegex } from '../mongo.js';
 import { getAdminOrderDetailById, sumVerifiedPayments, summarizePayments, assertOrderTransition, allowedOrderStatuses } from '../services/admin-order.service.js';
 import { createOrder } from './order.js';
 import { randomUUID } from 'node:crypto';
-import { finishedAvailableOf, InventoryError, withTransaction } from '../services/inventory/helpers.js';
+import { finishedAvailableOf, InventoryError, nextCode, withTransaction } from '../services/inventory/helpers.js';
 import { computeBuildable } from '../services/inventory/availability.service.js';
 import { getActiveBomMap } from '../services/inventory/bom.service.js';
 import { syncCheckoutInventory, changeCheckoutPayment } from '../services/checkout-payment.service.js';
 import { createExport, releaseReservations, shipFinishedGoodsForOrder, suggestExportLines } from '../services/inventory/stock.service.js';
 import { invalidateAnalyticsCache } from '../services/analytics/cache.js';
+import { audit } from '../services/auth.service.js';
+import { derivePromotionStatus, ensureVoucherStorage, normalizeVoucherCode } from '../services/pricing-voucher.service.js';
 const escapeAfterSalesSearch = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const toDate = (value: unknown): Date | null => {

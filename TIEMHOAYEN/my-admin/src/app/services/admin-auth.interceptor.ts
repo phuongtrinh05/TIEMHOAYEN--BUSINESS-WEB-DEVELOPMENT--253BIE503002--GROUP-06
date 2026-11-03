@@ -8,6 +8,7 @@ import { catchError, throwError } from 'rxjs';
 
 export const adminAuthInterceptor: HttpInterceptorFn = (req, next) => {
   const router = inject(Router);
+  const path = (() => { try { return new URL(req.url, 'http://localhost').pathname; } catch { return req.url; } })();
   const prefix = /^https?:\/\/(?:tiem-hoa-yen-api\.onrender\.com|localhost:3000)\/api(?=\/|$)/;
   if (prefix.test(req.url)) req = req.clone({ url: req.url.replace(prefix, apiBaseUrl()) });
   // Mọi API của backend đều nhận phiên Admin để kiểm tra quyền (kể cả /orders, /payments, /employees...).
