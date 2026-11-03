@@ -1,26 +1,14 @@
 <div class="db-page">
-  <header class="db-head">
-    <div class="db-title">
-      <h1>Bảng phân tích</h1>
-      @if (data(); as d) {
-        <p class="db-range">
-          <i class="bi bi-calendar3"></i> {{ d.range.label }}
-          <span class="muted">· So với {{ compareShort().toLowerCase() }} ({{ d.range.previous.label }}) · Số liệu lúc {{ f.time(d.generatedAt) }}</span>
-        </p>
-      }
-    </div>
-    <div class="db-actions no-print">
-      <button class="btn-ghost" (click)="load(true)" [disabled]="loading()" title="Tải lại số liệu"><i class="bi bi-arrow-clockwise" [class.spin]="loading()"></i></button>
-      <app-export-menu [disabled]="!data()" (export)="onExport($event)"></app-export-menu>
-    </div>
-  </header>
-
   <div class="filter-row no-print">
     <app-range-filter [value]="range()" [busy]="loading()" (changed)="onRange($event)"></app-range-filter>
     <div class="seg" title="Độ hạt của các biểu đồ theo thời gian">
       @for (g of groupByOptions; track g.key) {
         <button [class.active]="(groupBy() || data()?.groupBy) === g.key" (click)="setGroupBy(g.key)">{{ g.label }}</button>
       }
+    </div>
+    <div class="db-actions no-print">
+      <button class="btn-ghost" (click)="load(true)" [disabled]="loading()" title="Tải lại số liệu"><i class="bi bi-arrow-clockwise" [class.spin]="loading()"></i></button>
+      <app-export-menu [disabled]="!data()" (export)="onExport($event)"></app-export-menu>
     </div>
   </div>
 
@@ -99,7 +87,7 @@
         <a class="card-link" routerLink="/dashboard/reports/sales-by-product" [queryParams]="rangeParams()">Theo sản phẩm <i class="bi bi-arrow-right-short"></i></a>
       </div>
     </div>
-    <div class="row-3">
+    <div class="row-2">
       <section class="card fixed h-md">
         <div class="card-head"><h3>Cơ cấu doanh thu theo dịp</h3></div>
         @if (d.occasions.byTopic.length) {
@@ -120,9 +108,11 @@
         <div class="card-head"><h3>Kiểu dáng: doanh thu & lợi nhuận</h3></div>
         <div class="chart-fill"><canvas baseChart type="bar" [data]="styleChart()" [options]="styleOptions"></canvas></div>
       </section>
-      <section class="card fixed h-md">
-        <div class="card-head"><div><h3>Dịp tặng × kiểu dáng</h3><p class="muted small">Ô càng đậm doanh thu càng cao</p></div></div>
-        <div class="table-wrap fill">
+    </div>
+    <!-- Ma trận Dịp tặng × kiểu dáng: hàng riêng, rộng hết trang -->
+    <section class="card heat-card">
+      <div class="card-head"><div><h3>Dịp tặng × kiểu dáng</h3><p class="muted small">Ô càng đậm doanh thu càng cao</p></div></div>
+      <div class="table-wrap">
           <table class="tbl heat">
             <thead><tr><th>Dịp \ Kiểu</th>@for (s of d.occasions.matrix.styles; track s) {<th class="r">{{ s }}</th>}</tr></thead>
             <tbody>
@@ -137,8 +127,7 @@
             </tbody>
           </table>
         </div>
-      </section>
-    </div>
+    </section>
     <section class="card fixed h-sm">
       <div class="card-head">
         <h3>Top 10 sản phẩm theo doanh thu</h3>

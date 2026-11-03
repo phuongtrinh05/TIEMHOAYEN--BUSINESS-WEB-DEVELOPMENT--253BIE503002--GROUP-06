@@ -25,7 +25,7 @@ code { background: var(--db-soft); padding: 1px 6px; border-radius: 4px; font-si
 .db-title h1 { font-family: var(--font-heading); color: var(--db-primary); font-size: 28px; margin: 0; }
 .db-range { margin: 4px 0 0; font-size: 14px; }
 .db-range i { color: var(--db-primary); margin-right: 4px; }
-.db-actions { display: flex; align-items: center; gap: 8px; }
+.db-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 
 .btn-primary, .btn-ghost {
   border-radius: 8px; padding: 8px 14px; font-size: 14px; font-weight: 600; cursor: pointer;
@@ -393,3 +393,27 @@ code { background: var(--db-soft); padding: 1px 6px; border-radius: 4px; font-si
 @media print {
   .page-links, .card-link { display: none !important; }
 }
+
+/* Hàng bộ lọc (Tổng quan / Bảng phân tích / Danh sách báo cáo): mọi nút cao 38px */
+.filter-row .btn-ghost, .ov-filter .btn-ghost { height: 38px; box-sizing: border-box; }
+.filter-row, .ov-filter { align-items: flex-end; }
+/* Cụm Ngày/Tuần/Tháng/Quý/Năm giống hệt cụm Kỳ liền trước | Cùng kỳ năm trước (range-filter .rf-seg) */
+.filter-row .seg, .ov-filter .seg { height: 38px; box-sizing: border-box; border: 1px solid #ece6e3; border-radius: 8px; flex: none; }
+.filter-row .seg button, .ov-filter .seg button { height: 100%; padding: 0 12px; font: inherit; font-size: 13px; color: #2b2321; }
+.filter-row .seg button + button, .ov-filter .seg button + button { border-left: 1px solid #ece6e3; }
+.filter-row .seg button.active, .ov-filter .seg button.active { background: #fbf6f3; color: #731919; font-weight: 700; }
+
+/* Thẻ KPI (Bảng phân tích): nội dung căn giữa, phụ đề so sánh in nghiêng */
+.kpi-grid .kpi { align-items: center; text-align: center; }
+.kpi-grid .kpi .kpi-foot { justify-content: center; font-style: italic; }
+
+/* Viền thẻ KPI / khung biểu đồ đậm hơn một chút cho dễ tách khối */
+.kpi, .card, .panel { border-color: #ddd1cb; }
+/* Bảng: tô nền dòng lẻ để dễ dò theo hàng */
+.tbl:not(.heat) tbody tr:nth-child(odd) td { background: #f7f1ee; }
+.tbl:not(.heat) tbody tr.click:hover td, .tbl.report-table tbody tr:hover td { background: #efe5e0; }
+
+/* Hiệu ứng khi mở trang: thẻ và khung hiện dần, trượt nhẹ lên */
+@keyframes db-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.kpi, .card, .pop-card { animation: db-enter .45s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .kpi, .card, .pop-card { animation: none; } }

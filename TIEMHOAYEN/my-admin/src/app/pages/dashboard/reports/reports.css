@@ -67,3 +67,9 @@
 .list-scroll { height: 560px; overflow-y: auto; border: 1px solid #f3ece8; border-radius: 10px; }
 .list-scroll thead th { position: sticky; top: 0; z-index: 1; }
 @media print { .list-scroll { height: auto; overflow: visible; border: 0; } }
+.filter-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.filter-row app-range-filter { flex: 1 1 auto; }
+.range-note { margin: -8px 0 0; }
+
+/* Viền thẻ báo cáo đậm hơn, đồng bộ thẻ KPI / khung biểu đồ */
+.pop-card, .card { border-color: #ddd1cb; }

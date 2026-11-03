@@ -39,3 +39,13 @@
 .funnel .fn-track { height: 14px; background: #f6f1ee; border-radius: 7px; overflow: hidden; }
 .funnel .fn-bar { height: 100%; border-radius: 7px; min-width: 4px; }
 @media print { .section-nav { display: none; } .section-title { break-before: auto; } }
+
+/* Ma trận Dịp tặng × kiểu dáng (hàng riêng, rộng hết trang) */
+.heat-card .table-wrap { overflow-x: hidden; }
+.heat-card .tbl.heat { table-layout: fixed; width: 100%; }
+.heat-card .tbl.heat th:first-child, .heat-card .tbl.heat td:first-child { width: 150px; }
+/* Tên kiểu dáng dài được xuống dòng để bảng vừa khung, không cần thanh cuộn ngang */
+.heat-card .tbl.heat th { white-space: normal; word-break: break-word; vertical-align: bottom; line-height: 1.3; }
+.heat-card .tbl.heat th.r { text-align: center; }
+.heat-card .tbl.heat td.r { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+.heat-card .tbl.heat td { padding: 10px 8px; }
