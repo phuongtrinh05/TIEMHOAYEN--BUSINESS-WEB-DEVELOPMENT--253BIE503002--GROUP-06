@@ -1,4 +1,6 @@
 import express from 'express';
+import { requireLookup } from '../controllers/order-access.js';
+import { requireAdminPermission } from '../middleware/rolePermission.js';
 import {
   createNotification,
   getNotifications,
@@ -10,9 +12,9 @@ import {
 const router = express.Router();
 
 router.get('/public', getPublicNotifications);
-router.get('/', getNotifications);
-router.post('/', createNotification);
-router.patch('/read-all/:customerId', markAllNotificationsAsRead);
-router.patch('/:id/read', markNotificationAsRead);
+router.get('/', requireLookup, getNotifications);
+router.post('/', requireAdminPermission('orders', 'update'), createNotification);
+router.patch('/read-all/:customerId', requireLookup, markAllNotificationsAsRead);
+router.patch('/:id/read', requireLookup, markNotificationAsRead);
 
 export default router;

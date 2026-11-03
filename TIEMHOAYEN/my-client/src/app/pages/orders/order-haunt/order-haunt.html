@@ -388,16 +388,34 @@
             {{ deliveryScheduleError }}
           </span>
 
-          <h3 class="order-block__title order-block__title--spaced">4. Lời nhắn cho người nhận</h3>
+          <h3 class="order-block__title order-block__title--spaced">4. Thiệp tặng</h3>
+          <div class="gift-card-grid">
+            <label class="gift-card-option gift-card-option--none" [class.is-selected]="!selectedCardTemplateId"><input type="radio" name="giftCard" value="" [ngModel]="selectedCardTemplateId" (ngModelChange)="onCardTemplateChange($event)"><span>Không kèm thiệp</span></label>
+            <label class="gift-card-option" *ngFor="let card of cardTemplates" [class.is-selected]="selectedCardTemplateId===card.id" [attr.aria-label]="card.name"><input type="radio" name="giftCard" [value]="card.id" [ngModel]="selectedCardTemplateId" (ngModelChange)="onCardTemplateChange($event)"><img [src]="card.image" [alt]="card.name"><small class="gift-card-option__fee">{{card.fee ? (card.fee | number:'1.0-0') + 'đ' : 'Miễn phí'}}</small></label>
+          </div>
 
-          <div class="form-group">
+          <div class="gift-card-writing" *ngIf="selectedCardTemplateId">
+            <p>Bạn muốn viết thiệp như thế nào?</p>
+            <div class="gift-card-writing__choices">
+              <button type="button" [class.is-selected]="cardWritingMode==='customer'" (click)="chooseCardWritingMode('customer')">Tôi tự viết</button>
+              <button type="button" [class.is-selected]="cardWritingMode==='shop'" (click)="chooseCardWritingMode('shop')">Nhờ shop viết</button>
+            </div>
+            <span class="error-msg gift-card-message-error" *ngIf="hasTriedSubmit && !cardWritingMode">Vui lòng chọn cách viết thiệp.</span>
+            <p class="gift-card-writing__hint" *ngIf="cardWritingMode==='customer'">Shop sẽ để trống phần nội dung để bạn tự viết.</p>
+          </div>
+
+          <div class="form-group" *ngIf="selectedCardTemplateId && cardWritingMode==='shop'">
             <textarea
               name="noteReceiver"
               class="form-textarea"
-              placeholder="Lời nhắn cho người nhận"
+              [class.is-invalid]="hasTriedSubmit && !formData.noteReceiver.trim()"
+              placeholder="Nội dung để shop viết hoặc in trên thiệp"
               [(ngModel)]="formData.noteReceiver"
+              maxlength="500"
               rows="3">
             </textarea>
+            <span class="error-msg gift-card-message-error" *ngIf="hasTriedSubmit && !formData.noteReceiver.trim()">Vui lòng nhập nội dung thiệp.</span>
+            <small class="gift-card-message-count">{{ formData.noteReceiver.length }}/500</small>
           </div>
 
           <h3 class="order-block__title order-block__title--spaced">5. Lời nhắn cho shop</h3>
@@ -482,21 +500,22 @@
                   *ngIf="showVoucherDropdown"
                   (click)="$event.stopPropagation()">
 
-                  <div class="voucher-login-box">
+                  <div class="voucher-item" *ngFor="let voucher of availableVouchers">
                     <div class="voucher-item__info">
-                      <span class="voucher-item__title">Vui lòng đăng nhập</span>
-                      <span class="voucher-item__desc">
-                        Voucher có sẵn chỉ hiển thị cho khách hàng đã đăng nhập.
-                      </span>
+                      <span class="voucher-item__title">{{ voucher.code }} · {{ voucher.title }}</span>
+                      <span class="voucher-item__desc">{{ voucherEstimatedText(voucher) }}</span>
                     </div>
 
                     <button
                       type="button"
                       class="btn-use-voucher"
-                      (click)="goToLogin()">
-                      Đăng nhập
+                      [class.is-used]="selectedVoucher?.id === voucher.id"
+                      (click)="selectVoucher(voucher)">
+                      {{ selectedVoucher?.id === voucher.id ? 'Bỏ chọn' : 'Sử dụng' }}
                     </button>
                   </div>
+                  <div class="voucher-login-box" *ngIf="isLoadingPublicVouchers"><span>Đang tải voucher…</span></div>
+                  <div class="voucher-login-box" *ngIf="!isLoadingPublicVouchers && !availableVouchers.length"><span>Hiện chưa có voucher công khai phù hợp.</span></div>
                 </div>
               </div>
             </div>
@@ -587,6 +606,11 @@
             <span class="pricing-value">{{ shippingFee | number:'1.0-0' }}đ</span>
           </div>
 
+          <div class="pricing-row" *ngIf="selectedCardFee > 0">
+            <span>Phí thiệp:</span>
+            <span class="pricing-value">{{ selectedCardFee | number:'1.0-0' }}đ</span>
+          </div>
+
           <div class="pricing-row discount-row" *ngIf="discount > 0">
             <span>Giảm giá:</span>
             <span class="discount-value">
@@ -630,14 +654,12 @@
         <button
           type="button"
           class="btn-order"
-          [class.is-ready]="orderForm.valid && !isSubmitting && formData.provinceCode && formData.districtCode && formData.wardCode && !isUnsupportedCardPayment && !isPaymentMethodDisabled(formData.paymentMethod)"
+          [disabled]="!!salesRequestId || isSubmitting"
+          [class.is-ready]="!salesRequestId && orderForm.valid && !isSubmitting && formData.provinceCode && formData.districtCode && formData.wardCode && !isUnsupportedCardPayment && !isPaymentMethodDisabled(formData.paymentMethod)"
           (click)="onSubmit(orderForm)">
-          {{ salesRequestId ? 'Mở khung tư vấn' : (isSubmitting ? 'Đang kiểm tra đơn...' : 'Thanh toán') }}
+          {{ salesRequestId ? 'Đã gửi yêu cầu' : (isSubmitting ? 'Đang kiểm tra đơn...' : 'Thanh toán') }}
         </button>
 
-        <p *ngIf="salesRequestId" role="status" style="background:#fff2cc;color:#604913;padding:14px;border-radius:8px;margin-top:12px">
-          Đã chuyển yêu cầu {{salesRequestId}} đến Sales do chưa đủ hàng hoặc nguyên liệu khả dụng. Shop chưa xác nhận đơn hoặc cam kết giao kịp. Nhân viên sẽ kiểm tra kho và liên hệ tư vấn; nếu cần ngay, hãy gọi shop. Bạn chưa cần thanh toán.
-        </p>
         <p class="payment-error" *ngIf="submitOrderError">
           {{ submitOrderError }}
         </p>
@@ -646,3 +668,10 @@
 
   </div>
 </div>
+
+<app-sales-request-result *ngIf="salesRequestId"
+  [loading]="isSubmitting && !salesRequestId"
+  [requestId]="salesRequestId" [message]="salesRequestMessage" [items]="orderItems"
+  [deliveryDate]="formData.deliveryDate" [deliveryTime]="formData.deliveryTime"
+  (openedChat)="salesRequestId=''" (closed)="salesRequestId=''">
+</app-sales-request-result>

@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId } from '../mongo.js';
 import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordHash.js';
+import { randomUUID } from 'node:crypto';
+import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
 import { createCustomerOrderAccess } from '../services/order-access.service.js';
 
 const otpStore = new Map<string, string>();
@@ -305,142 +307,46 @@ export const getCustomerAddresses = async (req: Request, res: Response) => {
   }
 };
 
-export const addCustomerAddress = async (req: Request, res: Response) => {
+const changeOwnedAddress = (action: 'add' | 'edit' | 'delete' | 'default') => async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const addressCollection = await getAddressCollection();
-    const normalizedAddress = normalizeAddressPayload(req.body);
-    const activeAddresses = (await addressCollection.find({ KHACH_HANG_ID: id }).toArray()).filter(isActiveRow);
-
-    if (activeAddresses.some((address) => isSameAddress(address, normalizedAddress))) {
-      return res.status(409).json({ message: 'Địa chỉ này đã tồn tại.' });
-    }
-
-    const newId = await getNextPrefixedId('DIA_CHI_GIAO_HANG', 'DIA_CHI_ID', 'DC', 4);
-    const isDefaultAddress = Boolean(req.body.LA_MAC_DINH) || activeAddresses.length === 0;
-
-    if (isDefaultAddress) {
-      await addressCollection.updateMany(
-        { KHACH_HANG_ID: id, DA_XOA: { $ne: true } },
-        { $set: { LA_MAC_DINH: false } },
-      );
-    }
-
-    await addressCollection.insertOne({
-      _id: newId,
-      DIA_CHI_ID: newId,
-      KHACH_HANG_ID: id,
-      ...normalizedAddress,
-      LA_MAC_DINH: isDefaultAddress,
-      DA_XOA: false,
-    });
-
-    return res.status(201).json({ message: 'Thêm địa chỉ thành công' });
-  } catch (error: any) {
-    return res.status(500).json({ message: error.message });
-  }
-};
-
-export const deleteCustomerAddress = async (req: Request, res: Response) => {
-  try {
-    const { addressId } = req.params;
-    const addressCollection = await getAddressCollection();
-    const address = await addressCollection.findOne({ DIA_CHI_ID: addressId });
-
-    if (!address) {
-      return res.status(404).json({ message: 'Không tìm thấy địa chỉ.' });
-    }
-
-    if (address.LA_MAC_DINH) {
-      const replacement = await addressCollection.findOne(
-        {
-          KHACH_HANG_ID: address.KHACH_HANG_ID,
-          DIA_CHI_ID: { $ne: addressId },
-          DA_XOA: { $ne: true },
-        },
-        { sort: { DIA_CHI_ID: 1 } },
-      );
-
-      if (replacement) {
-        await addressCollection.updateOne(
-          { DIA_CHI_ID: replacement.DIA_CHI_ID },
-          { $set: { LA_MAC_DINH: true } },
-        );
+    const customerId = res.locals.orderAccess?.customerId;
+    if (!customerId || res.locals.orderAccess?.authType !== 'member') throw new InventoryError(403, 'Cần đăng nhập để quản lý địa chỉ.');
+    const address = await withTransaction(async session => {
+      // One member document serializes concurrent default-address changes.
+      const owner = await (await getCustomerCollection()).updateOne({ KHACH_HANG_ID: customerId }, { $inc: { PHIEN_BAN_DIA_CHI: 1 } }, { session });
+      if (!owner.matchedCount) throw new InventoryError(404, 'Không tìm thấy tài khoản.');
+      const col = await getAddressCollection();
+      const current = action === 'add' ? null : await col.findOne({ DIA_CHI_ID: req.params.addressId, KHACH_HANG_ID: customerId, DA_XOA: { $nin: [true, 1] } }, { session });
+      if (action !== 'add' && !current) throw new InventoryError(404, 'Không tìm thấy địa chỉ của bạn.');
+      const rows = await col.find({ KHACH_HANG_ID: customerId, DA_XOA: { $nin: [true, 1] } }, { session }).sort({ DIA_CHI_ID: 1 }).toArray();
+      const id = current?.DIA_CHI_ID || `DC${randomUUID().replaceAll('-', '')}`;
+      if (action === 'delete') {
+        await col.updateOne({ DIA_CHI_ID: id, KHACH_HANG_ID: customerId }, { $set: { DA_XOA: true, LA_MAC_DINH: false } }, { session });
+        if (current.LA_MAC_DINH) {
+          const replacement = rows.find(r => r.DIA_CHI_ID !== id);
+          if (replacement) await col.updateOne({ DIA_CHI_ID: replacement.DIA_CHI_ID }, { $set: { LA_MAC_DINH: true } }, { session });
+        }
+        return null;
       }
-    }
-
-    await addressCollection.updateOne(
-      { DIA_CHI_ID: addressId },
-      { $set: { DA_XOA: true, LA_MAC_DINH: false } },
-    );
-
-    return res.status(200).json({ message: 'Xóa địa chỉ thành công.' });
-  } catch (_error: any) {
-    return res.status(500).json({ message: 'Đã xảy ra lỗi. Vui lòng thử lại sau.' });
+      const data = action === 'default' ? normalizeAddressPayload(current) : normalizeAddressPayload(req.body);
+      if (Object.values(data).some(v => !v || v.length > 300) || !/^\+?\d[\d\s.-]{7,19}$/.test(data.SDT_NGUOI_NHAN)) throw new InventoryError(400, 'Cần đủ địa chỉ và số điện thoại hợp lệ.');
+      if (action !== 'default' && rows.some(r => r.DIA_CHI_ID !== id && isSameAddress(r, data))) throw new InventoryError(409, 'Địa chỉ này đã tồn tại.');
+      const wantsDefault = action === 'default' || req.body.LA_MAC_DINH === true || req.body.LA_MAC_DINH === 1;
+      const isDefault = wantsDefault || !rows.length || !!current?.LA_MAC_DINH;
+      if (isDefault) await col.updateMany({ KHACH_HANG_ID: customerId, DA_XOA: { $nin: [true, 1] } }, { $set: { LA_MAC_DINH: false } }, { session });
+      const next = { DIA_CHI_ID: id, KHACH_HANG_ID: customerId, ...data, LA_MAC_DINH: isDefault, DA_XOA: false };
+      await col.updateOne({ DIA_CHI_ID: id, KHACH_HANG_ID: customerId }, { $set: next, ...(current ? {} : { $setOnInsert: { _id: id } }) }, { upsert: !current, session });
+      return next;
+    });
+    return res.status(action === 'add' ? 201 : 200).json({ message: 'Đã lưu thay đổi địa chỉ.', address, addressId: address?.DIA_CHI_ID });
+  } catch (e: any) {
+    return res.status(e instanceof InventoryError ? e.status : 500).json({ message: e instanceof InventoryError ? e.message : 'Không thể cập nhật địa chỉ.' });
   }
 };
-
-export const updateCustomerAddress = async (req: Request, res: Response) => {
-  try {
-    const { addressId } = req.params;
-    const addressCollection = await getAddressCollection();
-    const address = await addressCollection.findOne({ DIA_CHI_ID: addressId, DA_XOA: { $ne: true } });
-
-    if (!address) {
-      return res.status(404).json({ message: 'Không tìm thấy địa chỉ.' });
-    }
-
-    const normalizedAddress = normalizeAddressPayload(req.body);
-    const activeAddresses = (await addressCollection.find({ KHACH_HANG_ID: address.KHACH_HANG_ID }).toArray())
-      .filter((item) => isActiveRow(item) && item.DIA_CHI_ID !== addressId);
-
-    if (activeAddresses.some((item) => isSameAddress(item, normalizedAddress))) {
-      return res.status(409).json({ message: 'Địa chỉ này đã tồn tại.' });
-    }
-
-    const isDefault = Boolean(req.body.LA_MAC_DINH);
-    if (isDefault) {
-      await addressCollection.updateMany(
-        { KHACH_HANG_ID: address.KHACH_HANG_ID, DA_XOA: { $ne: true } },
-        { $set: { LA_MAC_DINH: false } },
-      );
-    }
-
-    await addressCollection.updateOne(
-      { DIA_CHI_ID: addressId },
-      { $set: { ...normalizedAddress, LA_MAC_DINH: isDefault } },
-    );
-
-    return res.status(200).json({ message: 'Cập nhật địa chỉ thành công.' });
-  } catch (_error: any) {
-    return res.status(500).json({ message: 'Không thể cập nhật địa chỉ.' });
-  }
-};
-
-export const setDefaultCustomerAddress = async (req: Request, res: Response) => {
-  try {
-    const { addressId } = req.params;
-    const addressCollection = await getAddressCollection();
-    const address = await addressCollection.findOne({ DIA_CHI_ID: addressId, DA_XOA: { $ne: true } });
-
-    if (!address) {
-      return res.status(404).json({ message: 'Không tìm thấy địa chỉ.' });
-    }
-
-    await addressCollection.updateMany(
-      { KHACH_HANG_ID: address.KHACH_HANG_ID, DA_XOA: { $ne: true } },
-      { $set: { LA_MAC_DINH: false } },
-    );
-    await addressCollection.updateOne(
-      { DIA_CHI_ID: addressId },
-      { $set: { LA_MAC_DINH: true } },
-    );
-
-    return res.status(200).json({ message: 'Đã đặt địa chỉ mặc định.' });
-  } catch (_error: any) {
-    return res.status(500).json({ message: 'Không thể đặt địa chỉ mặc định.' });
-  }
-};
+export const addCustomerAddress = changeOwnedAddress('add');
+export const updateCustomerAddress = changeOwnedAddress('edit');
+export const deleteCustomerAddress = changeOwnedAddress('delete');
+export const setDefaultCustomerAddress = changeOwnedAddress('default');
 
 export const getCustomerOrders = async (req: Request, res: Response) => {
   try {

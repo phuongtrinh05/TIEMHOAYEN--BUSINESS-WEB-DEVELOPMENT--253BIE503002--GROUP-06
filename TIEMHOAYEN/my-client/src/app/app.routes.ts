@@ -36,6 +36,7 @@ import { OrderDetail } from './pages/orders/order-detail/order-detail';
 import { OrderReview } from './pages/orders/order-review/order-review';
 import { OrderHauntComponent } from './pages/orders/order-haunt/order-haunt';
 import { OrderRegistrantComponent } from './pages/orders/order-registrant/order-registrant';
+import { OrderList } from './pages/orders/order-list/order-list';
 
 // =========================
 // PRODUCT
@@ -147,8 +148,7 @@ export const routes: Routes = [
   },
   {
     path: 'order-list',
-    redirectTo: 'order-requests',
-    pathMatch: 'full',
+    component: OrderList,
     title: 'Danh sách đơn hàng - Tiệm Hoa Yên',
   },
 

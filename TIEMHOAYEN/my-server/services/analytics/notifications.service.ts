@@ -1,24 +1,23 @@
-import { ObjectId } from 'mongodb';
+import { createHash } from 'crypto';
 import { getCollection } from '../../mongo.js';
 import { hasPermission } from '../role-permission.service.js';
 import { ANALYTICS_CONFIG, NOTIFICATION_GROUPS, NOTIFICATION_PRIORITY, NotificationGroup, ORDER_STATUS } from './constants.js';
 import { getDataset } from './dataset.js';
 import { computeDeliveries, getCachedInventoryAlerts } from './dashboard.service.js';
 import { PO_STATUS } from '../inventory/constants.js';
+import { requestWorkflow } from '../request-workflow.js';
 
 /**
  * AD09 — THÔNG BÁO ADMIN (D07 Notification Event Matrix)
  *
- * Tách khỏi THONG_BAO của khách hàng: THONG_BAO hiện trả các bản ghi KHACH_HANG_ID = null cho mọi khách
- * (getPublicNotifications) nên KHÔNG thể ghi thông báo nội bộ vào đó.
- *  - THONG_BAO_ADMIN: 1 bản ghi / sự kiện, khóa chống trùng KHOA_SU_KIEN (unique)
- *  - THONG_BAO_ADMIN_DA_DOC: trạng thái đã đọc THEO TỪNG NHÂN VIÊN (_id = <TB>:<NV>)
+ * Dùng chung collection THONG_BAO với Customer, nhưng mọi bản ghi nội bộ có
+ * KENH_THONG_BAO=ADMIN và được API Customer loại trừ. Trạng thái xem/đọc là
+ * hai mảng mã nhân viên để một người mở chuông không ảnh hưởng người khác.
  * Nguồn sự kiện: (1) module khác gọi emitAdminNotification(); (2) bộ quét định kỳ syncAdminNotifications()
  * — idempotent, đồng thời tự đánh dấu "đã xử lý xong" khi điều kiện không còn đúng.
  */
 
-const NOTI = 'THONG_BAO_ADMIN';
-const READS = 'THONG_BAO_ADMIN_DA_DOC';
+const NOTI = 'THONG_BAO';
 const STATE = 'BO_DEM_MA';
 
 export interface AdminNotificationEvent {
@@ -57,19 +56,19 @@ export const NOTIFICATION_EVENT_MATRIX = [
 ];
 
 export const ensureNotificationIndexes = async () => {
-  await Promise.allSettled([
-    (await getCollection<any>(NOTI)).createIndex({ KHOA_SU_KIEN: 1 }, { unique: true, name: 'uniq_khoa_su_kien' }),
-    (await getCollection<any>(NOTI)).createIndex({ NGAY_TAO: -1 }, { name: 'tb_admin_ngay' }),
-    (await getCollection<any>(READS)).createIndex({ NHAN_VIEN_ID: 1, THONG_BAO_ID: 1 }, { name: 'tb_admin_doc' }),
-  ]);
+  // Không tự tạo index mới trên Atlas chung. _id được suy ra ổn định từ khóa
+  // sự kiện nên MongoDB vẫn chống ghi trùng ở mức storage.
 };
+
+const eventId = (key: string) => `TBA${createHash('sha256').update(key).digest('hex').slice(0, 20).toUpperCase()}`;
 
 /** Lệnh upsert theo khóa sự kiện (dùng chung cho ghi lẻ và ghi hàng loạt). */
 const notificationUpdate = (e: AdminNotificationEvent, now: Date) => ({
       $setOnInsert: {
-        _id: `TBA${new ObjectId().toHexString().slice(-10).toUpperCase()}`,
-        KHOA_SU_KIEN: e.key, LOAI: e.type, NHOM: e.group, MUC_DO: e.priority, MODULE: e.module,
+        _id: eventId(e.key), THONG_BAO_ID: eventId(e.key), KHOA_SU_KIEN: e.key,
+        KENH_THONG_BAO: 'ADMIN', LOAI: e.type, LOAI_THONG_BAO: e.type, NHOM: e.group, MUC_DO: e.priority, MODULE: e.module,
         DOI_TUONG_ID: e.entityId || null, NGAY_TAO: now, TU_DONG: Boolean(e.stateful),
+        ADMIN_DA_XEM: [], ADMIN_DA_DOC: [],
       },
       $set: { TIEU_DE: e.title, NOI_DUNG: e.message, DUONG_DAN: e.link, THAM_SO: e.queryParams || null, NGAY_CAP_NHAT: now, DA_XU_LY: false, NGAY_XU_LY: null },
 });
@@ -77,7 +76,7 @@ const notificationUpdate = (e: AdminNotificationEvent, now: Date) => ({
 /** Ghi 1 sự kiện (idempotent theo key). Module khác có thể gọi trực tiếp, kể cả trong transaction. */
 export const emitAdminNotification = async (e: AdminNotificationEvent, session?: any) => {
   const col = await getCollection<any>(NOTI);
-  return col.findOneAndUpdate({ KHOA_SU_KIEN: e.key }, notificationUpdate(e, new Date()), { upsert: true, returnDocument: 'after', session });
+  return col.findOneAndUpdate({ _id: eventId(e.key) }, notificationUpdate(e, new Date()), { upsert: true, returnDocument: 'after', session });
 };
 
 let syncing: Promise<any> | null = null;
@@ -98,7 +97,7 @@ export const syncAdminNotifications = async (force = false) => {
     const { getReconciliation, warmAnalyticsCaches } = await import('./reports.service.js');
     const [ds, requests, tickets, reviews, alerts, lateOrders, rec] = await Promise.all([
       getDataset({ allowStale: false, fresh: force }),
-      getCollection<any>('YEU_CAU_DAT_HANG').then((c) => c.find({ status: { $in: ['Chờ Sales tiếp nhận', 'Khách đã đồng ý'] } }).project({ requestId: 1, status: 1, createdAt: 1, contact: 1, delivery: 1 }).limit(200).toArray()).catch(() => [] as any[]),
+      getCollection<any>('YEU_CAU_DAT_HANG').then((c) => c.find({ status: { $in: ['Chờ Sales tiếp nhận', 'Khách đã đồng ý'] } }).project({ requestId: 1, status: 1, createdAt: 1, contact: 1, delivery: 1, quote: 1, items: 1, requestReason: 1, reason: 1, reviewReason: 1, routing: 1 }).limit(200).toArray()).catch(() => [] as any[]),
       getCollection<any>('YEU_CAU_HO_TRO').then((c) => c.find({ status: 'Chưa xử lý', $or: [{ mode: 'WAITING' }, { priority: 'urgent' }] }).project({ _id: 1, name: 1, source: 1, priority: 1, reason: 1 }).limit(200).toArray()).catch(() => [] as any[]),
       getCollection<any>('DANH_GIA').then((c) => c.find({ SO_SAO: { $lte: 2 }, NGAY_DANH_GIA: { $gte: lookback } }).limit(100).toArray()).catch(() => [] as any[]),
       getCachedInventoryAlerts({ allowStale: false, fresh: force }),
@@ -110,7 +109,7 @@ export const syncAdminNotifications = async (force = false) => {
 
     ds.orders.forEach((o) => {
       const recent = o.createdAt && o.createdAt >= lookback;
-      if (recent && [ORDER_STATUS.pending, ORDER_STATUS.confirmed].includes(o.status as any)) {
+      if (recent && [ORDER_STATUS.ordered, ORDER_STATUS.pending, ORDER_STATUS.confirmed].includes(o.status as any)) {
         events.push({ key: `ORDER_NEW:${o.id}`, type: 'ORDER_NEW', group: 'Đơn hàng', priority: 'Trung bình', module: 'orders', stateful: true, entityId: o.id,
           title: `Đơn mới ${o.id}`, message: `${fmtMoney(o.total)} · ${o.recipient || 'khách'} · chờ xác nhận`, link: orderLink(o.id) });
         const age = o.createdAt ? (now.getTime() - o.createdAt.getTime()) / 60_000 : 0;
@@ -141,10 +140,12 @@ export const syncAdminNotifications = async (force = false) => {
 
     requests.forEach((r: any) => {
       const accepted = r.status === 'Khách đã đồng ý';
+      const workflow = requestWorkflow(r, now);
       events.push({ key: `${accepted ? 'SALES_REQUEST_ACCEPTED' : 'SALES_REQUEST_NEW'}:${r.requestId}`, type: accepted ? 'SALES_REQUEST_ACCEPTED' : 'SALES_REQUEST_NEW',
         group: 'Đơn hàng', priority: 'Cao', module: 'orders', stateful: true, entityId: r.requestId,
         title: accepted ? `Khách đã đồng ý phương án — ${r.requestId}` : `Yêu cầu đặt hàng mới — ${r.requestId}`,
-        message: accepted ? 'Kiểm tra tồn lần cuối và lên đơn.' : 'Sales tiếp nhận, kiểm tra nguồn hoa và liên hệ khách.',
+        message: accepted ? `Kiểm tra tồn lần cuối và lên đơn · ${workflow.priorityLabel}.`
+          : `${workflow.priorityLabel} · ${workflow.totalQuantity} bó · ${workflow.priorityReasons.join('; ') || 'Sales tiếp nhận và kiểm tra nguồn hoa'}.`,
         link: '/orders/requests', queryParams: { requestId: String(r.requestId) } });
     });
 
@@ -187,13 +188,13 @@ export const syncAdminNotifications = async (force = false) => {
     const unique = [...new Map(events.map((e) => [e.key, e])).values()];
     if (unique.length) {
       const at = new Date();
-      await col.bulkWrite(unique.map((e) => ({ updateOne: { filter: { KHOA_SU_KIEN: e.key }, update: notificationUpdate(e, at), upsert: true } })), { ordered: false });
+      await col.bulkWrite(unique.map((e) => ({ updateOne: { filter: { _id: eventId(e.key) }, update: notificationUpdate(e, at), upsert: true } })), { ordered: false });
     }
 
     // Tự đánh dấu "đã xử lý" cho sự kiện trạng thái không còn đúng
     const activeKeys = events.filter((e) => e.stateful).map((e) => e.key);
     const resolved = await col.updateMany(
-      { TU_DONG: true, DA_XU_LY: { $ne: true }, KHOA_SU_KIEN: { $nin: activeKeys } },
+      { KENH_THONG_BAO: 'ADMIN', TU_DONG: true, DA_XU_LY: { $ne: true }, KHOA_SU_KIEN: { $nin: activeKeys } },
       { $set: { DA_XU_LY: true, NGAY_XU_LY: new Date() } },
     );
     warmAnalyticsCaches().catch(() => void 0);
@@ -204,44 +205,46 @@ export const syncAdminNotifications = async (force = false) => {
 
 /** Danh sách thông báo cho 1 nhân viên: lọc theo quyền module, kèm trạng thái đã đọc riêng. */
 export const listAdminNotifications = async (staff: { id: string | null; role: string | null }, query: any) => {
-  // Không chờ bộ quét (đã chạy định kỳ ngầm) → danh sách trả ngay từ THONG_BAO_ADMIN
+  // Không chờ bộ quét (đã chạy định kỳ ngầm) → trả ngay từ THONG_BAO.
   syncAdminNotifications(false).catch((e) => console.error('[notifications] sync lỗi', e));
   const role = staff.role || '';
   const visibleModules = ['orders', 'payments', 'materials', 'customerService', 'products', 'dashboard'].filter((m) => Boolean(role) && hasPermission(role, m, 'view'));
-  const filter: any = { MODULE: { $in: visibleModules } };
+  const filter: any = { KENH_THONG_BAO: 'ADMIN', MODULE: { $in: visibleModules } };
   if (query.group && NOTIFICATION_GROUPS.includes(query.group)) filter.NHOM = query.group;
   if (query.includeResolved !== 'true') filter.DA_XU_LY = { $ne: true };
   const limit = Math.min(200, Math.max(1, Number(query.limit) || 50));
   const col = await getCollection<any>(NOTI);
   const rows = await col.find(filter).sort({ NGAY_TAO: -1 }).limit(500).toArray();
-  const reads = staff.id
-    ? new Set((await (await getCollection<any>(READS)).find({ NHAN_VIEN_ID: staff.id, THONG_BAO_ID: { $in: rows.map((r) => r._id) } }).toArray()).map((r: any) => r.THONG_BAO_ID))
-    : new Set<string>();
   const items = rows.map((r: any) => ({
     id: r._id, type: r.LOAI, group: r.NHOM, priority: r.MUC_DO, title: r.TIEU_DE, message: r.NOI_DUNG, link: r.DUONG_DAN, queryParams: r.THAM_SO || null,
-    createdAt: r.NGAY_TAO, updatedAt: r.NGAY_CAP_NHAT, resolved: Boolean(r.DA_XU_LY), read: reads.has(r._id),
+    createdAt: r.NGAY_TAO, updatedAt: r.NGAY_CAP_NHAT, resolved: Boolean(r.DA_XU_LY),
+    viewed: Boolean(staff.id && (r.ADMIN_DA_XEM || []).includes(staff.id)),
+    read: Boolean(staff.id && (r.ADMIN_DA_DOC || []).includes(staff.id)),
+    seenAt: staff.id ? r.ADMIN_SEEN_AT?.[staff.id] || null : null,
+    readAt: staff.id ? r.ADMIN_READ_AT?.[staff.id] || null : null,
   }));
+  const unseen = items.filter((i) => !i.viewed);
   const unread = items.filter((i) => !i.read);
   const unreadByGroup = Object.fromEntries(NOTIFICATION_GROUPS.map((g) => [g, unread.filter((i) => i.group === g).length]));
   const onlyUnread = query.unread === 'true';
   const priorityOrder = [NOTIFICATION_PRIORITY.high, NOTIFICATION_PRIORITY.medium, NOTIFICATION_PRIORITY.low] as string[];
   const sorted = (onlyUnread ? unread : items).sort((a, b) => Number(a.read) - Number(b.read) || priorityOrder.indexOf(a.priority) - priorityOrder.indexOf(b.priority) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  return { total: items.length, unread: unread.length, unreadByGroup, groups: NOTIFICATION_GROUPS, items: sorted.slice(0, limit), canMarkRead: Boolean(staff.id) };
+  return { total: items.length, unseen: unseen.length, unread: unread.length, unreadByGroup, groups: NOTIFICATION_GROUPS, items: sorted.slice(0, limit), canMarkRead: Boolean(staff.id) };
 };
 
-export const markAdminNotificationsRead = async (staffId: string | null, ids: string[] | 'all', group?: string) => {
+export const markAdminNotificationsRead = async (staffId: string | null, ids: string[] | 'all', group?: string, viewedOnly = false) => {
   if (!staffId) throw Object.assign(new Error('Thiếu mã nhân viên (x-admin-id) để lưu trạng thái đã đọc.'), { status: 400 });
   const col = await getCollection<any>(NOTI);
   let targetIds: string[];
   if (ids === 'all') {
     targetIds = (await col.find({ DA_XU_LY: { $ne: true }, ...(group ? { NHOM: group } : {}) }).project({ _id: 1 }).toArray()).map((r: any) => r._id);
   } else targetIds = ids;
-  const reads = await getCollection<any>(READS);
-  const now = new Date();
   if (targetIds.length) {
-    await reads.bulkWrite(targetIds.map((id) => ({
-      updateOne: { filter: { _id: `${id}:${staffId}` as any }, update: { $setOnInsert: { THONG_BAO_ID: id, NHAN_VIEN_ID: staffId, DA_DOC_LUC: now } }, upsert: true },
-    })));
+    const now = new Date();
+    const update = viewedOnly
+      ? { $addToSet: { ADMIN_DA_XEM: staffId }, $set: { [`ADMIN_SEEN_AT.${staffId}`]: now } }
+      : { $addToSet: { ADMIN_DA_XEM: staffId, ADMIN_DA_DOC: staffId }, $set: { [`ADMIN_SEEN_AT.${staffId}`]: now, [`ADMIN_READ_AT.${staffId}`]: now } };
+    await col.updateMany({ _id: { $in: targetIds }, KENH_THONG_BAO: 'ADMIN' }, update as any);
   }
   return { marked: targetIds.length };
 };

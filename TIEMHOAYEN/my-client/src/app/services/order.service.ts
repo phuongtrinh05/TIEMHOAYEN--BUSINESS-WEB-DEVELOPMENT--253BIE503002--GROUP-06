@@ -19,6 +19,8 @@ export interface CreateOrderPayload {
     name: string;
     phone: string;
     address: string;
+    districtName?: string;
+    provinceName?: string;
   };
   sender: {
     name: string;
@@ -31,7 +33,9 @@ export interface CreateOrderPayload {
     message?: string;
     noteShop?: string;
   };
+  giftCard?: { templateId?: string | null; writingMode?: 'customer' | 'shop'; message?: string; note?: string } | null;
   items: CreateOrderItemPayload[];
+  shippingMethod?: string;
   voucher?: {
     id?: string;
     code?: string;
@@ -59,6 +63,12 @@ export interface CreateOrderPayload {
 }
 
 export interface CreateOrderResponse {
+  requiresPayment?: boolean;
+  requestAccessToken?: string;
+  requestAccessExpiresAt?: string;
+  requestUrl?: string;
+  summary?: any;
+  items?: any[];
   checkoutAccessToken?: string;
   kind?: 'order' | 'sales_request';
   requestId?: string;
@@ -75,6 +85,10 @@ export interface CreateOrderResponse {
 }
 
 export interface OrderPaymentStatusResponse {
+  summary?: any;
+  requiresPayment?: boolean;
+  remainingBalance?: number;
+  paidAmount?: number;
   orderId: string;
   paymentId: string;
   transactionCode: string;
@@ -128,27 +142,49 @@ export class OrderService {
 
   constructor(private http: HttpClient, private salesChat: SalesChatService, private access: OrderAccessService, private router: Router) {}
 
+  getCardTemplates(): Observable<{ templates: any[] }> {
+    return this.http.get<{ templates: any[] }>(`${this.apiUrl}/card-templates`);
+  }
+
   createOrder(payload: CreateOrderPayload): Observable<CreateOrderResponse> {
     if (!payload.customerId && this.access.session?.authType === 'member') payload = { ...payload, customerId: this.access.session.customerId! };
     const fingerprint = JSON.stringify(payload);
-    let pending: { fingerprint: string; key: string } | null = null;
+    let pending: { fingerprint: string; key: string; request?: any } | null = null;
     try { pending = JSON.parse(sessionStorage.getItem('pendingOrderSession') || 'null'); } catch {}
+    // Khi trình duyệt đã mở được một yêu cầu Sales, phản hồi trước đó đã nhận
+    // thành công. Không phát lại kết quả terminal đó cho một lần bấm đặt mới.
+    if (pending?.request && sessionStorage.getItem('tiemHoaYenActiveSalesChat')) {
+      sessionStorage.removeItem('pendingOrderSession');
+      pending = null;
+    }
     if (pending?.fingerprint !== fingerprint) {
       pending = { fingerprint, key: crypto.randomUUID() };
       sessionStorage.setItem('pendingOrderSession', JSON.stringify(pending));
     }
-    return this.http.post<CreateOrderResponse>(this.apiUrl, { ...payload, checkoutSessionId: pending!.key }).pipe(tap(result => {
+    // Send checkout once. Backend is the only pricing source and atomically
+    // decides order/QR versus Sales request; no separate quote round trip.
+    if (!pending!.request) {
+      pending!.request = { ...payload, checkoutSessionId: pending!.key };
+      sessionStorage.setItem('pendingOrderSession', JSON.stringify(pending));
+    }
+    delete pending!.request.checkoutQuote;
+    return this.http.post<CreateOrderResponse>(this.apiUrl, pending!.request).pipe(tap(result => {
+      if (result.items) result.items = result.items.map(item => ({ ...item, image: this.assetUrl(item.image) }));
       if (result.checkoutAccessToken) sessionStorage.setItem(`checkoutOrderAccess:${result.orderId}`, result.checkoutAccessToken);
-      if (result.kind !== 'sales_request') sessionStorage.removeItem('pendingOrderSession');
       if (result.kind === 'sales_request') {
+        // A newly created request only opens the result popup. The conversation
+        // is opened explicitly from the popup's “Chat với Sales” action.
+        this.salesChat.assistant();
+        sessionStorage.removeItem('pendingOrderSession');
+        if (result.requestAccessToken && this.access.useRequestLink(result.requestAccessToken, result.requestId!, result.requestAccessExpiresAt)) {
+          return;
+        }
         const phone = String(payload.sender.phone || '').replace(/\D/g, '').replace(/^84/, '0');
         const member = payload.customerId && this.access.session?.authType === 'member' && this.access.session.customerId === payload.customerId;
         if (!member && this.access.session?.phone !== phone) {
           this.access.logout();
           sessionStorage.setItem('pendingSalesLookup', JSON.stringify({ requestId: result.requestId, phone }));
-          this.salesChat.assistant();
-          this.router.navigate(['/order-requests']);
-        } else this.salesChat.open(result.requestId!);
+        }
       }
     }));
   }
@@ -194,6 +230,9 @@ export class OrderService {
     return this.http.put<CreateOrderResponse>(`${this.apiUrl}/${orderId}/payment-retry`, {});
   }
 
+  getAfterSales(orderId: string): Observable<any> { return this.http.get(`${this.apiUrl}/${encodeURIComponent(orderId)}/after-sales`); }
+  createAfterSales(orderId: string, body: any): Observable<any> { return this.http.post(`${this.apiUrl}/${encodeURIComponent(orderId)}/after-sales`,body); }
+  supplementAfterSales(orderId: string, requestId: string, body: any): Observable<any> { return this.http.patch(`${this.apiUrl}/${encodeURIComponent(orderId)}/after-sales/${encodeURIComponent(requestId)}`,body); }
   getOrderDetail(orderId: string, phone = ''): Observable<OrderDetailResponse> {
     const query = phone ? `?phone=${encodeURIComponent(phone)}` : '';
     return this.http.get<OrderDetailResponse>(`${this.apiUrl}/${orderId}/detail${query}`);

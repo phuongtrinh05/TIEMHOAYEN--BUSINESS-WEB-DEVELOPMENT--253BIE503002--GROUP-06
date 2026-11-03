@@ -1,7 +1,7 @@
 <section class="checkout-page" *ngIf="order as order">
   <div
     class="checkout-toast"
-    [class.checkout-toast--success]="isPaymentSuccess"
+    [class.checkout-toast--success]="isPaymentSuccess || isOrderAccepted"
     [class.checkout-toast--failed]="isPaymentFailed"
   >
     <div class="checkout-toast__icon">
@@ -9,13 +9,13 @@
     </div>
 
     <div class="checkout-toast__content">
-      <strong>{{ isPaymentSuccess ? 'Thanh toán thành công' : isPaymentFailed ? 'Thanh toán thất bại' : 'Xác nhận thanh toán' }}</strong>
-      <span *ngIf="!isPaymentSuccess && !isPaymentFailed">
+      <strong>{{ isOrderAccepted ? 'Đã tiếp nhận đơn — không cần cọc' : isPaymentSuccess ? (isCodPayment ? 'Đã xác minh tiền cọc' : 'Thanh toán thành công') : isPaymentFailed ? 'Thanh toán thất bại' : 'Xác nhận thanh toán' }}</strong>
+      <span *ngIf="!isPaymentSuccess && !isPaymentFailed && !isOrderAccepted">
         Vui lòng kiểm tra lại thông tin đơn hàng trước khi thanh toán.
       </span>
 
       <span *ngIf="isPaymentSuccess">
-        Đơn hàng đã chuyển sang trạng thái chờ xử lý.
+        Đã xác minh khoản thanh toán trước. Trạng thái đơn: {{orderStatus}}.
       </span>
 
       <span *ngIf="isPaymentFailed">
@@ -24,6 +24,7 @@
     </div>
   </div>
 
+  <p class="checkout-result-error" role="status" *ngIf="connectionNotice">{{connectionNotice}}</p>
   <div class="checkout-body">
     <div class="checkout-left">
       <!-- Thông tin người nhận -->
@@ -166,11 +167,11 @@
 
           <strong
             class="payment-countdown"
-            [class.is-danger]="remainingSeconds <= 60 && !isPaymentSuccess && !isPaymentFailed"
-            [class.is-success]="isPaymentSuccess"
+            [class.is-danger]="remainingSeconds <= 60 && !isPaymentSuccess && !isPaymentFailed && !isOrderAccepted"
+            [class.is-success]="isPaymentSuccess || isOrderAccepted"
             [class.is-failed]="isPaymentFailed"
           >
-            {{ isPaymentSuccess ? 'OK' : isPaymentFailed ? 'Hết hạn' : formattedCountdown }}
+            {{ isOrderAccepted ? 'Không cần trả trước' : isPaymentSuccess ? 'OK' : isPaymentFailed ? 'Hết hạn' : formattedCountdown }}
           </strong>
         </div>
 
@@ -187,7 +188,7 @@
 
         <div
           class="payment-qr"
-          *ngIf="!isPaymentSuccess && !isPaymentFailed && (isOnlinePayment || order.payment.amountToPay > 0)"
+          *ngIf="!isPaymentSuccess && !isPaymentFailed && !isOrderAccepted && (isOnlinePayment || order.payment.amountToPay > 0)"
         >
           <p class="payment-qr__label">Quét mã để thanh toán</p>
           <img
@@ -199,7 +200,7 @@
 
         <div
           class="payment-bank"
-          *ngIf="!isPaymentSuccess && !isPaymentFailed && (isOnlinePayment || order.payment.amountToPay > 0)"
+          *ngIf="!isPaymentSuccess && !isPaymentFailed && !isOrderAccepted && (isOnlinePayment || order.payment.amountToPay > 0)"
         >
           <p class="payment-bank__title">THÔNG TIN CHUYỂN KHOẢN</p>
 
@@ -319,7 +320,7 @@
 
   <div
     class="checkout-result-overlay"
-    *ngIf="isPaymentSuccess || isPaymentFailed"
+    *ngIf="isPaymentSuccess || isPaymentFailed || isOrderAccepted"
     role="dialog"
     aria-modal="true"
     (click)="closeCheckoutResultPopup()">
@@ -338,7 +339,7 @@
       </div>
 
       <p class="checkout-result-message">
-        {{ isPaymentSuccess ? 'Thanh toán thành công' : 'Thanh toán thất bại' }}
+        {{ isOrderAccepted ? 'Đã tiếp nhận đơn hàng' : isPaymentSuccess ? 'Thanh toán thành công' : 'Thanh toán thất bại' }}
       </p>
 
       <p class="checkout-result-sub-message" *ngIf="isPaymentFailed">
@@ -349,7 +350,8 @@
         {{ checkoutResultError }}
       </p>
 
-      <div class="checkout-result-actions" *ngIf="isPaymentSuccess">
+      <p class="checkout-result-sub-message" *ngIf="isOrderAccepted">Đơn không yêu cầu cọc; chưa ghi nhận đã thu tiền. Số tiền còn lại: {{ order.summary.remainingAmount | number:'1.0-0' }}đ.</p>
+      <div class="checkout-result-actions" *ngIf="isPaymentSuccess || isOrderAccepted">
         <button type="button" class="checkout-result-action" (click)="viewOrderDetail()">
           Xem đơn hàng
         </button>

@@ -20,7 +20,7 @@ export const toDate = (v: unknown): Date | null => {
 export const normalizeOrderStatus = (raw: unknown): string => {
   const s = String(raw || '').trim();
   const k = normalizeKey(s);
-  if (!s) return ORDER_STATUS.pending;
+  if (!s) return ORDER_STATUS.ordered;
   if (k.includes('da hoan tien')) return ORDER_STATUS.refunded;
   if (k.includes('chap nhan hoan')) return ORDER_STATUS.refundAccepted;
   if (k.includes('yeu cau hoan') || k.includes('tra hang')) return ORDER_STATUS.refundRequested;
@@ -31,6 +31,7 @@ export const normalizeOrderStatus = (raw: unknown): string => {
   if (k.includes('dang giao')) return ORDER_STATUS.shipping;
   if (k.includes('van chuyen')) return ORDER_STATUS.waitingShip;
   if (k.includes('chuan bi')) return ORDER_STATUS.preparing;
+  if (k.includes('dat hang thanh cong')) return ORDER_STATUS.ordered;
   if (k.includes('xac nhan')) return ORDER_STATUS.confirmed;
   if (k.includes('cho thanh toan')) return ORDER_STATUS.waitingPayment;
   if (k.includes('cho xu ly')) return ORDER_STATUS.pending;

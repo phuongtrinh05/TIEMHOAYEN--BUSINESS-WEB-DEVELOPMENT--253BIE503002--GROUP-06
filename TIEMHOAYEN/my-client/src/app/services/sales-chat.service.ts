@@ -11,8 +11,11 @@ export class SalesChatService {
   readonly request$ = this.selected.asObservable();
   private restore(): string {
     try {
-      if (!orderAccessSession()) { sessionStorage.removeItem('tiemHoaYenActiveSalesChat'); return ''; }
-      return sessionStorage.getItem('tiemHoaYenActiveSalesChat') || '';
+      // A page load must show the normal order/request list. Sales chat is an
+      // explicit action and must not reopen merely because it was open before
+      // refresh or navigation.
+      sessionStorage.removeItem('tiemHoaYenActiveSalesChat');
+      return '';
     } catch { return ''; }
   }
   open(requestId: string) {

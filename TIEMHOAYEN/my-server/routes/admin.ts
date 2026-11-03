@@ -1,5 +1,6 @@
+import {getAdminAfterSales,changeAdminAfterSales} from '../controllers/admin.js';
 import express from 'express';
-import { requireSales, listRequests, changeRequest, salesOptions, salesPropose, salesConvert, listRequestMessages, postRequestMessage, requireRequestOwner, uploadedProposalImage, salesRecordContact } from '../controllers/order-request.js';
+import { requireSales, listRequests, changeRequest, salesOptions, salesPropose, salesConvert, salesConfirmOriginal, listRequestMessages, postRequestMessage, requireRequestOwner, uploadedProposalImage, salesRecordContact } from '../controllers/order-request.js';
 import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
@@ -80,13 +81,17 @@ const materialImageUpload = multer({
 
 router.get('/dashboard', requireAdminPermission('dashboard'), getAdminDashboard);
 router.get('/address-options', requireAdminPermission('customers'), getAdminAddressOptions);
-router.get('/staff-accounts', requireAdminPermission('permissions'), getAdminStaffAccounts);
+router.get('/staff-accounts', (req,res,next) => req.query.scope === 'delivery'
+  ? requireAdminPermission('orders')(req,res,next) : requireAdminPermission('permissions')(req,res,next), getAdminStaffAccounts);
+router.get('/after-sales',requireAdminPermission('orders'),getAdminAfterSales);
+router.patch('/after-sales/:requestId',requireAdminPermission('orders','update'),(req,res,next)=>req.body.action==='refund' ? requireAdminPermission('payments','update')(req,res,next) : next(),changeAdminAfterSales);
 router.get('/orders', requireAdminPermission('orders'), getAdminOrders);
 router.get('/order-requests', requireSales, listRequests);
 router.patch('/order-requests/:requestId', requireSales, changeRequest);
 router.get('/order-requests/:requestId/options', requireSales, salesOptions);
 router.post('/order-requests/:requestId/proposal', requireSales, salesPropose);
 router.post('/order-requests/:requestId/convert', requireSales, salesConvert);
+router.post('/order-requests/:requestId/confirm', requireSales, salesConfirmOriginal);
 router.post('/order-requests/:requestId/contact', requireSales, salesRecordContact);
 router.get('/order-requests/:requestId/messages', requireSales, listRequestMessages);
 router.post('/order-requests/:requestId/messages', requireSales, postRequestMessage);
@@ -98,7 +103,7 @@ router.post('/order-requests/:requestId/image', requireSales, requireRequestOwne
 });
 router.get('/orders/:orderId', requireAdminPermission('orders'), getAdminOrderDetail);
 router.post('/orders', requireAdminPermission('orders'), createAdminOrder);
-router.put('/orders/:orderId/status', requireAdminPermission('orders'), updateAdminOrderStatus);
+router.put('/orders/:orderId/status', requireAdminPermission('orders', 'update'), updateAdminOrderStatus);
 router.put('/orders/:orderId/payment-status', requireAdminPermission('payments'), updateAdminOrderPaymentStatus);
 router.get('/customers', requireAdminPermission('customers'), getAdminCustomers);
 router.get('/customers/:customerId', requireAdminPermission('customers'), getAdminCustomerDetail);

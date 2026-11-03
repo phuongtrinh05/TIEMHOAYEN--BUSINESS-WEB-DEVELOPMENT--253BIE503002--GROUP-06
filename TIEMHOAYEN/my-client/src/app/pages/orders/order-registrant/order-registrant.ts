@@ -2,6 +2,7 @@ import { Component, OnInit, inject, PLATFORM_ID, HostListener, ChangeDetectorRef
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule, NgForm } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
+import { apiBaseUrl } from '../../../services/api-config';
 import { PageHeader } from '../../../components/page-header/page-header';
 import { PageFooter } from '../../../components/page-footer/page-footer';
 import {
@@ -14,6 +15,7 @@ import {
   CreateOrderPayload,
   CreateOrderResponse,
 } from '../../../services/order.service';
+import { SalesRequestResultComponent } from '../sales-request-result/sales-request-result';
 
 export interface OrderItem {
   id: string;
@@ -107,7 +109,7 @@ export interface WardOption extends Ward {
 @Component({
   selector: 'app-order-registrant',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, PageHeader, PageFooter],
+  imports: [CommonModule, FormsModule, RouterLink, PageHeader, PageFooter, SalesRequestResultComponent],
   templateUrl: './order-registrant.html',
   styleUrl: './order-registrant.css',
 })
@@ -117,6 +119,11 @@ export class OrderRegistrantComponent implements OnInit {
   private readonly customerService = inject(CustomerService);
   private readonly orderService = inject(OrderService);
   private readonly cdr = inject(ChangeDetectorRef);
+  cardTemplates: any[] = [];
+  selectedCardTemplateId = '';
+  cardWritingMode: '' | 'customer' | 'shop' = '';
+  cardWritingModeTouched = false;
+  cardMessageTouched = false;
 
   private readonly checkoutItemsStorageKey = 'tiemHoaYenCheckoutItems';
   private readonly legacyCartStorageKey = 'tiemHoaYenCart';
@@ -135,6 +142,7 @@ export class OrderRegistrantComponent implements OnInit {
   paymentCardError = '';
   submitOrderError = '';
   salesRequestId = '';
+  salesRequestMessage = '';
   voucherError = '';
   isSubmittingOrder = false;
 
@@ -209,7 +217,7 @@ export class OrderRegistrantComponent implements OnInit {
     {
       value: 'fast',
       label: 'Giao nhanh',
-      desc: 'Ưu tiên xử lý và giao sớm hơn',
+      desc: 'Ưu tiên xử lý; thời gian thực tế theo khung giao đã chọn',
     },
   ];
 
@@ -307,6 +315,11 @@ export class OrderRegistrantComponent implements OnInit {
     this.loadCustomerAddresses();
     this.loadCustomerDetail();
     this.loadCustomerVouchers();
+    this.loadCardTemplates();
+  }
+
+  private loadCardTemplates(): void {
+    this.orderService.getCardTemplates().subscribe({ next: value => { this.cardTemplates = value.templates || []; this.cdr.markForCheck(); }, error: () => { this.cardTemplates = []; } });
   }
 
   @HostListener('document:click', ['$event'])
@@ -433,7 +446,9 @@ export class OrderRegistrantComponent implements OnInit {
         this.availableVouchers = items
           .filter((item: CustomerVoucher) => !this.isVoucherUsed(item))
           .filter((item: CustomerVoucher) => this.isVoucherValidDate(item))
-          .map((item: CustomerVoucher) => this.mapCustomerVoucher(item));
+          .map((item: CustomerVoucher) => this.mapCustomerVoucher(item))
+          .sort((left, right) => this.estimateVoucherDiscount(right) - this.estimateVoucherDiscount(left)
+            || this.voucherExpiry(left) - this.voucherExpiry(right));
 
         if (
           this.selectedVoucher &&
@@ -497,13 +512,29 @@ export class OrderRegistrantComponent implements OnInit {
     };
   }
 
+  voucherEstimatedText(voucher: Voucher): string {
+    const value = this.estimateVoucherDiscount(voucher);
+    return value > 0 ? `Ước giảm ${this.formatMoney(value)}` : voucher.desc;
+  }
+
+  private estimateVoucherDiscount(voucher: Voucher): number {
+    if (this.isPercentVoucher(voucher)) return Math.min(this.subtotal, Math.round(this.subtotal * voucher.value / 100));
+    if (this.isCashVoucher(voucher)) return Math.min(this.baseShippingFee, Math.max(0, voucher.value));
+    return Math.min(this.subtotal, Math.max(0, voucher.value));
+  }
+
+  private voucherExpiry(voucher: Voucher): number {
+    const value = voucher.endDate ? new Date(voucher.endDate).getTime() : Number.MAX_SAFE_INTEGER;
+    return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
+  }
+
   private getVoucherTitle(type: string, value: number): string {
     if (this.normalizeText(type) === this.normalizeText('Phần trăm')) {
       return `Giảm ${value}% đơn hàng`;
     }
 
-    if (this.normalizeText(type) === this.normalizeText('Tiền mặt')) {
-      return `Giảm ${this.formatMoney(value)} phí vận chuyển`;
+    if (['tien mat', 'so tien', 'tien co dinh'].includes(this.normalizeText(type))) {
+      return `Giảm ${this.formatMoney(value)} tiền hàng`;
     }
 
     return 'Voucher ưu đãi';
@@ -514,8 +545,8 @@ export class OrderRegistrantComponent implements OnInit {
       return `Giảm ${value}% trên tạm tính sản phẩm`;
     }
 
-    if (this.normalizeText(type) === this.normalizeText('Tiền mặt')) {
-      return `Giảm tối đa ${this.formatMoney(value)} vào phí vận chuyển`;
+    if (['tien mat', 'so tien', 'tien co dinh'].includes(this.normalizeText(type))) {
+      return `Giảm tối đa ${this.formatMoney(value)} vào tiền hàng`;
     }
 
     return 'Áp dụng cho tài khoản của bạn';
@@ -594,7 +625,7 @@ export class OrderRegistrantComponent implements OnInit {
       return;
     }
 
-    fetch(`https://tiem-hoa-yen-api.onrender.com/api/cart/customer/${customerId}`)
+    fetch(`${apiBaseUrl()}/cart/customer/${customerId}`)
       .then(response => {
         if (!response.ok) {
           throw new Error(`Không lấy được giỏ hàng: ${response.status}`);
@@ -651,7 +682,7 @@ export class OrderRegistrantComponent implements OnInit {
   // ===== LẤY ĐỊA CHỈ CỦA TÀI KHOẢN =====
   // ====================================================================
 
-  private loadCustomerAddresses(): void {
+  private loadCustomerAddresses(preferredId?: string): void {
     const customerId = this.getCustomerId();
 
     if (!customerId) {
@@ -675,6 +706,7 @@ export class OrderRegistrantComponent implements OnInit {
           null;
 
         const initialAddress =
+          this.savedAddresses.find(address => address.id === preferredId) ||
           defaultAddress ||
           this.findRecentOrderAddress(this.savedAddresses) ||
           this.savedAddresses[0] ||
@@ -826,6 +858,32 @@ export class OrderRegistrantComponent implements OnInit {
     return this.orderItems.reduce((sum, item) => sum + item.price * item.qty, 0);
   }
 
+  get selectedCardTemplate(): any | null {
+    return this.cardTemplates.find(card => card.id === this.selectedCardTemplateId) || null;
+  }
+
+  get selectedCardFee(): number {
+    const fee = Number(this.selectedCardTemplate?.fee || 0);
+    return Number.isSafeInteger(fee) && fee > 0 ? fee : 0;
+  }
+
+  onCardTemplateChange(templateId: string): void {
+    this.selectedCardTemplateId = templateId;
+    this.cardWritingMode = '';
+    this.formData.noteReceiver = '';
+    this.cardWritingModeTouched = false;
+    this.cardMessageTouched = false;
+    this.submitOrderError = '';
+  }
+
+  chooseCardWritingMode(mode: 'customer' | 'shop'): void {
+    this.cardWritingMode = mode;
+    if (mode === 'customer') this.formData.noteReceiver = '';
+    this.cardWritingModeTouched = true;
+    this.cardMessageTouched = false;
+    this.submitOrderError = '';
+  }
+
   get selectedShippingDistrictName(): string {
     if (this.selectedAddress?.districtName) {
       return this.selectedAddress.districtName;
@@ -925,11 +983,10 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   get productVoucherDiscount(): number {
-    if (!this.selectedVoucher || !this.isPercentVoucher(this.selectedVoucher)) {
-      return 0;
-    }
-
-    return Math.round((this.subtotal * this.selectedVoucher.value) / 100);
+    if (!this.selectedVoucher) return 0;
+    if (this.isPercentVoucher(this.selectedVoucher)) return Math.min(this.subtotal, Math.round(this.subtotal * this.selectedVoucher.value / 100));
+    return ['tien mat', 'so tien', 'tien co dinh', 'cash', 'fixed'].includes(this.normalizeText(this.selectedVoucher.type))
+      ? Math.min(this.subtotal, Math.max(0, this.selectedVoucher.value)) : 0;
   }
 
   get shippingVoucherDiscount(): number {
@@ -979,7 +1036,7 @@ export class OrderRegistrantComponent implements OnInit {
   get total(): number {
     return Math.max(
       0,
-      this.subtotal + this.shippingFee - this.productVoucherDiscount - this.loyaltyDiscount
+      this.subtotal + this.shippingFee + this.selectedCardFee - this.productVoucherDiscount - this.loyaltyDiscount
     );
   }
 
@@ -1084,10 +1141,11 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   get showDepositPolicy(): boolean {
-    return this.isCodPayment && !this.isCashPaymentBlocked && !!this.currentPaymentPolicy;
+    return this.subtotal >= 50000 && this.isCodPayment && !this.isCashPaymentBlocked && !!this.currentPaymentPolicy;
   }
 
   get depositAmount(): number {
+    if (this.subtotal < 50000) return 0;
     if (!this.isCodPayment || this.isCashPaymentBlocked) {
       return 0;
     }
@@ -1122,7 +1180,7 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   private isCashVoucher(voucher: Voucher): boolean {
-    return this.normalizeText(voucher.type) === this.normalizeText('Tiền mặt');
+    return /freeship|van chuyen/.test(this.normalizeText(voucher.type));
   }
 
   private normalizeText(value: string): string {
@@ -1558,8 +1616,12 @@ export class OrderRegistrantComponent implements OnInit {
     }
 
     this.customerService.addAddress(customerId, payload).subscribe({
-      next: () => {
-        this.loadCustomerAddresses();
+      next: (result: any) => {
+        this.loadCustomerAddresses(result.addressId);
+        if (result.address) {
+          const added = this.mapCustomerAddress(result.address);
+          this.applySelectedAddress(added);
+        }
         this.closeAddAddressModal();
       },
       error: (err) => {
@@ -1632,10 +1694,10 @@ export class OrderRegistrantComponent implements OnInit {
       return true;
     }
 
-    const minimumDeliveryTime = new Date(Date.now() + 3 * 60 * 60 * 1000);
+    const minimumDeliveryTime = new Date(Date.now() + 60 * 60 * 1000);
 
     if (deliveryDateTime.getTime() < minimumDeliveryTime.getTime()) {
-      this.deliveryScheduleError = 'Thời gian giao hàng phải sau thời điểm hiện tại ít nhất 3 giờ.';
+      this.deliveryScheduleError = 'Đơn giao gấp cần chọn thời gian sau hiện tại ít nhất 1 giờ. Lịch dưới 3 giờ sẽ được chuyển Sales kiểm tra.';
       return false;
     }
 
@@ -1698,7 +1760,7 @@ export class OrderRegistrantComponent implements OnInit {
 
   // ===== SUBMIT =====
   onSubmit(form?: NgForm): void {
-    if (this.salesRequestId) { this.orderService.openSalesChat(this.salesRequestId); return; }
+    if (this.salesRequestId) return;
     if (!isPlatformBrowser(this.platformId) || this.isSubmittingOrder) {
       return;
     }
@@ -1719,6 +1781,17 @@ export class OrderRegistrantComponent implements OnInit {
 
     if (this.orderItems.length === 0) {
       this.router.navigate(['/cart']);
+      return;
+    }
+
+    if (this.selectedCardTemplateId && !this.cardWritingMode) {
+      this.cardWritingModeTouched = true;
+      this.submitOrderError = 'Vui lòng chọn tự viết thiệp hoặc nhờ shop viết.';
+      return;
+    }
+    if (this.selectedCardTemplateId && this.cardWritingMode === 'shop' && !this.formData.noteReceiver.trim()) {
+      this.cardMessageTouched = true;
+      this.submitOrderError = '';
       return;
     }
 
@@ -1810,10 +1883,13 @@ export class OrderRegistrantComponent implements OnInit {
 
     const payload: CreateOrderPayload = {
       customerId: this.getCustomerId(),
+      shippingMethod: this.formData.shippingMethod,
       receiver: {
         name: receiverName,
         phone: receiverPhone,
         address: receiverAddress,
+        districtName: this.selectedAddress?.districtName,
+        provinceName: this.selectedAddress?.provinceName,
       },
       sender: {
         name: senderName,
@@ -1823,9 +1899,10 @@ export class OrderRegistrantComponent implements OnInit {
       delivery: {
         date: this.formData.deliveryDate,
         time: this.formData.deliveryTime,
-        message: this.formData.noteReceiver,
+        message: this.cardWritingMode === 'shop' ? this.formData.noteReceiver.trim() : '',
         noteShop: this.formData.noteShop,
       },
+      giftCard: this.selectedCardTemplateId ? { templateId: this.selectedCardTemplateId, writingMode: this.cardWritingMode as 'customer' | 'shop', message: this.cardWritingMode === 'shop' ? this.formData.noteReceiver.trim() : '' } : null,
       items: this.orderItems.map(item => ({
         id: item.id,
         name: item.name,
@@ -1866,11 +1943,22 @@ export class OrderRegistrantComponent implements OnInit {
       next: (createdOrder: CreateOrderResponse) => {
         if (createdOrder.kind === 'sales_request') {
           this.salesRequestId = createdOrder.requestId || '';
+          this.salesRequestMessage = createdOrder.message || '';
           this.isSubmittingOrder = false;
+          // Angular 22 can run this HTTP callback outside the render tick in
+          // development/SSR mode. Render the result immediately so the customer
+          // never has to click the checkout screen a second time.
+          this.cdr.detectChanges();
           return;
         }
         const registrantOrderWithPayment = {
           ...registrantOrder,
+          ...(createdOrder.summary ? { subtotal: createdOrder.summary.subtotal, shippingFee: createdOrder.summary.shippingFee,
+            baseShippingFee: createdOrder.summary.baseShippingFee, shippingVoucherDiscount: createdOrder.summary.shippingDiscount,
+            productVoucherDiscount: createdOrder.summary.productDiscount, loyaltyDiscount: createdOrder.summary.loyaltyDiscount,
+            discount: createdOrder.summary.productDiscount,
+            total: createdOrder.summary.total, depositAmount: createdOrder.summary.depositAmount,
+            remainingAmount: createdOrder.summary.total - createdOrder.paymentAmount, items: createdOrder.items } : {}),
           createdOrder,
           orderId: createdOrder.orderId,
           paymentId: createdOrder.paymentId,
@@ -1898,11 +1986,11 @@ export class OrderRegistrantComponent implements OnInit {
         localStorage.removeItem(this.checkoutItemsStorageKey);
 
         this.isSubmittingOrder = false;
-        this.router.navigate(['/checkout']);
+        void this.router.navigate(['/checkout']);
       },
-      error: (err: unknown) => {
+      error: (err: any) => {
         console.error('Lỗi tạo đơn hàng:', err);
-        this.submitOrderError = 'Không thể tạo đơn hàng. Vui lòng kiểm tra backend và thử lại.';
+        this.submitOrderError = err?.error?.message || 'Không thể tạo đơn hàng. Vui lòng thử lại.';
         this.isSubmittingOrder = false;
       },
     });

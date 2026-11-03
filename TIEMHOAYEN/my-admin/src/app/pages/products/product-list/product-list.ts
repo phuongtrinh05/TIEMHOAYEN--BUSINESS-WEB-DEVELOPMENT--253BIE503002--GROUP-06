@@ -234,7 +234,7 @@ export class ProductList implements OnInit {
   }
 
   searchProducts(): void {
-    const keyword = this.searchKeyword.trim().toLowerCase();
+    const keyword = this.normalizeSearch(this.searchKeyword);
     const source = this.getProductsForFilter(this.selectedFilter);
 
     if (!keyword) {
@@ -243,11 +243,21 @@ export class ProductList implements OnInit {
     }
 
     this.filteredProducts = source.filter((product) => {
-      return product.name.toLowerCase().includes(keyword)
-        || product.sku.toLowerCase().includes(keyword);
+      return this.normalizeSearch(product.name).includes(keyword)
+        || this.normalizeSearch(product.sku).includes(keyword);
     });
     this.currentPage = 1;
     this.rebuildPagedProducts();
+  }
+
+  private normalizeSearch(value: unknown): string {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .trim()
+      .toLocaleLowerCase('vi-VN');
   }
 
   private getProductsForFilter(type: ProductFilter): AdminProduct[] {
@@ -511,7 +521,6 @@ export class ProductList implements OnInit {
       importPrice: Number(this.newProduct.importPrice || 0),
       salePrice: Number(this.newProduct.salePrice),
       discountPrice: Number(this.newProduct.discountPrice || 0),
-      quantity: Number(this.newProduct.quantity || 0),
       style: this.newProduct.style,
       images: [...this.productImages],
       materials: this.materials

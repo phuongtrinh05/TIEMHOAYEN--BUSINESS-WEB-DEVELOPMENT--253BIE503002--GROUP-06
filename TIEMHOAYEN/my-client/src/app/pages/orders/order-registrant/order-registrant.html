@@ -258,16 +258,24 @@
             {{ deliveryScheduleError }}
           </span>
 
-          <h3 class="or-block__title or-block__title--spaced">3. Lời nhắn cho người nhận</h3>
+          <h3 class="or-block__title or-block__title--spaced">3. Thiệp tặng</h3>
+          <div class="gift-card-grid">
+            <label class="gift-card-option gift-card-option--none" [class.is-selected]="!selectedCardTemplateId"><input type="radio" name="giftCard" value="" [ngModel]="selectedCardTemplateId" (ngModelChange)="onCardTemplateChange($event)"><span>Không kèm thiệp</span></label>
+            <label class="gift-card-option" *ngFor="let card of cardTemplates" [class.is-selected]="selectedCardTemplateId===card.id" [attr.aria-label]="card.name"><input type="radio" name="giftCard" [value]="card.id" [ngModel]="selectedCardTemplateId" (ngModelChange)="onCardTemplateChange($event)"><img [src]="card.image" [alt]="card.name"><small class="gift-card-option__fee">{{card.fee ? (card.fee | number:'1.0-0') + 'đ' : 'Miễn phí'}}</small></label>
+          </div>
 
-          <!-- Lời nhắn người nhận -->
-          <textarea
-            name="noteReceiver"
-            class="form-textarea"
-            placeholder="Lời nhắn cho người nhận"
-            [(ngModel)]="formData.noteReceiver"
-            rows="3">
-          </textarea>
+          <div class="gift-card-writing" *ngIf="selectedCardTemplateId">
+            <p>Bạn muốn chuẩn bị nội dung thiệp như thế nào?</p>
+            <div class="gift-card-writing__choices">
+              <button type="button" [class.is-selected]="cardWritingMode==='customer'" (click)="chooseCardWritingMode('customer')">Tôi tự viết</button>
+              <button type="button" [class.is-selected]="cardWritingMode==='shop'" (click)="chooseCardWritingMode('shop')">Nhờ shop viết</button>
+            </div>
+            <span class="error-msg gift-card-message-error" *ngIf="cardWritingModeTouched && !cardWritingMode">Vui lòng chọn cách viết thiệp.</span>
+            <textarea *ngIf="cardWritingMode==='shop'" name="noteReceiver" class="form-textarea" [class.is-invalid]="cardMessageTouched && !formData.noteReceiver.trim()" placeholder="Nhập lời nhắn để shop viết hoặc in trên thiệp" [(ngModel)]="formData.noteReceiver" (ngModelChange)="cardMessageTouched=true" (blur)="cardMessageTouched=true" maxlength="500" rows="3"></textarea>
+            <span class="error-msg gift-card-message-error" *ngIf="cardWritingMode==='shop' && cardMessageTouched && !formData.noteReceiver.trim()">Vui lòng nhập nội dung thiệp.</span>
+            <small *ngIf="cardWritingMode==='shop'">{{formData.noteReceiver.length}}/500 ký tự</small>
+            <p class="gift-card-writing__hint" *ngIf="cardWritingMode==='customer'">Shop sẽ để trống phần nội dung để bạn tự viết.</p>
+          </div>
 
           <h3 class="or-block__title or-block__title--spaced">4. Lời nhắn cho shop</h3>
 
@@ -363,7 +371,7 @@
 
                     <div class="voucher-item__info">
                       <span class="voucher-item__title">{{ v.title }}</span>
-                      <span class="voucher-item__desc">{{ v.desc }}</span>
+                      <span class="voucher-item__desc">{{ voucherEstimatedText(v) }}</span>
                     </div>
 
                     <button
@@ -496,6 +504,11 @@
             <span class="pricing-value">{{ shippingFee | number:'1.0-0' }}đ</span>
           </div>
 
+          <div class="pricing-row" *ngIf="selectedCardFee > 0">
+            <span>Phí thiệp:</span>
+            <span class="pricing-value">{{ selectedCardFee | number:'1.0-0' }}đ</span>
+          </div>
+
           <div class="pricing-row" *ngIf="productVoucherDiscount > 0">
             <span>Voucher sản phẩm:</span>
             <span class="discount-value">
@@ -548,9 +561,6 @@
           </div>
         </div>
 
-        <p *ngIf="salesRequestId" role="status" style="background:#fff2cc;color:#604913;padding:14px;border-radius:8px;margin-top:12px">
-          Đã chuyển yêu cầu {{salesRequestId}} đến Sales do chưa đủ hàng hoặc nguyên liệu khả dụng. Shop chưa xác nhận đơn hoặc cam kết giao kịp. Nhân viên sẽ kiểm tra kho và liên hệ tư vấn; nếu cần ngay, hãy gọi shop. Bạn chưa cần thanh toán.
-        </p>
         <p class="payment-card-error" *ngIf="submitOrderError">
           {{ submitOrderError }}
         </p>
@@ -558,15 +568,23 @@
         <button
           type="button"
           class="btn-order"
-          [class.is-ready]="orForm.valid && !isSubmittingOrder && formData.paymentMethod !== 'card' && !isPaymentMethodDisabled(formData.paymentMethod)"
+          [disabled]="!!salesRequestId || isSubmittingOrder"
+          [class.is-ready]="!salesRequestId && orForm.valid && !isSubmittingOrder && formData.paymentMethod !== 'card' && !isPaymentMethodDisabled(formData.paymentMethod)"
           (click)="onSubmit(orForm)">
-          {{ salesRequestId ? 'Mở khung tư vấn' : (isSubmittingOrder ? 'Đang kiểm tra đơn...' : 'Thanh toán') }}
+          {{ salesRequestId ? 'Đã gửi yêu cầu' : (isSubmittingOrder ? 'Đang kiểm tra đơn...' : 'Thanh toán') }}
         </button>
       </div>
     </div>
 
   </div>
 </div>
+
+<app-sales-request-result *ngIf="salesRequestId"
+  [loading]="false"
+  [requestId]="salesRequestId" [message]="salesRequestMessage" [items]="orderItems"
+  [deliveryDate]="formData.deliveryDate" [deliveryTime]="formData.deliveryTime"
+  (openedChat)="salesRequestId=''" (closed)="salesRequestId=''">
+</app-sales-request-result>
 
 <!-- ===== MODAL THÊM/SỬA ĐỊA CHỈ ===== -->
 <div

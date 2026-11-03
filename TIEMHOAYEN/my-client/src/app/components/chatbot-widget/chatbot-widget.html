@@ -1,7 +1,8 @@
 <button class="chat-toggle" *ngIf="!isOpen" (click)="openChat()"><img src="assets/images/logoAI.png" alt="Hoa Yên Assistant"></button>
-<div class="chatbot-container" [class.sales-mode]="!!salesRequestId" *ngIf="isOpen">
+<div class="chat-backdrop" *ngIf="isOpen" (click)="closeChat()"></div>
+<div class="chatbot-container" [class.sales-mode]="!!salesRequestId" *ngIf="isOpen" (click)="$event.stopPropagation()">
   <div class="chat-header"><div class="bot-info"><div class="avatar"><img src="assets/images/logoAI.png" alt="Hoa Yên"></div><div><h2>{{salesRequestId?'Nhân viên tư vấn đặt hoa':'Hoa Yên hỗ trợ'}}</h2><p>{{salesRequestId?'Trao đổi về yêu cầu đặt hoa':statusText}}</p></div></div><button class="close-btn" (click)="closeChat()" aria-label="Đóng chat">×</button></div>
-  @if(salesRequestId){<div class="sales-chat-panel">@for(id of [salesRequestId];track id){<app-order-request [requestId]="id" [compact]="true"></app-order-request>}<button class="assistant-back" (click)="backToAssistant()">Về hỗ trợ chung</button></div>}
+  @if(salesRequestId){<div class="sales-chat-panel"><div class="sales-chat-content">@for(id of [salesRequestId];track id){<app-order-request [requestId]="id" [compact]="true"></app-order-request>}</div><footer class="sales-chat-footer"><button class="assistant-back" (click)="backToAssistant()"><span class="assistant-back-icon" aria-hidden="true">‹</span><span class="assistant-back-copy"><strong>Hỗ trợ chung</strong><small>Chuyển sang trợ lý Tiệm Hoa Yên</small></span><span class="assistant-back-arrow" aria-hidden="true">→</span></button></footer></div>}
   @else {
     @if(error){<p class="support-error" role="alert">{{error}}</p>}
     @if(needsLogin){<div class="support-form"><p>Phiên đăng nhập đã hết hạn. Bạn đăng nhập lại để chat bằng tài khoản, không cần OTP tra cứu.</p><a routerLink="/login">Đăng nhập</a></div>}

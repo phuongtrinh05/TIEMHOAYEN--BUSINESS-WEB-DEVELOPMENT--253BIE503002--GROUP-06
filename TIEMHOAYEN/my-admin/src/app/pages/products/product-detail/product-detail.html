@@ -151,8 +151,11 @@
       </div>
 
       <div class="form-group">
-        <label>Số lượng</label>
-        <input type="number" [(ngModel)]="product.quantity" [disabled]="!isEditing">
+        <label>Số lượng khả dụng</label>
+        <input type="number" [(ngModel)]="product.quantity" disabled>
+        <small class="stock-help">
+          {{ product.finishedAvailable || 0 }} bó sẵn + {{ product.buildable || 0 }} bó có thể làm từ BOM
+        </small>
       </div>
     </div>
 

@@ -737,7 +737,7 @@ private startBestSellerProductAutoSlide(): void {
       discountPercent,
       style: item.KIEU_DANG || 'Sản phẩm',
       occasion: item.TEN_CHU_DE || 'Đang bán',
-      maxQuantity: Number(item.SO_LUONG || 0) > 0 ? Number(item.SO_LUONG) : undefined
+      maxQuantity: Number(item.TON_KHA_DUNG ?? item.SO_LUONG ?? 0)
     };
   }
 

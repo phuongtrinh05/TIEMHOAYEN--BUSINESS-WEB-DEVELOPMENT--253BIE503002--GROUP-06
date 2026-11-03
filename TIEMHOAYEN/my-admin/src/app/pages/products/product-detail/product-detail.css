@@ -608,3 +608,10 @@ select:focus{
 .detail-back i{
     font-size:18px;
 }
+.stock-help {
+  display: block;
+  margin-top: 6px;
+  color: #755d57;
+  font-size: 12px;
+  line-height: 1.4;
+}

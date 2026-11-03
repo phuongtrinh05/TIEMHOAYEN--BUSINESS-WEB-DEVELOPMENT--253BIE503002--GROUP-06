@@ -343,7 +343,7 @@ const buildExportHeader = (body: any) => {
   };
 };
 
-export const createExport = async (body: any, actor: Actor, options: { demo?: boolean } = {}) => {
+export const createExport = async (body: any, actor: Actor, options: { demo?: boolean; session?: ClientSession } = {}) => {
   const receiptId = await nextCode(COLLECTIONS.exportSlip, 'PHIEU_XUAT_ID', 'PX', 6);
   const header = buildExportHeader(body);
   const details = (Array.isArray(body.details) ? body.details : []).map((d: any, i: number) => mapExportDetailInput(receiptId, d, i));
@@ -358,9 +358,16 @@ export const createExport = async (body: any, actor: Actor, options: { demo?: bo
     NGAY_LAP: new Date(),
     ...(options.demo ? { DU_LIEU_MAU: true } : {}),
   };
-  await (await col(COLLECTIONS.exportSlip)).insertOne(doc as any);
-  if (details.length) await (await col(COLLECTIONS.exportDetail)).insertMany(details.map((d: any) => ({ ...d, ...(options.demo ? { DU_LIEU_MAU: true } : {}) })) as any);
-  if (body.post) return postExport(receiptId, actor);
+  await (await col(COLLECTIONS.exportSlip)).insertOne(doc as any, options.session ? { session: options.session } : undefined);
+  if (details.length) await (await col(COLLECTIONS.exportDetail)).insertMany(details.map((d: any) => ({ ...d, ...(options.demo ? { DU_LIEU_MAU: true } : {}) })) as any, options.session ? { session: options.session } : undefined);
+  if (body.post) {
+    try { return await postExport(receiptId, actor, options.session); }
+    catch (error) {
+      await (await col(COLLECTIONS.exportDetail)).deleteMany({ PHIEU_XUAT_ID: receiptId }, options.session ? { session: options.session } : undefined);
+      await (await col(COLLECTIONS.exportSlip)).deleteOne({ PHIEU_XUAT_ID: receiptId, TRANG_THAI: DOC_STATUS.draft }, options.session ? { session: options.session } : undefined);
+      throw error;
+    }
+  }
   return { ...doc, details };
 };
 
@@ -427,7 +434,8 @@ export const suggestExportLines = async (params: { type?: string; orderId?: stri
   });
 };
 
-export const postExport = async (receiptId: string, actor: Actor) => withTransaction(async (session) => {
+export const postExport = async (receiptId: string, actor: Actor, outerSession?: ClientSession) => {
+ const work = async (session: ClientSession) => {
   const slips = await col(COLLECTIONS.exportSlip);
   const current = await slips.findOne({ PHIEU_XUAT_ID: receiptId }, { session });
   if (!current) throw new InventoryError(404, 'Không tìm thấy phiếu xuất.');
@@ -575,7 +583,9 @@ export const postExport = async (receiptId: string, actor: Actor) => withTransac
   }
   await slips.updateOne({ PHIEU_XUAT_ID: receiptId }, { $set: { TONG_GIA_VON: totalCost } }, { session });
   return { ...flipped, TONG_GIA_VON: totalCost, alreadyPosted: false };
-});
+ };
+ return outerSession ? work(outerSession) : withTransaction(work);
+};
 
 /* =====================================================================
  * GIỮ TỒN (GIU_TON) — giữ tạm QR / giữ chính thức / nhả / kết thúc
@@ -776,7 +786,38 @@ export const sweepExpiredReservations = async () => {
   let released = 0;
   for (const r of rows) {
     try {
-      const ok = await withTransaction((session) => releaseOne(session, r, { id: 'SYSTEM', role: 'system' }, 'Hết hạn giữ tạm chờ thanh toán'));
+      const ok = await withTransaction(async (session) => {
+        const didRelease = await releaseOne(session, r, { id: 'SYSTEM', role: 'system' }, 'Hết hạn giữ tạm chờ thanh toán');
+        if (!didRelease || !r.DON_HANG_ID) return didRelease;
+
+        // Chỉ đồng bộ trạng thái khi toàn bộ lượng giữ của cùng phiên đã hết.
+        // Không được đánh dấu thất bại nếu tiền đã được xác nhận thành công.
+        const remaining = await (await col(COLLECTIONS.reservation)).countDocuments({
+          DON_HANG_ID: r.DON_HANG_ID,
+          ...(r.MA_PHIEN_THANH_TOAN ? { MA_PHIEN_THANH_TOAN: r.MA_PHIEN_THANH_TOAN } : {}),
+          TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES },
+        }, { session });
+        if (remaining === 0) {
+          const payments = await col('THANH_TOAN');
+          const paid = await payments.findOne({
+            DON_HANG_ID: r.DON_HANG_ID,
+            TRANG_THAI_THANH_TOAN: { $in: ['Thành công', 'Thanh toán thành công', 'Đã thanh toán', 'Đã cọc'] },
+          }, { session });
+          if (!paid) {
+            await payments.updateMany(
+              { DON_HANG_ID: r.DON_HANG_ID, TRANG_THAI_THANH_TOAN: 'Chờ thanh toán' },
+              { $set: { TRANG_THAI_THANH_TOAN: 'Thất bại', LY_DO: 'Hết hạn giữ tồn chờ thanh toán' } },
+              { session },
+            );
+            await (await col(COLLECTIONS.order)).updateOne(
+              { DON_HANG_ID: r.DON_HANG_ID, TRANG_THAI: 'Chờ thanh toán' },
+              { $set: { TRANG_THAI: 'Thanh toán thất bại', NGAY_CAP_NHAT: new Date() } },
+              { session },
+            );
+          }
+        }
+        return didRelease;
+      });
       if (ok) released++;
     } catch (error) {
       console.error('[inventory] Không nhả được giữ tồn hết hạn', r.MA_GIU_TON, error);
@@ -822,13 +863,16 @@ export const recordOrderDemand = async (orderId: string, body: { items?: { produ
   return { created: rows.length, rows };
 };
 
-/** Admin nhập/đổi T (thời điểm bắt đầu chuẩn bị) — không tự xếp lịch. */
+/** Admin nhập/đổi T dự kiến — chỉ cập nhật lịch cần NVL, không xuất kho. */
 export const setOrderPrepTime = async (orderId: string, neededAtRaw: unknown, actor: Actor) => {
   const neededAt = parseDate(neededAtRaw);
   if (!neededAt) throw new InventoryError(400, 'Thời điểm chuẩn bị T không hợp lệ.');
   await (await col(COLLECTIONS.demand)).updateMany({ DON_HANG_ID: orderId, TRANG_THAI: DEMAND_STATUS.waiting }, { $set: { THOI_DIEM_CAN_DUNG: neededAt } });
   await (await col(COLLECTIONS.reservation)).updateMany({ DON_HANG_ID: orderId, TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES } }, { $set: { THOI_DIEM_CAN_DUNG: neededAt } });
-  await (await col(COLLECTIONS.order)).updateOne({ DON_HANG_ID: orderId }, { $set: { THOI_DIEM_BAT_DAU_CHUAN_BI: neededAt, NGUOI_NHAP_T: actor.id } });
+  await (await col(COLLECTIONS.order)).updateOne(
+    { DON_HANG_ID: orderId },
+    { $set: { THOI_DIEM_CHUAN_BI_DU_KIEN: neededAt, NGUOI_NHAP_T: actor.id, NGAY_CAP_NHAT: new Date() } },
+  );
   return { orderId, neededAt };
 };
 
@@ -861,7 +905,8 @@ export const cancelOrderInventory = async (orderId: string, actor: Actor) => {
 };
 
 /** Sự kiện 9 (bó cắm sẵn): giao hàng thành công → giảm thành phẩm đã giữ. Không trừ NVL. */
-export const shipFinishedGoodsForOrder = async (orderId: string, actor: Actor) => withTransaction(async (session) => {
+export const shipFinishedGoodsForOrder = async (orderId: string, actor: Actor, existingSession?: ClientSession) => {
+ const run = async (session: ClientSession) => {
   const resCol = await col(COLLECTIONS.reservation);
   const rows = await resCol.find({ DON_HANG_ID: orderId, LOAI_DOI_TUONG: ITEM_KIND.finishedGood, TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES } }, { session }).toArray();
   for (const r of rows) {
@@ -872,7 +917,9 @@ export const shipFinishedGoodsForOrder = async (orderId: string, actor: Actor) =
     });
   }
   return { shipped: rows.length };
-});
+ };
+ return existingSession ? run(existingSession) : withTransaction(run);
+};
 
 /* =====================================================================
  * KHÔNG ĐẠT / HAO HỤT / THÀNH PHẨM
@@ -908,6 +955,38 @@ export const disposeFinishedGoods = async (productId: string, quantityRaw: unkno
     await applyFinishedDelta(session, { productId, dOnHand: -quantity, type: MOVEMENT_TYPES.finishedDispose, docType: 'HUY_TP', note: note || 'Bó không đạt chất lượng', actor });
     return { disposed: quantity };
   });
+
+/** Ghi nhận thành phẩm khách trả sau khi nhân viên kiểm tra thực nhận.
+ * Chỉ phần còn bán được mới quay lại TON_THANH_PHAM; phần hỏng chỉ ghi dấu vết, không tăng tồn.
+ */
+export const receiveReturnedFinishedGoods = async (
+  session: ClientSession,
+  orderId: string,
+  items: Array<{ productId: string; receivedQuantity: number; sellableQuantity: number }>,
+  actor: Actor,
+  requestId: string,
+) => {
+  const movements = await col(COLLECTIONS.movement);
+  for (const item of items) {
+    const received = Math.floor(Number(item.receivedQuantity));
+    const sellable = Math.floor(Number(item.sellableQuantity));
+    if (!(received > 0) || sellable < 0 || sellable > received) throw new InventoryError(400, 'Số lượng thực nhận hoặc đạt chất lượng không hợp lệ.');
+    if (sellable > 0) await applyFinishedDelta(session, {
+      productId: item.productId, dOnHand: sellable, type: MOVEMENT_TYPES.finishedIn,
+      docType: 'TRA_HANG', docId: requestId, orderId, note: 'Thành phẩm trả về đã kiểm tra và còn bán được', actor,
+    });
+    const damaged = received - sellable;
+    if (damaged > 0) await movements.insertOne({
+      _id: new ObjectId(), LOAI: MOVEMENT_TYPES.finishedDispose, LOAI_DOI_TUONG: ITEM_KIND.finishedGood,
+      SAN_PHAM_ID: item.productId, DELTA_TON_THUC: 0, DELTA_DANG_GIU: 0, DELTA_KHONG_DAT: 0,
+      SO_LUONG_KHONG_NHAP: damaged, LOAI_CHUNG_TU: 'TRA_HANG', CHUNG_TU_ID: requestId,
+      DON_HANG_ID: orderId, GHI_CHU: 'Hàng trả thực nhận không đạt chất lượng, không nhập lại tồn bán được',
+      NGUOI_THUC_HIEN: actor.id, THOI_DIEM: new Date(),
+    } as any, { session });
+  }
+  return { received: items.reduce((sum, item) => sum + Number(item.receivedQuantity || 0), 0),
+    restocked: items.reduce((sum, item) => sum + Number(item.sellableQuantity || 0), 0) };
+};
 
 /* =====================================================================
  * ĐỐI SOÁT — so bộ đếm với sổ biến động & chứng từ

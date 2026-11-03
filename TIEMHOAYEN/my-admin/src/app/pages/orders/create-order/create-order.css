@@ -563,6 +563,13 @@
   color: #E52B2B;
 }
 
+.card-message-count {
+  margin-top: 6px;
+  color: #7d6b65;
+  font-size: 12px;
+  text-align: right;
+}
+
 .form-textarea {
   width: 100%;
   padding: 10px 12px;

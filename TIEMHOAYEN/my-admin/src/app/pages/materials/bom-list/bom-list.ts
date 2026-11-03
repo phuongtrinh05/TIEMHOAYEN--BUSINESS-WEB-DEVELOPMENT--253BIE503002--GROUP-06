@@ -120,7 +120,8 @@ export class BomListComponent implements OnInit {
     const p = this.selected();
     if (!p) return;
     const lines = this.lines.filter((l) => l.materialId);
-    const body = { allowSubstitution: this.allowSubstitution, note: this.editNote, lines: lines.map((l) => ({ ...l, quantity: Number(l.quantity) })) };
+    const body = { allowSubstitution: this.allowSubstitution, note: this.editNote,
+      lines: lines.map((l) => ({ ...l, quantity: Number(l.quantity), allowSubstitution: this.allowSubstitution && l.substitutes.length > 0 })) };
     this.saving.set(true);
     this.editError.set('');
     const req = this.editBomId ? this.api.updateBom(this.editBomId, body) : this.api.createBom(p.SAN_PHAM_ID, body);

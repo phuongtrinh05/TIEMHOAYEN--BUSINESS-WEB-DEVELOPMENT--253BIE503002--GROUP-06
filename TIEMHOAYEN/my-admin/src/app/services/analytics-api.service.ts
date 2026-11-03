@@ -219,12 +219,16 @@ export interface AdminNotification {
   createdAt: string;
   updatedAt: string;
   resolved: boolean;
+  viewed: boolean;
   read: boolean;
+  seenAt?: string | null;
+  readAt?: string | null;
 }
 
 export interface NotificationList {
   total: number;
   unread: number;
+  unseen: number;
   unreadByGroup: Record<string, number>;
   groups: string[];
   items: AdminNotification[];

@@ -56,8 +56,31 @@
 
 .search-box input{
     flex:1;
+    min-width:0;
     border:none;
     outline:none;
+}
+
+.search-action{
+    width:32px;
+    height:32px;
+    border:0;
+    border-radius:6px;
+    background:transparent;
+    color:#731919;
+    cursor:pointer;
+}
+
+.search-action:hover,
+.search-action:focus-visible{
+    background:#FFF0EC;
+    outline:2px solid transparent;
+}
+
+.empty-search{
+    padding:36px 16px;
+    text-align:center;
+    color:#78615d;
 }
 
 .icon-btn{

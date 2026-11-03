@@ -14,6 +14,9 @@ export interface CartApiItem {
   TEN_CHU_DE?: string | null;
   SO_LUONG: number;
   SO_LUONG_TON?: number | null;
+  TON_KHA_DUNG?: number | null;
+  TON_THANH_PHAM_KHA_DUNG?: number | null;
+  SO_BO_CO_THE_LAM?: number | null;
 }
 
 export interface CartResponse {

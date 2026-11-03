@@ -638,7 +638,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         doiTuong: this.parseFilterList(item.TEN_DOI_TUONG_LIST),
         mauSac: this.parseFilterList(item.TEN_MAU_SAC_LIST)
       },
-      maxQuantity: Number(item.SO_LUONG || 0) > 0 ? Number(item.SO_LUONG) : undefined
+      maxQuantity: Number(item.TON_KHA_DUNG ?? item.SO_LUONG ?? 0)
     };
   }
 

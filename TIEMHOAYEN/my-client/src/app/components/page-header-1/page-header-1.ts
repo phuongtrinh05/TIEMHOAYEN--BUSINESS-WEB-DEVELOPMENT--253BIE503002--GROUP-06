@@ -1,4 +1,4 @@
-import { endCustomerOrderSession } from '../../services/api-config';
+import { apiBaseUrl, endCustomerOrderSession, orderAccessSession } from '../../services/api-config';
 import {
   Component,
   HostListener,
@@ -66,6 +66,7 @@ interface HeaderNotification {
   time: string;
   date: string;
   isRead: boolean;
+  isViewed: boolean;
   link: string;
 }
 
@@ -91,7 +92,7 @@ interface HeaderCartItem {
 export class PageHeader1 implements OnInit, OnDestroy {
 
   private readonly productApiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/products';
-  private readonly notificationApiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/notifications';
+  private get notificationApiUrl() { return apiBaseUrl()+'/notifications'; }
 
   searchKeyword = '';
   searchResults: HeaderSearchProduct[] = [];
@@ -109,7 +110,12 @@ export class PageHeader1 implements OnInit, OnDestroy {
   
 
   openLookupPopup() {
-    this.router.navigate(['/order-requests']);
+    let member = false;
+    if (this.isBrowser()) {
+      try { member = !!JSON.parse(localStorage.getItem('khachHang') || 'null')?.KHACH_HANG_ID; } catch {}
+    }
+    if (!member) endCustomerOrderSession();
+    this.router.navigate([member ? '/order-requests' : '/order-list']);
   }
 
   goToWishlist(): void {
@@ -168,7 +174,8 @@ export class PageHeader1 implements OnInit, OnDestroy {
 
   private notificationHoverTimer: ReturnType<typeof setTimeout> | null = null;
   private notificationRefreshTimer: number | null = null;
-  private isLoadingNotifications = false;
+  isLoadingNotifications = false;
+  notificationError = '';
   private readonly notificationRefreshIntervalMs = 10000;
   private cartHoverTimer: ReturnType<typeof setTimeout> | null = null;
   private accountHoverTimer: ReturnType<typeof setTimeout> | null = null;
@@ -592,7 +599,7 @@ export class PageHeader1 implements OnInit, OnDestroy {
   }
 
   get unreadNotificationCount(): number {
-    return this.notifications.filter(n => !n.isRead).length;
+    return this.notifications.filter(n => !n.isViewed).length;
   }
 
   get notificationBadgeText(): string {
@@ -614,6 +621,7 @@ export class PageHeader1 implements OnInit, OnDestroy {
     }
 
     this.isLoadingNotifications = true;
+    this.notificationError = '';
 
     const customerId = this.getLoggedInCustomerId();
     const requestUrl = customerId
@@ -637,10 +645,13 @@ export class PageHeader1 implements OnInit, OnDestroy {
       error: (err) => {
         console.warn('Chưa lấy được thông báo từ backend:', err);
         this.isLoadingNotifications = false;
+        this.notificationError = 'Chưa tải được thông báo. Vui lòng thử lại.';
         this.cdr.detectChanges();
       }
     });
   }
+
+  reloadNotifications(): void { this.loadNotifications(); }
 
   private startNotificationAutoRefresh(): void {
     if (!this.isBrowser() || this.notificationRefreshTimer !== null) {
@@ -713,6 +724,7 @@ export class PageHeader1 implements OnInit, OnDestroy {
       time: hasValidDate ? dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
       date: hasValidDate ? dateObj.toLocaleDateString('vi-VN') : '',
       isRead: Boolean(item?.isRead ?? item?.DA_DOC ?? item?.read ?? false),
+      isViewed: Boolean(item?.isViewed ?? item?.DA_XEM ?? item?.isRead ?? item?.DA_DOC ?? false),
       link: String(item?.link || item?.DUONG_DAN || this.getDefaultNotificationLink(type, orderCode)),
     };
   }
@@ -1402,10 +1414,23 @@ export class PageHeader1 implements OnInit, OnDestroy {
     this.showNotifications = !this.showNotifications;
 
     if (this.showNotifications) {
+      this.markVisibleNotificationsViewed();
       this.showAccountMenu = false;
       this.showLanguageMenu = false;
       this.showCartMenu = false;
     }
+  }
+
+  private viewedNotificationIds = new Set<string>();
+  private markVisibleNotificationsViewed(): void {
+    const customerId = this.getLoggedInCustomerId();
+    const unseen = this.notifications.filter(item => !item.isViewed);
+    if (orderAccessSession()?.authType !== 'member' || !customerId || !unseen.length) return;
+    unseen.forEach(item => this.viewedNotificationIds.add(item.id));
+    this.http.patch(`${this.notificationApiUrl}/read-all/${encodeURIComponent(customerId)}`, { viewedOnly: true }).subscribe({
+      next: () => { unseen.forEach(item => item.isViewed = true); this.cdr.markForCheck(); },
+      error: () => unseen.forEach(item => this.viewedNotificationIds.delete(item.id)),
+    });
   }
 
   markNotificationRead(item: HeaderNotification): void {

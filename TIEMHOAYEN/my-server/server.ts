@@ -56,6 +56,7 @@ import analyticsRoutes from './routes/analytics.js';
 import { ensureNotificationIndexes, startNotificationJobs } from './services/analytics/notifications.service.js';
 import { getProductAvailability } from './controllers/inventory.js';
 import { ensureInventoryIndexes, startInventoryJobs } from './services/inventory/setup.js';
+import { startSalesRequestExpiryJob } from './services/sales-request-expiry.service.js';
 
 const app = express();
 const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
@@ -162,11 +163,13 @@ const PORT = Number(process.env.PORT ?? 3000);
 (async () => {
   try {
     await connectMongo();
-    if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureInventoryIndexes();
-    await ensureSalesRequestIndexes();
-    await (await import('./services/order-access.service.js')).ensureOrderAccessIndexes();
-    await (await import('./services/support.service.js')).ensureSupportIndexes();
-    if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startInventoryJobs();
+    if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') {
+      await ensureInventoryIndexes();
+      await ensureSalesRequestIndexes();
+      await (await import('./services/order-access.service.js')).ensureOrderAccessIndexes();
+      await (await import('./services/support.service.js')).ensureSupportIndexes();
+    }
+    if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') { startInventoryJobs(); startSalesRequestExpiryJob(); }
     if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureNotificationIndexes();
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startNotificationJobs();
 

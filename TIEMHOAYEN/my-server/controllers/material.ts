@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
+import { getProductSellableStockMap, sellableStockFields } from '../services/inventory/availability.service.js';
 
 interface SuggestedProduct {
   SAN_PHAM_ID: string;
@@ -52,6 +53,7 @@ export const getSuggestedMaterials = async (req: Request, res: Response) => {
         return String(a.TEN_SAN_PHAM || '').localeCompare(String(b.TEN_SAN_PHAM || ''), 'vi');
       })
       .slice(0, 4);
+    const stockMap = await getProductSellableStockMap(sorted);
     const images = await imageCollection
       .find({ SAN_PHAM_ID: { $in: sorted.map((product: any) => product.SAN_PHAM_ID) } })
       .toArray();
@@ -71,7 +73,7 @@ export const getSuggestedMaterials = async (req: Request, res: Response) => {
       GIA_KHUYEN_MAI: product.GIA_KHUYEN_MAI ?? null,
       TRANG_THAI: product.TRANG_THAI ?? null,
       KIEU_DANG: product.KIEU_DANG ?? null,
-      SO_LUONG: product.SO_LUONG ?? null,
+      ...sellableStockFields(stockMap.get(String(product.SAN_PHAM_ID))),
       HINH_ANH: imageMap.get(String(product.SAN_PHAM_ID || '')) || null,
     })) as SuggestedProduct[];
 

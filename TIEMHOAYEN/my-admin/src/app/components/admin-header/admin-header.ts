@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, HostListener } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { apiBaseUrl } from '../../services/api-config';
 import {
@@ -23,6 +23,11 @@ import { AdminApiService } from '../../services/admin-api.service';
 export class AdminHeader implements OnInit, OnDestroy {
   supportPending = 0;
   supportVisible = false;
+  showNotifications = false;
+  notificationsLoading = false;
+  notificationsError = '';
+  notifications: Array<{ id:string; title:string; message:string; group:string; priority:string; link:string; queryParams:Record<string,string>|null; createdAt:string; viewed:boolean; read:boolean }> = [];
+  private savingViewed = false;
   private supportTimer?: ReturnType<typeof setInterval>;
 
   pageTitle = '';
@@ -75,7 +80,7 @@ export class AdminHeader implements OnInit, OnDestroy {
   ngOnInit(): void {
     if (typeof window !== 'undefined') {
       this.loadSupportSummary();
-      this.supportTimer = setInterval(() => { if (!document.hidden) this.loadSupportSummary(); }, 20000);
+      this.supportTimer = setInterval(() => { if (!document.hidden) this.loadNotifications(true); }, 10000);
     }
     
     this.updateHeader(this.router.url);
@@ -97,11 +102,85 @@ export class AdminHeader implements OnInit, OnDestroy {
   ngOnDestroy(): void { if (this.supportTimer) clearInterval(this.supportTimer); }
 
   private loadSupportSummary(): void {
-    this.http.get<{pending:number}>(`${apiBaseUrl()}/support/admin/summary`).subscribe({
-      next: r => { this.supportPending = r.pending; this.supportVisible = true; this.cdr.markForCheck(); },
-      error: () => { this.supportVisible = false; this.cdr.markForCheck(); }
+    this.loadNotifications(true);
+  }
+
+  loadNotifications(quiet = false): void {
+    if (this.notificationsLoading) return;
+    this.notificationsLoading = true;
+    if (!quiet) this.notificationsError = '';
+    this.http.get<any>(`${apiBaseUrl()}/admin/notifications`, { params: { limit: '20' } }).subscribe({
+      next: r => {
+        this.notifications = Array.isArray(r?.items) ? r.items : [];
+        this.supportPending = Number(r?.unseen ?? this.notifications.filter(item => !item.viewed).length);
+        this.supportVisible = true;
+        this.notificationsLoading = false;
+        this.cdr.markForCheck();
+        if (this.showNotifications) this.markCurrentNotificationsViewed();
+      },
+      error: () => {
+        this.notificationsLoading = false;
+        this.notificationsError = quiet ? this.notificationsError : 'Chưa tải được thông báo. Vui lòng thử lại.';
+        this.supportVisible = this.notifications.length > 0;
+        this.cdr.markForCheck();
+      }
     });
   }
+
+  toggleNotifications(event: MouseEvent): void {
+    event.stopPropagation();
+    this.showNotifications = !this.showNotifications;
+    this.showProfileMenu = false;
+    if (!this.showNotifications) return;
+    this.loadNotifications();
+    this.markCurrentNotificationsViewed();
+  }
+
+  private markCurrentNotificationsViewed(): void {
+    if (this.savingViewed || !this.notifications.some(item => !item.viewed)) return;
+    this.savingViewed = true;
+    this.http.post(`${apiBaseUrl()}/admin/notifications/read-all`, { viewedOnly: true }).subscribe({
+      next: () => {
+        this.savingViewed = false;
+        this.notifications = this.notifications.map(item => ({ ...item, viewed: true }));
+        this.supportPending = 0;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.savingViewed = false;
+        this.notificationsError = 'Chưa lưu được trạng thái đã xem.';
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  openNotification(item: any, event: MouseEvent): void {
+    event.stopPropagation();
+    const navigate = () => {
+      this.showNotifications = false;
+      void this.router.navigate([item.link || '/dashboard'], { queryParams: item.queryParams || undefined });
+    };
+    if (item.read) { navigate(); return; }
+    this.http.post(`${apiBaseUrl()}/admin/notifications/${encodeURIComponent(item.id)}/read`, {}).subscribe({
+      next: () => { item.read = true; item.viewed = true; navigate(); },
+      error: () => { this.notificationsError = 'Chưa đánh dấu được thông báo đã đọc.'; this.cdr.markForCheck(); }
+    });
+  }
+
+  notificationTime(value: string): string {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  notificationIcon(group: string): string {
+    if (group === 'Đơn hàng') return 'bi-receipt';
+    if (group === 'Khiếu nại') return 'bi-chat-square-heart';
+    if (group === 'Tồn kho') return 'bi-box-seam';
+    return 'bi-bell';
+  }
+
+  @HostListener('document:click')
+  closeHeaderPopups(): void { this.showNotifications = false; }
 
   private updateHeader(url: string): void {
     const normalizedUrl = this.normalizeUrl(url);
@@ -171,6 +250,7 @@ export class AdminHeader implements OnInit, OnDestroy {
   toggleProfileMenu(): void {
     this.showProfileMenu =
       !this.showProfileMenu;
+    this.showNotifications = false;
   }
 
   logout(): void {

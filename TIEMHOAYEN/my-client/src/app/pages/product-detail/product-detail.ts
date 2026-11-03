@@ -544,7 +544,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       discount,
       description: item.MO_TA || '',
       status: item.TRANG_THAI || 'Hiện đang có sẵn',
-      quantity: Number(item.SO_LUONG ?? 1),
+      quantity: Number(item.TON_KHA_DUNG ?? item.SO_LUONG ?? 0),
       topicId: item.CHU_DE_ID || '',
       topicName: item.TEN_CHU_DE || ''
     };
@@ -590,7 +590,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       price: hasSalePrice ? salePrice : originalPrice,
       originalPrice: hasSalePrice ? originalPrice : null,
       image: this.getCustomProductImage(item.TEN_SAN_PHAM) || this.normalizeImageUrl(item.HINH_ANH),
-      maxQuantity: Math.max(1, Number(item.SO_LUONG ?? 1)),
+      maxQuantity: Number(item.TON_KHA_DUNG ?? item.SO_LUONG ?? 0),
       status: item.TRANG_THAI || 'Sản phẩm',
       topicName: item.TEN_CHU_DE || this.product.topicName || 'Sản phẩm liên quan',
       isFavorite: this.wishlistProductIds.has(item.SAN_PHAM_ID),
@@ -612,7 +612,10 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
           : Number(item.GIA_KHUYEN_MAI),
       TRANG_THAI: item.TRANG_THAI || '',
       KIEU_DANG: item.KIEU_DANG || '',
-      SO_LUONG: Number(item.SO_LUONG ?? 1),
+      SO_LUONG: Number(item.TON_KHA_DUNG ?? item.SO_LUONG ?? 0),
+      TON_KHA_DUNG: Number(item.TON_KHA_DUNG ?? item.SO_LUONG ?? 0),
+      TON_THANH_PHAM_KHA_DUNG: Number(item.TON_THANH_PHAM_KHA_DUNG ?? 0),
+      SO_BO_CO_THE_LAM: Number(item.SO_BO_CO_THE_LAM ?? 0),
       DA_BAN: Number(item.DA_BAN ?? 0),
       HINH_ANH: item.HINH_ANH || null,
     };

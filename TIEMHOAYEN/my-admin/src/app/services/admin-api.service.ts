@@ -4,7 +4,10 @@ import { Observable, catchError, map, of, tap, timeout } from 'rxjs';
 import { apiBaseUrl } from './api-config';
 
 export interface AdminOrder {
+  senderName?: string; receiverName?: string; deliveryDate?: string; deliverySlot?: string;
+  products?: {name: string; qty: number}[]; deposit?: number; paid?: number; remaining?: number; allowedStatuses?: string[]; adminNote?: string;
   id: string;
+  requestId?: string | null;
   customerId: string;
   createdAt: string;
   total: number;
@@ -58,6 +61,8 @@ export interface AdminRolePermissionsResponse {
 }
 
 export interface AdminLoginResponse {
+  accessToken: string;
+  expiresAt: string;
   employee: {
     id: string;
     name: string;
@@ -77,7 +82,11 @@ export interface AdminOrderProduct {
 }
 
 export interface AdminOrderDetail {
+  snapshotAvailable?: boolean;
+  allowedStatuses?: string[]; history?: any[]; preparationAt?: string | null; preparationStartedAt?: string | null; preparationStartedBy?: string | null; materialIssued?: boolean; materialExportId?: string | null; preparationPriority?: { level: string; label: string; minutesToT: number | null };
   id: string;
+  requestId?: string | null;
+  orderVersion?: string | null;
   orderStatus: string;
   paymentStatus: string;
   createdAt: string;
@@ -100,6 +109,8 @@ export interface AdminOrderDetail {
   products: AdminOrderProduct[];
   customerNote: string;
   cardTemplate: string;
+  giftCard?: any;
+  handoverMedia?: string[];
   cardMessage: string;
   subtotal: number;
   shippingFee: number;
@@ -110,6 +121,8 @@ export interface AdminOrderDetail {
   tax: number;
   total: number;
   paid: number;
+  refunded: number;
+  paymentSummary?: { totalPayable:number; requiredDeposit:number; successfulReceiptsTotal:number; actualRefundsTotal:number; netCollected:number; remainingAmount:number; paymentStatus:string };
   remaining: number;
   paymentMethod: string;
   adminNote: string;
@@ -279,6 +292,7 @@ export interface AdminChatConversationsResponse {
 }
 
 export interface AdminTransaction {
+  total?: number; deposit?: number; paid?: number; remaining?: number; editable?: boolean; confirmedAt?: string; confirmedBy?: string; history?: any[];
   id: number;
   code: string;
   orderCode: string;
@@ -297,6 +311,8 @@ export interface AdminProduct {
   price: string;
   rating: number;
   quantity: number;
+  finishedAvailable?: number;
+  buildable?: number;
   featured: boolean;
   sale: boolean;
   status: string;
@@ -314,6 +330,8 @@ export interface AdminProductDetailForm {
   topic: string;
   flower: string;
   quantity: number;
+  finishedAvailable?: number;
+  buildable?: number;
   status: string;
   isPublished: boolean;
   images: string[];
@@ -648,6 +666,10 @@ export class AdminApiService {
     );
   }
 
+  getDeliveryStaff(): Observable<AdminStaffAccountsResponse> {
+    return this.http.get<AdminStaffAccountsResponse>(`${this.apiUrl}/staff-accounts`, { params:{ scope:'delivery' } });
+  }
+
   getRolePermissions(): Observable<AdminRolePermissionsResponse> {
     return this.http.get<AdminRolePermissionsResponse>(`${this.apiUrl}/role-permissions`);
   }
@@ -688,6 +710,14 @@ export class AdminApiService {
     return date.toISOString().slice(0, 10);
   }
 
+  can(module: string, action: string): boolean {
+    try { return typeof localStorage !== 'undefined' && JSON.parse(localStorage.getItem('adminPermissions') || '{}')?.[module]?.[action] === true; } catch { return false; }
+  }
+
+  updateOrderMetadata(orderId: string, body: { action: 'note' | 'preparation' | 'start-preparation' | 'handover-media' | 'delivery' | 'assign-shipper'; expectedVersion?:string|null; adminNote?: string; preparationAt?: string; reason?: string; media?: string[]; receiverName?: string; receiverPhone?: string; deliveryAddress?: string; deliveryDate?: string; deliverySlot?: string; shipperId?: string }): Observable<AdminOrderDetailResponse> {
+    return this.http.put<AdminOrderDetailResponse>(`${this.apiUrl}/orders/${encodeURIComponent(orderId)}/status`, body).pipe(tap(() => this.clearOrdersCache()));
+  }
+
   getOrders(options: { forceRefresh?: boolean } = {}): Observable<AdminOrdersResponse> {
     if (!options.forceRefresh && this.ordersCache && Date.now() - this.ordersCacheAt < this.ordersCacheTtlMs) {
       return of(this.ordersCache);
@@ -725,6 +755,7 @@ export class AdminApiService {
     products: Array<{ id: string; qty: number; price: number }>;
     customerNote: string;
     cardMessage: string;
+    giftCard?: { templateId: string; writingMode: 'customer' | 'shop'; message?: string } | null;
     adminNote: string;
     paymentMethod: string;
     orderStatus: string;
@@ -733,10 +764,22 @@ export class AdminApiService {
     voucher?: { id?: string; code?: string } | null;
     voucherDiscount: number;
     loyaltyDiscount: number;
-  }): Observable<{ message: string; orderId: string }> {
-    return this.http.post<{ message: string; orderId: string }>(`${this.apiUrl}/orders`, payload).pipe(
+    loyaltyPoints?: number;
+  }): Observable<{ message: string; orderId: string; kind?: string; requestId?: string }> {
+    const fingerprint = JSON.stringify(payload);
+    let pending: { fingerprint: string; key: string } | null = null;
+    try { pending = JSON.parse(sessionStorage.getItem('adminPendingOrder') || 'null'); } catch {}
+    if (pending?.fingerprint !== fingerprint) {
+      pending = { fingerprint, key: crypto.randomUUID() };
+      sessionStorage.setItem('adminPendingOrder', JSON.stringify(pending));
+    }
+    return this.http.post<{ message: string; orderId: string; kind?: string; requestId?: string }>(`${this.apiUrl}/orders`, { ...payload, checkoutSessionId: pending!.key }).pipe(
       tap(() => this.clearOrdersCache())
     );
+  }
+
+  getCardTemplates(): Observable<{ templates: Array<{ id: string; code: string; name: string; image?: string; fee: number }> }> {
+    return this.http.get<{ templates: Array<{ id: string; code: string; name: string; image?: string; fee: number }> }>(`${this.apiBaseUrl}/orders/card-templates`);
   }
 
   updateOrderStatus(orderId: string, status: string, rejectReason?: string): Observable<{ message: string }> {
@@ -878,6 +921,13 @@ export class AdminApiService {
     );
   }
 
+  getAfterSales(orderIdOrFilters?: string | Record<string,string>): Observable<any> {
+    let params = new HttpParams();
+    if (typeof orderIdOrFilters === 'string' && orderIdOrFilters) params = params.set('orderId', orderIdOrFilters);
+    else if (orderIdOrFilters) Object.entries(orderIdOrFilters).forEach(([key,value]) => { if(value) params=params.set(key,value); });
+    return this.http.get(`${this.apiUrl}/after-sales`, { params });
+  }
+  changeAfterSales(id: string,body: any): Observable<any> { return this.http.patch(`${this.apiUrl}/after-sales/${encodeURIComponent(id)}`,body); }
   getTransactions(): Observable<AdminTransactionsResponse> {
     return this.http.get<AdminTransactionsResponse>(`${this.apiUrl}/transactions`);
   }
@@ -902,7 +952,7 @@ export class AdminApiService {
 
   updateTransaction(
     transactionId: string,
-    payload: { gateway: string; status: string; amount: number }
+    payload: { gateway: string; status: string; amount: number; referenceCode?: string; reason?: string; source?: string }
   ): Observable<{ message: string; transaction: AdminTransaction }> {
     return this.http.put<{ message: string; transaction: AdminTransaction }>(
       `${this.apiUrl}/transactions/${encodeURIComponent(transactionId)}`,
@@ -934,7 +984,7 @@ export class AdminApiService {
     importPrice?: number;
     salePrice: number;
     discountPrice: number;
-    quantity: number;
+    quantity?: number;
     style: string;
     images: string[];
     materials?: Array<{

@@ -37,10 +37,14 @@
                     <input
                         type="text"
                         placeholder="Tìm kiếm sản phẩm"
+                        aria-label="Tìm sản phẩm theo tên hoặc mã"
                         [(ngModel)]="searchKeyword"
-                        (input)="searchProducts()">
+                        (ngModelChange)="searchProducts()"
+                        (keydown.enter)="searchProducts()">
 
-                    <i class="bi bi-search"></i>
+                    <button type="button" class="search-action" aria-label="Tìm kiếm" (click)="searchProducts()">
+                        <i class="bi bi-search"></i>
+                    </button>
                 </div>
 
                 <div class="menu-wrapper">
@@ -198,6 +202,12 @@
                 </thead>
 
                 <tbody>
+
+                    <tr *ngIf="pagedProducts.length === 0">
+                        <td colspan="7" class="empty-search">
+                            {{ searchKeyword.trim() ? 'Không tìm thấy sản phẩm phù hợp.' : 'Chưa có sản phẩm trong nhóm này.' }}
+                        </td>
+                    </tr>
 
                     <tr *ngFor="let product of pagedProducts; trackBy: trackByProductSku">
 
@@ -401,11 +411,6 @@
                 <select [(ngModel)]="newProduct.topic">
                     <option>Kỷ niệm</option>
                 </select>
-            </div>
-
-            <div class="form-group">
-                <label>Số lượng</label>
-                <input type="number" [(ngModel)]="newProduct.quantity">
             </div>
 
         </div>

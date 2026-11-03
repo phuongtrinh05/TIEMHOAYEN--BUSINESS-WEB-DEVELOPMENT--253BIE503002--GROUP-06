@@ -1,5 +1,5 @@
 import { Component, signal } from '@angular/core';
-import { NavigationEnd, Router, RouterOutlet, RouterLink } from '@angular/router';
+import { NavigationEnd, NavigationStart, Router, RouterOutlet, RouterLink } from '@angular/router';
 import { filter } from 'rxjs';
 import { PageHeader } from './components/page-header/page-header';
 import { PageHeader1 } from './components/page-header-1/page-header-1';
@@ -8,6 +8,7 @@ import { PageFooter } from './components/page-footer/page-footer';
 import { PageFooter1 } from './components/page-footer-1/page-footer-1';
 import { PageFooter2 } from './components/page-footer-2/page-footer-2';
 import { ChatbotWidget } from './components/chatbot-widget/chatbot-widget';
+import { OrderAccessService } from './services/order-access.service';
 
 
 @Component({
@@ -42,7 +43,7 @@ export class App {
     'forgot-password',
   ]);
 
-  constructor(private router: Router) {
+  constructor(private router: Router, private orderAccess: OrderAccessService) {
     this.restoreLoginPersistence();
     this.currentRoute.set(this.getRoutePath(this.router.url));
 
@@ -50,6 +51,22 @@ export class App {
       .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
       .subscribe((event) => {
         this.currentRoute.set(this.getRoutePath(event.urlAfterRedirects));
+      });
+
+    // A guest lookup session is deliberately scoped to the lookup journey.
+    // Keep it only while opening an authorised order/request detail; leaving
+    // for Home, catalog, cart, checkout, ... immediately revokes it so a later
+    // visitor on the same browser must verify the orderer's phone again.
+    this.router.events
+      .pipe(filter((event): event is NavigationStart => event instanceof NavigationStart))
+      .subscribe((event) => {
+        const session = this.orderAccess.session;
+        if (session?.authType !== 'guest_lookup') return;
+        const target = this.getRoutePath(event.url);
+        const remainsInLookupJourney = target === 'order-list'
+          || target.startsWith('order-detail/')
+          || target.startsWith('order-request/');
+        if (!remainsInLookupJourney) this.orderAccess.logout();
       });
   }
 
@@ -71,6 +88,11 @@ export class App {
 
   protected useAuthLayout(): boolean {
     return this.authRoutes.has(this.currentRoute());
+  }
+
+  protected showRequestsShortcut(): boolean {
+    const route = this.currentRoute();
+    return !this.useAuthLayout() && route !== 'order-requests' && route !== 'order-list' && !route.startsWith('order-request/');
   }
 
   private getRoutePath(url: string): string {
