@@ -17,9 +17,11 @@ import {
 import { switchApiBaseUrl } from '../../services/api-config';
 import { RangeFilter, RangeValue } from './shared/range-filter';
 import * as F from './shared/format';
+import { ENTER_ANIMATION } from './shared/charts';
 import { ExportKind, ExportMenu, ExportSheet, exportCsv, exportExcel, printPdf } from './shared/export';
 
 type ChartMetric = 'revenue' | 'cash' | 'orders';
+export type ViewBy = 'day' | 'week' | 'month' | 'quarter' | 'year';
 export type Period = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'custom';
 
 /** Mốc đầu kỳ (giờ VN) của Ngày / Tuần (thứ Hai) / Tháng / Quý / Năm, tính tới hôm nay. */
@@ -69,6 +71,12 @@ export class Dashboard implements OnInit {
 
   /** Mặc định: hôm nay, so với hôm qua. */
   range = signal<RangeValue>(memoRange.value || { from: F.isoDate(0), to: F.isoDate(0), compare: 'previous' });
+  /** Xem số liệu biểu đồ theo Ngày / Tuần / Tháng / Quý / Năm trong khoảng Từ ngày – Đến ngày. */
+  readonly viewOptions: { key: ViewBy; label: string }[] = [
+    { key: 'day', label: 'Ngày' }, { key: 'week', label: 'Tuần' }, { key: 'month', label: 'Tháng' }, { key: 'quarter', label: 'Quý' }, { key: 'year', label: 'Năm' },
+  ];
+  /** null = tự chọn theo độ dài khoảng ngày. */
+  viewBy = signal<ViewBy | null>(null);
   readonly periods: { key: Period; label: string }[] = [
     { key: 'day', label: 'Ngày' }, { key: 'week', label: 'Tuần' }, { key: 'month', label: 'Tháng' }, { key: 'quarter', label: 'Quý' }, { key: 'year', label: 'Năm' }, { key: 'custom', label: 'Tùy chọn' },
   ];
@@ -101,7 +109,7 @@ export class Dashboard implements OnInit {
     return { labels: rows.map((r) => r.status), datasets: [{ data: rows.map((r) => r.count), backgroundColor: rows.map((_, i) => F.PALETTE[i % F.PALETTE.length]), borderWidth: 0 }] };
   });
   statusOptions: ChartConfiguration<'doughnut'>['options'] = {
-    responsive: true, maintainAspectRatio: false, cutout: '64%', plugins: { legend: { display: false } },
+    responsive: true, maintainAspectRatio: false, cutout: '64%', animation: { ...ENTER_ANIMATION, animateRotate: true, animateScale: true } as any, plugins: { legend: { display: false } },
   };
 
   chartData = computed<ChartConfiguration<'line'>['data']>(() => {
@@ -121,7 +129,7 @@ export class Dashboard implements OnInit {
   chartOptions = computed<ChartConfiguration<'line'>['options']>(() => {
     const isMoney = this.chartMetric() !== 'orders';
     return {
-      responsive: true, maintainAspectRatio: false, animation: { duration: 250 }, interaction: { mode: 'index', intersect: false },
+      responsive: true, maintainAspectRatio: false, animation: ENTER_ANIMATION, interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { position: 'top', align: 'end', labels: { boxWidth: 16, font: { size: 12 } } },
         tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${isMoney ? F.money(Number(c.raw)) : F.num(Number(c.raw)) + ' đơn'}` } },
@@ -129,6 +137,83 @@ export class Dashboard implements OnInit {
       scales: {
         x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12, font: { size: 11 } } },
         y: { beginAtZero: true, grid: { color: '#F1ECEA' }, ticks: { font: { size: 11 }, precision: 0, callback: (v) => (isMoney ? F.compact(Number(v)) : String(v)) } },
+      },
+    };
+  });
+
+  /* ---------------- Dự báo ---------------- */
+  fcRevenueData = computed<ChartConfiguration<'line'>['data']>(() => {
+    const r = this.overview()?.forecast?.revenue;
+    if (!r) return { labels: [], datasets: [] };
+    return {
+      labels: r.labels,
+      datasets: [
+        { label: 'Thực tế', data: r.actual as any, borderColor: '#731919', backgroundColor: 'rgba(115,25,25,0.08)', borderWidth: 2, pointRadius: 0, tension: 0.25, fill: true, spanGaps: false },
+        { label: 'Dự kiến', data: r.projected as any, borderColor: '#731919', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, tension: 0.25, fill: false },
+        { label: 'Tháng trước', data: r.lastMonth as any, borderColor: '#C9A27A', borderWidth: 1.5, pointRadius: 0, tension: 0.25, fill: false },
+      ],
+    };
+  });
+  fcRevenueOptions: ChartConfiguration<'line'>['options'] = {
+    responsive: true, maintainAspectRatio: false, animation: ENTER_ANIMATION, interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { position: 'top', align: 'end', labels: { boxWidth: 14, font: { size: 11 } } },
+      tooltip: { callbacks: { title: (items) => `Ngày ${items[0]?.label}`, label: (c) => (c.raw === null || c.raw === undefined ? '' : `${c.dataset.label}: ${F.money(Number(c.raw))}`) } },
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, font: { size: 11 } } },
+      y: { beginAtZero: true, grid: { color: '#F1ECEA' }, ticks: { font: { size: 11 }, callback: (v) => F.compact(Number(v)) } },
+    },
+  };
+
+  fcDeliveryData = computed<ChartConfiguration<'bar'>['data']>(() => {
+    const d = this.overview()?.forecast?.deliveries;
+    if (!d) return { labels: [], datasets: [] };
+    return {
+      labels: d.labels,
+      datasets: [
+        { label: 'Đã nhận', data: d.confirmed, backgroundColor: '#731919', borderRadius: 4, maxBarThickness: 34, stack: 's' },
+        { label: 'Dự kiến thêm', data: d.expectedExtra, backgroundColor: '#E8D3C9', borderRadius: 4, maxBarThickness: 34, stack: 's' },
+      ],
+    };
+  });
+  fcDeliveryOptions: ChartConfiguration<'bar'>['options'] = {
+    responsive: true, maintainAspectRatio: false, animation: ENTER_ANIMATION, interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { position: 'top', align: 'end', labels: { boxWidth: 14, font: { size: 11 } } },
+      tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${F.num(Number(c.raw))} đơn` } },
+    },
+    scales: {
+      x: { stacked: true, grid: { display: false }, ticks: { maxRotation: 0, font: { size: 11 } } },
+      y: { stacked: true, beginAtZero: true, grid: { color: '#F1ECEA' }, ticks: { precision: 0, font: { size: 11 } } },
+    },
+  };
+
+  shortIn7 = computed(() => (this.overview()?.forecast?.materials || []).filter((m) => m.short7).length);
+
+  /** Màu theo số ngày còn đủ dùng: < 3 ngày đỏ, < 7 ngày cam, còn lại xanh. */
+  coverColor = (days: number) => (days < 3 ? '#c0392b' : days < 7 ? '#E0A33A' : '#2F7D6B');
+  fcMaterialData = computed<ChartConfiguration<'bar'>['data']>(() => {
+    const m = this.overview()?.forecast?.materials || [];
+    return {
+      labels: m.map((x) => x.name),
+      datasets: [{ label: 'Còn đủ dùng (ngày)', data: m.map((x) => Math.min(x.daysCover, 60)), backgroundColor: m.map((x) => this.coverColor(x.daysCover)), borderRadius: 4, maxBarThickness: 18 }],
+    };
+  });
+  fcMaterialOptions = computed<ChartConfiguration<'bar'>['options']>(() => {
+    const m = this.overview()?.forecast?.materials || [];
+    return {
+      responsive: true, maintainAspectRatio: false, animation: ENTER_ANIMATION, indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          label: (c) => { const x = m[c.dataIndex]; return x ? `Còn đủ ~${F.num(x.daysCover)} ngày · tồn ${F.num(x.available)} ${x.unit} · dùng ~${F.num(x.dailyUse)} ${x.unit}/ngày` : ''; },
+          afterLabel: (c) => { const x = m[c.dataIndex]; return x?.need7 ? `Đơn 7 ngày tới cần ${F.num(x.need7)} ${x.unit}${x.short7 ? ' → THIẾU' : ''}` : ''; },
+        } },
+      },
+      scales: {
+        x: { beginAtZero: true, grid: { color: '#F1ECEA' }, ticks: { font: { size: 11 }, callback: (v) => `${v} ng` } },
+        y: { grid: { display: false }, ticks: { font: { size: 11 } } },
       },
     };
   });
@@ -146,6 +231,8 @@ export class Dashboard implements OnInit {
     if (q.get('from') && q.get('to')) this.range.set({ from: q.get('from')!, to: q.get('to')!, compare: (q.get('compare') as CompareMode) || 'previous' });
     const qp = q.get('period') as Period | null;
     this.period.set(qp && this.periods.some((x) => x.key === qp) ? qp : this.detectPeriod());
+    const vb = q.get('view') as ViewBy | null;
+    if (vb && this.viewOptions.some((x) => x.key === vb)) this.viewBy.set(vb);
     this.load();
     this.loadNotifications();
     const a = interval(NOTI_POLL_MS).subscribe(() => this.loadNotifications());
@@ -165,12 +252,12 @@ export class Dashboard implements OnInit {
 
   load(fresh = false): void {
     memoRange.value = this.range();
-    const key = `ov|${this.range().from}|${this.range().to}|${this.range().compare}|${this.deliveryMode()}|${this.period()}`;
+    const key = `ov|${this.range().from}|${this.range().to}|${this.range().compare}|${this.deliveryMode()}|${this.period()}|${this.viewBy() ?? ''}`;
     const cached = memo.get(key) as DashboardOverview | undefined;
     if (cached && !fresh) this.apply(cached);
     this.loading.set(true);
     this.error.set('');
-    this.api.overview(this.query, { deliveryMode: this.deliveryMode(), groupBy: this.range().from === this.range().to ? 'hour' : PERIOD_BUCKET[this.period()], fresh }).subscribe({
+    this.api.overview(this.query, { deliveryMode: this.deliveryMode(), groupBy: this.viewBy() ?? (this.range().from === this.range().to ? 'hour' : PERIOD_BUCKET[this.period()]), fresh }).subscribe({
       next: (ov) => { memo.set(key, ov); this.apply(ov); this.loading.set(false); },
       error: (e: Error) => { this.error.set(e.message); this.loading.set(false); },
     });
@@ -202,7 +289,8 @@ export class Dashboard implements OnInit {
   }
 
   setPeriod(p: Period): void {
-    if (p === 'custom') { this.showCustom.set(!this.showCustom()); return; }
+    // Đang ở Tùy chọn thì giữ ô Từ ngày – Đến ngày; chỉ chọn kỳ khác mới ẩn đi.
+    if (p === 'custom') { this.showCustom.set(this.period() === 'custom' ? true : !this.showCustom()); return; }
     this.showCustom.set(false);
     this.onRange({ ...periodRange(p), compare: this.range().compare }, p);
   }
@@ -211,11 +299,23 @@ export class Dashboard implements OnInit {
     if (c !== this.range().compare) this.onRange({ ...this.range(), compare: c }, this.period());
   }
 
+  /** Đổi cách gom số liệu biểu đồ; giữ nguyên khoảng ngày. */
+  setViewBy(v: ViewBy): void {
+    this.viewBy.set(v);
+    this.onRange(this.range(), this.period());
+  }
+
+  /** Từ bộ lọc: đổi ngày → Tùy chọn; chỉ đổi kỳ so sánh → giữ kỳ đang chọn. */
+  onFilter(v: RangeValue): void {
+    const r = this.range();
+    this.onRange(v, v.from === r.from && v.to === r.to ? this.period() : 'custom');
+  }
+
   /** p: kỳ người dùng vừa bấm (đầu tháng trùng hôm nay thì vẫn giữ "Tháng"). */
   onRange(v: RangeValue, p?: Period): void {
     this.range.set(v);
     this.period.set(p ?? this.detectPeriod());
-    this.router.navigate([], { queryParams: { from: v.from, to: v.to, compare: v.compare, period: this.period() }, replaceUrl: true });
+    this.router.navigate([], { queryParams: { from: v.from, to: v.to, compare: v.compare, period: this.period(), view: this.viewBy() }, replaceUrl: true });
     this.load();
   }
 

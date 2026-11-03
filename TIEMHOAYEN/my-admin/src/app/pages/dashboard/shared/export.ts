@@ -79,7 +79,7 @@ export type ExportKind = 'excel' | 'csv' | 'pdf';
   `,
   styles: [`
     .em { position: relative; }
-    .em-btn { background: #731919; color: #fff; border: 1px solid #731919; border-radius: 8px; padding: 8px 14px; font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .em-btn { height: 38px; box-sizing: border-box; background: #731919; color: #fff; border: 1px solid #731919; border-radius: 8px; padding: 0 14px; font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
     .em-btn:disabled { opacity: .55; cursor: default; }
     .em-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; background: #fff; border: 1px solid #ece6e3; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.08); padding: 6px; min-width: 300px; }
     .em-menu button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: none; border: 0; padding: 9px 10px; border-radius: 6px; font: inherit; font-size: 14px; cursor: pointer; color: #2b2321; }

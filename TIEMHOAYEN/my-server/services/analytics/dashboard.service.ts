@@ -12,6 +12,7 @@ import { CACHE_TTL, swr } from './cache.js';
 import { vnStartOfDay, autoBucket, bucketKey, Bucket, DateRange, enumerateBuckets, inRange, pctChange, compareRange, parseCompare, resolveRange } from './period.js';
 import { getCollection } from '../../mongo.js';
 import { getInventoryAlerts } from '../inventory/availability.service.js';
+import { getForecast } from './forecast.service.js';
 
 /* =====================================================================
  * KPI (D05) — tính cho 1 kỳ
@@ -249,6 +250,8 @@ export const getDashboardOverview = async (query: any) => {
   const fresh = query.fresh === '1' || query.fresh === 'true';
   // Đọc song song: bộ dữ liệu chính + cảnh báo kho + số yêu cầu Sales (đều có cache)
   const [ds, alerts, salesRequests] = await Promise.all([getDataset({ fresh }), getCachedInventoryAlerts({ fresh }), getSalesRequestCount(fresh)]);
+  // Dự báo (doanh thu tháng, đơn 7 ngày tới, NVL đủ dùng) — có cache; lỗi thì bỏ qua, không làm hỏng trang
+  const forecast = await getForecast(ds, { fresh }).catch((e) => { console.error('[forecast] Không tính được dự báo:', e?.message || e); return null; });
   const cur = computeKpis(ds, range);
   const old = computeKpis(ds, prev);
   const deposit = computeDepositHeld(ds);
@@ -278,6 +281,7 @@ export const getDashboardOverview = async (query: any) => {
     deliveries: computeDeliveries(ds, query.deliveryMode === 'today' ? 'today' : 'window'),
     attentionOrders: computeAttentionOrders(ds, shortageOrders).slice(0, 50),
     bestProducts: await computeBestProducts(ds, range, query.bestSort === 'revenue' ? 'revenue' : 'quantity', 5),
+    forecast,
     inventory: alerts ? {
       summary: alerts.summary,
       materials: alerts.materialAlerts.slice(0, 6),

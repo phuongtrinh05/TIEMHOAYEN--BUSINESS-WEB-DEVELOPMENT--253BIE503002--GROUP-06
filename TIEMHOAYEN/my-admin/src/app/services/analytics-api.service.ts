@@ -110,6 +110,17 @@ export interface MaterialAlert {
   suggestedOrder: number;
 }
 
+export interface ForecastData {
+  generatedAt: string;
+  revenue: {
+    month: string; daysInMonth: number; today: number;
+    labels: string[]; actual: (number | null)[]; projected: (number | null)[]; lastMonth: (number | null)[];
+    monthToDate: number; projectedTotal: number; lastMonthTotal: number; dailyRate: number; changeVsLastMonth: number | null;
+  };
+  deliveries: { labels: string[]; dates: string[]; confirmed: number[]; expectedExtra: number[]; confirmedRevenue: number[]; totalConfirmed: number; totalExpected: number };
+  materials: { materialId: string; name: string; unit: string; available: number; dailyUse: number; daysCover: number; need7: number; short7: boolean }[];
+}
+
 export interface DashboardOverview {
   range: DateRangeDto & { previous: DateRangeDto; compare: CompareMode };
   latestOrderAt: string | null;
@@ -122,6 +133,8 @@ export interface DashboardOverview {
   deliveries: DeliveryItem[];
   attentionOrders: AttentionOrder[];
   bestProducts: BestProduct[];
+  /** Dự báo (luôn tính từ hôm nay, không phụ thuộc bộ lọc ngày). null nếu chưa tính được. */
+  forecast: ForecastData | null;
   inventory: {
     summary: { materialsOut: number; materialsLow: number; forecastShortages: number; ordersWithoutSchedule: number; productsOut: number; productsLow: number; qualityChecks: number };
     materials: MaterialAlert[];

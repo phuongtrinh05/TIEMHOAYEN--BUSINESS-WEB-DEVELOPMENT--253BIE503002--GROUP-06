@@ -1,37 +1,17 @@
 <div class="ov">
-  <!-- ================= THANH ĐẦU TRANG ================= -->
-  <header class="ov-head">
-    <div class="ov-title">
-      <h1>Tổng quan</h1>
-      <p>
-        <span class="ov-period">{{ periodLabel() }}</span>
-        @if (overview(); as ov) {
-          <span class="muted">{{ ov.range.label }} · so với {{ compareShort().toLowerCase() }} {{ ov.range.previous.label }}</span>
-        }
-      </p>
+  <!-- ================= BỘ LỌC + TẢI LẠI / XUẤT FILE (một hàng, giống Bảng phân tích) ================= -->
+  <div class="ov-filter no-print">
+    <app-range-filter [value]="range()" [busy]="loading()" (changed)="onFilter($event)"></app-range-filter>
+    <div class="seg" role="tablist" aria-label="Xem theo" title="Xem số liệu biểu đồ theo ngày, tuần, tháng, quý hoặc năm">
+      @for (v of viewOptions; track v.key) {
+        <button role="tab" [class.active]="(viewBy() || overview()?.series?.bucket) === v.key" (click)="setViewBy(v.key)">{{ v.label }}</button>
+      }
     </div>
-    <div class="ov-tools no-print">
-      <div class="ov-tabs" role="tablist" aria-label="Chọn kỳ">
-        @for (p of periods; track p.key) {
-          <button role="tab" [class.active]="p.key === 'custom' ? (period() === 'custom' || showCustom()) : period() === p.key" (click)="setPeriod(p.key)">
-            @if (p.key === 'custom') {<i class="bi bi-calendar3"></i>} {{ p.label }}
-          </button>
-        }
-      </div>
-      <select class="ov-select" [value]="range().compare" (change)="setCompare($any($event.target).value)" title="Kỳ so sánh">
-        <option value="previous">So với kỳ trước</option>
-        <option value="lastYear">So với cùng kỳ năm trước</option>
-      </select>
-      <button class="ov-icon" (click)="refresh()" [disabled]="loading()" title="Tải lại số liệu"><i class="bi bi-arrow-clockwise" [class.spin]="loading()"></i></button>
+    <div class="db-actions no-print">
+      <button class="btn-ghost" (click)="refresh()" [disabled]="loading()" title="Tải lại số liệu"><i class="bi bi-arrow-clockwise" [class.spin]="loading()"></i></button>
       <app-export-menu [disabled]="!overview()" (export)="onExport($event)"></app-export-menu>
     </div>
-  </header>
-
-  @if (showCustom()) {
-    <div class="ov-custom no-print">
-      <app-range-filter [value]="range()" [busy]="loading()" [showCompare]="false" (changed)="onRange($event); showCustom.set(false)"></app-range-filter>
-    </div>
-  }
+  </div>
 
   @if (error()) {
     <div class="alert-box no-print">
@@ -47,49 +27,56 @@
 
   @if (overview(); as ov) {
     <!-- ================= 1. KẾT QUẢ KINH DOANH ================= -->
-    <section class="panel kpi-panel">
-      <div class="kpi-row">
+    <section class="block">
+      <div class="block-head">
+        <h2>Kết quả kinh doanh</h2>
+        <span class="block-sub">{{ ov.range.label }} · so với {{ compareShort().toLowerCase() }} {{ ov.range.previous.label }}</span>
+      </div>
+      <div class="kpis">
         @for (k of mainKpis(); track k.key) {
-          <a class="kpi-cell" [routerLink]="kpiTarget(k).path" [queryParams]="rangeParams()" [fragment]="kpiTarget(k).fragment" [title]="kpiTarget(k).label">
-            <span class="kpi-name"><i class="dot" [class]="'d-' + k.key"></i>{{ k.label }}</span>
-            <strong class="kpi-num">{{ f.kpiValue(k.value, k.unit) }}</strong>
-            <span class="kpi-cmp">
+          <a class="kpi" [routerLink]="kpiTarget(k).path" [queryParams]="rangeParams()" [fragment]="kpiTarget(k).fragment" [title]="kpiTarget(k).label">
+            <span class="kpi-label">{{ k.label }}</span>
+            <strong class="kpi-value">{{ f.kpiValue(k.value, k.unit) }}</strong>
+            <span class="kpi-foot">
               @if (k.snapshot) {
-                <span class="pill neutral">{{ k.extra }} · hiện tại</span>
+                <span class="muted">{{ k.extra }} · tính đến hiện tại</span>
               } @else {
-                @if (f.changeText(k.change, k.unit)) {<span class="pill" [class]="f.changeClass(k.key, k.change)">{{ f.changeText(k.change, k.unit) }}</span>}
-                <span class="muted">{{ compareShort() }} {{ kpiPrev(k) }}</span>
+                @if (f.changeText(k.change, k.unit)) {<span class="chg" [class]="f.changeClass(k.key, k.change)">{{ f.changeText(k.change, k.unit) }}</span>}
+                <span class="muted">{{ compareShort() }}: {{ kpiPrev(k) }}</span>
               }
             </span>
           </a>
         }
       </div>
-      <div class="kpi-sub">
+      <div class="mini">
         @for (k of subKpis(); track k.key) {
-          <span><span class="muted">{{ k.label }}</span> <b>{{ f.kpiValue(k.value, k.unit) }}</b>
-            @if (f.changeText(k.change, k.unit)) {<span class="pill sm" [class]="f.changeClass(k.key, k.change)">{{ f.changeText(k.change, k.unit) }}</span>}
-          </span>
+          <span class="mini-item"><span class="muted">{{ k.label }}</span> <b>{{ f.kpiValue(k.value, k.unit) }}</b></span>
         }
         @if (isEmptyRange() && ov.latestOrderAt) {
-          <span class="kpi-empty no-print"><i class="bi bi-info-circle"></i> Kỳ này chưa có đơn · đơn gần nhất {{ f.dateOnly(ov.latestOrderAt) }}
+          <span class="mini-note no-print"><i class="bi bi-info-circle"></i> Kỳ này chưa có đơn · đơn gần nhất {{ f.dateOnly(ov.latestOrderAt) }}
             <button class="link" (click)="jumpToLatest()">Xem tháng đó</button></span>
         } @else if (ov.dataQuality.estimatedCompletionDates > 0) {
-          <span class="kpi-empty"><i class="bi bi-clock-history"></i> {{ ov.dataQuality.estimatedCompletionDates }} đơn dùng ngày hoàn thành ước tính</span>
+          <span class="mini-note"><i class="bi bi-clock-history"></i> {{ ov.dataQuality.estimatedCompletionDates }} đơn dùng ngày hoàn thành ước tính</span>
         }
       </div>
     </section>
 
-    <!-- ================= 2. VIỆC CẦN LÀM NGAY ================= -->
-    <nav class="todo no-print" aria-label="Việc cần xử lý">
-      <span class="todo-label">Cần xử lý</span>
-      @for (n of ov.needAction; track n.key) {
-        <a class="todo-item" [class.zero]="n.count === 0" [routerLink]="n.link" [queryParams]="needActionParams(n.status)">
-          <b>{{ n.count }}</b> {{ n.label }}
-        </a>
-      }
-    </nav>
+    <!-- ================= 2. VIỆC CẦN XỬ LÝ ================= -->
+    <section class="block no-print">
+      <div class="block-head">
+        <h2>Việc cần xử lý</h2>
+        <span class="block-sub">Tính đến hiện tại · bấm để mở danh sách</span>
+      </div>
+      <nav class="todos" aria-label="Việc cần xử lý">
+        @for (n of ov.needAction; track n.key) {
+          <a class="todo" [class.zero]="n.count === 0" [routerLink]="n.link" [queryParams]="needActionParams(n.status)">
+            <b>{{ n.count }}</b><span>{{ n.label }}</span>
+          </a>
+        }
+      </nav>
+    </section>
 
-    <!-- ================= 3. BIỂU ĐỒ + THÔNG BÁO ================= -->
+    <!-- ================= 3. DOANH THU + LỊCH GIAO ================= -->
     <div class="grid g-8-4">
       <section class="panel fixed h-420">
         <header class="panel-head">
@@ -98,7 +85,7 @@
             <p class="big">
               {{ chartMetric() === 'orders' ? f.num(chartTotal().cur) + ' đơn' : f.money(chartTotal().cur) }}
               @if (changePct(chartTotal().cur, chartTotal().prev); as c) {
-                <span class="pill" [class.up]="chartTotal().cur >= chartTotal().prev" [class.down]="chartTotal().cur < chartTotal().prev">{{ c }}</span>
+                <span class="chg" [class.up]="chartTotal().cur >= chartTotal().prev" [class.down]="chartTotal().cur < chartTotal().prev">{{ c }}</span>
               }
             </p>
           </div>
@@ -115,7 +102,130 @@
         </footer>
       </section>
 
-      <section class="panel fixed h-420 no-print" id="thong-bao">
+      <section class="panel fixed h-420">
+        <header class="panel-head">
+          <h3>Lịch giao hoa</h3>
+          <div class="seg no-print">
+            <button [class.active]="deliveryMode() === 'window'" (click)="setDeliveryMode('window')">{{ ov.config.deliveryWindowMinutes / 60 }}h tới</button>
+            <button [class.active]="deliveryMode() === 'today'" (click)="setDeliveryMode('today')">Hôm nay</button>
+          </div>
+        </header>
+        <ul class="deliv fill">
+          @for (d of deliveries(); track d.orderId) {
+            <li [class]="'u-' + d.urgency" [routerLink]="d.link">
+              <div class="deliv-time"><b>{{ f.time(d.deliveryAt) }}</b><span>{{ urgencyLabel(d) }}</span></div>
+              <div class="deliv-body">
+                <div><b>#{{ d.orderId }}</b> · {{ d.recipient || 'Chưa có người nhận' }}</div>
+                <div class="muted small ellipsis">@for (i of d.items; track $index) {<span>{{ i.name }} ×{{ i.quantity }}@if (!$last) {, }</span>}</div>
+              </div>
+              <span class="tag-s">{{ d.status }}</span>
+            </li>
+          } @empty {
+            <li class="empty">Không có đơn cần giao {{ deliveryMode() === 'window' ? 'trong ' + ov.config.deliveryWindowMinutes / 60 + ' giờ tới' : 'hôm nay' }}.</li>
+          }
+        </ul>
+        <footer class="panel-foot">
+          <span class="legend-dots"><i class="r"></i>≤{{ ov.config.deliveryRedMinutes }}′ / trễ <i class="o"></i>≤{{ ov.config.deliveryOrangeMinutes }}′ <i class="g"></i>còn thời gian</span>
+          <a class="card-link no-print" routerLink="/dashboard/reports/delivery-schedule" [queryParams]="rangeParams()">Lịch theo ngày <i class="bi bi-arrow-right-short"></i></a>
+        </footer>
+      </section>
+    </div>
+
+    <!-- ================= DỰ BÁO (luôn tính từ hôm nay) ================= -->
+    @if (!ov.forecast) {
+      <section class="block no-print">
+        <div class="block-head"><h2>Dự báo</h2></div>
+        <div class="panel"><p class="empty">Chưa có dữ liệu dự báo từ server. Nếu vừa cập nhật code, hãy khởi động lại <b>my-server</b> (Ctrl + C rồi <code>npm start</code>) và tải lại trang.</p></div>
+      </section>
+    }
+    @if (ov.forecast; as fc) {
+      <section class="block">
+        <div class="block-head">
+          <h2>Dự báo</h2>
+          <span class="block-sub">Tính từ hôm nay theo trung bình gần đây · không phụ thuộc bộ lọc ngày</span>
+        </div>
+        <div class="grid g-4-4-4">
+          <section class="panel fixed h-360">
+            <header class="panel-head">
+              <div>
+                <h3>Doanh thu tháng {{ fc.revenue.month }}</h3>
+                <p class="big">~{{ f.compact(fc.revenue.projectedTotal) }}
+                  @if (fc.revenue.changeVsLastMonth !== null) {<span class="chg" [class.up]="fc.revenue.changeVsLastMonth >= 0" [class.down]="fc.revenue.changeVsLastMonth < 0">{{ fc.revenue.changeVsLastMonth >= 0 ? '+' : '' }}{{ f.num(fc.revenue.changeVsLastMonth) }}%</span>}
+                </p>
+              </div>
+            </header>
+            <div class="chart-fill"><canvas baseChart type="line" [data]="fcRevenueData()" [options]="fcRevenueOptions"></canvas></div>
+            <footer class="panel-foot">
+              <span class="muted small">Đã đạt {{ f.compact(fc.revenue.monthToDate) }} · ~{{ f.compact(fc.revenue.dailyRate) }}/ngày · tháng trước {{ f.compact(fc.revenue.lastMonthTotal) }}</span>
+            </footer>
+          </section>
+
+          <section class="panel fixed h-360">
+            <header class="panel-head">
+              <div>
+                <h3>Đơn cần giao 7 ngày tới</h3>
+                <p class="big">{{ fc.deliveries.totalConfirmed }} <span class="muted small">đã nhận · dự kiến ~{{ fc.deliveries.totalExpected }} đơn</span></p>
+              </div>
+            </header>
+            <div class="chart-fill"><canvas baseChart type="bar" [data]="fcDeliveryData()" [options]="fcDeliveryOptions"></canvas></div>
+            <footer class="panel-foot">
+              <span class="muted small">Dự kiến thêm = TB đơn cùng thứ của 8 tuần trước</span>
+              <a class="card-link no-print" routerLink="/dashboard/reports/delivery-schedule" [queryParams]="{ from: fc.deliveries.dates[0], to: fc.deliveries.dates[6] }">Lịch giao <i class="bi bi-arrow-right-short"></i></a>
+            </footer>
+          </section>
+
+          <section class="panel fixed h-360">
+            <header class="panel-head">
+              <div>
+                <h3>Nguyên vật liệu còn đủ dùng</h3>
+                <p class="muted small">Số ngày = tồn khả dụng ÷ mức dùng TB 28 ngày (theo BOM)</p>
+              </div>
+              <a class="card-link no-print" routerLink="/dashboard/reports/stock-alerts">Kho <i class="bi bi-arrow-right-short"></i></a>
+            </header>
+            @if (fc.materials.length) {
+              <div class="chart-fill"><canvas baseChart type="bar" [data]="fcMaterialData()" [options]="fcMaterialOptions()"></canvas></div>
+              <footer class="panel-foot">
+                <span class="legend-dots"><i class="r"></i>&lt; 3 ngày <i class="o"></i>&lt; 7 ngày <i class="g"></i>đủ</span>
+                @if (shortIn7() ; as n) {<span class="c-red small"><b>{{ n }}</b> NVL thiếu cho đơn 7 ngày tới</span>}
+              </footer>
+            } @else {
+              <p class="empty">Chưa đủ dữ liệu tiêu hao (cần đơn có BOM trong 28 ngày gần nhất).</p>
+            }
+          </section>
+        </div>
+      </section>
+    }
+
+    <!-- ================= 4. ĐƠN CẦN CHÚ Ý + THÔNG BÁO ================= -->
+    <div class="grid g-8-4">
+      <section class="panel fixed h-440">
+        <header class="panel-head">
+          <h3>Đơn cần chú ý <span class="count soft">{{ ov.attentionOrders.length }}</span></h3>
+          <a class="card-link no-print" routerLink="/dashboard/reports/orders-detail" [queryParams]="rangeParams()">Tất cả đơn <i class="bi bi-arrow-right-short"></i></a>
+        </header>
+        <div class="table-wrap fill">
+          <table class="tbl ov-tbl">
+            <thead><tr><th>Đơn</th><th>Vấn đề</th><th>Giờ giao</th><th class="r">Tổng / đã thu</th></tr></thead>
+            <tbody>
+              @for (o of ov.attentionOrders; track o.orderId) {
+                <tr class="click" [routerLink]="o.link">
+                  <td><b>#{{ o.orderId }}</b><div class="muted small">{{ o.status }}</div></td>
+                  <td>
+                    @for (r of o.reasons; track r.code) {<span class="reason" [class]="'rs-' + r.code">{{ r.label }}</span>}
+                    <div class="muted small">{{ o.reasons[0]?.detail }}</div>
+                  </td>
+                  <td class="small">{{ f.dateTime(o.deliveryAt) }}</td>
+                  <td class="r">{{ f.money(o.total) }}<div class="muted small">{{ f.money(o.paid) }}</div></td>
+                </tr>
+              } @empty {
+                <tr><td colspan="4" class="empty">Không có đơn cần chú ý.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel fixed h-440 no-print" id="thong-bao">
         <header class="panel-head">
           <h3>Thông báo @if (noti()?.unread) {<span class="count">{{ noti()?.unread }}</span>}</h3>
           @if (noti()?.canMarkRead && noti()?.unread) {<button class="link" (click)="markAllRead()">Đánh dấu đã đọc</button>}
@@ -143,65 +253,7 @@
       </section>
     </div>
 
-    <!-- ================= 4. LỊCH GIAO + ĐƠN CẦN CHÚ Ý ================= -->
-    <div class="grid g-5-7">
-      <section class="panel fixed h-440">
-        <header class="panel-head">
-          <h3>Lịch giao hoa</h3>
-          <div class="seg no-print">
-            <button [class.active]="deliveryMode() === 'window'" (click)="setDeliveryMode('window')">{{ ov.config.deliveryWindowMinutes / 60 }}h tới</button>
-            <button [class.active]="deliveryMode() === 'today'" (click)="setDeliveryMode('today')">Hôm nay</button>
-          </div>
-        </header>
-        <ul class="deliv fill">
-          @for (d of deliveries(); track d.orderId) {
-            <li [class]="'u-' + d.urgency" [routerLink]="d.link">
-              <div class="deliv-time"><b>{{ f.time(d.deliveryAt) }}</b><span>{{ urgencyLabel(d) }}</span></div>
-              <div class="deliv-body">
-                <div><b>#{{ d.orderId }}</b> · {{ d.recipient || 'Chưa có người nhận' }}</div>
-                <div class="muted small ellipsis">@for (i of d.items; track $index) {<span>{{ i.name }} ×{{ i.quantity }}@if (!$last) {, }</span>}</div>
-              </div>
-              <span class="tag-s">{{ d.status }}</span>
-            </li>
-          } @empty {
-            <li class="empty">Không có đơn cần giao {{ deliveryMode() === 'window' ? 'trong ' + ov.config.deliveryWindowMinutes / 60 + ' giờ tới' : 'hôm nay' }}.</li>
-          }
-        </ul>
-        <footer class="panel-foot">
-          <span class="legend-dots"><i class="r"></i>≤{{ ov.config.deliveryRedMinutes }}′ / trễ <i class="o"></i>≤{{ ov.config.deliveryOrangeMinutes }}′ <i class="g"></i>còn thời gian</span>
-          <a class="card-link no-print" routerLink="/dashboard/reports/delivery-schedule" [queryParams]="rangeParams()">Lịch theo ngày <i class="bi bi-arrow-right-short"></i></a>
-        </footer>
-      </section>
-
-      <section class="panel fixed h-440">
-        <header class="panel-head">
-          <h3>Đơn cần chú ý <span class="count soft">{{ ov.attentionOrders.length }}</span></h3>
-          <a class="card-link no-print" routerLink="/dashboard/reports/orders-detail" [queryParams]="rangeParams()">Tất cả đơn <i class="bi bi-arrow-right-short"></i></a>
-        </header>
-        <div class="table-wrap fill">
-          <table class="tbl ov-tbl">
-            <thead><tr><th>Đơn</th><th>Vấn đề</th><th>Giờ giao</th><th class="r">Tổng / đã thu</th></tr></thead>
-            <tbody>
-              @for (o of ov.attentionOrders; track o.orderId) {
-                <tr class="click" [routerLink]="o.link">
-                  <td><b>#{{ o.orderId }}</b><div class="muted small">{{ o.status }}</div></td>
-                  <td>
-                    @for (r of o.reasons; track r.code) {<span class="reason" [class]="'rs-' + r.code">{{ r.label }}</span>}
-                    <div class="muted small">{{ o.reasons[0]?.detail }}</div>
-                  </td>
-                  <td class="small">{{ f.dateTime(o.deliveryAt) }}</td>
-                  <td class="r">{{ f.money(o.total) }}<div class="muted small">{{ f.money(o.paid) }}</div></td>
-                </tr>
-              } @empty {
-                <tr><td colspan="4" class="empty">Không có đơn cần chú ý.</td></tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-
-    <!-- ================= 5. TÌNH TRẠNG ĐƠN · BÁN CHẠY · NVL ================= -->
+    <!-- ================= 5. TÌNH TRẠNG ĐƠN · BÁN CHẠY · NGUYÊN VẬT LIỆU ================= -->
     <div class="grid g-4-4-4">
       <section class="panel fixed h-360">
         <header class="panel-head">
