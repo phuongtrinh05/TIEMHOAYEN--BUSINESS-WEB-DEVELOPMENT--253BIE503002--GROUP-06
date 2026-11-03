@@ -37,10 +37,14 @@
                     <input
                         type="text"
                         placeholder="Tìm kiếm sản phẩm"
+                        aria-label="Tìm sản phẩm theo tên hoặc mã"
                         [(ngModel)]="searchKeyword"
-                        (input)="searchProducts()">
+                        (ngModelChange)="searchProducts()"
+                        (keydown.enter)="searchProducts()">
 
-                    <i class="bi bi-search"></i>
+                    <button type="button" class="search-action" aria-label="Tìm kiếm" (click)="searchProducts()">
+                        <i class="bi bi-search"></i>
+                    </button>
                 </div>
 
                 <div class="menu-wrapper">
@@ -210,6 +214,12 @@
                 </thead>
 
                 <tbody>
+
+                    <tr *ngIf="pagedProducts.length === 0">
+                        <td colspan="7" class="empty-search">
+                            {{ searchKeyword.trim() ? 'Không tìm thấy sản phẩm phù hợp.' : 'Chưa có sản phẩm trong nhóm này.' }}
+                        </td>
+                    </tr>
 
                     <tr *ngFor="let product of pagedProducts; trackBy: trackByProductSku">
 
@@ -473,28 +483,6 @@
                         <p *ngIf="!topicOptions.length">Chưa có dữ liệu chủ đề.</p>
                     </div>
                 </div>
-            </div>
-
-            <div class="form-group">
-                <label>Bộ sưu tập</label>
-                <div class="multi-select" [class.is-open]="openMultiSelect === 'collections'" (click)="$event.stopPropagation()">
-                    <button type="button" class="multi-select__control" (click)="toggleMultiSelect('collections', $event)" [disabled]="categoryOptionsLoading">
-                        <span class="multi-select__placeholder" *ngIf="!newProduct.collections.length">-- Chọn bộ sưu tập --</span>
-                        <span class="multi-select__chips" *ngIf="newProduct.collections.length"><span *ngFor="let value of newProduct.collections">{{ value }}</span></span>
-                        <i class="bi bi-chevron-down"></i>
-                    </button>
-                    <div class="multi-select__menu" *ngIf="openMultiSelect === 'collections'">
-                        <button type="button" *ngFor="let option of collectionOptions" (click)="toggleMultiValue('collections', option, $event)" [class.is-selected]="isMultiValueSelected('collections', option)">
-                            <i class="bi" [ngClass]="isMultiValueSelected('collections', option) ? 'bi-check-square-fill' : 'bi-square'"></i>{{ option }}
-                        </button>
-                        <p *ngIf="!collectionOptions.length">Chưa có dữ liệu bộ sưu tập.</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label>Tồn kho</label>
-                <input type="number" [(ngModel)]="newProduct.quantity" readonly title="Tồn kho chỉ thay đổi qua nghiệp vụ kho">
             </div>
 
         </div>

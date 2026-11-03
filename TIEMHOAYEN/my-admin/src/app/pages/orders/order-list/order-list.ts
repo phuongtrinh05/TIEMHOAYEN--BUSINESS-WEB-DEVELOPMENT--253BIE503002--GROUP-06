@@ -3,7 +3,7 @@ import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { forkJoin, interval, Subscription } from 'rxjs';
+import { forkJoin, firstValueFrom, interval, Subscription } from 'rxjs';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -16,6 +16,7 @@ export type PaymentStatus =
   | 'Thanh toán thất bại';
 
 export type OrderStatus =
+  | 'Đã đặt hàng thành công'
   | 'Đã giao'
   | 'Đang giao'
   | 'Hoàn thành'
@@ -26,6 +27,7 @@ export type OrderStatus =
   | 'Đã hủy';
 
 export interface Order {
+  senderName?: string; receiverName?: string; deliveryDate?: string; deliverySlot?: string; products?: {name: string; qty: number}[]; deposit?: number; paid?: number; remaining?: number; allowedStatuses?: string[]; adminNote?: string;
   id: string;
   customerId: string;
   createdAt: string;
@@ -35,7 +37,7 @@ export interface Order {
   selected: boolean;
 }
 
-type TabFilter = 'Tất cả' | 'Đã hoàn thành' | 'Chờ xử lý' | 'Đã hủy';
+type TabFilter = 'Tất cả' | 'Đơn mới' | 'Chưa giao' | 'Chưa thanh toán';
 type PaymentFilter = 'Tất cả thanh toán' | PaymentStatus;
 type OrderStatusFilter = 'Tất cả trạng thái' | OrderStatus;
 
@@ -81,6 +83,11 @@ export class OrderList implements OnInit, OnDestroy {
     @Inject(PLATFORM_ID) private readonly platformId: object
   ) {}
 
+  afterSalesQueue:any[]=[];
+  afterSalesSearch='';afterSalesStatus='';afterSalesType='';afterSalesFrom='';afterSalesTo='';afterSalesTotal=0;afterSalesLoading=false;
+  readonly afterSalesStatuses=['Đã gửi yêu cầu','Đang xem xét','Cần bổ sung thông tin','Đang thực hiện phương án','Chờ hoàn tiền','Cần đối soát hoàn tiền','Đã từ chối','Đã xử lý xong'];
+  loadAfterSalesQueue() { this.afterSalesLoading=true;this.adminApi.getAfterSales({search:this.afterSalesSearch.trim(),status:this.afterSalesStatus,type:this.afterSalesType,from:this.afterSalesFrom,to:this.afterSalesTo?`${this.afterSalesTo}T23:59:59.999Z`:'',limit:'50'}).subscribe({next:r=>{this.afterSalesQueue=r.requests||[];this.afterSalesTotal=Number(r.total||0);this.afterSalesLoading=false;this.cdr.markForCheck();},error:()=>{this.afterSalesLoading=false;this.cdr.markForCheck();}}); }
+  openAfterSales(row:any) { this.router.navigate(['/orders/order-detail',row.orderId]); }
   allOrders: Order[] = [];
   private filteredOrdersCache: Order[] = [];
   private totalOrderCountValue = 0;
@@ -88,7 +95,7 @@ export class OrderList implements OnInit, OnDestroy {
   private completedOrderCountValue = 0;
   private cancelledOrderCountValue = 0;
 
-  tabs: TabFilter[] = ['Tất cả', 'Đã hoàn thành', 'Chờ xử lý', 'Đã hủy'];
+  tabs: TabFilter[] = ['Tất cả', 'Đơn mới', 'Chưa giao', 'Chưa thanh toán'];
   activeTab: TabFilter = 'Tất cả';
 
   paymentFilters: PaymentFilter[] = [
@@ -103,6 +110,7 @@ export class OrderList implements OnInit, OnDestroy {
 
   orderStatusFilters: OrderStatusFilter[] = [
     'Tất cả trạng thái',
+    'Đã đặt hàng thành công',
     'Đã giao',
     'Đang giao',
     'Hoàn thành',
@@ -149,6 +157,7 @@ export class OrderList implements OnInit, OnDestroy {
   sortOption: SortOption = 'Mặc định';
 
   editableOrderStatuses: OrderStatus[] = [
+    'Đã đặt hàng thành công',
     'Đã giao',
     'Đang giao',
     'Hoàn thành',
@@ -169,7 +178,7 @@ export class OrderList implements OnInit, OnDestroy {
   isExportMenuOpen = false;
   isLoading = false;
   loadError = '';
-  private readonly liveRefreshMs = 10000;
+  private readonly liveRefreshMs = 30000;
   private liveRefreshSub?: Subscription;
   private isLiveRefreshInFlight = false;
 
@@ -181,6 +190,7 @@ export class OrderList implements OnInit, OnDestroy {
         this.orderStatusFilter = statusParam as OrderStatusFilter;
       }
       this.loadOrders();
+      this.loadAfterSalesQueue();
       this.startLiveDatabaseRefresh();
     }
   }
@@ -229,6 +239,7 @@ export class OrderList implements OnInit, OnDestroy {
     const raw = this.repairMojibakeText(value).trim();
     const lower = raw.toLowerCase();
 
+    if (raw === 'Thanh toán thất bại') return raw as OrderStatus;
     if (!raw) return 'Ch\u1edd x\u1eed l\u00fd';
     if (lower.includes('thanh to') || lower.includes('thanh toán') || lower.includes('thanh toan')) return 'Ch\u1edd thanh to\u00e1n';
     if (lower.includes('h\u1ee7y') || lower.includes('huy')) return '\u0110\u00e3 h\u1ee7y';
@@ -269,6 +280,7 @@ export class OrderList implements OnInit, OnDestroy {
     ordersRequest.subscribe({
       next: (response) => {
         this.allOrders = response.orders.map(order => ({
+          ...order,
           id: order.id,
           customerId: order.customerId || '',
           createdAt: order.createdAt,
@@ -308,6 +320,7 @@ export class OrderList implements OnInit, OnDestroy {
 
   private shouldPauseLiveRefresh(): boolean {
     return (
+      (typeof document !== 'undefined' && document.hidden) ||
       this.selectedOrders.length > 0 ||
       this.isFilterMenuOpen ||
       this.isSortMenuOpen ||
@@ -361,22 +374,19 @@ export class OrderList implements OnInit, OnDestroy {
   }
 
   private rebuildStats(): void {
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-
     this.totalOrderCountValue = this.allOrders.length;
     this.newOrderCountValue = 0;
     this.completedOrderCountValue = 0;
     this.cancelledOrderCountValue = 0;
 
     this.allOrders.forEach(order => {
-      if (this.parseDate(order.createdAt) >= sevenDaysAgo) {
+      if (order.orderStatus === 'Đã đặt hàng thành công') {
         this.newOrderCountValue++;
       }
-      const normalizedStatus = this.normalize(order.orderStatus);
-      if (normalizedStatus.includes('hoan thanh')) {
+      if (['Đã đặt hàng thành công','Đang chuẩn bị hàng','Chờ vận chuyển','Đang giao'].includes(order.orderStatus)) {
         this.completedOrderCountValue++;
       }
-      if (normalizedStatus.includes('huy')) {
+      if (Number(order.remaining || 0) > 0 && order.orderStatus !== 'Đã hủy') {
         this.cancelledOrderCountValue++;
       }
     });
@@ -385,13 +395,9 @@ export class OrderList implements OnInit, OnDestroy {
   private buildFilteredOrders(): Order[] {
     let list = [...this.allOrders];
 
-    if (this.activeTab === 'Đã hoàn thành') {
-      list = list.filter(order => order.orderStatus === 'Hoàn thành');
-    } else if (this.activeTab === 'Chờ xử lý') {
-      list = list.filter(order => order.orderStatus === 'Chờ xử lý');
-    } else if (this.activeTab === 'Đã hủy') {
-      list = list.filter(order => order.orderStatus === 'Đã hủy');
-    }
+    if (this.activeTab === 'Đơn mới') list = list.filter(o => o.orderStatus === 'Đã đặt hàng thành công');
+    if (this.activeTab === 'Chưa giao') list = list.filter(o => ['Đã đặt hàng thành công','Đang chuẩn bị hàng','Chờ vận chuyển','Đang giao'].includes(o.orderStatus));
+    if (this.activeTab === 'Chưa thanh toán') list = list.filter(o => Number(o.remaining || 0) > 0 && o.orderStatus !== 'Đã hủy');
 
     if (this.paymentFilter !== 'Tất cả thanh toán') {
       list = list.filter(order => order.paymentStatus === this.paymentFilter);
@@ -409,6 +415,7 @@ export class OrderList implements OnInit, OnDestroy {
     if (keyword) {
       list = list.filter(order =>
         this.normalize(order.id).includes(keyword) ||
+        this.normalize((order.senderName || '') + ' ' + (order.receiverName || '') + ' ' + (order.products || []).map(p => p.name).join(' ')).includes(keyword) ||
         this.normalize(order.customerId).includes(keyword) ||
         this.normalize(order.createdAt).includes(keyword) ||
         this.normalize(order.paymentStatus).includes(keyword) ||
@@ -564,16 +571,28 @@ export class OrderList implements OnInit, OnDestroy {
   }
 
   openEditStatusMenu(): void {
+    if (this.isEditStatusMenuOpen) {
+      this.isEditStatusMenuOpen = false;
+      return;
+    }
     if (this.selectedOrders.length === 0) {
       alert('Vui lòng chọn ít nhất một đơn hàng để sửa trạng thái.');
       this.closeAllMenus();
       return;
     }
-    this.isMoreMenuOpen = true;
+    this.isFilterMenuOpen = false;
+    this.isSortMenuOpen = false;
+    this.isExportMenuOpen = false;
+    this.isMoreMenuOpen = false;
     this.isEditStatusMenuOpen = true;
   }
 
+  canChangeSelected(status: string): boolean {
+    return this.adminApi.can('orders', 'update') && this.selectedOrders.length > 0 && this.selectedOrders.every(o => (o.allowedStatuses || []).includes(status));
+  }
+  get canCreateOrder(): boolean { return this.adminApi.can('orders','create'); }
   updateSelectedOrderStatus(status: OrderStatus): void {
+    if (!this.canChangeSelected(status)) { alert('Trạng thái này không hợp lệ cho toàn bộ đơn đã chọn.'); return; }
     if (this.selectedOrders.length === 0) {
       alert('Vui lòng chọn ít nhất một đơn hàng để sửa trạng thái.');
       this.closeAllMenus();
@@ -606,13 +625,19 @@ export class OrderList implements OnInit, OnDestroy {
       return;
     }
 
-    this.allOrders = this.allOrders.filter(order => !order.selected);
-    this.currentPage = 1;
-    this.rebuildOrderView();
+    alert('Không xóa đơn hàng. Hãy dùng thao tác hủy hợp lệ để giữ lịch sử.');
     this.closeAllMenus();
   }
 
   // ===== XUẤT DỮ LIỆU (đồng bộ quy tắc với article-list) =====
+  private async refreshExportData(): Promise<boolean> {
+    try {
+      const selected = new Set(this.selectedOrders.map(o => o.id));
+      const response = await firstValueFrom(this.adminApi.refreshOrdersFromDatabase());
+      this.allOrders = response.orders.map(o => ({ ...o, paymentStatus: this.normalizePaymentStatusText(o.paymentStatus), orderStatus: this.normalizeOrderStatusText(o.orderStatus), selected: selected.has(o.id) }));
+      this.rebuildOrderView(); return true;
+    } catch { alert('Chưa tải được dữ liệu mới từ backend để xuất.'); return false; }
+  }
   private buildExportRows(): {
     header: string[];
     rows: (string | number)[][];
@@ -620,7 +645,7 @@ export class OrderList implements OnInit, OnDestroy {
   } {
     const stamp = new Date().toISOString().slice(0, 10);
     const source = this.selectedOrders.length ? this.selectedOrders : this.filteredOrders;
-    const header = ['Mã đơn', 'Mã khách hàng', 'Ngày tạo', 'Tổng tiền', 'Thanh toán', 'Trạng thái'];
+    const header = ['Mã đơn', 'Mã khách hàng', 'Ngày tạo', 'Tổng tiền', 'Thanh toán', 'Trạng thái', 'Người đặt', 'Người nhận', 'Lịch giao', 'Cọc yêu cầu', 'Đã thu', 'Còn lại'];
     const rows = source.map(order => [
       order.id,
       order.customerId,
@@ -653,6 +678,7 @@ export class OrderList implements OnInit, OnDestroy {
   }
 
   async exportExcel(): Promise<void> {
+    if (!await this.refreshExportData()) return;
     const { rows, header, fileBase } = this.buildExportRows();
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
 
@@ -675,6 +701,7 @@ export class OrderList implements OnInit, OnDestroy {
   }
 
   async exportPdf(): Promise<void> {
+    if (!await this.refreshExportData()) return;
     const { rows, header, fileBase } = this.buildExportRows();
     const doc = new jsPDF({ orientation: 'landscape' });
 
@@ -707,6 +734,7 @@ export class OrderList implements OnInit, OnDestroy {
       'Đang giao': 'status--shipping',
       'Hoàn thành': 'status--completed',
       'Chờ xử lý': 'status--pending',
+      'Đã đặt hàng thành công': 'status--pending',
       'Chờ thanh toán': 'status--pending',
       'Đang chuẩn bị hàng': 'status--preparing',
       'Chờ vận chuyển': 'status--waiting',
@@ -832,7 +860,7 @@ export class OrderList implements OnInit, OnDestroy {
   }
 
   private normalize(s: string): string {
-    return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
   }
 
   private parseDate(date: string): number {

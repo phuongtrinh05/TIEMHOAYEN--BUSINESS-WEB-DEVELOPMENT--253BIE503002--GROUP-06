@@ -1,0 +1,33 @@
+.order-meta { order: 1; }
+.detail-grid { order: 2; }
+.admin-after-sales { order: 3; margin-top: 4px; border-color: rgba(115,25,25,.08); background: #fff; }
+.after-sales-followup { order: 4; }
+.after-sales-return { order: 5; }
+.admin-after-sales-head > div { display: flex; align-items: center; gap: 9px; }
+.admin-after-sales-head > div::before { content: ""; width: 4px; height: 20px; border-radius: 99px; background: #731919; }
+.admin-after-sales-head span { display: none; }
+.admin-after-sales-head h2 { margin: 0; color: var(--text-color); font-size: 18px; }
+.admin-after-sales-head > b { font-size: 13px; }
+.admin-after-sales > p { padding: 16px; border-radius: 8px; background: #faf7f5; color: #745f58; }
+.admin-after-sales-case { padding: 18px; border-radius: 10px; }
+.admin-case-head small { font-size: 12px; }
+.admin-case-head h3 { font-size: 17px; }
+.admin-case-head > span { font-size: 13px; }
+.admin-after-sales-case > p { font-size: 14px; }
+.admin-evidence a { padding: 8px 11px; font-weight: 700; }
+.admin-case-history { padding: 12px 18px; border-radius: 8px; background: #faf7f5; font-size: 13px; }
+.admin-case-actions textarea,
+.after-sales-followup textarea,
+.after-sales-return textarea { box-sizing: border-box; width: 100%; min-height: 88px; padding: 12px; border: 1px solid #dec9bd; border-radius: 9px; font: 14px var(--font-body); }
+.admin-case-actions label,
+.after-sales-return label { font-weight: 700; }
+.admin-case-actions input,
+.admin-case-actions select,
+.after-sales-return input { min-height: 40px; }
+.admin-case-actions button,
+.after-sales-followup button,
+.after-sales-return button { min-height: 40px; padding: 0 15px; border: 0; border-radius: 8px; background: #731919; color: #fff; font-weight: 800; }
+.after-sales-followup h2,
+.after-sales-return h2 { display: flex; align-items: center; gap: 9px; font-size: 18px; }
+.after-sales-followup h2::before,
+.after-sales-return h2::before { content: ""; width: 4px; height: 20px; border-radius: 99px; background: #731919; }

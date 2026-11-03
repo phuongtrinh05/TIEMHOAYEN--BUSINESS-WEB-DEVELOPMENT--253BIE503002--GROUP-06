@@ -2,13 +2,6 @@ import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
 import { getProductSellableStockMap, sellableStockFields } from '../services/inventory/availability.service.js';
 
-const PUBLIC_PRODUCT_FILTER = { TRANG_THAI: 'Đang bán' };
-const PUBLIC_CATEGORY_FILTER = { AN: { $ne: true }, TRANG_THAI: { $nin: ['Ẩn', 'Đang ẩn', 'Đã xóa'] } };
-const publicCategory = (row: any, idField: string, nameField: string) => ({
-  [idField]: row?.[idField], [nameField]: row?.[nameField],
-  MO_TA: String(row?.MO_TA || ''), HINH_ANH: String(row?.HINH_ANH || row?.ANH_DAI_DIEN || ''),
-});
-
 const uniqueJoin = (values: unknown[]): string | null => {
   const normalized = Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean)));
   return normalized.length > 0 ? normalized.join('|') : null;
@@ -65,7 +58,7 @@ const enrichProducts = async (products: any[], extraByProduct = new Map<string, 
   const productIds = products.map((product) => product.SAN_PHAM_ID).filter(Boolean);
   const topicCollection = await getCollection<any>('CHU_DE');
   const [topics, imageMap, flowerListMap, targetListMap, colorListMap, stockMap] = await Promise.all([
-    topicCollection.find(PUBLIC_CATEGORY_FILTER).toArray(),
+    topicCollection.find({}).toArray(),
     getPrimaryImageMap(productIds),
     buildNameListMap('HOA_TUOI_SAN_PHAM', 'HOA_TUOI', 'HOA_TUOI_ID', 'TEN_HOA_TUOI', productIds),
     buildNameListMap('DOI_TUONG_SAN_PHAM', 'DOI_TUONG', 'DOI_TUONG_ID', 'TEN_DOI_TUONG', productIds),

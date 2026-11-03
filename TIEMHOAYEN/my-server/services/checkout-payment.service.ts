@@ -1,10 +1,10 @@
-import {INVENTORY_CONFIG} from './inventory/constants.js';
+import {orderEvent} from './admin-order.service.js';
 import type { ClientSession } from 'mongodb';
 import { getCollection } from '../mongo.js';
 import { InventoryError } from './inventory/helpers.js';
-import { confirmReservations, releaseReservations,recordOrderDemand } from './inventory/stock.service.js';
-import {orderEvent, paymentSucceeded, sumVerifiedPayments} from './admin-order.service.js';
+import { confirmReservations, releaseReservations } from './inventory/stock.service.js';
 import { randomUUID, createHash } from 'node:crypto';
+import { paymentSucceeded, sumVerifiedPayments } from './admin-order.service.js';
 
 /** All money-changing entry points share this transaction-scoped command. */
 export async function changeCheckoutPayment(session: ClientSession, paymentId: string, body: any, actor: string, collections: typeof getCollection = getCollection) {
@@ -21,7 +21,7 @@ export async function changeCheckoutPayment(session: ClientSession, paymentId: s
   const amount = body.amount === undefined ? Number(current.SO_TIEN) : Number(body.amount);
   if (!Number.isSafeInteger(amount) || amount <= 0 || amount !== Number(current.SO_TIEN)) throw new InventoryError(409, 'Số tiền phải khớp nghĩa vụ thanh toán, không được sửa khoản thu.');
   const reference = String(body.referenceCode ?? current.MA_GIAO_DICH ?? '').trim();
-  const target = success ? 'Thành công' : 'Thất bại';
+  const target = success ? 'Thành công' : requested === 'Hết hạn' || requested === 'EXPIRED' ? 'Hết hạn' : 'Thất bại';
   if (paymentSucceeded(current.TRANG_THAI_THANH_TOAN)) {
     if (!success || reference !== String(current.MA_GIAO_DICH || '')) throw new InventoryError(409, 'Giao dịch đã thu tiền; điều chỉnh/hoàn tiền phải xử lý riêng.');
     return current;
@@ -50,16 +50,37 @@ export async function changeCheckoutPayment(session: ClientSession, paymentId: s
   }
   if (current.LOAI_GIAO_DICH !== 'SO_DU') await syncCheckoutInventory(session, current.DON_HANG_ID, success);
   const updated = await payments.findOneAndUpdate({ THANH_TOAN_ID: paymentId, TRANG_THAI_THANH_TOAN: 'Chờ thanh toán' }, {
-    $set: { TRANG_THAI_THANH_TOAN: target, MA_GIAO_DICH: reference || null, XAC_NHAN_LUC: new Date(), NGUOI_XAC_NHAN: actor },
-    $push: { LICH_SU: { id: randomUUID(), from: current.TRANG_THAI_THANH_TOAN, to: target, actor, at: new Date() } },
+    $set: { TRANG_THAI_THANH_TOAN: target, MA_GIAO_DICH: reference || null,
+      ...(success ? { XAC_NHAN_LUC: new Date(), NGUOI_XAC_NHAN: actor, NGUON_XAC_NHAN:String(body.source || 'ADMIN_MANUAL') } : {}) },
+    $push: { LICH_SU: { id: randomUUID(), from: current.TRANG_THAI_THANH_TOAN, to: target, actor, at: new Date(),
+      source:String(body.source || 'ADMIN_MANUAL'), reason:String(body.reason || '').trim() || null, reference:reference || null } },
   } as any, { session, returnDocument: 'after' });
   if (!updated) throw new InventoryError(409, 'Giao dịch vừa được người khác xử lý.');
   if (success) {
+    await consumeCheckoutBenefits(session, order);
+    if (order.YEU_CAU_DAT_HANG_ID) {
+      await (await collections<any>('YEU_CAU_DAT_HANG')).updateOne({ _id: order.YEU_CAU_DAT_HANG_ID, status: { $in: ['Chờ thanh toán', 'Chờ khách thanh toán'] } }, {
+        $set: { status: 'Đã lên đơn', updatedAt: new Date() }, $inc: { version: 1 },
+        $push: { history: { id: randomUUID(), at: new Date(), actor, action: 'Thanh toán thành công, yêu cầu đã lên đơn', orderId: order.DON_HANG_ID } },
+      } as any, { session });
+    }
     await orderEvent(session,paymentId+':verified',order.KHACH_HANG_ID||null,order.DON_HANG_ID,'Đã xác minh thanh toán','Shop đã xác minh khoản thu '+amount.toLocaleString('vi-VN')+'đ.');
   }
   return updated;
 }
 
+export async function consumeCheckoutBenefits(session: ClientSession, order: any) {
+    const orders = await getCollection<any>('DON_HANG');
+    if (order.DIEM_THUONG_SU_DUNG && !order.DA_TRU_DIEM_THUONG) {
+      const points = Number(order.DIEM_THUONG_SU_DUNG);
+      const debit = await (await getCollection<any>('KHACH_HANG')).updateOne({ KHACH_HANG_ID: order.KHACH_HANG_ID, DIEM_TICH_LUY: { $gte: points } }, { $inc: { DIEM_TICH_LUY: -points } }, { session });
+      if (!debit.matchedCount) throw new InventoryError(409, 'Không đủ điểm để chốt đơn. Cần đối soát trước khi xác nhận.');
+      await orders.updateOne({ DON_HANG_ID: order.DON_HANG_ID }, { $set: { DA_TRU_DIEM_THUONG: true } }, { session });
+    }
+    const links = await (await getCollection<any>('DON_HANG_VOUCHER')).find({ DON_HANG_ID: order.DON_HANG_ID }, { session }).toArray();
+    if (links.length) await (await getCollection<any>('VOUCHER')).updateMany({ VOUCHER_ID: { $in: links.map(v => v.VOUCHER_ID) } }, { $set: { DA_DUNG: true } }, { session });
+
+}
 
 /** Called inside the same transaction as payment writes for stock-checked orders. */
 export async function syncCheckoutInventory(session: ClientSession, orderId: string, success: boolean) {
@@ -88,7 +109,8 @@ export async function syncCheckoutInventory(session: ClientSession, orderId: str
   }
   if (success) {
     await confirmReservations(filter, orderId, { id: 'PAYMENT', role: 'system' }, session);
-    await orders.updateOne({ DON_HANG_ID: orderId }, { $set: { TRANG_THAI: 'Chờ xử lý' } }, { session });
+    await orders.updateOne({ DON_HANG_ID: orderId }, { $set: { TRANG_THAI: 'Đã đặt hàng thành công', NGAY_CAP_NHAT: new Date() },
+      $push: { LICH_SU_TRANG_THAI: { from: order.TRANG_THAI, to: 'Đã đặt hàng thành công', at: new Date(), actor: 'PAYMENT', reason: 'Đã xác nhận nghĩa vụ thanh toán/cọc' } } } as any, { session });
   } else {
     await releaseReservations(filter, { id: 'PAYMENT', role: 'system' }, 'Hết hạn / thất bại thanh toán', session);
     await orders.updateOne({ DON_HANG_ID: orderId, TRANG_THAI: 'Chờ thanh toán' }, { $set: { TRANG_THAI: 'Thanh toán thất bại' } }, { session });

@@ -3,20 +3,19 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 
-import { CartComponent as Cart } from './cart';
+import { CartComponent } from './cart';
 
 describe('Cart', () => {
-  let component: Cart;
-  let fixture: ComponentFixture<Cart>;
+  let component: CartComponent;
+  let fixture: ComponentFixture<CartComponent>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [Cart],
-      providers: [provideRouter([{ path: '**', children: [] }]), provideHttpClient(), provideHttpClientTesting()],
+      imports: [CartComponent]
     })
     .compileComponents();
 
-    fixture = TestBed.createComponent(Cart);
+    fixture = TestBed.createComponent(CartComponent);
     component = fixture.componentInstance;
     await fixture.whenStable();
   });

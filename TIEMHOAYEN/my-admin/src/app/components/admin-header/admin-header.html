@@ -42,10 +42,30 @@
             <i class="bi bi-search"></i>
         </div>
 
-        <button *ngIf="supportVisible" class="header-icon" routerLink="/customer-service/customer-chat" [attr.aria-label]="supportPending + ' yêu cầu hỗ trợ chờ tiếp nhận'" [title]="supportPending + ' yêu cầu hỗ trợ chờ tiếp nhận'">
-            <i class="bi bi-bell"></i>
-            <span *ngIf="supportPending" class="support-count">{{supportPending}}</span>
-        </button>
+        <div class="admin-notification" (click)="$event.stopPropagation()">
+            <button class="header-icon" type="button" (click)="toggleNotifications($event)" aria-label="Mở thông báo" [attr.aria-expanded]="showNotifications">
+                <i class="bi bi-bell"></i>
+                <span *ngIf="supportPending" class="notification-alert" aria-hidden="true"></span>
+            </button>
+            <section class="notification-panel" *ngIf="showNotifications">
+                <div class="notification-panel-head">
+                    <div><small>TRUNG TÂM XỬ LÝ</small><h2>Thông báo</h2></div>
+                    <button type="button" (click)="loadNotifications()" [disabled]="notificationsLoading" title="Tải lại"><i class="bi bi-arrow-clockwise"></i></button>
+                </div>
+                <p class="notification-error" *ngIf="notificationsError">{{notificationsError}}</p>
+                <div class="notification-loading" *ngIf="notificationsLoading && !notifications.length"><span></span> Đang tải thông báo…</div>
+                <div class="notification-empty" *ngIf="!notificationsLoading && !notifications.length && !notificationsError">
+                    <i class="bi bi-bell-slash"></i><strong>Chưa có thông báo cần xử lý</strong><span>Các cập nhật mới sẽ xuất hiện tại đây.</span>
+                </div>
+                <div class="notification-items" *ngIf="notifications.length">
+                    <button type="button" class="notification-row" *ngFor="let item of notifications" [class.unread]="!item.read" (click)="openNotification(item,$event)">
+                        <span class="notification-kind" [attr.data-priority]="item.priority"><i class="bi" [ngClass]="notificationIcon(item.group)"></i></span>
+                        <span class="notification-copy"><span class="notification-meta">{{item.group}} · {{item.priority}}</span><strong>{{item.title}}</strong><span>{{item.message}}</span><time>{{notificationTime(item.createdAt)}}</time></span>
+                        <i class="bi bi-chevron-right notification-arrow"></i>
+                    </button>
+                </div>
+            </section>
+        </div>
 
         <div
             class="language-switch"

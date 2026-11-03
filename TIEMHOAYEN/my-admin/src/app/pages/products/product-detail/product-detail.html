@@ -157,26 +157,11 @@
       </div>
 
       <div class="form-group">
-        <label>Bộ sưu tập</label>
-        <div class="assigned-values" *ngIf="!isEditing"><span *ngFor="let collection of product.collections">{{ collection }}</span><em *ngIf="!product.collections.length">Chưa gán</em></div>
-        <div class="multi-select" *ngIf="isEditing" [class.is-open]="openCategorySelect === 'collections'" (click)="$event.stopPropagation()">
-          <button type="button" class="multi-select__control" (click)="toggleCategorySelect('collections', $event)">
-            <span class="multi-select__placeholder" *ngIf="!product.collections.length">-- Chọn bộ sưu tập --</span>
-            <span class="multi-select__chips" *ngIf="product.collections.length"><span *ngFor="let value of product.collections">{{ value }}</span></span>
-            <i class="bi bi-chevron-down"></i>
-          </button>
-          <div class="multi-select__menu" *ngIf="openCategorySelect === 'collections'">
-            <button type="button" *ngFor="let option of collections" (click)="toggleCategoryValue('collections', option, $event)" [class.is-selected]="isCategoryValueSelected('collections', option)">
-              <i class="bi" [ngClass]="isCategoryValueSelected('collections', option) ? 'bi-check-square-fill' : 'bi-square'"></i>{{ option }}
-            </button>
-            <p *ngIf="!collections.length">Chưa có dữ liệu bộ sưu tập.</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label>Tồn kho</label>
-        <input type="number" [(ngModel)]="product.quantity" disabled title="Không thể sửa tồn trực tiếp tại sản phẩm">
+        <label>Số lượng khả dụng</label>
+        <input type="number" [(ngModel)]="product.quantity" disabled>
+        <small class="stock-help">
+          {{ product.finishedAvailable || 0 }} bó sẵn + {{ product.buildable || 0 }} bó có thể làm từ BOM
+        </small>
       </div>
     </div>
 

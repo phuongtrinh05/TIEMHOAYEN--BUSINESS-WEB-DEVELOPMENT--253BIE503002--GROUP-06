@@ -34,7 +34,11 @@
                 <div class="notification-dropdown-header">Thông báo</div>
 
                 <div class="notification-list">
-                  @if(notifications.length === 0){
+                  @if(isLoadingNotifications && notifications.length === 0){
+                    <div class="notification-state"><span class="notification-spinner"></span> Đang tải thông báo…</div>
+                  } @else if(notificationError && notifications.length === 0){
+                    <div class="notification-state notification-state-error"><span>{{notificationError}}</span><button type="button" (click)="reloadNotifications()">Thử lại</button></div>
+                  } @else if(notifications.length === 0){
                     <div class="notification-empty">Chưa có thông báo nào</div>
                   } @else {
                     @for(item of notifications; track item.id){
@@ -443,7 +447,11 @@
             <div class="notification-dropdown-header">Thông báo</div>
 
             <div class="notification-list">
-              @if(notifications.length === 0){
+              @if(isLoadingNotifications && notifications.length === 0){
+                <div class="notification-state"><span class="notification-spinner"></span> Đang tải thông báo…</div>
+              } @else if(notificationError && notifications.length === 0){
+                <div class="notification-state notification-state-error"><span>{{notificationError}}</span><button type="button" (click)="reloadNotifications()">Thử lại</button></div>
+              } @else if(notifications.length === 0){
                 <div class="notification-empty">Chưa có thông báo nào</div>
               } @else {
                 @for(item of notifications; track item.id){

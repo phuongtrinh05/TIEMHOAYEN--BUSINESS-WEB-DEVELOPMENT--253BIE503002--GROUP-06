@@ -1,9 +1,7 @@
 import {getDesign,isDesignProduct} from '../services/design3d.service.js';
 import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
-import { checkProductAvailability } from '../services/inventory/availability.service.js';
-import { InventoryError } from '../services/inventory/helpers.js';
-import { createHash } from 'node:crypto';
+import { getProductSellableStockMap, sellableStockFields } from '../services/inventory/availability.service.js';
 
 const createCartId = (): string => `GH${Date.now().toString().slice(-8)}`;
 const cartLine = (body: any) => {
@@ -77,6 +75,7 @@ const buildCartItems = async (cartId: string) => {
     topicCollection.find({}).toArray(),
     imageCollection.find({ SAN_PHAM_ID: { $in: productIds } }).toArray(),
   ]);
+  const stockMap = await getProductSellableStockMap(products);
 
   const productMap = new Map(products.map((item) => [item.SAN_PHAM_ID, item]));
   const topicMap = new Map(topics.map((topic) => [topic.CHU_DE_ID, topic]));
@@ -101,7 +100,7 @@ const buildCartItems = async (cartId: string) => {
       if (!product) return null;
       const topic = topicMap.get(product.CHU_DE_ID);
       const image = imageMap.get(product.SAN_PHAM_ID);
-      const availability = await checkProductAvailability(product.SAN_PHAM_ID, detail?.SO_LUONG || 1, null);
+      const stock = stockMap.get(String(product.SAN_PHAM_ID));
       return {
         SAN_PHAM_ID: product.SAN_PHAM_ID,
         LINE_KEY: detail.LINE_KEY || product.SAN_PHAM_ID,
@@ -111,12 +110,8 @@ const buildCartItems = async (cartId: string) => {
         TEN_SAN_PHAM: product.TEN_SAN_PHAM,
         GIA: product.GIA,
         GIA_KHUYEN_MAI: product.GIA_KHUYEN_MAI,
-        SO_LUONG_TON: availability.sellable,
-        TON_THANH_PHAM_KHA_DUNG: availability.finishedAvailable,
-        CO_THE_LAM_TU_NVL: availability.buildable,
-        SO_LUONG_KHA_DUNG: availability.sellable,
-        QUYET_DINH_KHA_DUNG: availability.decision,
-        NGUON_KHA_DUNG: 'Dịch vụ kho/BOM',
+        ...sellableStockFields(stock),
+        SO_LUONG_TON: stock?.sellable ?? 0,
         KIEU_DANG: product.KIEU_DANG,
         CHU_DE_ID: product.CHU_DE_ID,
         TEN_CHU_DE: topic?.TEN_CHU_DE || null,

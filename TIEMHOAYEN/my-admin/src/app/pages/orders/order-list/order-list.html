@@ -2,8 +2,7 @@
 
   <div class="order-list-page" (click)="closeAllMenus()">
 
-    <a href="/orders/requests" class="btn btn-outline-success mb-3">Yêu cầu đặt hàng · Sales</a>
-    <!-- ===== STAT CARDS ===== -->
+    <details class="after-sales-manager"><summary>Hồ sơ hậu mãi <b>{{afterSalesTotal}}</b></summary><div class="after-sales-filters"><input [(ngModel)]="afterSalesSearch" (keyup.enter)="loadAfterSalesQueue()" placeholder="Mã hồ sơ, mã đơn hoặc khách hàng"><select [(ngModel)]="afterSalesStatus" (change)="loadAfterSalesQueue()"><option value="">Tất cả trạng thái</option><option *ngFor="let status of afterSalesStatuses" [value]="status">{{status}}</option></select><select [(ngModel)]="afterSalesType" (change)="loadAfterSalesQueue()"><option value="">Tất cả loại</option><option value="return">Trả hàng</option><option value="exchange">Đổi/giao bổ sung</option><option value="refund">Hoàn tiền</option></select><input type="date" [(ngModel)]="afterSalesFrom" aria-label="Từ ngày"><input type="date" [(ngModel)]="afterSalesTo" aria-label="Đến ngày"><button (click)="loadAfterSalesQueue()" [disabled]="afterSalesLoading">{{afterSalesLoading?'Đang tải…':'Tìm kiếm'}}</button></div><div class="after-sales-queue"><button type="button" *ngFor="let r of afterSalesQueue" (click)="openAfterSales(r)"><span><b>{{r.requestId}}</b><small>{{r.orderId}} · {{r.type}} · {{r.requester?.name || 'Khách hàng'}}</small></span><span>{{r.status}}</span><p>{{r.description || r.reason}}</p></button><p *ngIf="!afterSalesQueue.length&&!afterSalesLoading">Không có hồ sơ phù hợp.</p></div></details><!-- ===== STAT CARDS ===== -->
     <div class="stat-cards">
       <div class="stat-card">
         <div class="stat-card__header">
@@ -12,13 +11,10 @@
 
         <div class="stat-card__value">
           {{ totalOrderCount }}
-          <span class="stat-card__trend stat-card__trend--up">
-            <i class="bi bi-arrow-up-short"></i>
-            14.4%
-          </span>
+
         </div>
 
-        <div class="stat-card__sub">7 ngày gần nhất</div>
+        <div class="stat-card__sub">Dữ liệu từ MongoDB</div>
       </div>
 
       <div class="stat-card">
@@ -28,44 +24,36 @@
 
         <div class="stat-card__value">
           {{ newOrderCount }}
-          <span class="stat-card__trend stat-card__trend--up">
-            <i class="bi bi-arrow-up-short"></i>
-            20%
-          </span>
+
         </div>
 
-        <div class="stat-card__sub">7 ngày gần nhất</div>
+        <div class="stat-card__sub">Dữ liệu từ MongoDB</div>
       </div>
 
       <div class="stat-card">
         <div class="stat-card__header">
-          <span class="stat-card__label">Đã hoàn thành</span>
+          <span class="stat-card__label">Chưa giao</span>
         </div>
 
         <div class="stat-card__value">
           {{ completedOrderCount }}
-          <span class="stat-card__trend stat-card__trend--up">
-            85%
-          </span>
+
         </div>
 
-        <div class="stat-card__sub">7 ngày gần nhất</div>
+        <div class="stat-card__sub">Dữ liệu từ MongoDB</div>
       </div>
 
       <div class="stat-card">
         <div class="stat-card__header">
-          <span class="stat-card__label">Đã hủy</span>
+          <span class="stat-card__label">Chưa thanh toán</span>
         </div>
 
         <div class="stat-card__value">
           {{ cancelledOrderCount }}
-          <span class="stat-card__trend stat-card__trend--down">
-            <i class="bi bi-arrow-down-short"></i>
-            5%
-          </span>
+
         </div>
 
-        <div class="stat-card__sub">7 ngày gần nhất</div>
+        <div class="stat-card__sub">Dữ liệu từ MongoDB</div>
       </div>
     </div>
 
@@ -218,35 +206,23 @@
             </div>
           </div>
 
-          <!-- More actions -->
+          <!-- Edit selected orders directly -->
           <div class="more-wrap" (click)="$event.stopPropagation()">
             <button
-              class="toolbar-btn toolbar-btn--more"
-              title="Tác vụ khác"
+              class="toolbar-btn toolbar-btn--edit"
+              title="Sửa trạng thái đơn hàng đã chọn"
               type="button"
-              [class.toolbar-btn--active]="isMoreMenuOpen"
-              (click)="toggleMoreMenu()"
+              [class.toolbar-btn--active]="isEditStatusMenuOpen"
+              (click)="openEditStatusMenu()"
             >
-              <i class="bi bi-three-dots"></i>
+              <i class="bi bi-pencil-square"></i>
             </button>
 
-            <div class="toolbar-dropdown more-dropdown" *ngIf="isMoreMenuOpen && !isEditStatusMenuOpen">
-              <button type="button" (click)="openEditStatusMenu()">
-                <i class="bi bi-pencil-square"></i>
-                Sửa
-              </button>
-
-              <button type="button" (click)="deleteSelectedOrders()">
-                <i class="bi bi-trash3"></i>
-                Xóa
-              </button>
-            </div>
-
-            <div class="toolbar-dropdown status-edit-dropdown" *ngIf="isMoreMenuOpen && isEditStatusMenuOpen">
+            <div class="toolbar-dropdown status-edit-dropdown" *ngIf="isEditStatusMenuOpen">
               <button
                 type="button"
                 *ngFor="let status of editableOrderStatuses"
-                (click)="updateSelectedOrderStatus(status)"
+                (click)="updateSelectedOrderStatus(status)" [disabled]="!canChangeSelected(status)"
               >
                 {{ status }}
               </button>
@@ -258,7 +234,7 @@
             class="toolbar-btn"
             title="Thêm đơn hàng"
             type="button"
-            (click)="goToCreateOrder(); $event.stopPropagation()"
+            (click)="goToCreateOrder(); $event.stopPropagation()" [disabled]="!canCreateOrder"
           >
             <i class="bi bi-plus-circle"></i>
           </button>
@@ -301,9 +277,9 @@
                 >
               </th>
               <th>Mã đơn</th>
-              <th>Mã khách hàng</th>
+              <th>Người đặt / nhận</th><th>Sản phẩm / lịch giao</th>
               <th>Ngày tạo</th>
-              <th>Tổng tiền</th>
+              <th>Tổng tiền / cọc</th><th>Đã thu / còn lại</th>
               <th>Thanh toán</th>
               <th>Trạng thái</th>
             </tr>
@@ -320,9 +296,9 @@
               </td>
 
               <td class="cell-id">{{ order.id }}</td>
-              <td class="cell-id">{{ displayCustomerId(order) }}</td>
+              <td>{{order.senderName || displayCustomerId(order)}}<br>{{order.receiverName}}</td><td><span *ngFor="let p of order.products">{{p.name}} × {{p.qty}}<br></span>{{order.deliveryDate}} {{order.deliverySlot}}</td>
               <td>{{ order.createdAt }}</td>
-              <td class="cell-total">{{ formatCurrency(order.total) }}</td>
+              <td class="cell-total">{{formatCurrency(order.total)}}<br>Cọc: {{formatCurrency(order.deposit || 0)}}</td><td>{{formatCurrency(order.paid || 0)}}<br>Còn: {{formatCurrency(order.remaining || 0)}}</td>
 
               <td>
                 <span
@@ -345,7 +321,7 @@
             </tr>
 
             <tr *ngIf="pagedOrders.length === 0">
-              <td colspan="7" class="empty-row">
+              <td colspan="9" class="empty-row">
                 <i class="bi bi-inbox"></i>
                 <span>Không có đơn hàng nào</span>
               </td>

@@ -15,13 +15,9 @@ export interface CartApiItem {
   TEN_CHU_DE?: string | null;
   SO_LUONG: number;
   SO_LUONG_TON?: number | null;
-  LINE_KEY?: string;
-  BIEN_THE_ID?: string | null;
-  THIET_KE_ID?: string | null;
-  CAU_HINH?: Record<string, unknown>;
-  GIA_DA_THAY_DOI?: boolean;
-  GIA_LUC_THEM?: number;
-  QUYET_DINH_KHA_DUNG?: string;
+  TON_KHA_DUNG?: number | null;
+  TON_THANH_PHAM_KHA_DUNG?: number | null;
+  SO_BO_CO_THE_LAM?: number | null;
 }
 
 export interface CartResponse {

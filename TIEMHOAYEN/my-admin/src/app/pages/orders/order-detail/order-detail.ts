@@ -7,6 +7,7 @@ import { combineLatest, interval, Subscription } from 'rxjs';
 
 // ===== TYPES =====
 export type OrderStatus =
+  | 'Đã đặt hàng thành công'
   | 'Chờ xử lý'
   | 'Đang chuẩn bị hàng'
   | 'Chờ vận chuyển'
@@ -18,7 +19,10 @@ export type OrderStatus =
   | 'Đã hoàn tiền'
   | 'Từ chối hoàn tiền/trả hàng'
   | 'Hoàn thành'
-  | 'Đã hủy';
+  | 'Đã hủy'
+  | 'Chờ thanh toán'
+  | 'Thanh toán thất bại'
+  | 'Giao không thành công';
 
 export type PaymentStatus = 'Đã thanh toán' | 'Chờ thanh toán' | 'Đã cọc' | 'Thanh toán thất bại';
 
@@ -31,13 +35,18 @@ export interface OrderProduct {
 }
 
 export interface Shipper {
+  id: string;
   name: string;
   phone: string;
   avatar: string;
 }
 
 export interface IOrderDetail {
+  snapshotAvailable?: boolean;
+  allowedStatuses?: string[]; history?: any[]; preparationHistory?: any[]; preparationAt?: string | null; preparationStartedAt?: string | null; preparationStartedBy?: string | null; materialIssued?: boolean; materialExportId?: string | null; preparationPriority?: { level: string; label: string; minutesToT: number | null };
   id: string;
+  requestId?: string | null;
+  orderVersion?: string | null;
   orderStatus: OrderStatus;
   paymentStatus: PaymentStatus;
   createdAt: string;
@@ -59,6 +68,8 @@ export interface IOrderDetail {
   products: OrderProduct[];
   customerNote: string;
   cardTemplate: string;
+  giftCard?: any;
+  handoverMedia?: string[];
   cardMessage: string;
   subtotal: number;
   shippingFee: number;
@@ -69,6 +80,8 @@ export interface IOrderDetail {
   tax: number;
   total: number;
   paid: number;
+  refunded: number;
+  paymentSummary?: { totalPayable:number; requiredDeposit:number; successfulReceiptsTotal:number; actualRefundsTotal:number; netCollected:number; remainingAmount:number; paymentStatus:string };
   remaining: number;
   paymentMethod: string;
   adminNote: string;
@@ -84,6 +97,8 @@ export interface IOrderDetail {
 }
 
 export interface TimelineStep {
+  action?: string;
+  actor?: string;
   status: OrderStatus;
   time: string;
   done: boolean;
@@ -102,6 +117,7 @@ interface RoutedOrder {
 type ToastType = 'success' | 'error';
 
 const ALL_STATUSES: OrderStatus[] = [
+  'Đã đặt hàng thành công',
   'Chờ xử lý',
   'Đang chuẩn bị hàng',
   'Chờ vận chuyển',
@@ -116,28 +132,18 @@ const ALL_STATUSES: OrderStatus[] = [
   'Đã hủy',
 ];
 
-const BASE_STATUS_OPTIONS: OrderStatus[] = [
-  ALL_STATUSES[0],
-  ALL_STATUSES[1],
-  ALL_STATUSES[2],
-  ALL_STATUSES[3],
-  ALL_STATUSES[4],
-  ALL_STATUSES[10],
-  ALL_STATUSES[11],
-];
+const BASE_STATUS_OPTIONS: OrderStatus[] = ['Đã đặt hàng thành công','Đang chuẩn bị hàng','Chờ vận chuyển','Đang giao','Giao thành công','Hoàn thành','Đã hủy'];
 
-const REFUND_REQUEST_STATUS = ALL_STATUSES[5];
-const REFUND_ACCEPTED_STATUS = ALL_STATUSES[6];
-const REFUND_REJECTED_STATUS = ALL_STATUSES[9];
+const REFUND_REQUEST_STATUS: OrderStatus = 'Yêu cầu hoàn tiền/trả hàng';
+const REFUND_ACCEPTED_STATUS: OrderStatus = 'Chấp nhận hoàn tiền';
+const REFUND_REJECTED_STATUS: OrderStatus = 'Từ chối hoàn tiền/trả hàng';
 const REFUND_STATUS_OPTIONS: OrderStatus[] = [
-  ALL_STATUSES[6],
-  ALL_STATUSES[7],
-  ALL_STATUSES[8],
-  ALL_STATUSES[9],
+  'Chấp nhận hoàn tiền','Đang hoàn tiền','Đã hoàn tiền','Từ chối hoàn tiền/trả hàng',
 ];
 
 
 const STEP_CONFIG: Record<OrderStatus, { icon: string }> = {
+  'Đã đặt hàng thành công': { icon: 'bi-check-circle-fill' },
   'Chờ xử lý': { icon: 'bi-gift-fill' },
   'Đang chuẩn bị hàng': { icon: 'bi-box-seam' },
   'Chờ vận chuyển': { icon: 'bi-boxes' },
@@ -150,21 +156,9 @@ const STEP_CONFIG: Record<OrderStatus, { icon: string }> = {
   'Từ chối hoàn tiền/trả hàng': { icon: 'bi-x-lg' },
   'Hoàn thành': { icon: 'bi-flag-fill' },
   'Đã hủy': { icon: 'icon-cancelled-square' },
-};
-
-const STATUS_TIME: Record<OrderStatus, string> = {
-  'Chờ xử lý': '02/01 10:34 AM',
-  'Đang chuẩn bị hàng': '02/01 11:34 AM',
-  'Chờ vận chuyển': '02/01 12:34 AM',
-  'Đang giao': '02/01 13:34 AM',
-  'Giao thành công': '02/01 17:34 AM',
-  'Yêu cầu hoàn tiền/trả hàng': '02/01 17:34 AM',
-  'Chấp nhận hoàn tiền': '00:00',
-  'Đang hoàn tiền': '00:00',
-  'Đã hoàn tiền': '00:00',
-  'Từ chối hoàn tiền/trả hàng': '00:00',
-  'Hoàn thành': '00:00',
-  'Đã hủy': '00:00',
+  'Chờ thanh toán': { icon: 'bi-clock' },
+  'Thanh toán thất bại': { icon: 'bi-x-lg' },
+  'Giao không thành công': { icon: 'bi-truck' },
 };
 
 @Component({
@@ -174,7 +168,7 @@ const STATUS_TIME: Record<OrderStatus, string> = {
     CommonModule, 
     FormsModule],
   templateUrl: './order-detail.html',
-  styleUrl: './order-detail.css',
+  styleUrls: ['./order-detail.css', './order-detail-refinement.css'],
 })
 export class OrderDetail implements OnInit, OnDestroy {
   constructor(
@@ -185,23 +179,7 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   order: IOrderDetail = this.createEmptyOrder();
 
-  shippers: Shipper[] = [
-    {
-      name: 'Nguyễn Quang Huy',
-      phone: '0553851470',
-      avatar: 'assets/images/nguyen_quang_huy.jpg',
-    },
-    {
-      name: 'Trần Minh Khang',
-      phone: '0908123456',
-      avatar: 'assets/images/logo-main.png',
-    },
-    {
-      name: 'Lê Hoàng Nam',
-      phone: '0934567890',
-      avatar: 'assets/images/logo-main.png',
-    },
-  ];
+  shippers: Shipper[] = [];
   
 
   private createEmptyOrder(): IOrderDetail {
@@ -238,6 +216,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       tax: 0,
       total: 0,
       paid: 0,
+      refunded: 0,
       remaining: 0,
       paymentMethod: '',
       adminNote: '',
@@ -291,6 +270,7 @@ export class OrderDetail implements OnInit, OnDestroy {
   editSnapshot: IOrderDetail | null = null;
 
   ngOnInit(): void {
+    this.loadEligibleShippers();
     this.routeSub = combineLatest([this.route.paramMap, this.route.queryParamMap]).subscribe(([params, query]) => {
       const routeOrderId = params.get('id') || query.get('orderId');
       const stateOrder = (typeof history !== 'undefined' ? history.state?.order : null) as RoutedOrder | null;
@@ -401,7 +381,10 @@ export class OrderDetail implements OnInit, OnDestroy {
       products: source.products ?? [],
       voucher: source.voucher ?? null,
     };
+    this.handoverMediaInput = (source.handoverMedia || []).join('\n');
+    if (source.preparationAt) this.preparationInput = this.toLocalDateTimeInput(source.preparationAt);
     this.ensureDefaultShipper();
+    this.loadAfterSales();
   }
 
   private applyRoutedOrder(source: RoutedOrder, routeOrderId: string | null): void {
@@ -419,8 +402,8 @@ export class OrderDetail implements OnInit, OnDestroy {
       paymentStatus: this.toDetailPaymentStatus(source.paymentStatus),
       subtotal: total || this.order.subtotal,
       total: total || this.order.total,
-      paid: total && isPaid ? total : this.order.paid,
-      remaining: total ? (isPaid ? 0 : total) : this.order.remaining,
+      paid: 0,
+      remaining: total || this.order.remaining,
     };
     this.ensureDefaultShipper();
   }
@@ -454,7 +437,7 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   private toDetailOrderStatus(value?: string): OrderStatus {
-    if (value === 'Đã giao') {
+    if (value === 'Đã giao' || value === 'Giao hàng thành công') {
       return 'Giao thành công';
     }
 
@@ -483,25 +466,41 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   saveEdit(): void {
-    this.isEditing = false;
-    this.editSnapshot = null;
+    if (!this.canEditNote) return;
+    const parts = String(this.order.deliveryDate || '').split('/');
+    const deliveryDate = parts.length === 3
+      ? `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
+      : String(this.order.deliveryDate || '');
+    this.adminApi.updateOrderMetadata(this.order.id, {
+      action: 'delivery',
+      expectedVersion: this.order.orderVersion,
+      receiverName: this.order.receiverName,
+      receiverPhone: this.order.receiverPhone,
+      deliveryAddress: this.order.deliveryAddress,
+      deliveryDate,
+      deliverySlot: this.order.deliverySlot,
+    }).subscribe({
+      next: response => {
+        this.applyApiOrderDetail(response.order);
+        this.isEditing = false;
+        this.editSnapshot = null;
+        this.showToast('Đã lưu thông tin giao hàng.');
+        this.cdr.detectChanges();
+      },
+      error: error => this.showToast(error?.error?.message || 'Chưa lưu được thay đổi.', 'error'),
+    });
   }
 
 
   // ===== TIMELINE =====
   get timeline(): TimelineStep[] {
-    const currentIdx = ALL_STATUSES.indexOf(this.order.orderStatus);
-
-    return ALL_STATUSES.map((status, index) => ({
-      status,
-      time: index <= currentIdx ? STATUS_TIME[status] : '00:00',
-      done: index <= currentIdx,
-      ...STEP_CONFIG[status],
-    }));
+    const history = this.order.history || [];
+    return history.length ? history.map(h => ({ status: this.toDetailOrderStatus(h.to), action: h.action === 'note' ? 'Cập nhật ghi chú nội bộ' : h.action === 'preparation' ? 'Nhập thời điểm chuẩn bị T' : h.action === 'delivery' ? 'Cập nhật thông tin giao hàng' : h.action === 'handover-media' ? 'Cập nhật ảnh/video bàn giao' : '', actor: h.actor || '', time: new Date(h.at).toLocaleString('vi-VN'), done: true, icon: STEP_CONFIG[this.toDetailOrderStatus(h.to)]?.icon || 'bi-clock' }))
+      : [{ status: this.order.orderStatus, time: this.order.createdAt ? 'Ngày tạo: ' + this.order.createdAt : '', done: true, icon: STEP_CONFIG[this.order.orderStatus]?.icon || 'bi-clock' }];
   }
 
   timelineIconClass(status: OrderStatus): string {
-    const map: Record<OrderStatus, string> = {
+    const map: Partial<Record<OrderStatus, string>> = {
       'Chờ xử lý': 'timeline-icon--pending',
       'Đang chuẩn bị hàng': 'timeline-icon--preparing',
       'Chờ vận chuyển': 'timeline-icon--waiting-ship',
@@ -516,7 +515,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       'Đã hủy': 'timeline-icon--cancelled',
     };
 
-    return map[status];
+    return map[status] || 'timeline-icon--pending';
   }
 
   orderStatusIcon(status: OrderStatus): string {
@@ -528,7 +527,7 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   get statusOptions(): OrderStatus[] {
-    return this.isRefundFlow ? REFUND_STATUS_OPTIONS : BASE_STATUS_OPTIONS;
+    return (this.order.allowedStatuses || []).map(s => this.toDetailOrderStatus(s));
   }
 
   get nextAllowedStatus(): OrderStatus | '' {
@@ -540,22 +539,8 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   isStatusOptionDisabled(status: OrderStatus): boolean {
-    const currentIndex = this.statusOptions.indexOf(this.order.orderStatus);
-    const statusIndex = this.statusOptions.indexOf(status);
-
-    if (this.order.orderStatus === REFUND_REQUEST_STATUS) {
-      return status !== REFUND_ACCEPTED_STATUS && status !== REFUND_REJECTED_STATUS;
-    }
-
-    if (this.isRefundFlow && status === REFUND_REJECTED_STATUS) {
-      return true;
-    }
-
-    if (currentIndex === -1 || statusIndex === -1) {
-      return true;
-    }
-
-    return statusIndex <= currentIndex;
+    const canonical = status === 'Giao thành công' ? 'Đã giao' : status;
+    return !this.adminApi.can('orders', 'update') || !(this.order.allowedStatuses || []).includes(canonical);
   }
 
   get isRefundFlow(): boolean {
@@ -581,25 +566,25 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   get canEdit(): boolean {
-    return [ALL_STATUSES[0], ALL_STATUSES[1]].includes(this.order.orderStatus);
+    return false; // Commercial and delivery snapshots require the agreed change workflow.
   }
 
   isOrderDelivering(): boolean {
-    return this.order.orderStatus === ALL_STATUSES[3];
+    return this.order.orderStatus === 'Đang giao';
   }
 
   getDeliveryProgress(): number {
     const status = this.order.orderStatus;
 
-    if (status === ALL_STATUSES[11]) {
+    if (status === 'Đã hủy') {
       return 0;
     }
 
-    if (this.isRefundFlow || status === ALL_STATUSES[10]) {
+    if (this.isRefundFlow || status === 'Hoàn thành') {
       return 100;
     }
 
-    const deliveryStatuses = BASE_STATUS_OPTIONS.filter((item) => item !== ALL_STATUSES[11]);
+    const deliveryStatuses = BASE_STATUS_OPTIONS.filter((item) => item !== 'Đã hủy');
     const currentIndex = deliveryStatuses.indexOf(status);
 
     if (currentIndex < 0) {
@@ -648,17 +633,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     return this.order.total || (this.computedTotalBeforeTax + this.order.tax);
   }
 
-  get computedPaid(): number {
-    if (this.order.paid > 0) {
-      return Math.min(this.order.paid, this.computedGrandTotal);
-    }
-
-    if (this.order.paymentStatus === '\u0110\u00e3 thanh to\u00e1n') {
-      return this.computedGrandTotal;
-    }
-
-    return 0;
-  }
+  get computedPaid(): number { return Math.max(0, Number(this.order.paid || 0)); }
 
   get computedRemaining(): number {
     if (this.order.total) {
@@ -681,12 +656,6 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   applySelectedStatus(): void {
     if (!this.selectedNextStatus || !this.order.id || this.isStatusOptionDisabled(this.selectedNextStatus)) return;
-
-    if (!this.hasUpdatablePaymentStatus) {
-      this.showToast('Chỉ đơn đã cọc hoặc đã thanh toán thành công mới được cập nhật trạng thái.', 'error');
-      this.closeStatusDropdown();
-      return;
-    }
 
     if (this.selectedNextStatus === REFUND_REJECTED_STATUS) {
       this.customerRefundReason = this.order.refundReason;
@@ -722,6 +691,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     this.toastMessage = message;
     this.toastType = type;
     this.toastVisible = true;
+    this.cdr.markForCheck();
 
     if (this.toastTimeoutId) {
       clearTimeout(this.toastTimeoutId);
@@ -729,45 +699,117 @@ export class OrderDetail implements OnInit, OnDestroy {
 
     this.toastTimeoutId = setTimeout(() => {
       this.toastVisible = false;
+      this.cdr.markForCheck();
     }, 2500);
   }
 
   // ===== SHIPPER =====
-  private ensureDefaultShipper(): void {
-    if (this.order.shipperName || this.order.shipperPhone) {
-      return;
-    }
+  private ensureDefaultShipper(): void {}
 
-    const defaultShipper = this.shippers[0];
-    if (!defaultShipper) {
-      return;
-    }
-
-    this.order.shipperName = defaultShipper.name;
-    this.order.shipperPhone = defaultShipper.phone;
-    this.order.shipperAvatar = defaultShipper.avatar;
+  private loadEligibleShippers(): void {
+    this.adminApi.getDeliveryStaff().subscribe({
+      next: response => {
+        const rows: any[] = (response as any).accounts || (response as any).staff || [];
+        this.shippers = rows.filter(row => /giao|shipper|vận chuyển|van chuyen/i.test(String(row.role || row.VAI_TRO || ''))
+          && !/khóa|nghỉ|inactive/i.test(String(row.status || row.TRANG_THAI || '')))
+          .map(row => ({ id:row.code || row.NHAN_VIEN_ID, name:row.name || row.HO_TEN, phone:row.phone || row.SDT || '', avatar:row.avatar || 'assets/images/logo-main.png' }));
+        this.cdr.markForCheck();
+      },
+      error: () => { this.shippers = []; this.cdr.markForCheck(); },
+    });
   }
 
   toggleShipperDropdown(): void {
+    if (!this.canEditNote) return;
+    if (!this.shippers.length) { this.showToast('Chưa có nhân viên giao hàng đang hoạt động.', 'error'); return; }
     this.showShipperDropdown = !this.showShipperDropdown;
   }
 
   selectShipper(shipper: Shipper): void {
-    this.order.shipperName = shipper.name;
-    this.order.shipperPhone = shipper.phone;
-    this.order.shipperAvatar = shipper.avatar;
-    this.showShipperDropdown = false;
+    this.adminApi.updateOrderMetadata(this.order.id, { action:'assign-shipper', shipperId:shipper.id, expectedVersion:this.order.orderVersion }).subscribe({
+      next: response => { this.applyApiOrderDetail(response.order); this.showShipperDropdown=false; this.showToast('Đã phân công nhân viên giao hàng.'); this.cdr.detectChanges(); },
+      error: error => this.showToast(error?.error?.message || 'Chưa phân công được nhân viên giao hàng.', 'error'),
+    });
   }
 
   // ===== ADMIN NOTE =====
+  afterSales: any[]=[]; afterSalesBusy=false; afterSalesError=''; afterSalesReason=''; afterSalesRejectCode=''; maxRefund=0; refundAmount=0; refundReference=''; transferred=false;
+  loadAfterSales() { if(!this.order.id)return; this.adminApi.getAfterSales(this.order.id).subscribe({next:r=>{this.afterSales=r.requests||[];this.cdr.markForCheck();},error:e=>{this.afterSalesError=e?.error?.message||'Chưa tải được hồ sơ.';this.cdr.markForCheck();}}); }
+  actAfterSales(r:any,action:string) { if(this.afterSalesBusy||!this.canEditNote)return;if(action==='refund'&&!this.transferred){this.afterSalesError='Chỉ xác nhận sau khi chuyển tiền và đối soát chứng từ.';return;}this.afterSalesBusy=true;this.adminApi.changeAfterSales(r.requestId,{version:r.version,action,reason:this.afterSalesReason,reasonCode:this.afterSalesRejectCode||(action==='reject'?'OTHER':''),maxRefund:Number(this.maxRefund),amount:Number(this.refundAmount),reference:this.refundReference,transferred:this.transferred}).subscribe({next:()=>{this.afterSalesBusy=false;this.afterSalesReason='';this.afterSalesRejectCode='';this.transferred=false;this.loadAfterSales();this.lastLoadedOrderId='';this.fetchOrderDetailOnce(this.order.id);},error:e=>{this.afterSalesBusy=false;this.afterSalesError=e?.error?.message||'Chưa xử lý được.';this.cdr.markForCheck();}}); }
+  receiveAfterSalesReturn(request: any): void {
+    if (this.afterSalesBusy || !this.canEditNote) return;
+    const items = (request.items || []).map((item: any) => ({
+      productId: item.productId,
+      receivedQuantity: Number(item.receivedQuantity || 0),
+      sellableQuantity: Number(item.sellableQuantity || 0),
+    })).filter((item: any) => item.receivedQuantity > 0);
+    if (!items.length || !this.afterSalesReason.trim()) {
+      this.afterSalesError = 'Nhập số lượng thực nhận, số lượng còn bán được và kết quả kiểm tra.';
+      return;
+    }
+    this.afterSalesBusy = true;
+    this.adminApi.changeAfterSales(request.requestId, { version: request.version, action: 'receive-return', reason: this.afterSalesReason.trim(), items }).subscribe({
+      next: () => { this.afterSalesBusy = false; this.afterSalesReason = ''; this.loadAfterSales(); this.lastLoadedOrderId = ''; this.fetchOrderDetailOnce(this.order.id); },
+      error: error => { this.afterSalesBusy = false; this.afterSalesError = error?.error?.message || 'Chưa ghi nhận được hàng trả.'; this.cdr.markForCheck(); },
+    });
+  }
+  preparationInput = '';
+  preparationReason = '';
+  preparationBusy = false;
+  handoverMediaInput = '';
+  get canSetPreparation(): boolean { return this.adminApi.can('orders', 'update') && ['Đã đặt hàng thành công', 'Chờ xử lý'].includes(this.order.orderStatus); }
+  savePreparation(): void {
+    if (this.preparationBusy) return;
+    const at = new Date(this.preparationInput);
+    if (!Number.isFinite(at.getTime())) { this.showToast('Nhập thời điểm T hợp lệ.', 'error'); return; }
+    if (!this.preparationReason.trim()) { this.showToast('Nhập lý do lập hoặc điều chỉnh lịch chuẩn bị.', 'error'); return; }
+    this.preparationBusy = true;
+    this.adminApi.updateOrderMetadata(this.order.id, { action: 'preparation', preparationAt: at.toISOString(), reason: this.preparationReason.trim() }).subscribe({ next: r => { this.preparationBusy = false; this.preparationReason = ''; this.applyApiOrderDetail(r.order); this.showToast('Đã lưu thời điểm chuẩn bị dự kiến T.'); this.cdr.detectChanges(); }, error: e => { this.preparationBusy = false; this.showToast(e?.error?.message || 'Chưa lưu được T.', 'error'); } });
+  }
+  startPreparation(): void {
+    if (this.preparationBusy) return;
+    this.preparationBusy = true;
+    this.adminApi.updateOrderMetadata(this.order.id, { action: 'start-preparation' }).subscribe({
+      next: r => { this.preparationBusy = false; this.applyApiOrderDetail(r.order); this.showToast('Đã bắt đầu chuẩn bị đơn.'); this.cdr.detectChanges(); },
+      error: e => { this.preparationBusy = false; this.showToast(e?.error?.message || 'Chưa thể bắt đầu chuẩn bị.', 'error'); },
+    });
+  }
+  private toLocalDateTimeInput(value: string): string {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return '';
+    const pad = (part: number) => String(part).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+  saveHandoverMedia(): void {
+    const media = this.handoverMediaInput.split('\n').map(value => value.trim()).filter(Boolean);
+    this.adminApi.updateOrderMetadata(this.order.id, { action: 'handover-media', media }).subscribe({
+      next: response => {
+        this.applyApiOrderDetail(response.order);
+        this.handoverMediaInput = (response.order?.handoverMedia || []).join('\n');
+        this.showToast(media.length ? 'Đã cập nhật hình ảnh/video bàn giao.' : 'Đã gỡ media bàn giao.');
+        this.cdr.detectChanges();
+      },
+      error: error => this.showToast(error?.error?.message || 'Chưa cập nhật được media bàn giao.', 'error'),
+    });
+  }
+  get canEditNote(): boolean { return this.adminApi.can('orders','update'); }
   startEditNote(): void {
+    if (!this.adminApi.can('orders', 'update')) return;
     this.noteTemp = this.order.adminNote;
     this.editingNote = true;
   }
 
   saveNote(): void {
-    this.order.adminNote = this.noteTemp;
-    this.editingNote = false;
+    if (!this.canEditNote) return;
+    this.adminApi.updateOrderMetadata(this.order.id, { action: 'note', adminNote: this.noteTemp, expectedVersion:this.order.orderVersion }).subscribe({
+      next: response => {
+        this.applyApiOrderDetail(response.order);
+        this.editingNote = false;
+        this.showToast('Đã lưu ghi chú nội bộ.');
+        this.cdr.detectChanges();
+      },
+      error: error => this.showToast(error?.error?.message || 'Chưa lưu được ghi chú.', 'error'),
+    });
   }
 
   cancelEditNote(): void {
@@ -821,6 +863,15 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   printOrder(): void {
     window.print();
+  }
+
+  printCard(): void {
+    const card = this.order.giftCard || {};
+    const popup = window.open('', '_blank', 'width=720,height=520');
+    if (!popup) { this.showToast('Trình duyệt đang chặn cửa sổ in thiệp.', 'error'); return; }
+    const safe = (value: unknown) => String(value || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
+    popup.document.write(`<!doctype html><html><head><title>Thiệp tặng</title><style>body{font-family:Georgia,serif;background:#fff8f5;color:#731919;padding:42px}.card{max-width:560px;margin:auto;border:2px solid #d9b382;border-radius:24px;padding:42px;text-align:center}.name{font-size:28px;margin:0 0 24px}.message{font-size:21px;line-height:1.7;white-space:pre-wrap}.brand{margin-top:34px;letter-spacing:3px}</style></head><body><article class="card"><h1 class="name">${safe(card.name || this.order.cardTemplate)}</h1><div class="message">${safe(this.order.cardMessage)}</div><div class="brand">TIỆM HOA YÊN</div></article><script>window.onload=()=>window.print()<\/script></body></html>`);
+    popup.document.close();
   }
 
   editOrder(): void {

@@ -16,6 +16,19 @@ export interface BomLineInput {
   role?: string;
   substitutes?: string[];
   note?: string;
+  required?: boolean;
+  allowSubstitution?: boolean;
+  substitutionRules?: BomSubstitutionRule[];
+}
+
+export interface BomSubstitutionRule {
+  materialId: string;
+  conversionRatio: number;
+  unit?: string;
+  maxQuantity?: number | null;
+  qualityRequirements?: string[];
+  condition?: string;
+  note?: string;
 }
 
 export interface BomLine {
@@ -25,6 +38,17 @@ export interface BomLine {
   VAI_TRO: string;
   DS_THAY_THE: string[];
   GHI_CHU: string;
+  BAT_BUOC: boolean;
+  CHO_PHEP_THAY_THE: boolean;
+  QUY_TAC_THAY_THE: Array<{
+    NGUYEN_VAT_LIEU_ID: string;
+    TY_LE_QUY_DOI: number;
+    DON_VI_TINH: string;
+    SO_LUONG_TOI_DA: number | null;
+    YEU_CAU_CHAT_LUONG: string[];
+    DIEU_KIEN: string;
+    GHI_CHU: string;
+  }>;
 }
 
 export interface ResolvedBom {
@@ -41,6 +65,9 @@ const mapLegacyRecipe = (row: any): BomLine => ({
   VAI_TRO: 'Chính',
   DS_THAY_THE: [],
   GHI_CHU: row.GHI_CHU || '',
+  BAT_BUOC: true,
+  CHO_PHEP_THAY_THE: false,
+  QUY_TAC_THAY_THE: [],
 });
 
 export const getActiveBom = async (productId: string, session?: ClientSession): Promise<ResolvedBom> => {
@@ -115,8 +142,12 @@ export const validateBomLines = async (rawLines: BomLineInput[], options: { stri
     return { errors: ['BOM phải có ít nhất một NVL.'], lines: [] };
   }
   const ids = rawLines.map((l) => String(l.materialId || '').trim());
+  const referencedSubstitutes = rawLines.flatMap((line) => [
+    ...(line.substitutes || []),
+    ...(line.substitutionRules || []).map(rule => rule.materialId),
+  ]);
   const materials = await (await col(COLLECTIONS.material))
-    .find({ NGUYEN_VAT_LIEU_ID: { $in: [...ids, ...rawLines.flatMap((l) => l.substitutes || [])] } })
+    .find({ NGUYEN_VAT_LIEU_ID: { $in: [...ids, ...referencedSubstitutes] } })
     .toArray();
   const byId = new Map(materials.map((m: any) => [m.NGUYEN_VAT_LIEU_ID, m]));
 
@@ -141,22 +172,52 @@ export const validateBomLines = async (rawLines: BomLineInput[], options: { stri
 
     const role = BOM_ROLES.includes(raw.role as any) ? String(raw.role) : 'Chính';
     const substitutes = [...new Set((raw.substitutes || []).map((s) => String(s).trim()).filter(Boolean))];
-    substitutes.forEach((subId) => {
+    const rawRules = Array.isArray(raw.substitutionRules) ? raw.substitutionRules : [];
+    const ruleIds = rawRules.map(rule => String(rule.materialId || '').trim()).filter(Boolean);
+    const allSubstitutes = [...new Set([...substitutes, ...ruleIds])];
+    allSubstitutes.forEach((subId) => {
       const sub: any = byId.get(subId);
       if (subId === id) errors.push(`${label}: NVL không thể thay thế chính nó.`);
       else if (!sub) errors.push(`${label}: NVL thay thế ${subId} không tồn tại.`);
       else if (material && (!material.NHOM_THAY_THE || sub.NHOM_THAY_THE !== material.NHOM_THAY_THE)) {
         errors.push(`${label}: ${subId} không cùng nhóm thay thế với ${id}.`);
+      } else if (material && !unitsCompatible(sub.DON_VI_TINH, material.DON_VI_TINH) && !rawRules.some(rule => rule.materialId === subId && Number(rule.conversionRatio) > 0)) {
+        errors.push(`${label}: ${subId} khác đơn vị; cần tỷ lệ quy đổi được xác nhận.`);
       }
     });
+
+    const substitutionRules = rawRules.map((rule, ruleIndex) => {
+      const subId = String(rule.materialId || '').trim();
+      const sub: any = byId.get(subId);
+      const ratio = Number(rule.conversionRatio);
+      const maximum = rule.maxQuantity == null || String(rule.maxQuantity).trim() === '' ? null : roundQty(Number(rule.maxQuantity));
+      if (!subId || !sub) errors.push(`${label}: quy tắc thay thế ${ruleIndex + 1} thiếu NVL hợp lệ.`);
+      if (!(ratio > 0)) errors.push(`${label}: tỷ lệ quy đổi của ${subId || `quy tắc ${ruleIndex + 1}`} phải > 0.`);
+      if (maximum != null && !(maximum > 0)) errors.push(`${label}: giới hạn thay thế của ${subId} phải > 0.`);
+      return {
+        NGUYEN_VAT_LIEU_ID: subId,
+        TY_LE_QUY_DOI: roundQty(ratio),
+        DON_VI_TINH: String(rule.unit || sub?.DON_VI_TINH || ''),
+        SO_LUONG_TOI_DA: maximum,
+        YEU_CAU_CHAT_LUONG: Array.isArray(rule.qualityRequirements) ? rule.qualityRequirements.map(String).map(v => v.trim()).filter(Boolean) : [],
+        DIEU_KIEN: String(rule.condition || '').trim(),
+        GHI_CHU: String(rule.note || '').trim(),
+      };
+    });
+
+    const allowSubstitution = Boolean(raw.allowSubstitution ?? substitutionRules.length > 0);
+    if (!allowSubstitution && (allSubstitutes.length || substitutionRules.length)) errors.push(`${label}: dòng không cho thay thế nhưng vẫn có danh sách/quy tắc thay thế.`);
 
     return {
       NGUYEN_VAT_LIEU_ID: id,
       DINH_LUONG: quantity,
       DON_VI_TINH: material?.DON_VI_TINH || unit,
       VAI_TRO: role,
-      DS_THAY_THE: substitutes,
+      DS_THAY_THE: allSubstitutes,
       GHI_CHU: String(raw.note || '').trim(),
+      BAT_BUOC: raw.required !== false,
+      CHO_PHEP_THAY_THE: allowSubstitution,
+      QUY_TAC_THAY_THE: substitutionRules,
     };
   });
 
@@ -172,6 +233,17 @@ const toLineInput = (body: any): BomLineInput[] =>
     role: l.role ?? l.VAI_TRO,
     substitutes: l.substitutes ?? l.DS_THAY_THE ?? [],
     note: l.note ?? l.GHI_CHU,
+    required: l.required ?? l.BAT_BUOC ?? true,
+    allowSubstitution: l.allowSubstitution ?? l.CHO_PHEP_THAY_THE ?? false,
+    substitutionRules: (l.substitutionRules ?? l.QUY_TAC_THAY_THE ?? []).map((rule: any) => ({
+      materialId: rule.materialId ?? rule.NGUYEN_VAT_LIEU_ID,
+      conversionRatio: rule.conversionRatio ?? rule.TY_LE_QUY_DOI,
+      unit: rule.unit ?? rule.DON_VI_TINH,
+      maxQuantity: rule.maxQuantity ?? rule.SO_LUONG_TOI_DA,
+      qualityRequirements: rule.qualityRequirements ?? rule.YEU_CAU_CHAT_LUONG ?? [],
+      condition: rule.condition ?? rule.DIEU_KIEN,
+      note: rule.note ?? rule.GHI_CHU,
+    })),
   }));
 
 export const listProductBoms = async (productId: string) => {
@@ -245,6 +317,10 @@ export const activateBom = async (bomId: string, actor: Actor) => {
   const lines = await (await col(COLLECTIONS.bomLine)).find({ BOM_ID: bomId }).toArray();
   const { errors } = await validateBomLines(lines.map((l: any) => ({
     materialId: l.NGUYEN_VAT_LIEU_ID, quantity: l.DINH_LUONG, unit: l.DON_VI_TINH, role: l.VAI_TRO, substitutes: l.DS_THAY_THE,
+    required: l.BAT_BUOC, allowSubstitution: l.CHO_PHEP_THAY_THE,
+    substitutionRules: (l.QUY_TAC_THAY_THE || []).map((rule: any) => ({ materialId: rule.NGUYEN_VAT_LIEU_ID,
+      conversionRatio: rule.TY_LE_QUY_DOI, unit: rule.DON_VI_TINH, maxQuantity: rule.SO_LUONG_TOI_DA,
+      qualityRequirements: rule.YEU_CAU_CHAT_LUONG, condition: rule.DIEU_KIEN, note: rule.GHI_CHU })),
   })));
   if (errors.length) throw new InventoryError(400, 'BOM chưa hợp lệ, không thể kích hoạt.', errors);
 

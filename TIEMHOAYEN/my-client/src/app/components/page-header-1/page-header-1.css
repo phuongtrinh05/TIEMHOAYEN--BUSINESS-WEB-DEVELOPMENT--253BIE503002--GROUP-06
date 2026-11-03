@@ -482,12 +482,14 @@ background:#b3b3b3;
 }
 
 .notification-empty,
+.notification-state,
 .cart-dropdown-empty{
 padding:26px 16px;
 text-align:center;
 color:#8a6f58;
 font-size:14px;
 }
+.notification-state{display:flex;min-height:120px;align-items:center;justify-content:center;gap:9px;color:#765d56}.notification-spinner{width:16px;height:16px;border:2px solid #ead3c7;border-top-color:#731919;border-radius:50%;animation:notification-spin .8s linear infinite}.notification-state-error{flex-direction:column;color:#8c2428}.notification-state-error button{border:1px solid #d9b382;background:#fff8f5;color:#731919;border-radius:999px;padding:7px 14px;font-weight:800;cursor:pointer}@keyframes notification-spin{to{transform:rotate(360deg)}}
 
 .cart-dropdown-item{
 display:flex;
