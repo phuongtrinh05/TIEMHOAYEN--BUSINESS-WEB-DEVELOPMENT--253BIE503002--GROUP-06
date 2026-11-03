@@ -1253,7 +1253,7 @@ body {
 .clear-all-filters:hover {
   border-color: #8b1e1e;
   background: #8b1e1e;
-  color: #fff;
+  color: rgba(255, 224, 172, 0.78);
   transform: translateY(-1px);
 }
 
