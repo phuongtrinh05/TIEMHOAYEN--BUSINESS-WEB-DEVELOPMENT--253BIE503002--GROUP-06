@@ -35,6 +35,8 @@ interface CampaignItem {
     styleUrls: ['./campaign-list.css']
 })
 export class CampaignListComponent implements OnInit {
+    loading = false;
+    loadError = '';
     searchKeyword = '';
     selectedStatus = 'Tất cả';
 
@@ -110,15 +112,18 @@ export class CampaignListComponent implements OnInit {
     }
 
     loadCampaigns(): void {
+        this.loading = true; this.loadError = '';
         this.adminApi.getCampaigns().subscribe({
             next: (response) => {
+                this.loading = false;
                 this.campaigns = response.campaigns.map((item) => this.mapCampaign(item));
                 this.applyFilters();
                 this.cdr.detectChanges();
             },
             error: (error) => {
                 console.error('Cannot load campaigns:', error);
-                alert(error?.error?.message || 'Không tải được danh sách chiến dịch.');
+                this.loading = false;
+                this.loadError = error?.error?.message || 'Không tải được danh sách chiến dịch. Vui lòng thử lại.';
                 this.cdr.detectChanges();
             }
         });

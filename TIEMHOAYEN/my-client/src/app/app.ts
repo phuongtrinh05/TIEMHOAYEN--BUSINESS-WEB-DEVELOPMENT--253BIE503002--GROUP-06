@@ -1,3 +1,4 @@
+import { MarketingPreferences } from './components/marketing-preferences/marketing-preferences';
 import { Component, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterOutlet, RouterLink } from '@angular/router';
 import { filter } from 'rxjs';
@@ -19,7 +20,7 @@ import { ChatbotWidget } from './components/chatbot-widget/chatbot-widget';
             PageFooter,
             PageFooter1,
             PageFooter2,
-            ChatbotWidget
+            ChatbotWidget, MarketingPreferences
           ],
   templateUrl: './app.html',
   styleUrl: './app.css'

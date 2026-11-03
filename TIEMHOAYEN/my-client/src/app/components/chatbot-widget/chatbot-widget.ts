@@ -1,10 +1,11 @@
-import { Component, inject, OnDestroy, OnInit, ChangeDetectorRef, AfterViewChecked, ElementRef, ViewChild } from '@angular/core';
+import { Component, inject, OnDestroy, OnInit, ChangeDetectorRef, AfterViewChecked, ElementRef, ViewChild, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Subscription } from 'rxjs';
 import { apiBaseUrl, currentOrderAccountKey, orderAccessSession } from '../../services/api-config';
+import { memberAccessToken } from '../../services/session-auth';
 import { OrderAccessService } from '../../services/order-access.service';
 import { SalesChatService } from '../../services/sales-chat.service';
 import { SupportChatService, SupportSession } from '../../services/support-chat.service';
@@ -30,6 +31,7 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
     busy = false;
     error = '';
     contact = { name: '', phone: '', email: '' };
+    contactErrors = { name: '', phone: '' };
     selectedImageDataUrl = '';
     selectedFileName = '';
     orderData: any = null;
@@ -55,8 +57,11 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
         id: string;
     } | null = null;
     get hasAccount() { return !!currentOrderAccountKey(); }
-    get needsLogin() { return this.hasAccount && !orderAccessSession(); }
-    get guestForm() { return !this.session && !this.hasAccount; }
+    get isMember() { return !!memberAccessToken(); }
+    get canViewOrders() { return this.isMember || !!this.access.session; }
+    get botCanAnswer() { return this.ticket?.mode === 'AI' || this.ticket?.mode === 'WAITING' && !this.ticket?.assignedTo; }
+    get needsLogin() { return this.hasAccount && !memberAccessToken(); }
+    get freshConversation() { return !!this.ticket && !this.messages.some(message => message.role === 'user'); }
     get resendSeconds() { return Math.max(0, Math.ceil((this.resendAt - this.now) / 1000)); }
     get statusText() { return this.ticket?.status === 'Đã xử lý' ? 'Đã kết thúc hỗ trợ' : this.ticket?.mode === 'WAITING' ? 'Đang chờ nhân viên tiếp nhận' : this.ticket?.mode === 'HUMAN' ? 'Nhân viên đang hỗ trợ' : 'Tư vấn tự động'; }
     ngOnInit() {
@@ -74,18 +79,26 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
             this.resetView();
             this.support.clear();
         } if (this.isOpen && this.session && !this.busy && !this.salesRequestId)
-            this.read(true); if (!orderAccessSession())
+            this.read(true); if (!memberAccessToken() && !orderAccessSession())
             this.orderData = null; this.cdr.markForCheck(); }, 5000);
     }
     ngOnDestroy() { this.subscriptions.forEach(s => s.unsubscribe()); if (this.timer)
         clearInterval(this.timer); }
+    @HostListener('window:auth-changed')
+    onAuthChanged() {
+        this.accountKey = currentOrderAccountKey();
+        this.support.clear();
+        this.resetView();
+        if (this.isOpen && memberAccessToken())
+            this.start();
+    }
     ngAfterViewChecked() { const key = `${this.session?.ticketId}:${this.messages.length}:${this.showOrderAccess}:${this.ticket?.ratingEligible}`; if (this.chatBody && key !== this.lastScrollKey) {
         this.lastScrollKey = key;
         this.chatBody.nativeElement.scrollTop = this.chatBody.nativeElement.scrollHeight;
     } }
     openChat() { this.isOpen = true; this.error = ''; this.session = this.support.session; if (this.session)
         this.read();
-    else if (this.hasAccount && !this.needsLogin)
+    else if (!this.needsLogin)
         this.start(); }
     closeChat() { this.isOpen = false; }
     backToAssistant() { this.sales.assistant(); this.openChat(); }
@@ -96,25 +109,49 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
     start() {
         if (this.busy)
             return;
-        if (!this.hasAccount && (!this.contact.name.trim() || !/^0\d{9}$/.test(this.contact.phone.replace(/[\s.-]/g, '')))) {
-            this.error = 'Nhập tên và SĐT hợp lệ trước khi bắt đầu chat.';
+        this.contactErrors = { name: '', phone: '' };
+        this.busy = true;
+        this.error = '';
+        this.http.post<any>(`${this.url}/sessions`, { ...this.contact, anonymous: !memberAccessToken(), ...(this.session ? { ticketId: this.session.ticketId } : {}) }, { headers: this.headers() }).subscribe({ next: r => { this.session = this.support.save(r); this.ticket = r.ticket; this.messages = r.messages || []; this.busy = false; this.cdr.markForCheck(); }, error: e => this.fail(e) });
+    }
+    submitContact() {
+        if (this.busy || !this.session)
+            return;
+        const nameValid = !!this.contact.name.trim();
+        const phoneValid = /^0\d{9}$/.test(this.contact.phone.replace(/[\s.-]/g, ''));
+        this.contactErrors = {
+            name: nameValid ? '' : 'Vui lòng nhập họ và tên.',
+            phone: phoneValid ? '' : 'Số điện thoại phải gồm 10 số và bắt đầu bằng 0.'
+        };
+        if (!nameValid || !phoneValid) {
+            this.cdr.markForCheck();
             return;
         }
         this.busy = true;
         this.error = '';
-        this.http.post<any>(`${this.url}/sessions`, { ...this.contact, ...(this.session ? { ticketId: this.session.ticketId } : {}) }, { headers: this.headers() }).subscribe({ next: r => { this.session = this.support.save(r); this.ticket = r.ticket; this.busy = false; this.read(); }, error: e => this.fail(e) });
+        this.http.post<any>(`${this.url}/sessions/${this.session.ticketId}/contact`, this.contact, { headers: this.headers() }).subscribe({ next: r => {
+            this.busy = false;
+            this.ticket = r.ticket;
+            this.messages = r.messages;
+            this.contactErrors = { name: '', phone: '' };
+            this.cdr.markForCheck();
+        }, error: e => this.fail(e) });
     }
     read(quiet = false) {
         if (!this.session)
             return;
         const id = this.session.ticketId;
-        this.http.get<any>(`${this.url}/sessions/${id}`, { headers: this.headers() }).subscribe({ next: r => { if (this.session?.ticketId !== id)
-                return; this.ticket = r.ticket; this.messages = r.messages; this.cdr.markForCheck(); }, error: e => { if (this.session?.ticketId !== id)
+        const latest = quiet && this.messages.length ? this.messages[this.messages.length - 1]?.at : '';
+        const params = latest ? new HttpParams().set('after', latest) : undefined;
+        this.http.get<any>(`${this.url}/sessions/${id}`, { headers: this.headers(), params }).subscribe({ next: r => { if (this.session?.ticketId !== id)
+                return; this.ticket = r.ticket; this.messages = r.incremental ? this.mergeMessages(this.messages, r.messages) : r.messages; this.cdr.markForCheck(); }, error: e => { if (this.session?.ticketId !== id)
                 return; if (e.status === 401 || e.status === 403) {
                 if (e.status === 401 && this.hasAccount)
                     sessionStorage.removeItem('orderLookupAccess');
                 this.support.clear();
                 this.resetView();
+                if (this.isOpen && !this.needsLogin)
+                    this.start();
             } if (!quiet)
                 this.fail(e); } });
     }
@@ -150,7 +187,7 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
         this.error = 'Chọn ảnh JPG, PNG hoặc WEBP tối đa 5MB.';
         return;
     } const reader = new FileReader(); reader.onload = () => { this.selectedImageDataUrl = String(reader.result); this.selectedFileName = file.name; this.cdr.markForCheck(); }; reader.readAsDataURL(file); }
-    openOrders() { this.orderPhone = this.ticket?.phone || ''; this.showOrderAccess = true; this.error = ''; if (orderAccessSession())
+    openOrders() { this.orderPhone = this.ticket?.phone || ''; this.showOrderAccess = true; this.error = ''; if (this.canViewOrders)
         this.loadOrders(); }
     loadOrders() { if (!this.session)
         return; this.otpBusy = true; this.http.get<any>(`${this.url}/sessions/${this.session.ticketId}/orders`, { headers: this.headers() }).subscribe({ next: r => { this.orderData = r; this.otpBusy = false; this.cdr.markForCheck(); }, error: e => { this.otpBusy = false; this.orderData = null; this.error = e.error?.message || 'Chưa tải được đơn.'; this.cdr.markForCheck(); } }); }
@@ -160,8 +197,9 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
         return; this.otpBusy = true; this.access.verify(this.challengeId, this.otpCode).subscribe({ next: () => { this.otpCode = ''; this.challengeId = ''; this.otpBusy = false; this.loadOrders(); }, error: e => { this.otpBusy = false; this.fail(e); } }); }
     rate() { if (this.busy || !this.session || !this.rating)
         return; this.busy = true; this.http.post(`${this.url}/sessions/${this.session.ticketId}/rating`, { score: this.rating, round: this.ticket.round }, { headers: this.headers() }).subscribe({ next: () => { this.busy = false; this.ratingNotice = 'Cảm ơn bạn đã đánh giá!'; this.read(); }, error: e => this.fail(e) }); }
-    image(url: string) { return url?.startsWith('/uploads/') ? `${apiBaseUrl().replace(/\/api$/, '')}${url}` : url; }
+    image(url: string) { return url?.startsWith('/') ? `${apiBaseUrl().replace(/\/api$/, '')}${url}` : url; }
+    private mergeMessages(current: any[], incoming: any[]) { const byId = new Map(current.map(m => [m.id, m])); for (const message of incoming || []) byId.set(message.id, message); return [...byId.values()].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()); }
     newSession() { this.support.clear(); this.resetView(); }
-    private resetView() { this.session = null; this.ticket = null; this.messages = []; this.orderData = null; this.showOrderAccess = false; this.error = ''; this.contact = { name: '', phone: '', email: '' }; this.inputText = ''; this.selectedImageDataUrl = ''; this.pendingSend = null; }
+    private resetView() { this.session = null; this.ticket = null; this.messages = []; this.orderData = null; this.showOrderAccess = false; this.error = ''; this.contact = { name: '', phone: '', email: '' }; this.contactErrors = { name: '', phone: '' }; this.inputText = ''; this.selectedImageDataUrl = ''; this.pendingSend = null; }
     private fail(e: any) { this.busy = false; this.error = e?.error?.message || 'Chưa thực hiện được, vui lòng thử lại.'; this.cdr.markForCheck(); }
 }

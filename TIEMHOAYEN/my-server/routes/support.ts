@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import * as c from '../controllers/support.js';
 const router = Router();
+router.get('/media/:token', c.media);
 router.post('/sessions', c.start);
 router.get('/sessions/:id', c.read);
 router.post('/sessions/:id/messages', c.send);
+router.post('/sessions/:id/contact', c.contact);
 router.get('/sessions/:id/orders', c.orders);
 router.post('/sessions/:id/rating', c.rate);
 router.get('/admin/tickets', c.requireSupportStaff, c.list);

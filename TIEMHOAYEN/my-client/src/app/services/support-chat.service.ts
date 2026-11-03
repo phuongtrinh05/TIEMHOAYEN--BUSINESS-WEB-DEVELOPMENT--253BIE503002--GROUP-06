@@ -9,11 +9,18 @@ export interface SupportSession {
 }
 @Injectable({ providedIn: 'root' })
 export class SupportChatService {
+    private readonly storageKey = 'tiemHoaYenSupportSession';
     readonly opened = new Subject<SupportSession>();
     get session(): SupportSession | null {
         try {
-            const s = JSON.parse(sessionStorage.getItem('tiemHoaYenSupportSession') || 'null');
-            return s?.ticketId && s.accountKey === currentOrderAccountKey() ? s : null;
+            const s = JSON.parse(localStorage.getItem(this.storageKey) || 'null');
+            const expired = s?.expiresAt && new Date(s.expiresAt).getTime() <= Date.now();
+            if (!s?.ticketId || s.accountKey !== currentOrderAccountKey() || expired) {
+                if (expired)
+                    localStorage.removeItem(this.storageKey);
+                return null;
+            }
+            return s;
         }
         catch {
             return null;
@@ -21,10 +28,10 @@ export class SupportChatService {
     }
     save(value: any, open = false) {
         const session: SupportSession = { ticketId: value.ticket?.id || value.ticketId, guestToken: value.guestToken, expiresAt: value.expiresAt, accountKey: currentOrderAccountKey() };
-        sessionStorage.setItem('tiemHoaYenSupportSession', JSON.stringify(session));
+        localStorage.setItem(this.storageKey, JSON.stringify(session));
         if (open)
             this.opened.next(session);
         return session;
     }
-    clear() { sessionStorage.removeItem('tiemHoaYenSupportSession'); }
+    clear() { localStorage.removeItem(this.storageKey); }
 }

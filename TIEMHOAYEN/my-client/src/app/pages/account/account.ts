@@ -1,3 +1,4 @@
+import { MarketingPreferences } from '../../components/marketing-preferences/marketing-preferences';
 import { Component, OnInit, OnDestroy, inject, PLATFORM_ID, ChangeDetectorRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule, NgForm } from '@angular/forms';
@@ -98,7 +99,7 @@ interface WardOption extends Ward {
 @Component({
   selector: 'app-account',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, PageFooter, PageHeader],
+  imports: [CommonModule, FormsModule, RouterLink, PageFooter, PageHeader, MarketingPreferences],
   templateUrl: './account.html',
   styleUrl: './account.css',
 })

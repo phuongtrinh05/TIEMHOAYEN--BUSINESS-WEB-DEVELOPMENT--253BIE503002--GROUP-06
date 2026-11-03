@@ -21,7 +21,8 @@
     "analytics:seed": "tsx scripts/analytics-seed.ts",
     "analytics:check": "tsx scripts/analytics-setup.ts --check",
     "test:analytics": "tsx --test tests/analytics.test.ts",
-    "test:content": "tsx --test tests/content.test.ts"
+    "test:content": "tsx --test tests/content.test.ts",
+    "test:marketing": "tsx --test tests/marketing.test.ts"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",

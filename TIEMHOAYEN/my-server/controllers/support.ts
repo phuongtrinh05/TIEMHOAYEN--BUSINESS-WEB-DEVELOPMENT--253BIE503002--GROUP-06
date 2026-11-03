@@ -3,7 +3,8 @@ import { getCollection } from '../mongo.js';
 import { InventoryError } from '../services/inventory/helpers.js';
 import { hasPermission } from '../services/role-permission.service.js';
 import { planChatReply } from '../services/chatbot-brain.service.js';
-import { SUPPORT_TICKETS, publicMessage, rateSupport, readSupport, sendSupport, startSupport, supportDto, supportOrders, supportStaffAction, supportStartRate } from '../services/support.service.js';
+import { openChatImage } from '../services/chat-media.service.js';
+import { SUPPORT_TICKETS, publicMessage, rateSupport, readSupport, sendSupport, startSupport, supportDto, supportOrders, supportStaffAction, supportStartRate, updateSupportContact } from '../services/support.service.js';
 const actor = (req: Request) => ({ orderToken: String(req.headers['x-order-access'] || ''), guestToken: String(req.headers['x-support-token'] || '') });
 const fail = (res: Response, e: any) => res.status(e instanceof InventoryError ? e.status : 500).json({ message: e instanceof InventoryError ? e.message : 'Chưa xử lý được cuộc tư vấn. Vui lòng thử lại.' });
 export async function requireSupportStaff(req: Request, res: Response, next: NextFunction) {
@@ -33,13 +34,19 @@ export async function start(req: Request, res: Response) {
 }
 export async function read(req: Request, res: Response) { try {
     res.setHeader('Cache-Control', 'no-store');
-    res.json(await readSupport(String(req.params.id), actor(req)));
+    res.json(await readSupport(String(req.params.id), actor(req), String(req.query.after || '')));
 }
 catch (e) {
     fail(res, e);
 } }
 export async function send(req: Request, res: Response) { try {
     res.json(await sendSupport(String(req.params.id), req.body, actor(req)));
+}
+catch (e) {
+    fail(res, e);
+} }
+export async function contact(req: Request, res: Response) { try {
+    res.json(await updateSupportContact(String(req.params.id), req.body, actor(req)));
 }
 catch (e) {
     fail(res, e);
@@ -89,8 +96,10 @@ export async function detail(req: Request, res: Response) {
         const t = await (await getCollection<any>(SUPPORT_TICKETS)).findOne({ _id: req.params.id });
         if (!t)
             throw new InventoryError(404, 'Không tìm thấy yêu cầu.');
-        const messages = await (await getCollection<any>('TIN_NHAN_CHAT')).find({ HO_TRO_ID: t._id }).sort({ THOI_GIAN_GUI: -1, TIN_NHAN_ID: -1 }).limit(300).toArray();
-        res.json({ ticket: supportDto(t, true), messages: messages.reverse().map(publicMessage) });
+        const parsedAfter = req.query.after ? new Date(String(req.query.after)) : null;
+        const incremental = !!parsedAfter && !Number.isNaN(parsedAfter.getTime());
+        const messages = await (await getCollection<any>('TIN_NHAN_CHAT')).find({ HO_TRO_ID: t._id, ...(incremental ? { THOI_GIAN_GUI: { $gte: parsedAfter } } : {}) }).sort({ THOI_GIAN_GUI: -1, TIN_NHAN_ID: -1 }).limit(300).toArray();
+        res.json({ ticket: supportDto(t, true), messages: messages.reverse().map(publicMessage), incremental });
     }
     catch (e) {
         fail(res, e);
@@ -102,6 +111,21 @@ export async function action(req: Request, res: Response) { try {
 catch (e) {
     fail(res, e);
 } }
+export async function media(req: Request, res: Response) {
+    try {
+        const { file, stream } = await openChatImage(String(req.params.token || ''));
+        res.setHeader('Content-Type', String(file.metadata?.mime || 'application/octet-stream'));
+        res.setHeader('Content-Length', String(file.length));
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+        res.setHeader('Content-Disposition', 'inline');
+        stream.once('error', () => res.destroy());
+        stream.pipe(res);
+    }
+    catch (e) {
+        fail(res, e);
+    }
+}
 export async function staff(req: Request, res: Response) { try {
     const rows = await (await getCollection<any>('NHAN_VIEN')).find({}, { projection: { NHAN_VIEN_ID: 1, HO_TEN: 1, VAI_TRO: 1, TRANG_THAI: 1 } }).toArray();
     res.json(rows.filter(e => hasPermission(e.VAI_TRO, 'customerService', 'update') && !/khóa|ngừng|nghỉ|inactive/i.test(String(e.TRANG_THAI || ''))).map(e => ({ id: e.NHAN_VIEN_ID, name: e.HO_TEN || e.NHAN_VIEN_ID })));

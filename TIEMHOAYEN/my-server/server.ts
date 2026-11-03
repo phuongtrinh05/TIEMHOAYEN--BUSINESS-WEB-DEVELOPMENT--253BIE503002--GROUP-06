@@ -1,6 +1,8 @@
 import luckyWheelRoutes from './routes/lucky-wheel.js';
 import {startLuckyJobs} from './services/lucky-wheel-jobs.js';
 import design3dRoutes from './routes/design3d.js';
+import marketingRoutes from './routes/marketing.js';
+import { ensureMarketingIndexes, startMarketingJobs } from './services/marketing.service.js';
 import contentRoutes from './routes/content.js';
 import { startContentJobs } from './services/content.service.js';
 import express, { Request, Response } from 'express';
@@ -94,6 +96,7 @@ app.use(cors({
 app.use(express.json({ limit: '8mb' }));
 app.use('/api/support', supportRoutes);
 app.use('/api/content', contentRoutes);
+app.use('/api/marketing', express.urlencoded({ extended: false, limit: '8kb' }), marketingRoutes);
 app.use('/uploads', express.static('uploads'));
 
 app.use('/api/auth', authRoutes);
@@ -194,6 +197,8 @@ const PORT = Number(process.env.PORT ?? 3000);
     await (await import('./mongo.js')).getCollection('NOI_DUNG_WEBSITE').then(c=>c.createIndex({MA_NOI_DUNG:1},{unique:true}));
     startContentJobs();
     await (await import('./services/loyalty-policy.service.js')).ensureLoyaltyIndexes();
+    await ensureMarketingIndexes();
+    if (process.env.MARKETING_BACKGROUND_JOBS !== 'false') startMarketingJobs();
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startInventoryJobs();
     startLuckyJobs();
     if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureNotificationIndexes();

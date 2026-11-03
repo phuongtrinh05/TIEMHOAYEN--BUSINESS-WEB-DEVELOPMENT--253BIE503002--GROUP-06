@@ -35,6 +35,8 @@ export class SupportInbox implements OnInit, OnDestroy, AfterViewChecked {
     source = '';
     search = '';
     reply = '';
+    replyImageDataUrl = '';
+    replyImageName = '';
     note = '';
     targetStaff = '';
     error = '';
@@ -64,12 +66,44 @@ export class SupportInbox implements OnInit, OnDestroy, AfterViewChecked {
     open(id: string, quiet = false) { if (quiet && id !== this.selectedId) return; if (!quiet) { this.selectedId = id; this.stickToBottom = true;
         this.error = '';
         this.reply = '';
+        this.clearReplyImage();
         this.note = '';
-    } this.http.get<any>(`${this.url}/tickets/${id}`).subscribe({ next: r => { if (id !== this.selectedId) return; this.active = r.ticket; this.messages = r.messages; this.cdr.markForCheck(); }, error: e => this.fail(e) }); }
+    } const latest = quiet && this.messages.length ? this.messages[this.messages.length - 1]?.at : '';
+      const params = latest ? new HttpParams().set('after', latest) : undefined;
+      this.http.get<any>(`${this.url}/tickets/${id}`, { params }).subscribe({ next: r => { if (id !== this.selectedId) return; this.active = r.ticket; this.messages = r.incremental ? this.mergeMessages(this.messages, r.messages) : r.messages; this.cdr.markForCheck(); }, error: e => this.fail(e) }); }
+    imageUrl(url: string) { return url?.startsWith('/') ? `${apiBaseUrl().replace(/\/api$/, '')}${url}` : url; }
+    private mergeMessages(current: any[], incoming: any[]) { const byId = new Map(current.map(m => [m.id, m])); for (const message of incoming || []) byId.set(message.id, message); return [...byId.values()].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()); }
     act(action: string, text = '') { if (this.busy || !this.active)
-        return; this.busy = true; this.error = ''; const id = this.active.id; this.http.post(`${this.url}/tickets/${id}/actions`, { action, text, version: this.active.version, employeeId: this.targetStaff }).subscribe({ next: () => { this.busy = false; if (action === 'reply')
-            this.reply = ''; if (action === 'note')
+        return; this.busy = true; this.error = ''; const id = this.active.id; this.http.post(`${this.url}/tickets/${id}/actions`, { action, text, version: this.active.version, employeeId: this.targetStaff, ...(action === 'reply' && this.replyImageDataUrl ? { imageDataUrl: this.replyImageDataUrl } : {}) }).subscribe({ next: () => { this.busy = false; if (action === 'reply') {
+            this.reply = '';
+            this.clearReplyImage();
+        } if (action === 'note')
             this.note = ''; this.open(id, true); this.load(); }, error: e => { this.fail(e); this.open(id, true); } }); }
+    onReplyFileSelected(event: Event) {
+        const input = event.target as HTMLInputElement;
+        const file = input.files?.[0];
+        input.value = '';
+        if (!file)
+            return;
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+            this.error = 'Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP.';
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            this.error = 'Ảnh không được vượt quá 5MB.';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            this.replyImageDataUrl = String(reader.result || '');
+            this.replyImageName = file.name;
+            this.error = '';
+            this.cdr.markForCheck();
+        };
+        reader.onerror = () => this.fail({ error: { message: 'Không đọc được ảnh. Vui lòng chọn lại.' } });
+        reader.readAsDataURL(file);
+    }
+    clearReplyImage() { this.replyImageDataUrl = ''; this.replyImageName = ''; }
     test() { if (this.testBusy)
         return; this.testBusy = true; this.error = ''; this.http.post<any>(`${this.url}/test`, { chatInput: this.testText, productId: this.testProduct }).subscribe({ next: r => { this.testResult = r; this.testBusy = false; this.cdr.markForCheck(); }, error: e => { this.testBusy = false; this.fail(e); } }); }
     private fail(e: any) { this.busy = false; this.error = e?.error?.message || 'Chưa tải/lưu được dữ liệu.'; this.cdr.markForCheck(); }

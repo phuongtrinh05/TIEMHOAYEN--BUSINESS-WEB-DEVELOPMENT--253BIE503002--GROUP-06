@@ -59,10 +59,36 @@ export async function selectLibraryImages(preferences: any) {
     return candidates;
 }
 const privateOrderQuestion = (s: string) => /\byen[a-z0-9]+\b|\byc[a-f0-9]+\b|don (cua )?(toi|tui|minh|em)|don nay|don do|tra cuu|ma don|don.*(toi dau|giao chua|thanh toan chua)|huy don.*(toi|tui|minh)/.test(s);
+const FAQ_STOP_WORDS = new Set(['shop', 'tiem', 'minh', 'tui', 'toi', 'em', 'duoc', 'khong', 'cho', 'hoi', 'ban', 'co', 'la', 'gi', 'nao', 'nhung', 'cac', 'thi', 'can', 'muon', 'a', 'nhi', 'vay']);
+function matchingFaqs(text: string, faqs: any[]) {
+    const words = [...new Set(normalizeChatText(text).split(/\W+/).filter(w => w.length > 1 && !FAQ_STOP_WORDS.has(w)))];
+    if (!words.length)
+        return [];
+    const required = words.length <= 2 ? 1 : Math.max(2, Math.ceil(words.length * .4));
+    const normalizedFaqs = faqs.map(f => ({ f, haystack: normalizeChatText(`${f.CAU_HOI} ${f.DANH_MUC_CAU_HOI || ''}`) }));
+    const frequency = new Map(words.map(word => [word, normalizedFaqs.filter(row => row.haystack.includes(word)).length]));
+    return normalizedFaqs.map(({ f, haystack }) => {
+        const matched = words.filter(w => haystack.includes(w));
+        const weightedScore = matched.reduce((sum, word) => sum + 1 + Math.log((faqs.length + 1) / ((frequency.get(word) || 0) + 1)), 0);
+        return { f, score: matched.length, weightedScore };
+    }).filter(x => x.score >= required).sort((a, b) => b.weightedScore - a.weightedScore || b.score - a.score || String(a.f.CAU_HOI_ID).localeCompare(String(b.f.CAU_HOI_ID))).slice(0, 1).map(x => x.f);
+}
+async function activeFlowerNames() {
+    const products = await (await getCollection<any>('SAN_PHAM')).find({ TRANG_THAI: 'Đang bán' }, { projection: { SAN_PHAM_ID: 1 } }).limit(1000).toArray();
+    const productIds = products.map(p => p.SAN_PHAM_ID).filter(Boolean);
+    if (!productIds.length)
+        return [];
+    const links = await (await getCollection<any>('HOA_TUOI_SAN_PHAM')).find({ SAN_PHAM_ID: { $in: productIds } }, { projection: { HOA_TUOI_ID: 1 } }).toArray();
+    const flowerIds = [...new Set(links.map(l => l.HOA_TUOI_ID).filter(Boolean))];
+    if (!flowerIds.length)
+        return [];
+    const flowers = await (await getCollection<any>('HOA_TUOI')).find({ HOA_TUOI_ID: { $in: flowerIds }, AN: { $ne: true }, TRANG_THAI: { $nin: ['Ẩn', 'Đang ẩn', 'Đã xóa'] } }, { projection: { TEN_HOA_TUOI: 1 } }).sort({ TEN_HOA_TUOI: 1 }).limit(30).toArray();
+    return [...new Set(flowers.map(f => String(f.TEN_HOA_TUOI || '').trim()).filter(Boolean))];
+}
 export async function planChatReply(body: any, history: any[] = []) {
     const text = String(body.chatInput || '').trim();
     const s = normalizeChatText(text);
-    const faqs = await (await getCollection<any>('CAU_HOI_CO_SAN')).find({ TRANG_THAI: 'Hoạt động' }, { projection: { _id: 0, CAU_HOI_ID: 1, CAU_HOI: 1, CAU_TRA_LOI: 1 } }).limit(100).toArray();
+    const faqs = await (await getCollection<any>('CAU_HOI_CO_SAN')).find({ TRANG_THAI: 'Hoạt động' }, { projection: { _id: 0, CAU_HOI_ID: 1, CAU_HOI: 1, CAU_TRA_LOI: 1, DANH_MUC_CAU_HOI: 1 } }).limit(100).toArray();
     if (needsImmediateHandoff(text) || body.action === 'handoff' || body.selectedImageId || body.imageDataUrl)
         return { intent: 'handoff', reason: needsImmediateHandoff(text) ? 'Khách yêu cầu nhân viên hoặc bức xúc' : 'Khách cần tư vấn trực tiếp', reply: 'Mình đã chuyển nội dung đến nhân viên để kiểm tra và hỗ trợ bạn.', preferences: body.preferences || {} };
     const explicit = text.match(/\bSP\d+\b/i)?.[0]?.toUpperCase();
@@ -71,13 +97,22 @@ export async function planChatReply(body: any, history: any[] = []) {
     let intent = privateOrderQuestion(s) ? 'order' : productId && productQuery ? 'product' : /xem (anh|mau)|tao (anh|bo|mot bo)|goi y.*(hoa|mau)|hoa.*(sinh nhat|tot nghiep)|bo hoa|hoa hong|tulip/.test(s) ? 'image' : 'faq';
     if (intent === 'faq' && history.some(m => m.ANH_GOI_Y?.length) && /^(mau |doi (sang )?|thay (sang )?)?(trang|do|vang|tim|hong|xanh|cam)( nhe| nha)?$/.test(s))
         intent = 'image';
+    if (intent === 'faq' && /(?:shop|tiem).*(?:ban|co).*(?:hoa gi|loai hoa)|(?:co|ban).*(?:nhung|cac) (?:loai|dong) hoa|hoa nao.*(?:dang ban|co ban)/.test(s)) {
+        const names = await activeFlowerNames();
+        return names.length
+            ? { intent: 'faq', reply: `Shop hiện có các dòng hoa như: ${names.join(', ')}. Danh sách có thể thay đổi theo sản phẩm đang bán; bạn cho mình biết dịp tặng, màu hoặc ngân sách để mình gợi ý mẫu phù hợp nhé.` }
+            : { intent: 'faq', reply: 'Danh mục hoa đang được cập nhật. Bạn có thể cho mình biết dịp tặng, màu hoặc ngân sách để mình tìm mẫu đang bán phù hợp nhé.' };
+    }
+    const deterministicFaqs = intent === 'faq' ? matchingFaqs(text, faqs) : [];
+    if (deterministicFaqs.length)
+        return { intent: 'faq', faqId: deterministicFaqs[0].CAU_HOI_ID, reply: deterministicFaqs.map(f => f.CAU_TRA_LOI).join('\n\n') };
     let ids: string[] = [];
     const key = process.env.GROQ_API_KEY;
     if (key && !/YOUR_|placeholder/i.test(key) && intent !== 'order') {
         try {
             const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
                 model: process.env.CHAT_MODEL || 'openai/gpt-oss-20b', temperature: 0,
-                messages: [{ role: 'system', content: CHAT_SYSTEM_PROMPT }, { role: 'user', content: JSON.stringify({ message: text, productId, history: history.slice(-6).map(m => ({ question: m.NOI_DUNG_CAU_HOI, answer: m.NOI_DUNG_TRA_LOI })), faqs: faqs.map(f => ({ id: f.CAU_HOI_ID, question: f.CAU_HOI, answer: f.CAU_TRA_LOI })) }) }],
+                messages: [{ role: 'system', content: CHAT_SYSTEM_PROMPT }, { role: 'user', content: JSON.stringify({ message: text, productId, history: history.slice(-10).map(m => ({ question: m.NOI_DUNG_CAU_HOI, answer: m.NOI_DUNG_TRA_LOI })), faqs: faqs.map(f => ({ id: f.CAU_HOI_ID, question: f.CAU_HOI, answer: f.CAU_TRA_LOI })) }) }],
                 response_format: { type: 'json_schema', json_schema: { name: 'chat_intent', strict: true, schema: { type: 'object', properties: { intent: { type: 'string', enum: ['faq', 'image', 'product', 'order', 'handoff'] }, faqIds: { type: 'array', items: { type: 'string' } }, productId: { type: ['string', 'null'] } }, required: ['intent', 'faqIds', 'productId'], additionalProperties: false } } }, max_completion_tokens: 1200,
             }, { headers: { Authorization: `Bearer ${key}` }, timeout: 8000 });
             const plan = JSON.parse(response.data.choices[0].message.content);
@@ -107,11 +142,7 @@ export async function planChatReply(body: any, history: any[] = []) {
         const images = await selectLibraryImages(preferences);
         return { intent, preferences, images, reply: images.length ? (images.every(i => i.exact) ? 'Mình tìm được các mẫu tham khảo phù hợp dưới đây.' : 'Mình chưa có đủ mẫu đúng tất cả tiêu chí; dưới đây là các mẫu gần giống.') + ' Đây là ảnh AI minh họa có sẵn, chưa phải báo giá hoặc xác nhận shop làm được. Bạn chọn mẫu để nhân viên kiểm tra nhé.' : 'Mình chưa tìm được ảnh phù hợp. Bạn muốn đổi màu/loại hoa hay gặp nhân viên tư vấn?' };
     }
-    let selected = faqs.filter(f => ids.includes(f.CAU_HOI_ID));
-    if (!selected.length) {
-        const words = s.split(/\W+/).filter(w => w.length > 2 && !['shop', 'tiem', 'minh', 'duoc', 'khong', 'cho', 'hoi', 'ban'].includes(w));
-        selected = faqs.map(f => ({ f, score: words.filter(w => normalizeChatText(f.CAU_HOI).includes(w)).length })).filter(f => f.score >= Math.max(2, Math.ceil(words.length * .5))).sort((a, b) => b.score - a.score).slice(0, 1).map(x => x.f);
-    }
+    const selected = faqs.filter(f => ids.includes(f.CAU_HOI_ID));
     if (selected.length)
         return { intent: 'faq', faqId: selected[0].CAU_HOI_ID, reply: selected.map(f => f.CAU_TRA_LOI).join('\n\n') };
     return { intent: 'handoff', reason: 'Chưa có thông tin phù hợp trong nguồn được duyệt', reply: 'Mình chưa có thông tin chắc chắn cho câu hỏi này. Mình chuyển nội dung đến nhân viên để hỗ trợ bạn nhé.' };

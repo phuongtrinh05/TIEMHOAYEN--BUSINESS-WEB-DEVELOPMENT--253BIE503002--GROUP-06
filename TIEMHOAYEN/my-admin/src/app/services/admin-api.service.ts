@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { mapPromotionCampaign, mapPromotionVoucher } from './promotion-mappers';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, catchError, forkJoin, map, of, switchMap, tap, timeout } from 'rxjs';
 import { apiBaseUrl } from './api-config';
@@ -1260,10 +1261,10 @@ export class AdminApiService {
     );
   }
 
-  getCampaigns(): Observable<AdminCampaignsResponse> {
-    return this.http.get<AdminCampaignsResponse>(`${this.apiUrl}/campaigns`);
-  }
 
+  getCampaigns(): Observable<AdminCampaignsResponse> {
+    return this.http.get<any>(`${this.apiUrl}/campaigns`).pipe(map(r => ({ ...r, campaigns: (r.campaigns || []).map(mapPromotionCampaign) })));
+  }
   createCampaign(payload: {
     name: string;
     description: string;
@@ -1273,10 +1274,10 @@ export class AdminApiService {
     active: boolean; approved: boolean; audience: string; membershipTiers: string[];
     totalLimit: number; perUserLimit: number; firstOrderOnly: boolean;
   }): Observable<{ message: string; campaign: AdminCampaign }> {
-    return this.http.post<{ message: string; campaign: AdminCampaign }>(
+    return this.http.post<any>(
       `${this.apiUrl}/campaigns`,
       payload
-    );
+    ).pipe(map(r => ({ ...r, campaign: mapPromotionCampaign(r.campaign) })));
   }
 
   updateCampaign(
@@ -1291,22 +1292,17 @@ export class AdminApiService {
       totalLimit: number; perUserLimit: number; firstOrderOnly: boolean;
     }
   ): Observable<{ message: string; campaign: AdminCampaign }> {
-    return this.http.put<{ message: string; campaign: AdminCampaign }>(
+    return this.http.put<any>(
       `${this.apiUrl}/campaigns/${encodeURIComponent(campaignId)}`,
       payload
-    );
+    ).pipe(map(r => ({ ...r, campaign: mapPromotionCampaign(r.campaign) })));
   }
-
   deleteCampaign(campaignId: string): Observable<{ message: string }> {
-    return this.http.delete<{ message: string }>(
-      `${this.apiUrl}/campaigns/${encodeURIComponent(campaignId)}`
-    );
+    return this.http.delete<{ message: string }>(`${this.apiUrl}/campaigns/${encodeURIComponent(campaignId)}`);
   }
-
   getVouchers(): Observable<AdminVouchersResponse> {
-    return this.http.get<AdminVouchersResponse>(`${this.apiUrl}/vouchers`);
+    return this.http.get<any>(`${this.apiUrl}/vouchers`).pipe(map(r => ({ ...r, vouchers: (r.vouchers || []).map(mapPromotionVoucher) })));
   }
-
   getNextVoucherId(): Observable<{ voucherId: string }> {
     return this.http.get<{ voucherId: string }>(`${this.apiUrl}/vouchers-next-id`);
   }
@@ -1325,10 +1321,14 @@ export class AdminApiService {
     startDate: string;
     endDate: string;
   }): Observable<{ message: string; voucher: AdminVoucher; vouchers?: AdminVoucher[] }> {
-    return this.http.post<{ message: string; voucher: AdminVoucher; vouchers?: AdminVoucher[] }>(
+    return this.http.post<any>(
       `${this.apiUrl}/vouchers`,
       payload
-    );
+    ).pipe(map(r => ({
+      ...r,
+      voucher: mapPromotionVoucher(r.voucher),
+      ...(Array.isArray(r.vouchers) ? { vouchers: r.vouchers.map(mapPromotionVoucher) } : {})
+    })));
   }
 
   updateVoucher(
@@ -1345,16 +1345,13 @@ export class AdminApiService {
       endDate: string;
     }
   ): Observable<{ message: string; voucher: AdminVoucher }> {
-    return this.http.put<{ message: string; voucher: AdminVoucher }>(
+    return this.http.put<any>(
       `${this.apiUrl}/vouchers/${encodeURIComponent(voucherId)}`,
       payload
-    );
+    ).pipe(map(r => ({ ...r, voucher: mapPromotionVoucher(r.voucher) })));
   }
-
   deleteVoucher(voucherId: string): Observable<{ message: string }> {
-    return this.http.delete<{ message: string }>(
-      `${this.apiUrl}/vouchers/${encodeURIComponent(voucherId)}`
-    );
+    return this.http.delete<{ message: string }>(`${this.apiUrl}/vouchers/${encodeURIComponent(voucherId)}`);
   }
 
   // API nguyên vật liệu / NCC / phiếu nhập / phiếu xuất: xem InventoryApiService (inventory-api.service.ts)

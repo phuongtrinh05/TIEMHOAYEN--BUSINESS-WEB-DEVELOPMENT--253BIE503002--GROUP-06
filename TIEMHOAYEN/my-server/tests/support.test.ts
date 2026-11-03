@@ -23,9 +23,12 @@ else {
         brain = await import('../services/chatbot-brain.service.js');
         await (await mongo.getCollection<any>('CAU_HOI_CO_SAN')).insertMany([
             { CAU_HOI_ID: 'FAQ_OPEN', CAU_HOI: 'Cửa hàng mở cửa lúc mấy giờ?', CAU_TRA_LOI: 'Mở cửa từ 8h đến 20h.', TRANG_THAI: 'Hoạt động' },
+            { CAU_HOI_ID: 'FAQ_DEPOSIT', CAU_HOI: 'Shop có yêu cầu đặt cọc không?', CAU_TRA_LOI: 'Đơn hàng cần đặt cọc trước.', TRANG_THAI: 'Hoạt động' },
             { CAU_HOI_ID: 'FAQ_LOCKED', CAU_HOI: 'Mật khẩu bí mật là gì?', CAU_TRA_LOI: 'LOCKED_SECRET', TRANG_THAI: 'Bị khóa' },
         ]);
-        await (await mongo.getCollection<any>('SAN_PHAM')).insertOne({ SAN_PHAM_ID: 'SP123', TEN_SAN_PHAM: 'Bó hoa test', GIA: 300000, TON_THANH_PHAM: 2, TP_DANG_GIU: 1 });
+        await (await mongo.getCollection<any>('SAN_PHAM')).insertOne({ SAN_PHAM_ID: 'SP123', TEN_SAN_PHAM: 'Bó hoa test', GIA: 300000, TON_THANH_PHAM: 2, TP_DANG_GIU: 1, TRANG_THAI: 'Đang bán' });
+        await (await mongo.getCollection<any>('HOA_TUOI')).insertOne({ HOA_TUOI_ID: 'HT_TEST', TEN_HOA_TUOI: 'Hoa hồng', TRANG_THAI: 'Đang hiển thị' });
+        await (await mongo.getCollection<any>('HOA_TUOI_SAN_PHAM')).insertOne({ HOA_TUOI_ID: 'HT_TEST', SAN_PHAM_ID: 'SP123' });
         await (await mongo.getCollection<any>('YEU_CAU_TAO_ANH')).insertMany([
             { YEU_CAU_ID: 'IMG_RED', FLOWER_TYPES: 'rose', COLOR: 'red', OCCASION: 'birthday', URL_ANH_KET_QUA: 'https://example.com/red.jpg', TRANG_THAI: 'Hoạt động' },
             { YEU_CAU_ID: 'IMG_LOCKED', FLOWER_TYPES: 'rose', COLOR: 'red', URL_ANH_KET_QUA: 'https://example.com/locked.jpg', TRANG_THAI: 'Bị khóa' },
@@ -39,6 +42,14 @@ else {
     test('guest contact gate is enforced on server; another guest cannot read chat', async () => {
         await assert.rejects(support.startSupport({}, {}));
         await assert.rejects(support.startSupport({ customerId: 'KH_FAKE', name: 'Fake', phone: '0901234567' }, {}));
+        const anonymous = await support.startSupport({ anonymous: true }, {});
+        assert.equal(anonymous.ticket.name, 'Khách vãng lai');
+        assert.equal(anonymous.ticket.phone, '');
+        const handoff = await send(anonymous, 'gặp nhân viên');
+        assert.equal(handoff.ticket.contactRequired, true);
+        const contacted = await support.updateSupportContact(anonymous.ticket.id, { name: 'Khách ẩn danh', phone: '0901111222' }, actor(anonymous));
+        assert.equal(contacted.ticket.contactRequired, false);
+        assert.equal(contacted.ticket.phone, '0901111222');
         const a = await guest(), b = await guest();
         await assert.rejects(support.readSupport(a.ticket.id, actor(b)));
         await assert.rejects(support.supportOrders(a.ticket.id, actor(a)));
@@ -51,6 +62,8 @@ else {
         const locked = await brain.planChatReply({ chatInput: 'Mật khẩu bí mật là gì?' });
         assert.equal(locked.intent, 'handoff');
         assert.ok(!locked.reply.includes('LOCKED_SECRET'));
+        assert.equal((await brain.planChatReply({ chatInput: 'Mình đặt hoa có cần cọc không?' })).faqId, 'FAQ_DEPOSIT');
+        assert.match((await brain.planChatReply({ chatInput: 'Shop có bán hoa gì?' })).reply, /Hoa hồng/);
     });
     test('product context uses current server price and stock, ignoring browser values', async () => {
         const result = await brain.planChatReply({ chatInput: 'bó này còn không giá bao nhiêu?', productId: 'SP123', productInfo: { price: 1, available: 999 } });
@@ -71,7 +84,7 @@ else {
         assert.ok(result.images?.every(i => i.id !== 'IMG_LOCKED'));
         assert.equal(await (await mongo.getCollection<any>('YEU_CAU_TAO_ANH')).countDocuments(), before);
     });
-    test('anger escalates immediately; waiting mode suppresses AI; retries do not duplicate', async () => {
+    test('anger escalates immediately; public FAQ still answers while unassigned; retries do not duplicate', async () => {
         assert.equal(brain.needsImmediateHandoff('người yêu đang giận nên mua hoa gì?'), false);
         const a = await guest();
         const messageId = randomUUID();
@@ -81,8 +94,8 @@ else {
         const retry = await support.sendSupport(a.ticket.id, { chatInput: 'Tôi rất bức xúc vì shop giao sai', messageId }, actor(a));
         assert.equal(retry.messages.length, r.messages.length);
         const next = await send(a, 'Cửa hàng mở cửa lúc mấy giờ?');
-        assert.equal(next.messages.length, r.messages.length + 1);
-        assert.equal(next.messages.at(-1)?.role, 'user');
+        assert.equal(next.messages.length, r.messages.length + 2);
+        assert.equal(next.messages.at(-1)?.text, 'Mở cửa từ 8h đến 20h.');
     });
     test('staff ownership, explicit closing, one rating per round, private notes and reopening', async () => {
         const a = await guest();

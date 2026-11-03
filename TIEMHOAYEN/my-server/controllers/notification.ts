@@ -1,5 +1,13 @@
+import { lookupAccess } from '../services/order-access.service.js';
 import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId } from '../mongo.js';
+
+
+async function marketingVisibility(req: Request) {
+  let customerId: string | null = null;
+  try { const access = await lookupAccess(req.headers['x-order-access']); if (access.authType === 'member') customerId = access.customerId; } catch {}
+  return { $or: [{ GUI_ID: { $exists: false } }, ...(customerId ? [{ KHACH_HANG_ID: customerId }] : [])] };
+}
 
 interface NotificationPayload {
   customerId?: string | null;
@@ -83,7 +91,7 @@ export const getNotifications = async (req: Request, res: Response) => {
     const query = customerId
       ? { $or: [{ KHACH_HANG_ID: customerId }, { KHACH_HANG_ID: null, DON_HANG_ID: null }] }
       : { $or: [{ KHACH_HANG_ID: null }, { KHACH_HANG_ID: { $exists: false } }] };
-    const notifications = (await collection.find(query).toArray()).sort(sortNotifications).slice(0, limit);
+    const notifications = (await collection.find({ $and: [query, await marketingVisibility(req)] }).toArray()).sort(sortNotifications).slice(0, limit);
 
     return res.status(200).json({
       total: notifications.length,

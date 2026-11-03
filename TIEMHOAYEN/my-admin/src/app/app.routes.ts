@@ -1,4 +1,5 @@
 import {LuckyWheelAdmin} from './pages/promotions/lucky-wheel/lucky-wheel';
+import { Marketing } from './pages/promotions/marketing/marketing';
 import {ContentWorkspace} from './pages/content/content-workspace/content-workspace';
 import { Routes } from '@angular/router';
 
@@ -208,6 +209,12 @@ export const routes: Routes = [
     {
         path: 'promotions',
         component: CampaignListComponent,
+        canActivate: [adminPermissionGuard],
+        data: { module: 'promotions' }
+    },
+    {
+        path: 'promotions/marketing',
+        component: Marketing,
         canActivate: [adminPermissionGuard],
         data: { module: 'promotions' }
     },

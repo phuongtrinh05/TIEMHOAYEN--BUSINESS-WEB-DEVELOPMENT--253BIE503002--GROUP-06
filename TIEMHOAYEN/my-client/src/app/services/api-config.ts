@@ -18,7 +18,7 @@ export const apiEndpointInterceptor: HttpInterceptorFn = (request, next) => {
   // Thành viên đã đăng nhập: gắn phiên cho mọi API để backend kiểm tra quyền sở hữu dữ liệu.
   const member = target.url.startsWith(`${apiBaseUrl()}/`) ? memberAccessToken() : '';
   if (member) target = target.clone({ setHeaders: { 'x-order-access': member } });
-  if ((target.url.startsWith(`${apiBaseUrl()}/orders`) || target.url.startsWith(`${apiBaseUrl()}/support`) || target.url.startsWith(`${apiBaseUrl()}/lucky`) || target.url.startsWith(`${apiBaseUrl()}/customers/`) && /\/(?:orders|wishlist)(?:\/|\?|$)/.test(target.url)) && typeof sessionStorage !== 'undefined') {
+  if ((target.url.startsWith(`${apiBaseUrl()}/orders`) || target.url.startsWith(`${apiBaseUrl()}/support`) || target.url.startsWith(`${apiBaseUrl()}/lucky`) || target.url.startsWith(`${apiBaseUrl()}/notifications`) || target.url.startsWith(`${apiBaseUrl()}/customers/`) && /\/(?:orders|wishlist)(?:\/|\?|$)/.test(target.url)) && typeof sessionStorage !== 'undefined') {
     const storedAccessToken = getCustomerOrderAccessToken();
     if (storedAccessToken) target = target.clone({ setHeaders: { 'x-order-access': storedAccessToken } });
     const payment = target.url.match(/\/orders\/([^/?]+)\/payment-(status|expired|retry)(?:\?|$)/);

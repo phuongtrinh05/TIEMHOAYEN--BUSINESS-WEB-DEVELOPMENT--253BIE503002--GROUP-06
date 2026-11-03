@@ -54,6 +54,8 @@ interface CustomerOption {
     styleUrls: ['./voucher-list.css']
 })
 export class VoucherListComponent implements OnInit {
+    loading = false;
+    loadError = '';
     searchKeyword = '';
     selectedDiscountType = 'Tất cả';
 
@@ -163,14 +165,18 @@ export class VoucherListComponent implements OnInit {
     }
 
     loadVouchers(): void {
+        this.loading = true; this.loadError = '';
         this.adminApi.getVouchers().subscribe({
             next: (response) => {
+                this.loading = false;
                 this.vouchers = response.vouchers.map((item) => this.mapVoucher(item));
                 this.applyFilters();
                 this.cdr.detectChanges();
             },
             error: (error) => {
                 console.error('Cannot load vouchers:', error);
+                this.loading = false;
+                this.loadError = error?.error?.message || 'Không tải được danh sách voucher. Vui lòng thử lại.';
                 this.cdr.detectChanges();
             }
         });
@@ -213,7 +219,7 @@ export class VoucherListComponent implements OnInit {
         this.adminApi.getCustomers().subscribe({
             next: (response) => {
                 this.customerOptions = (response.customers || []).map((customer: AdminCustomer) => ({
-                    code: customer.code,
+                    code: customer.code || String((customer as any).KHACH_HANG_ID || customer.id || ''),
                     name: customer.name,
                     phone: customer.phone,
                     email: customer.email
