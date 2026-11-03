@@ -1718,13 +1718,11 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     const customerId = this.getCustomerId();
 
     if (!customerId) {
-      alert('Vui lòng đăng nhập để lưu sản phẩm vào danh sách yêu thích.');
       this.router.navigate(['/login']);
       return;
     }
 
     if (!String(product.id || '').trim()) {
-      alert('Không xác định được sản phẩm cần lưu vào danh sách yêu thích.');
       return;
     }
 
@@ -1749,7 +1747,6 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       this.customerService.removeWishlistItem(customerId, product.id).subscribe({
         error: (err) => {
           console.error('Lỗi xóa sản phẩm yêu thích:', err);
-          alert(err?.error?.message || 'Chưa thể xóa sản phẩm khỏi danh sách yêu thích. Vui lòng thử lại.');
           this.wishlistProductIds.add(product.id);
           this.updateWishlistButton(product, true, button);
         },
@@ -1764,7 +1761,6 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     this.customerService.addWishlistItem(customerId, product.id).subscribe({
       error: (err) => {
         console.error('Lỗi thêm sản phẩm yêu thích:', err);
-        alert(err?.error?.message || 'Chưa thể lưu sản phẩm vào danh sách yêu thích. Vui lòng thử lại.');
         this.wishlistProductIds.delete(product.id);
         this.updateWishlistButton(product, false, button);
       },

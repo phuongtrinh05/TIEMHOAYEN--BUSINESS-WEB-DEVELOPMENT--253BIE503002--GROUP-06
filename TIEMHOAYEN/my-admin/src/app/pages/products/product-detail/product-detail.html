@@ -69,104 +69,109 @@
       <div class="form-group">
         <label>Màu sắc</label>
         <div class="assigned-values" *ngIf="!isEditing"><span *ngFor="let color of product.colors">{{ color }}</span><em *ngIf="!product.colors.length">Chưa gán</em></div>
-        <select
-            *ngIf="isEditing"
-            multiple size="4"
-            [(ngModel)]="product.colors"
-            >
-
-            <option
-                *ngFor="let color of colors"
-                [ngValue]="color">
-
-                {{ color }}
-
-            </option>
-        </select>
+        <div class="multi-select" *ngIf="isEditing" [class.is-open]="openCategorySelect === 'colors'" (click)="$event.stopPropagation()">
+          <button type="button" class="multi-select__control" (click)="toggleCategorySelect('colors', $event)">
+            <span class="multi-select__placeholder" *ngIf="!product.colors.length">-- Chọn màu sắc --</span>
+            <span class="multi-select__chips" *ngIf="product.colors.length"><span *ngFor="let value of product.colors">{{ value }}</span></span>
+            <i class="bi bi-chevron-down"></i>
+          </button>
+          <div class="multi-select__menu" *ngIf="openCategorySelect === 'colors'">
+            <button type="button" *ngFor="let option of colors" (click)="toggleCategoryValue('colors', option, $event)" [class.is-selected]="isCategoryValueSelected('colors', option)">
+              <i class="bi" [ngClass]="isCategoryValueSelected('colors', option) ? 'bi-check-square-fill' : 'bi-square'"></i>{{ option }}
+            </button>
+            <p *ngIf="!colors.length">Chưa có dữ liệu màu sắc.</p>
+          </div>
+        </div>
       </div>
 
       <div class="form-group">
         <label>Kiểu dáng</label>
         <div class="assigned-values" *ngIf="!isEditing"><span *ngIf="product.style">{{ product.style }}</span><em *ngIf="!product.style">Chưa gán</em></div>
-        <select
-            *ngIf="isEditing"
-            [(ngModel)]="product.style"
-            >
-
-            <option
-                *ngFor="let style of styles"
-                [value]="style">
-
-                {{ style }}
-
-            </option>
-
-        </select>
+        <div class="multi-select" *ngIf="isEditing" [class.is-open]="openCategorySelect === 'style'" (click)="$event.stopPropagation()">
+          <button type="button" class="multi-select__control" (click)="toggleCategorySelect('style', $event)">
+            <span class="multi-select__placeholder" *ngIf="!product.style">-- Chọn kiểu dáng --</span>
+            <span class="multi-select__chips" *ngIf="product.style"><span>{{ product.style }}</span></span>
+            <i class="bi bi-chevron-down"></i>
+          </button>
+          <div class="multi-select__menu" *ngIf="openCategorySelect === 'style'">
+            <button type="button" *ngFor="let option of styles" (click)="selectCategoryValue('style', option, $event)" [class.is-selected]="product.style === option">
+              <i class="bi" [ngClass]="product.style === option ? 'bi-check-circle-fill' : 'bi-circle'"></i>{{ option }}
+            </button>
+            <p *ngIf="!styles.length">Chưa có dữ liệu kiểu dáng.</p>
+          </div>
+        </div>
       </div>
 
       <div class="form-group">
         <label>Đối tượng</label>
         <div class="assigned-values" *ngIf="!isEditing"><span *ngFor="let target of product.targets">{{ target }}</span><em *ngIf="!product.targets.length">Chưa gán</em></div>
-        <select
-            *ngIf="isEditing"
-            multiple size="4"
-            [(ngModel)]="product.targets"
-            >
-
-            <option
-                *ngFor="let target of targets"
-                [ngValue]="target">
-
-                {{ target }}
-
-            </option>
-        </select>
+        <div class="multi-select" *ngIf="isEditing" [class.is-open]="openCategorySelect === 'targets'" (click)="$event.stopPropagation()">
+          <button type="button" class="multi-select__control" (click)="toggleCategorySelect('targets', $event)">
+            <span class="multi-select__placeholder" *ngIf="!product.targets.length">-- Chọn đối tượng --</span>
+            <span class="multi-select__chips" *ngIf="product.targets.length"><span *ngFor="let value of product.targets">{{ value }}</span></span>
+            <i class="bi bi-chevron-down"></i>
+          </button>
+          <div class="multi-select__menu" *ngIf="openCategorySelect === 'targets'">
+            <button type="button" *ngFor="let option of targets" (click)="toggleCategoryValue('targets', option, $event)" [class.is-selected]="isCategoryValueSelected('targets', option)">
+              <i class="bi" [ngClass]="isCategoryValueSelected('targets', option) ? 'bi-check-square-fill' : 'bi-square'"></i>{{ option }}
+            </button>
+            <p *ngIf="!targets.length">Chưa có dữ liệu đối tượng.</p>
+          </div>
+        </div>
       </div>
 
       <div class="form-group">
         <label>Chủ đề</label>
         <div class="assigned-values" *ngIf="!isEditing"><span *ngIf="product.topic">{{ product.topic }}</span><em *ngIf="!product.topic">Chưa gán</em></div>
-        <select
-            *ngIf="isEditing"
-            [(ngModel)]="product.topic"
-            >
-
-            <option
-                *ngFor="let topic of topics"
-                [value]="topic">
-
-                {{ topic }}
-
-            </option>
-
-        </select>
+        <div class="multi-select" *ngIf="isEditing" [class.is-open]="openCategorySelect === 'topic'" (click)="$event.stopPropagation()">
+          <button type="button" class="multi-select__control" (click)="toggleCategorySelect('topic', $event)">
+            <span class="multi-select__placeholder" *ngIf="!product.topic">-- Chọn chủ đề --</span>
+            <span class="multi-select__chips" *ngIf="product.topic"><span>{{ product.topic }}</span></span>
+            <i class="bi bi-chevron-down"></i>
+          </button>
+          <div class="multi-select__menu" *ngIf="openCategorySelect === 'topic'">
+            <button type="button" *ngFor="let option of topics" (click)="selectCategoryValue('topic', option, $event)" [class.is-selected]="product.topic === option">
+              <i class="bi" [ngClass]="product.topic === option ? 'bi-check-circle-fill' : 'bi-circle'"></i>{{ option }}
+            </button>
+            <p *ngIf="!topics.length">Chưa có dữ liệu chủ đề.</p>
+          </div>
+        </div>
       </div>
 
       <div class="form-group">
         <label>Hoa tươi</label>
         <div class="assigned-values" *ngIf="!isEditing"><span *ngFor="let flower of product.flowers">{{ flower }}</span><em *ngIf="!product.flowers.length">Chưa gán</em></div>
-        <select
-            *ngIf="isEditing"
-            multiple size="4"
-            [(ngModel)]="product.flowers"
-            >
-
-            <option
-                *ngFor="let flower of flowers"
-                [ngValue]="flower">
-
-                {{ flower }}
-
-            </option>
-        </select>
+        <div class="multi-select" *ngIf="isEditing" [class.is-open]="openCategorySelect === 'flowers'" (click)="$event.stopPropagation()">
+          <button type="button" class="multi-select__control" (click)="toggleCategorySelect('flowers', $event)">
+            <span class="multi-select__placeholder" *ngIf="!product.flowers.length">-- Chọn hoa tươi --</span>
+            <span class="multi-select__chips" *ngIf="product.flowers.length"><span *ngFor="let value of product.flowers">{{ value }}</span></span>
+            <i class="bi bi-chevron-down"></i>
+          </button>
+          <div class="multi-select__menu" *ngIf="openCategorySelect === 'flowers'">
+            <button type="button" *ngFor="let option of flowers" (click)="toggleCategoryValue('flowers', option, $event)" [class.is-selected]="isCategoryValueSelected('flowers', option)">
+              <i class="bi" [ngClass]="isCategoryValueSelected('flowers', option) ? 'bi-check-square-fill' : 'bi-square'"></i>{{ option }}
+            </button>
+            <p *ngIf="!flowers.length">Chưa có dữ liệu hoa tươi.</p>
+          </div>
+        </div>
       </div>
 
       <div class="form-group">
         <label>Bộ sưu tập</label>
         <div class="assigned-values" *ngIf="!isEditing"><span *ngFor="let collection of product.collections">{{ collection }}</span><em *ngIf="!product.collections.length">Chưa gán</em></div>
-        <select *ngIf="isEditing" multiple size="4" [(ngModel)]="product.collections">
-          <option *ngFor="let collection of collections" [ngValue]="collection">{{ collection }}</option>
-        </select>
+        <div class="multi-select" *ngIf="isEditing" [class.is-open]="openCategorySelect === 'collections'" (click)="$event.stopPropagation()">
+          <button type="button" class="multi-select__control" (click)="toggleCategorySelect('collections', $event)">
+            <span class="multi-select__placeholder" *ngIf="!product.collections.length">-- Chọn bộ sưu tập --</span>
+            <span class="multi-select__chips" *ngIf="product.collections.length"><span *ngFor="let value of product.collections">{{ value }}</span></span>
+            <i class="bi bi-chevron-down"></i>
+          </button>
+          <div class="multi-select__menu" *ngIf="openCategorySelect === 'collections'">
+            <button type="button" *ngFor="let option of collections" (click)="toggleCategoryValue('collections', option, $event)" [class.is-selected]="isCategoryValueSelected('collections', option)">
+              <i class="bi" [ngClass]="isCategoryValueSelected('collections', option) ? 'bi-check-square-fill' : 'bi-square'"></i>{{ option }}
+            </button>
+            <p *ngIf="!collections.length">Chưa có dữ liệu bộ sưu tập.</p>
+          </div>
+        </div>
       </div>
 
       <div class="form-group">

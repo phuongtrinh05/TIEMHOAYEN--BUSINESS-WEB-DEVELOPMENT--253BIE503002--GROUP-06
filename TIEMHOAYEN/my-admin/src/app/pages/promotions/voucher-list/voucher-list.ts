@@ -171,7 +171,6 @@ export class VoucherListComponent implements OnInit {
             },
             error: (error) => {
                 console.error('Cannot load vouchers:', error);
-                alert(error?.error?.message || 'Không tải được danh sách voucher.');
                 this.cdr.detectChanges();
             }
         });
@@ -340,7 +339,6 @@ export class VoucherListComponent implements OnInit {
             },
             error: (error) => {
                 console.error('Cannot update voucher:', error);
-                alert(error?.error?.message || 'Không lưu được voucher.');
             }
         });
     }
@@ -354,7 +352,6 @@ export class VoucherListComponent implements OnInit {
             next: () => this.loadVouchers(),
             error: (error) => {
                 console.error('Cannot delete voucher:', error);
-                alert(error?.error?.message || 'Không xóa được voucher.');
             }
         });
     }
@@ -456,7 +453,6 @@ export class VoucherListComponent implements OnInit {
                     this.newVoucher.code = String(error.error.voucherId);
                     this.cdr.detectChanges();
                 }
-                alert(error?.error?.message || 'Không thêm được voucher.');
             }
         });
     }
@@ -647,7 +643,6 @@ export class VoucherListComponent implements OnInit {
 
     private buildPayload(voucher: VoucherItem, startText: string, endText: string) {
         if (!voucher.voucherCode.trim()) {
-            alert('Vui lòng nhập tên voucher.');
             return null;
         }
 
@@ -655,18 +650,15 @@ export class VoucherListComponent implements OnInit {
         const endDate = this.parseInputDate(endText);
 
         if (!startDate || !endDate) {
-            alert('Vui lòng chọn ngày bắt đầu và ngày kết thúc.');
             return null;
         }
 
         if (endDate <= startDate) {
-            alert('Ngày kết thúc phải sau ngày bắt đầu.');
             return null;
         }
 
         const discountValue = Number(voucher.discountValue || 0);
         if (discountValue <= 0 || (voucher.discountType === 'Phần trăm' && discountValue > 100)) {
-            alert('Giá trị giảm không hợp lệ.');
             return null;
         }
 
@@ -728,14 +720,12 @@ export class VoucherListComponent implements OnInit {
         const quantity = Number(this.newVoucherQuantity);
 
         if (!Number.isInteger(quantity) || quantity < 1) {
-            alert('Vui lòng nhập số lượng voucher hợp lệ.');
             return null;
         }
 
         const totalVoucherCount = quantity * Math.max(1, this.selectedCustomerIds.length);
 
         if (totalVoucherCount > 500) {
-            alert('Số lượng voucher tạo mới không được vượt quá 500.');
             return null;
         }
 

@@ -90,6 +90,35 @@
   background: #fffaf7;
 }
 
+.cart-item--unavailable {
+  background: #f3efed;
+  opacity: .58;
+}
+
+.cart-item--unavailable:hover {
+  background: #f3efed;
+}
+
+.cart-item--unavailable .item-image {
+  filter: grayscale(.65);
+}
+
+.cart-status-badge {
+  display: inline-flex;
+  margin-top: 7px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #e6d9d6;
+  color: #8a2924;
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.qty-control button:disabled,
+.cart-item--unavailable .col-check input {
+  cursor: not-allowed;
+}
+
 .col-check input[type="checkbox"] {
   width: 16px;
   height: 16px;

@@ -40,11 +40,12 @@
       </div>
 
         <!-- Danh sách sản phẩm -->
-        <div class="cart-item" *ngFor="let item of cartItems">
+        <div class="cart-item" *ngFor="let item of cartItems" [class.cart-item--unavailable]="!item.purchasable">
           <div class="col-check">
             <input
               type="checkbox"
               [(ngModel)]="item.selected"
+              [disabled]="!item.purchasable"
               (ngModelChange)="onItemSelectedChange()"
             >
           </div>
@@ -58,6 +59,7 @@
               <p class="item-meta item-topic">
                 Chủ đề: <span>{{ getCartTopicLabel(item) }}</span>
               </p>
+              <span class="cart-status-badge" *ngIf="!item.purchasable">Ngừng bán</span>
               <p class="cart-line-warning" *ngIf="item.priceChanged">Giá sản phẩm đã được cập nhật theo giá hiện tại.</p>
             </div>
           </div>
@@ -72,9 +74,9 @@
 
           <div class="col-qty">
             <div class="qty-control">
-              <button type="button" (click)="decreaseQty(item)">-</button>
+              <button type="button" (click)="decreaseQty(item)" [disabled]="!item.purchasable">-</button>
               <span>{{ item.quantity }}</span>
-              <button type="button" (click)="increaseQty(item)">+</button>
+              <button type="button" (click)="increaseQty(item)" [disabled]="!item.purchasable">+</button>
             </div>
           </div>
 

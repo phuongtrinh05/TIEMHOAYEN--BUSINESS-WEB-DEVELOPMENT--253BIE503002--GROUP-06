@@ -894,7 +894,6 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     request$.subscribe({
       error: (err) => {
         console.error('Lỗi cập nhật yêu thích sản phẩm liên quan:', err);
-        alert(err?.error?.message || 'Chưa thể cập nhật danh sách yêu thích. Vui lòng thử lại.');
         item.isFavorite = previousFavorite;
 
         if (previousFavorite) {
@@ -979,13 +978,11 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     const customerId = this.getCustomerId();
 
     if (!customerId) {
-      alert('Vui lòng đăng nhập để lưu sản phẩm vào danh sách yêu thích.');
       this.router.navigate(['/login']);
       return;
     }
 
     if (!String(this.product.id || '').trim()) {
-      alert('Không xác định được sản phẩm cần lưu vào danh sách yêu thích.');
       return;
     }
 
@@ -1013,7 +1010,6 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     request$.subscribe({
       error: (err) => {
         console.error('Lỗi cập nhật yêu thích:', err);
-        alert(err?.error?.message || 'Chưa thể cập nhật danh sách yêu thích. Vui lòng thử lại.');
         this.isFavorite = previousFavorite;
         if (previousFavorite) {
           this.wishlistProductIds.add(this.product.id);

@@ -974,13 +974,11 @@ private startBestSellerProductAutoSlide(): void {
     const customerId = this.getCustomerId();
 
     if (!customerId) {
-      alert('Vui lòng đăng nhập để sử dụng danh sách yêu thích.');
       this.router.navigate(['/login']);
       return;
     }
 
     if (!String(product.id || '').trim()) {
-      alert('Không xác định được sản phẩm cần lưu vào danh sách yêu thích.');
       return;
     }
 
@@ -994,7 +992,6 @@ private startBestSellerProductAutoSlide(): void {
         },
         error: (err) => {
           console.error('Lỗi xóa sản phẩm yêu thích:', err);
-          alert(err?.error?.message || 'Chưa xóa được sản phẩm khỏi danh sách yêu thích. Vui lòng thử lại.');
         }
       });
 
@@ -1008,7 +1005,6 @@ private startBestSellerProductAutoSlide(): void {
       },
       error: (err) => {
         console.error('Lỗi thêm sản phẩm yêu thích:', err);
-        alert(err?.error?.message || 'Chưa thêm được sản phẩm vào danh sách yêu thích. Vui lòng thử lại.');
       }
     });
   }

@@ -1,5 +1,5 @@
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
+import { ChangeDetectorRef, Component, HostListener, Inject, OnInit, PLATFORM_ID } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { forkJoin } from 'rxjs';
@@ -9,6 +9,10 @@ import {
   AdminProductRecipeItem,
   AdminProductReview
 } from '../../../services/admin-api.service';
+
+type ProductMultiField = 'colors' | 'targets' | 'flowers' | 'collections';
+type ProductSingleField = 'style' | 'topic';
+type ProductDropdownField = ProductMultiField | ProductSingleField;
 
 @Component({
   selector: 'app-product-detail',
@@ -34,6 +38,7 @@ export class ProductDetail implements OnInit {
   itemsPerPage = 3;
   searchKeyword = '';
   loading = false;
+  openCategorySelect: ProductDropdownField | null = null;
 
   colors: string[] = [];
   styles: string[] = [];
@@ -47,6 +52,34 @@ export class ProductDetail implements OnInit {
   filteredMaterials: AdminProductRecipeItem[] = [];
 
   product: AdminProductDetailForm = this.emptyProduct();
+
+  @HostListener('document:click')
+  closeCategorySelect(): void {
+    this.openCategorySelect = null;
+  }
+
+  toggleCategorySelect(field: ProductDropdownField, event: Event): void {
+    event.stopPropagation();
+    this.openCategorySelect = this.openCategorySelect === field ? null : field;
+  }
+
+  toggleCategoryValue(field: ProductMultiField, value: string, event: Event): void {
+    event.stopPropagation();
+    const selected = this.product[field];
+    this.product[field] = selected.includes(value)
+      ? selected.filter((item) => item !== value)
+      : [...selected, value];
+  }
+
+  isCategoryValueSelected(field: ProductMultiField, value: string): boolean {
+    return this.product[field].includes(value);
+  }
+
+  selectCategoryValue(field: ProductSingleField, value: string, event: Event): void {
+    event.stopPropagation();
+    this.product[field] = value;
+    this.openCategorySelect = null;
+  }
 
   reviews: AdminProductReview[] = [];
   filteredReviews: AdminProductReview[] = [];
@@ -203,7 +236,6 @@ export class ProductDetail implements OnInit {
       },
       error: (error) => {
         console.error('Cannot load product detail', error);
-        alert('Không thể lấy chi tiết sản phẩm từ SQL.');
         this.loading = false;
         this.cdr.detectChanges();
       }
@@ -255,6 +287,7 @@ export class ProductDetail implements OnInit {
 
   toggleEdit(): void {
     this.isEditing = !this.isEditing;
+    this.openCategorySelect = null;
   }
 
   toggleStatus(): void {
@@ -283,7 +316,6 @@ export class ProductDetail implements OnInit {
         this.product.status = previousStatus;
         this.product.isPublished = previousPublished;
         this.statusSaving = false;
-        alert('Kh\u00f4ng th\u1ec3 c\u1eadp nh\u1eadt tr\u1ea1ng th\u00e1i s\u1ea3n ph\u1ea9m. Vui l\u00f2ng th\u1eed l\u1ea1i.');
         this.cdr.detectChanges();
       }
     });
@@ -295,7 +327,6 @@ export class ProductDetail implements OnInit {
 
     Array.from(input.files).forEach((file) => {
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
-        alert('Chỉ chấp nhận ảnh JPG, PNG, WEBP và tối đa 5 MB mỗi ảnh.');
         return;
       }
       const reader = new FileReader();
@@ -378,13 +409,11 @@ export class ProductDetail implements OnInit {
 
   saveProduct(): void {
     if (!this.product.code) {
-      alert('Không tìm thấy mã sản phẩm để lưu.');
       return;
     }
 
     const validationError = this.validateProduct();
     if (validationError) {
-      alert(validationError);
       return;
     }
 
@@ -402,7 +431,6 @@ export class ProductDetail implements OnInit {
       },
       error: (error) => {
         console.error('Cannot save product detail', error);
-        alert('Không thể lưu chi tiết sản phẩm. Vui lòng thử lại.');
       }
     });
   }

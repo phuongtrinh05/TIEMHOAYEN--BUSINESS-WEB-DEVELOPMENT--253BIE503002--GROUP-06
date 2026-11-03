@@ -52,6 +52,8 @@ interface CartItem {
   priceChanged?: boolean;
   priceWhenAdded?: number;
   availabilityDecision?: string;
+  status?: string;
+  purchasable: boolean;
 }
 
 interface SuggestedProduct {
@@ -332,6 +334,10 @@ export class CartComponent implements OnInit {
 
   private mapApiItemToCartItem(item: CartApiItem): CartItem {
     const topicName = this.getCartTopicName(item.TEN_CHU_DE);
+    const status = String(item.TRANG_THAI || '').trim();
+    const purchasable = item.THIET_KE_3D_ID
+      ? true
+      : this.normalizeText(status) === this.normalizeText('Đang bán');
 
     return {
       id: String(item.SAN_PHAM_ID || ''),
@@ -349,11 +355,13 @@ export class CartComponent implements OnInit {
       originalPrice: item.GIA_KHUYEN_MAI ? Number(item.GIA || 0) : null,
       quantity: Math.max(1, Number(item.SO_LUONG || 1)),
       image: this.getCartProductImage(item.TEN_SAN_PHAM, item.HINH_ANH),
-      selected: true,
+      selected: purchasable,
       maxQuantity: undefined,
       priceChanged: Boolean(item.GIA_DA_THAY_DOI),
       priceWhenAdded: Number(item.GIA_LUC_THEM || 0),
       availabilityDecision: String(item.QUYET_DINH_KHA_DUNG || ''),
+      status,
+      purchasable,
     };
   }
 
@@ -383,8 +391,10 @@ export class CartComponent implements OnInit {
           : Number(data.originalPrice),
       quantity: Math.max(1, Number(data.quantity || 1)),
       image: String(data.image || this.defaultImage),
-      selected: data.selected !== false,
+      selected: data.purchasable !== false && data.selected !== false,
       maxQuantity: undefined,
+      status: String(data.status || ''),
+      purchasable: data.purchasable !== false,
     };
   }
 
@@ -606,15 +616,15 @@ export class CartComponent implements OnInit {
   }
 
   isAllSelected(): boolean {
-    return this.cartItems.length > 0 &&
-      this.cartItems.every((item: CartItem) => item.selected);
+    const purchasableItems = this.cartItems.filter((item) => item.purchasable);
+    return purchasableItems.length > 0 && purchasableItems.every((item) => item.selected);
   }
 
   toggleSelectAll(event: Event): void {
     const checked = (event.target as HTMLInputElement).checked;
 
     this.cartItems.forEach((item: CartItem) => {
-      item.selected = checked;
+      item.selected = item.purchasable ? checked : false;
     });
 
     if (!this.isLoggedIn) {
@@ -626,6 +636,9 @@ export class CartComponent implements OnInit {
   }
 
   onItemSelectedChange(): void {
+    this.cartItems.forEach((item) => {
+      if (!item.purchasable) item.selected = false;
+    });
     if (!this.isLoggedIn) {
       this.saveGuestCartToStorage();
     }
@@ -633,6 +646,7 @@ export class CartComponent implements OnInit {
   }
 
   increaseQty(item: CartItem): void {
+    if (!item.purchasable) return;
     if (item.maxQuantity && item.quantity >= item.maxQuantity) {
       console.warn(`Số lượng "${item.name}" đã đạt tối đa`);
       return;
@@ -654,6 +668,7 @@ export class CartComponent implements OnInit {
   }
 
   decreaseQty(item: CartItem): void {
+    if (!item.purchasable) return;
     if (item.quantity <= 1) {
       return;
     }
@@ -873,6 +888,11 @@ export class CartComponent implements OnInit {
       (item: CartItem) => item.id === product.id
     );
 
+    if (existingItem && !existingItem.purchasable) {
+      console.warn(`Sản phẩm "${product.name}" đã ngừng bán.`);
+      return;
+    }
+
     if (existingItem?.maxQuantity && existingItem.quantity >= existingItem.maxQuantity) {
       console.warn(`Số lượng "${product.name}" đã đạt tối đa`);
       return;
@@ -903,6 +923,8 @@ export class CartComponent implements OnInit {
         image: product.image,
         selected: true,
         maxQuantity: product.maxQuantity,
+        status: 'Đang bán',
+        purchasable: true,
       });
     }
 

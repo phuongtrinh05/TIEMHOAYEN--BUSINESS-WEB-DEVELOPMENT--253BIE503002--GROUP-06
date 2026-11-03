@@ -153,7 +153,6 @@ export class CategoryList implements OnInit {
     }
 
     if (this.activeTab === 'style') {
-      alert('Kiểu dáng được lấy từ sản phẩm. Bạn sửa kiểu dáng trong chi tiết sản phẩm nha.');
       return;
     }
 
@@ -174,7 +173,6 @@ export class CategoryList implements OnInit {
       },
       error: (error) => {
         console.error('Cannot create category', error);
-        alert('Không thể thêm danh mục. Vui lòng thử lại.');
       }
     });
   }
@@ -283,7 +281,6 @@ export class CategoryList implements OnInit {
     }
 
     if (this.activeTab === 'style') {
-      alert('Kiểu dáng được lấy từ sản phẩm nên không xóa trực tiếp tại đây.');
       this.showDeletePopup = false;
       return;
     }
@@ -298,7 +295,6 @@ export class CategoryList implements OnInit {
       },
       error: (error) => {
         console.error('Cannot delete category', error);
-        alert('Không thể xóa danh mục này. Có thể đang có sản phẩm sử dụng danh mục.');
         this.showDeletePopup = false;
       }
     });

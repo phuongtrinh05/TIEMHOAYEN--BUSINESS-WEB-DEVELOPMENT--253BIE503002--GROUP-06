@@ -1,5 +1,5 @@
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { ChangeDetectorRef, Component, ElementRef, Inject, OnInit, PLATFORM_ID, ViewChild } from '@angular/core';
+import { ChangeDetectorRef, Component, ElementRef, HostListener, Inject, OnInit, PLATFORM_ID, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { forkJoin } from 'rxjs';
@@ -7,6 +7,9 @@ import { AdminApiService, AdminProduct } from '../../../services/admin-api.servi
 
 type ProductFilter = 'all' | 'featured' | 'sale' | 'stop';
 type PaginationItem = number | 'ellipsis';
+type ProductMultiField = 'colors' | 'targets' | 'flowers' | 'collections';
+type ProductSingleField = 'style' | 'topic';
+type ProductDropdownField = ProductMultiField | ProductSingleField;
 
 @Component({
   selector: 'app-product-list',
@@ -58,8 +61,38 @@ export class ProductList implements OnInit {
   nextCodeReservation: { code: string; token: string } | null = null;
   private codeReservationLoading = false;
   productCodeError = '';
+  openMultiSelect: ProductDropdownField | null = null;
 
   newProduct = this.createEmptyProduct();
+
+  @HostListener('document:click')
+  closeMultiSelect(): void {
+    this.openMultiSelect = null;
+  }
+
+  toggleMultiSelect(field: ProductDropdownField, event: Event): void {
+    event.stopPropagation();
+    if (this.categoryOptionsLoading) return;
+    this.openMultiSelect = this.openMultiSelect === field ? null : field;
+  }
+
+  toggleMultiValue(field: ProductMultiField, value: string, event: Event): void {
+    event.stopPropagation();
+    const selected = this.newProduct[field];
+    this.newProduct[field] = selected.includes(value)
+      ? selected.filter((item) => item !== value)
+      : [...selected, value];
+  }
+
+  isMultiValueSelected(field: ProductMultiField, value: string): boolean {
+    return this.newProduct[field].includes(value);
+  }
+
+  selectSingleValue(field: ProductSingleField, value: string, event: Event): void {
+    event.stopPropagation();
+    this.newProduct[field] = value;
+    this.openMultiSelect = null;
+  }
 
   materials = [
     {
@@ -651,7 +684,6 @@ export class ProductList implements OnInit {
     }).subscribe({
       next: (response) => {
         this.savingProduct = false;
-        alert(`Đã lưu sản phẩm ${response.product?.sku || this.newProduct.sku} thành công.`);
         this.resetForm();
         this.showCreatePopup = false;
         this.serverNextSku = '';
@@ -669,6 +701,7 @@ export class ProductList implements OnInit {
     this.formError = '';
     this.savingProduct = false;
     this.productImages = [];
+    this.openMultiSelect = null;
     this.materials = [
       {
         name: '',
