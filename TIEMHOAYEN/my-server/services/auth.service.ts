@@ -1,4 +1,5 @@
 import { sendGmailOtp } from './gmail-otp.service.js';
+import { sendAppsScriptOtp } from './apps-script-otp.service.js';
 import { createHash, createHmac, randomBytes, randomInt } from 'node:crypto';
 import { Request, Response, NextFunction } from 'express';
 import { getCollection } from '../mongo.js';
@@ -131,6 +132,10 @@ export async function deliverOtp(email: string, code: string) {
   if (process.env.AUTH_OTP_DELIVERY === 'test' && process.env.NODE_ENV !== 'production' && /^mongodb:\/\/(127\.0\.0\.1|localhost):/.test(process.env.MONGO_URI || '') && /_LOCAL_TEST$/.test(process.env.MONGO_DATABASE || '')) {
     await (await collection('HOP_THU_THU_NGHIEM')).insertOne({ EMAIL: email, MA_OTP: code, NGAY_TAO: new Date() });
     return;
+  }
+  if (process.env.APPS_SCRIPT_OTP_URL) {
+    try { await sendAppsScriptOtp(email, code); return; }
+    catch { throw new AuthError(503, 'Chưa gửi được email xác minh. Vui lòng liên hệ shop hoặc thử lại sau.'); }
   }
   if (process.env.GMAIL_CLIENT_ID || process.env.GMAIL_SENDER) {
     try { await sendGmailOtp(email, code); return; }
