@@ -69,8 +69,6 @@ import { getProductAvailability } from './controllers/inventory.js';
 import { ensureInventoryIndexes, startInventoryJobs } from './services/inventory/setup.js';
 import { startSalesRequestExpiryJob } from './services/sales-request-expiry.service.js';
 
-// Project demo: owner requested OTP in Render logs. Override with email/sms when configuring real delivery.
-process.env.AUTH_OTP_DELIVERY ??= 'console';
 const app = express();
 
 const allowedOrigins = (process.env.CORS_ORIGINS ?? '')

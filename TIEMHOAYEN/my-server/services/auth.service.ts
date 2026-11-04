@@ -1,3 +1,4 @@
+import { sendGmailOtp } from './gmail-otp.service.js';
 import { createHash, createHmac, randomBytes, randomInt } from 'node:crypto';
 import { Request, Response, NextFunction } from 'express';
 import { getCollection } from '../mongo.js';
@@ -127,13 +128,13 @@ function otpDigest(id: string, code: string) {
   return createHmac('sha256', secret).update(`${id}:${code}`).digest('hex');
 }
 export async function deliverOtp(email: string, code: string) {
-  if (process.env.AUTH_OTP_DELIVERY === 'console' || process.env.ORDER_OTP_DELIVERY === 'console' || (!process.env.RESEND_API_KEY && process.env.NODE_ENV !== 'production')) {
-    console.log(`\n========================================\n[OTP TEST CONSOLE] Gửi tới ${email}: MA_OTP = ${code}\n========================================\n`);
-    return;
-  }
   if (process.env.AUTH_OTP_DELIVERY === 'test' && process.env.NODE_ENV !== 'production' && /^mongodb:\/\/(127\.0\.0\.1|localhost):/.test(process.env.MONGO_URI || '') && /_LOCAL_TEST$/.test(process.env.MONGO_DATABASE || '')) {
     await (await collection('HOP_THU_THU_NGHIEM')).insertOne({ EMAIL: email, MA_OTP: code, NGAY_TAO: new Date() });
     return;
+  }
+  if (process.env.GMAIL_CLIENT_ID || process.env.GMAIL_SENDER) {
+    try { await sendGmailOtp(email, code); return; }
+    catch { throw new AuthError(503, 'Chưa gửi được email xác minh. Vui lòng liên hệ shop hoặc thử lại sau.'); }
   }
   if (!process.env.RESEND_API_KEY || !process.env.AUTH_EMAIL_FROM) throw new AuthError(503, 'Chưa cấu hình gửi email. Vui lòng liên hệ quản trị viên.');
   const result = await fetch('https://api.resend.com/emails', {
@@ -163,16 +164,18 @@ export async function deliverSmsOtp(phone: string, code: string) {
   if (!result.ok) throw new AuthError(503, 'Chưa gửi được SMS. Vui lòng thử lại sau.');
 }
 export async function sendChallenge(type: AccountType, req: Request, purpose = 'KHOI_PHUC_MAT_KHAU') {
-  const sms = type === 'KHACH_HANG' && purpose === 'KHOI_PHUC_MAT_KHAU';
-  const identifier = String(sms ? req.body.SDT || '' : req.body.EMAIL || req.body.email || req.body.SDT || '').trim();
-  if (sms && !/^0\d{9}$/.test(identifier)) throw new AuthError(400, 'Số điện thoại không hợp lệ.');
+  const customerRecovery = type === 'KHACH_HANG' && purpose === 'KHOI_PHUC_MAT_KHAU';
+  const identifier = String(customerRecovery ? req.body.SDT || '' : req.body.EMAIL || req.body.email || req.body.SDT || '').trim();
+  if (customerRecovery && !/^0\d{9}$/.test(identifier)) throw new AuthError(400, 'Số điện thoại không hợp lệ.');
   await rateLimit(`otp-ip:${req.ip}`, 20, 3600);
   await rateLimit(`otp-account:${type}:${identifier}`, 5, 3600);
   const id = digest(`${type}:${purpose}:${identifier}`);
   otpDigest(id, 'configuration-check');
   const account = await (await collection(type)).findOne(identifier.includes('@') ? { EMAIL: identifier } : { SDT: identifier });
   if (!account || account.DA_XOA) throw new AuthError(404, 'Tài khoản chưa được đăng ký. Vui lòng kiểm tra lại thông tin.');
-  if (!sms && !account.EMAIL) throw new AuthError(400, 'Tài khoản chưa có email nhận mã xác minh.');
+  const email = String(account.EMAIL || '').trim();
+  const sms = type === 'KHACH_HANG' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (!sms && !email) throw new AuthError(400, 'Tài khoản chưa có email nhận mã xác minh.');
   if (purpose === 'DANG_KY' ? account.TRANG_THAI !== 'Chờ xác minh' : !active(account)) {
     throw new AuthError(403, purpose === 'DANG_KY' ? 'Tài khoản không ở trạng thái chờ xác minh.' : 'Tài khoản chưa xác minh hoặc đã bị khóa.');
   }
@@ -192,9 +195,10 @@ export async function sendChallenge(type: AccountType, req: Request, purpose = '
     } catch (error: any) { if (error.code !== 11000) throw error; }
   }
   if (!stored) throw new AuthError(409, 'Có yêu cầu gửi mã mới hơn. Vui lòng thử lại.');
-  try { if (sms) await deliverSmsOtp(account.SDT, code); else await deliverOtp(account.EMAIL, code); }
+  try { if (sms) { console.log(`[OTP SMS] ${account.SDT}: ${code} (hết hạn sau 60 giây)`); } else await deliverOtp(email, code); }
   catch (error) { await challenges.updateOne({ _id: id, MA_BAM: otpDigest(id, code) }, { $set: { DA_SU_DUNG: true } }); throw error; }
-  return { challengeId: id, expiresIn: ttl, resendAfter: 0, delivery: process.env.AUTH_OTP_DELIVERY === 'console' ? 'console' : sms ? 'sms' : 'email', message: process.env.AUTH_OTP_DELIVERY === 'console' ? 'Mã xác minh có hiệu lực trong 60 giây.' : sms ? 'Mã OTP đã được gửi qua SMS đến số điện thoại đã đăng ký.' : 'Mã xác minh đã được gửi đến email đã đăng ký.' };
+  const maskedEmail = email.replace(/^(.).*(@.*)$/, '$1***$2');
+  return { challengeId: id, expiresIn: ttl, resendAfter: 0, delivery: sms ? 'console' : 'email', message: sms ? 'Mã xác minh có hiệu lực trong 60 giây.' : `Mã xác minh đã được gửi đến email ${maskedEmail}.` };
 }
 export async function verifyChallenge(type: AccountType, req: Request, purpose = 'KHOI_PHUC_MAT_KHAU') {
   const id = String(req.body.challengeId || '');
