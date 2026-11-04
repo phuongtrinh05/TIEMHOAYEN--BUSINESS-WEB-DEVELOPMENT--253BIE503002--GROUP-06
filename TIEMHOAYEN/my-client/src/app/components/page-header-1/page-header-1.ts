@@ -356,10 +356,16 @@ export class PageHeader1 implements OnInit, OnDestroy {
     try {
       const customer = JSON.parse(rawCustomer);
 
+      if (!customer?.KHACH_HANG_ID || !localStorage.getItem('token')) {
+        this.resetLoggedInCustomer();
+        return;
+      }
+
       this.currentCustomer = customer;
       this.isLoggedIn = true;
       this.customerDisplayName = this.getCustomerName(customer);
       this.customerAvatar = this.getCustomerAvatar(customer);
+      this.cdr.markForCheck();
     } catch (error) {
       console.error('Lỗi đọc thông tin khách hàng:', error);
       this.resetLoggedInCustomer();
@@ -369,6 +375,7 @@ export class PageHeader1 implements OnInit, OnDestroy {
   private resetLoggedInCustomer(): void {
     this.currentCustomer = null;
     this.isLoggedIn = false;
+    this.cdr.markForCheck();
     this.customerDisplayName = '';
     this.customerAvatar = '';
   }
