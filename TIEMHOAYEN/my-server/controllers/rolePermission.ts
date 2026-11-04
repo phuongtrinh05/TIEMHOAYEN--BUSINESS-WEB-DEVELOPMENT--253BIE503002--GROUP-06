@@ -78,9 +78,17 @@ export const loginAdminEmployee = async (req: Request, res: Response) => {
 
     const role = resolveRoleName(employee.VAI_TRO);
     const session = await createStaffAccess(employee);
+    // Admin navigation/account APIs use the existing as_ session; business APIs
+    // use the staff bearer accessToken. Return both contracts after authentication.
+    const adminSessionToken = `as_${randomBytes(32).toString('hex')}`;
+    await (await getCollection<any>('PHIEN_DANG_NHAP_ADMIN')).insertOne({
+      _id: createHash('sha256').update(adminSessionToken).digest('hex'),
+      employeeId: employee.NHAN_VIEN_ID, expiresAt: session.expiresAt,
+    });
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({
       ...session,
+      adminSessionToken,
       employee: {
         id: employee.NHAN_VIEN_ID,
         name: employee.HO_TEN,

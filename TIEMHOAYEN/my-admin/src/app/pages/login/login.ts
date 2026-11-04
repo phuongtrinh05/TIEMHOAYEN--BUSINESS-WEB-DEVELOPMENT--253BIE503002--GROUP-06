@@ -145,6 +145,12 @@ export class Login implements AfterViewInit {
       this.cdr.markForCheck();
     })).subscribe({
       next: (response) => {
+        if (!response.adminSessionToken || !response.accessToken) {
+          this.loginError = 'Chưa tạo được phiên đăng nhập. Vui lòng thử lại.';
+          this.cdr.markForCheck();
+          return;
+        }
+        localStorage.setItem('adminToken', response.accessToken);
         localStorage.setItem('adminLoggedIn', 'true');
         if(response.adminSessionToken)localStorage.setItem('adminSessionToken',response.adminSessionToken);
         localStorage.setItem('adminEmail', response.employee.email);
