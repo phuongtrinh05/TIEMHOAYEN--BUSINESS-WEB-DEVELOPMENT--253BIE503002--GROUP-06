@@ -201,7 +201,11 @@ export async function requireCustomerLookup(req: Request, res: Response, next: N
 /** Address book belongs to an authenticated member, never a caller supplied ID. */
 export async function requireAddressOwner(req: Request, res: Response, next: NextFunction) {
   try {
-    const access = await lookupAccess(accessToken(req));
+    // Customer routes already validated the session and loaded its account in
+    // requireIdentity. Reuse that identity instead of reading both again.
+    const access = req.identity?.type === 'KHACH_HANG'
+      ? { authType: 'member', customerId: req.identity.id }
+      : await lookupAccess(accessToken(req));
     if (access.authType !== 'member') throw new InventoryError(403, 'Cần đăng nhập để quản lý địa chỉ.');
     const id = String(req.params.id || req.params.customerId || '');
     if (id && id !== access.customerId) throw new InventoryError(404, 'Không tìm thấy địa chỉ trong tài khoản.');

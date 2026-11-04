@@ -115,8 +115,11 @@ export const getOrderLineBom = async (line: any, session?: ClientSession): Promi
 export const getActiveBomMap = async (productIds?: string[]): Promise<Map<string, BomLine[]>> => {
   const filter: any = { TRANG_THAI: BOM_STATUS.active };
   if (productIds) filter.SAN_PHAM_ID = { $in: productIds };
-  const boms = await (await col(COLLECTIONS.bom)).find(filter).toArray();
-  const lines = await (await col(COLLECTIONS.bomLine)).find({ BOM_ID: { $in: boms.map((b) => b.BOM_ID) } }).toArray();
+  const [boms, legacy] = await Promise.all([
+    col(COLLECTIONS.bom).then(c => c.find(filter, { projection: { _id: 0, BOM_ID: 1, SAN_PHAM_ID: 1 } }).toArray()),
+    col(COLLECTIONS.legacyRecipe).then(c => c.find(productIds ? { SAN_PHAM_ID: { $in: productIds } } : {}).toArray()),
+  ]);
+  const lines = boms.length ? await (await col(COLLECTIONS.bomLine)).find({ BOM_ID: { $in: boms.map((b) => b.BOM_ID) } }).toArray() : [];
   const byBom = new Map<string, BomLine[]>();
   lines.forEach((line: any) => {
     const list = byBom.get(line.BOM_ID) || [];
@@ -127,10 +130,9 @@ export const getActiveBomMap = async (productIds?: string[]): Promise<Map<string
   boms.forEach((b) => result.set(b.SAN_PHAM_ID, byBom.get(b.BOM_ID) || []));
 
   // Sản phẩm chưa có BOM mới → đọc công thức cũ
-  const legacyFilter: any = productIds ? { SAN_PHAM_ID: { $in: productIds.filter((id) => !result.has(id)) } } : {};
-  const legacy = await (await col(COLLECTIONS.legacyRecipe)).find(legacyFilter).toArray();
+  const activeProducts = new Set(boms.map(b => b.SAN_PHAM_ID));
   legacy.forEach((row: any) => {
-    if (result.has(row.SAN_PHAM_ID) && boms.some((b) => b.SAN_PHAM_ID === row.SAN_PHAM_ID)) return;
+    if (activeProducts.has(row.SAN_PHAM_ID)) return;
     const list = result.get(row.SAN_PHAM_ID) || [];
     list.push(mapLegacyRecipe(row));
     result.set(row.SAN_PHAM_ID, list);

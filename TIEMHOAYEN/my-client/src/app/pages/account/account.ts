@@ -229,6 +229,8 @@ export class AccountComponent implements OnInit, OnDestroy {
   }
   // ===== ACTIVE SECTION =====
   activeSection = 'thongtin';
+  private accountSectionsObserver?: IntersectionObserver;
+  private loadedAccountSections = new Set<string>();
 
   // ===== TODO: replace with API call GET /api/user/profile =====
   userInfo: UserInfo = {
@@ -424,6 +426,7 @@ export class AccountComponent implements OnInit, OnDestroy {
     }
 
   ngOnDestroy(): void {
+    this.accountSectionsObserver?.disconnect();
     if (isPlatformBrowser(this.platformId)) {
       window.removeEventListener('wishlist-changed', this.wishlistChangedHandler);
     }
@@ -459,10 +462,34 @@ export class AccountComponent implements OnInit, OnDestroy {
 
   private loadAccountData(): void {
     this.loadCustomerInfo();
-    this.loadCustomerAddresses();
-    this.loadCustomerOrders();
+    // Voucher section is conditional in the template; other sections load as
+    // they approach the viewport or are selected from the account menu.
     this.loadCustomerVouchers();
-    this.loadCustomerWishlist();
+    setTimeout(() => {
+      if (typeof IntersectionObserver === 'undefined') {
+        ['donhang', 'wishlist', 'diachi'].forEach(section => this.loadAccountSection(section));
+        return;
+      }
+      this.accountSectionsObserver = new IntersectionObserver(entries => {
+        for (const entry of entries) if (entry.isIntersecting) {
+          this.loadAccountSection(entry.target.id);
+          this.accountSectionsObserver?.unobserve(entry.target);
+        }
+      }, { rootMargin: '150px' });
+      ['donhang', 'wishlist', 'diachi'].forEach(id => {
+        const section = document.getElementById(id);
+        if (section) this.accountSectionsObserver!.observe(section);
+      });
+    });
+  }
+
+  private loadAccountSection(section: string): void {
+    if (section === 'diem' || section === 'hang') section = 'donhang';
+    if (this.loadedAccountSections.has(section)) return;
+    this.loadedAccountSections.add(section);
+    if (section === 'donhang') this.loadCustomerOrders();
+    if (section === 'wishlist') this.loadCustomerWishlist();
+    if (section === 'diachi') this.loadCustomerAddresses();
   }
 
   private listenAccountSectionFromRoute(): void {
@@ -561,6 +588,7 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi load địa chỉ:', err);
+        this.loadedAccountSections.delete('diachi');
       }
     });
   }
@@ -592,6 +620,7 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi load đơn hàng:', err);
+        this.loadedAccountSections.delete('donhang');
       }
     });
   }
@@ -684,6 +713,7 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi load wishlist:', err);
+        this.loadedAccountSections.delete('wishlist');
         if (err?.status === 401) {
           this.router.navigate(['/login']);
           return;
@@ -1207,6 +1237,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   }
 
   setActiveSection(section: string): void {
+    this.loadAccountSection(section);
     this.activeSection = section;
 
     const sectionMap: Record<string, string> = {

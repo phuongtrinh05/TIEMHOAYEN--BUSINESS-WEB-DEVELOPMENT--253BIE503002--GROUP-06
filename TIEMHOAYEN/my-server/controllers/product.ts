@@ -169,9 +169,12 @@ const sortPrimaryImages = (a: any, b: any): number => {
   return String(a.HINH_ANH_ID || '').localeCompare(String(b.HINH_ANH_ID || ''), 'vi');
 };
 
-const getPrimaryImageMap = async (): Promise<Map<string, string | null>> => {
+const getPrimaryImageMap = async (productIds: string[]): Promise<Map<string, string | null>> => {
+  if (!productIds.length) return new Map();
   const imageCollection = await getCollection('HINH_ANH_SAN_PHAM');
-  const images = await imageCollection.find({}).toArray();
+  const images = await imageCollection.find({ SAN_PHAM_ID: { $in: productIds } }, {
+    projection: { _id: 0, SAN_PHAM_ID: 1, LA_ANH_CHINH: 1, HINH_ANH_ID: 1, URL: 1 },
+  }).toArray();
   const grouped = new Map<string, any[]>();
 
   images.forEach((image: any) => {
@@ -188,7 +191,7 @@ const getPrimaryImageMap = async (): Promise<Map<string, string | null>> => {
 };
 
 const enrichProducts = async (products: any[], includeTopic = false): Promise<SearchProductRow[]> => {
-  const [imageMap, stockMap] = await Promise.all([getPrimaryImageMap(), getProductSellableStockMap(products)]);
+  const [imageMap, stockMap] = await Promise.all([getPrimaryImageMap(products.map(p => String(p.SAN_PHAM_ID))), getProductSellableStockMap(products)]);
   let topicMap = new Map<string, string>();
 
   if (includeTopic) {
@@ -291,11 +294,16 @@ const calculateSearchScore = (
   return score;
 };
 
+// Share concurrent reads only; do not cache prices or stock across completed requests.
+let catalogRead: Promise<SearchProductRow[]> | null = null;
 export const getAllProducts = async (req: Request, res: Response) => {
   try {
-    const productCollection = await getCollection('SAN_PHAM');
-    const products = await productCollection.find({ TRANG_THAI: 'Đang bán' }).sort({ TEN_SAN_PHAM: 1 }).toArray();
-    const rows = await enrichProducts(products);
+    if (!catalogRead) catalogRead = (async () => {
+      const productCollection = await getCollection('SAN_PHAM');
+      const products = await productCollection.find({ TRANG_THAI: 'Đang bán' }).sort({ TEN_SAN_PHAM: 1 }).toArray();
+      return enrichProducts(products);
+    })().finally(() => { catalogRead = null; });
+    const rows = await catalogRead;
 
     res.status(200).json(rows);
   } catch (error: any) {

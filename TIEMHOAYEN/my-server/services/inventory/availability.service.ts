@@ -59,7 +59,10 @@ export const getProductSellableStockMap = async (products: any[]): Promise<Map<s
   const ids = [...new Set(products.map((product) => String(product?.SAN_PHAM_ID || '')).filter(Boolean))];
   if (!ids.length) return new Map();
   const [materials, bomMap] = await Promise.all([
-    col(COLLECTIONS.material).then((collection) => collection.find({}).toArray()),
+    col(COLLECTIONS.material).then((collection) => collection.find({}, { projection: {
+      _id: 0, NGUYEN_VAT_LIEU_ID: 1, TEN_NGUYEN_VAT_LIEU: 1, DON_VI_TINH: 1,
+      TON_THUC: 1, TON_DANG_GIU: 1, TON_KHONG_DAT: 1, TRANG_THAI: 1,
+    } }).toArray()),
     getActiveBomMap(ids),
   ]);
   const materialsById = new Map(materials.map((material: any) => [material.NGUYEN_VAT_LIEU_ID, material]));

@@ -322,7 +322,7 @@
 
           <p class="wishlist-empty" *ngIf="wishlistItems.length === 0">Chưa có sản phẩm yêu thích.</p>
 
-          <div class="wishlist-pagination" *ngIf="wishlistTotalPages > 1" id="diachi">
+          <div class="wishlist-pagination" *ngIf="wishlistTotalPages > 1">
             <button type="button" [disabled]="wishlistPage === 1" (click)="changeWishlistPage(wishlistPage - 1)">Trước</button>
             <span>Trang {{ wishlistPage }}/{{ wishlistTotalPages }} · {{ wishlistTotal }} sản phẩm</span>
             <button type="button" [disabled]="wishlistPage === wishlistTotalPages" (click)="changeWishlistPage(wishlistPage + 1)">Sau</button>
@@ -330,7 +330,7 @@
         </div>
 
         <!-- 5. ĐỊA CHỈ CỦA TÔI -->
-        <div class="section-card mb-4">
+        <div class="section-card mb-4" id="diachi">
           <div class="section-title d-flex align-items-center gap-2">
             Địa chỉ của tôi
             <button class="btn-add-address" type="button" (click)="openAddAddressModal()">
