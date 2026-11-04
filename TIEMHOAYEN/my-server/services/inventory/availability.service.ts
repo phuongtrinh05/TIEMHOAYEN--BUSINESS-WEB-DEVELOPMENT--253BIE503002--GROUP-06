@@ -125,11 +125,13 @@ export const checkProductAvailability = async (productId: string, qtyRaw: unknow
   const { buildable, bottleneck, perMaterial } = computeBuildable(lines, byId);
   const sellable = finishedAvailable + buildable;
   const sameDay = isSameVnDay(deliveryAt, now);
-  const routing = classifyDeliverySchedule(deliveryAt, now);
+  // Cart/pricing stock previews have no delivery schedule yet. Validate the
+  // delivery rules only when the caller actually supplies a delivery time.
+  const routing = deliveryAtRaw == null || deliveryAtRaw === '' ? null : classifyDeliverySchedule(deliveryAt, now);
   const reasons: string[] = [];
   let decision: 'available' | 'need_review' | 'unavailable' = 'available';
 
-  if (routing.requiresSales) {
+  if (routing?.requiresSales) {
     decision = 'need_review';
     reasons.push(...routing.reasons);
   }

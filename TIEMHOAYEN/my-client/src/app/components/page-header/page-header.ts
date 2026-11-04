@@ -462,7 +462,7 @@ export class PageHeader implements OnInit, OnDestroy {
 
     this.cartRefreshTimer = window.setInterval(() => {
       this.loadCartCount();
-    }, 2000);
+    }, 15000);
   }
 
   private loadCartCount(): void {
@@ -488,6 +488,7 @@ export class PageHeader implements OnInit, OnDestroy {
 
     this.cartService.getCart(customerId).subscribe({
       next: (res: any) => {
+        if (customerId !== this.getLoggedInCustomerId()) { this.isLoadingCartCount = false; this.loadCartCount(); return; }
         const items = Array.isArray(res?.items) ? res.items : [];
 
         this.cartCount = items.length;
@@ -498,8 +499,9 @@ export class PageHeader implements OnInit, OnDestroy {
         this.cdr.detectChanges();
       },
       error: () => {
-        this.cartCount = this.getGuestCartCount();
-        this.cartItems = this.getGuestCartItems();
+        if (customerId !== this.getLoggedInCustomerId()) { this.isLoadingCartCount = false; this.loadCartCount(); return; }
+        this.cartCount = 0;
+        this.cartItems = [];
         this.isLoadingCartCount = false;
         this.cdr.detectChanges();
       }

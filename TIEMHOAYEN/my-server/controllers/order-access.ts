@@ -214,6 +214,7 @@ export async function requireAddressOwner(req: Request, res: Response, next: Nex
       if (!row) throw new InventoryError(404, 'Không tìm thấy địa chỉ trong tài khoản.');
     }
     res.locals.orderAccess = access;
+    res.locals.customerId = access.customerId;
     next();
   } catch (error) { failure(res, error); }
 }

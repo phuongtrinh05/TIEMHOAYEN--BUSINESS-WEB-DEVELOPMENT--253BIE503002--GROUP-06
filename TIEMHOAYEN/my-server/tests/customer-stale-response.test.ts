@@ -28,4 +28,9 @@ test('late 401 from old account never signs out the new account; current 401 sti
   const currentObserver = exports.apiEndpointInterceptor(request(), () => ({ pipe: (observer: any) => observer }));
   currentObserver.error(new HttpErrorResponse());
   assert.equal(ended, 1);
+  let cartToken = '';
+  exports.apiEndpointInterceptor({ ...request(), url: 'https://tiem-hoa-yen-api.onrender.com/api/cart/add' }, (target: any) => {
+    cartToken = target.headers.get('x-order-access'); return { pipe: (observer: any) => observer };
+  });
+  assert.equal(cartToken, currentToken);
 });

@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, tap } from 'rxjs';
 
 export interface CartApiItem {
   THIET_KE_3D_ID?: string; THIET_KE_ID?: string; CAN_SHOP_DUYET?: boolean; BADGES?: string[];
@@ -46,7 +46,7 @@ export class CartService {
       productId,
       quantity,
       ...line,
-    });
+    }).pipe(tap(() => this.notifyCartChanged()));
   }
 
   updateItem(customerId: string, productId: string, quantity: number, lineKey?: string): Observable<any> {
@@ -55,7 +55,7 @@ export class CartService {
       productId,
       quantity,
       lineKey,
-    });
+    }).pipe(tap(() => this.notifyCartChanged()));
   }
 
   removeItem(customerId: string, productId: string, lineKey?: string): Observable<any> {
@@ -65,6 +65,10 @@ export class CartService {
         productId,
         lineKey,
       },
-    });
+    }).pipe(tap(() => this.notifyCartChanged()));
+  }
+
+  private notifyCartChanged(): void {
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('cart-changed'));
   }
 }
