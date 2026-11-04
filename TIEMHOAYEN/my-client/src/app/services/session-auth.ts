@@ -1,4 +1,19 @@
-import { apiBaseUrl, currentOrderAccountKey, orderAccessSession } from './api-config';
+import { apiBaseUrl, currentOrderAccountKey, orderAccessSession, setTransientGuestLookupSession } from './api-config';
+
+/** Validate the response before replacing an account; publish only a complete session. */
+export function startMemberSession(response: any): void {
+  const id = response?.customer?.KHACH_HANG_ID;
+  const access = response?.orderAccess;
+  if (!id || !/^oa_[a-f0-9]{64}$/.test(response?.token || '') ||
+      access?.accessToken !== response.token || access?.authType !== 'member' ||
+      access?.customerId !== id || !(new Date(access?.expiresAt).getTime() > Date.now())) {
+    throw new Error('Chưa tạo được phiên đăng nhập. Vui lòng thử lại.');
+  }
+  endSession();
+  localStorage.setItem('khachHang', JSON.stringify(response.customer));
+  localStorage.setItem('token', response.token);
+  sessionStorage.setItem('orderLookupAccess', JSON.stringify({ ...access, accountKey: id }));
+}
 
 /**
  * Phiên đăng nhập thành viên dùng chung một token với main (oa_..., trả về khi đăng nhập):
@@ -22,6 +37,9 @@ export function endSession(): void {
   }
   localStorage.removeItem('token');
   localStorage.removeItem('khachHang');
+  setTransientGuestLookupSession(null);
+  ['orderLookupAccess', 'tiemHoaYenActiveSalesChat', 'pendingSalesLookup', 'pendingOrderSession'].forEach(key => sessionStorage.removeItem(key));
+  Object.keys(sessionStorage).filter(key => key.startsWith('checkoutOrderAccess:') || key.startsWith('guestRequestLink:')).forEach(key => sessionStorage.removeItem(key));
   [
     'tiemHoaYenRegistrantOrder', 'tiemHoaYenGuestOrder', 'tiemHoaYenCreatedOrder',
     'tiemHoaYenCheckoutItems', 'tiemHoaYenSessionAuth', 'forgotPhone',

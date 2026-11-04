@@ -7,7 +7,7 @@ import { PageFooter2 } from '../../components/page-footer-2/page-footer-2';
 import { LoginService } from '../../services/login.service';
 import { Router } from '@angular/router';
 import { finalize, timeout } from 'rxjs';
-import { endSession } from '../../services/session-auth';
+import { startMemberSession } from '../../services/session-auth';
 @Component({
   selector: 'app-login',
   standalone: true,
@@ -299,12 +299,8 @@ this.loginService.login({
 .pipe(timeout(30000), finalize(() => { this.isLoggingIn = false; this.cdr.markForCheck(); }))
 .subscribe({
   next: (res) => {
-    endSession();
-    localStorage.setItem('khachHang', JSON.stringify(res.customer));
-
-    if (res?.token) {
-      localStorage.setItem('token', String(res.token));
-    }
+    try { startMemberSession(res); }
+    catch { this.loginError = 'Chưa tạo được phiên đăng nhập. Vui lòng thử lại.'; this.cdr.markForCheck(); return; }
 
     if (this.formData.rememberMe) {
       localStorage.setItem('tiemHoaYenRememberLogin', 'true');
@@ -318,7 +314,7 @@ this.loginService.login({
 
     window.dispatchEvent(new Event('auth-changed'));
 
-    this.router.navigate(['/']);
+    this.router.navigate(['/account']);
   },
 
   error: (err) => {

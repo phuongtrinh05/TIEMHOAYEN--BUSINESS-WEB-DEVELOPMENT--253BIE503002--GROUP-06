@@ -38,6 +38,10 @@ export const apiEndpointInterceptor: HttpInterceptorFn = (request, next) => {
   if ((target.url.startsWith(`${apiBaseUrl()}/orders`) || target.url.startsWith(`${apiBaseUrl()}/support`) || target.url.startsWith(`${apiBaseUrl()}/customers/`) || target.url.startsWith(`${apiBaseUrl()}/notifications`)) && typeof sessionStorage !== 'undefined') {
     const session = orderAccessSession();
     if (session) target = target.clone({ setHeaders: { 'x-order-access': session.accessToken } });
+    else {
+      const memberToken = memberAccessToken();
+      if (memberToken) target = target.clone({ setHeaders: { 'x-order-access': memberToken } });
+    }
     const payment = target.url.match(/\/orders\/([^/?]+)\/payment-(status|expired|retry)(?:\?|$)/);
     const checkout = payment ? sessionStorage.getItem(`checkoutOrderAccess:${decodeURIComponent(payment[1])}`) : null;
     if (checkout) target = target.clone({ setHeaders: { 'x-checkout-access': checkout } });

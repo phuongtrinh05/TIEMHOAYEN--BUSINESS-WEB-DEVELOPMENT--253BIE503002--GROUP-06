@@ -30,6 +30,24 @@ test('admin login returns both sessions accepted by admin identity and business 
     assert.equal((await identify({ headers: { 'x-admin-session': result.adminSessionToken } } as any))?.id, 'NV_TEST');
     assert.equal((await authenticatedEmployee({ headers: { authorization: `Bearer ${result.accessToken}` } } as any)).NHAN_VIEN_ID, 'NV_TEST');
     assert.ok(!JSON.stringify(result).includes('MAT_KHAU'));
+    await db.collection('NHAN_VIEN').insertOne({ NHAN_VIEN_ID: 'NV_STAFF', EMAIL: 'staff@example.test', VAI_TRO: 'Nhân viên bán hàng', TRANG_THAI: 'Đang làm việc', MAT_KHAU: await hashPassword('Local-test-only-384!') });
+    await loginAdminEmployee({ body: { email: 'staff@example.test', password: 'Local-test-only-384!' } } as any, res);
+    assert.equal(status, 200);
+    assert.equal(result.employee.id, 'NV_STAFF');
+    assert.equal((await authenticatedEmployee({ headers: { authorization: `Bearer ${result.accessToken}` } } as any)).NHAN_VIEN_ID, 'NV_STAFF');
+    const { loginCustomer } = await import('../controllers/customer.js');
+    const { customerAccess } = await import('../middleware/customerAccess.js');
+    await db.collection('KHACH_HANG').insertOne({ KHACH_HANG_ID: 'KH_TEST', SDT: '0900000001', HO_TEN: 'Local Test', TRANG_THAI: 'Hoạt động', MAT_KHAU: await hashPassword('Local-test-only-384!') });
+    await loginCustomer({ body: { SDT: '0900000001', MAT_KHAU: 'Local-test-only-384!' }, headers: {} } as any, res);
+    assert.equal(status, 200);
+    assert.equal(result.customer.KHACH_HANG_ID, 'KH_TEST');
+    const identity = await identify({ headers: { 'x-order-access': result.token } } as any);
+    assert.equal(identity?.id, 'KH_TEST');
+    let allowed = false;
+    await customerAccess({ identity, path: '/KH_TEST', method: 'GET' } as any, res, () => { allowed = true; });
+    assert.equal(allowed, true);
+    await customerAccess({ identity, path: '/KH_OTHER', method: 'GET' } as any, res, () => { throw Error('Other customer data exposed'); });
+    assert.equal(status, 403);
   } finally {
     await db.dropDatabase();
     await (await mongo.getMongoClient()).close();

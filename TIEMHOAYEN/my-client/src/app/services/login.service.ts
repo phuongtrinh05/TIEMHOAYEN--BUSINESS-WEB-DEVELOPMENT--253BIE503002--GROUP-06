@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap } from 'rxjs';
+import { Observable } from 'rxjs';
 
 @Injectable({
   providedIn: 'root'
@@ -18,12 +18,7 @@ export class LoginService {
     return this.http.post(
       this.apiUrl,
       data
-    ).pipe(tap((response: any) => {
-      sessionStorage.removeItem('orderLookupAccess');
-      sessionStorage.removeItem('tiemHoaYenActiveSalesChat');
-      sessionStorage.removeItem('pendingSalesLookup');
-      if (response.orderAccess) sessionStorage.setItem('orderLookupAccess', JSON.stringify({ ...response.orderAccess, accountKey: response.customer.KHACH_HANG_ID }));
-    }));
+    );
   }
   sendOtp(data:any){
   return this.http.post(

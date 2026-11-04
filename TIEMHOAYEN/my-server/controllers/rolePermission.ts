@@ -10,6 +10,7 @@ import {
 } from '../services/role-permission.service.js';
 import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordHash.js';
 import { createStaffAccess } from '../services/order-access.service.js';
+import { active } from '../services/auth.service.js';
 
 export const getAdminRolePermissions = async (_req: Request, res: Response) => {
   try {
@@ -71,8 +72,7 @@ export const loginAdminEmployee = async (req: Request, res: Response) => {
       employee.MAT_KHAU = passwordHash;
     }
 
-    const status = String(employee.TRANG_THAI || '').trim().toLowerCase();
-    if (status && status !== 'hoạt động' && status !== 'hoat dong') {
+    if (!active(employee)) {
       return res.status(403).json({ message: 'Tài khoản nhân viên không hoạt động.' });
     }
 
