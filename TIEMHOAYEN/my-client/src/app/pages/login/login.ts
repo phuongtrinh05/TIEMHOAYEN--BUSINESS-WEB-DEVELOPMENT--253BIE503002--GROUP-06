@@ -314,7 +314,7 @@ this.loginService.login({
 
     window.dispatchEvent(new Event('auth-changed'));
 
-    this.router.navigate(['/account']);
+    this.router.navigate(['/']);
   },
 
   error: (err) => {
