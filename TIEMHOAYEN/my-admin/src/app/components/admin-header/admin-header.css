@@ -198,3 +198,11 @@
 .logout-btn{
     color:#FF6464;
 }
+
+/* AD01: lần đăng nhập gần nhất */
+.profile-menu{ width:260px; }
+.profile-summary{ padding:12px 16px; border-bottom:1px solid #EFEFEF; display:flex; flex-direction:column; gap:2px; font-size:.82rem; color:#555; }
+.profile-summary strong{ color:#222; font-size:.9rem; }
+.last-login{ margin-top:8px; display:flex; flex-direction:column; gap:3px; }
+.last-login i{ margin-right:4px; color:#888; }
+.last-login-title{ font-size:.72rem; text-transform:uppercase; letter-spacing:.03em; color:#999; margin-top:6px; }

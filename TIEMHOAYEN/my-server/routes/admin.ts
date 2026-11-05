@@ -1,4 +1,8 @@
 import {getAdminAfterSales,changeAdminAfterSales} from '../controllers/admin.js';
+import {
+  addAdminCustomerNote, createAdminCustomerAddress, deleteAdminCustomerAddress, getAdminAddressOptions, getAdminCustomerDetail,
+  getAdminCustomers, setAdminCustomerLock, setAdminReviewVisibility, setDefaultAdminCustomerAddress, updateAdminCustomer, updateAdminCustomerAddress,
+} from '../controllers/admin-customer.js';
 import express from 'express';
 import { requireSales, listRequests, changeRequest, salesOptions, salesPropose, salesConvert, salesConfirmOriginal, listRequestMessages, postRequestMessage, requireRequestOwner, uploadedProposalImage, salesRecordContact } from '../controllers/order-request.js';
 import fs from 'fs';
@@ -7,22 +11,17 @@ import path from 'path';
 import {
   createAdminCategory,
   createAdminCampaign,
-  createAdminCustomerAddress,
   createAdminOrder,
   createAdminProduct,
   createAdminTransaction,
   createAdminVoucher,
   deleteAdminCategory,
   deleteAdminCampaign,
-  deleteAdminCustomerAddress,
   deleteAdminProduct,
   deleteAdminVoucher,
   getAdminCategories,
   getAdminCategoryDetail,
   getAdminCampaigns,
-  getAdminAddressOptions,
-  getAdminCustomerDetail,
-  getAdminCustomers,
   getAdminDashboard,
   getAdminOrders,
   getAdminOrderDetail,
@@ -35,8 +34,6 @@ import {
   getAdminVouchers,
   getAdminNextVoucherId,
   updateAdminCampaign,
-  updateAdminCustomer,
-  updateAdminCustomerAddress,
   uploadAdminMaterialImage,
   updateAdminOrderStatus,
   updateAdminOrderPaymentStatus,
@@ -45,7 +42,6 @@ import {
   updateAdminCategory,
   updateAdminTransaction,
   updateAdminVoucher,
-  setDefaultAdminCustomerAddress,
 } from '../controllers/admin.js';
 import { requireAdminPermission } from '../middleware/rolePermission.js';
 
@@ -113,6 +109,9 @@ router.put('/orders/:orderId/payment-status', requireAdminPermission('payments')
 router.get('/customers', requireAdminPermission('customers'), getAdminCustomers);
 router.get('/customers/:customerId', requireAdminPermission('customers'), getAdminCustomerDetail);
 router.put('/customers/:customerId', requireAdminPermission('customers'), updateAdminCustomer);
+router.patch('/customers/:customerId/lock', requireAdminPermission('customers', 'update'), setAdminCustomerLock);
+router.post('/customers/:customerId/notes', requireAdminPermission('customers', 'update'), addAdminCustomerNote);
+router.patch('/reviews/:reviewId/visibility', requireAdminPermission('customers', 'update'), setAdminReviewVisibility);
 router.post('/customers/:customerId/addresses', requireAdminPermission('customers'), createAdminCustomerAddress);
 router.put('/customers/:customerId/addresses/:addressId', requireAdminPermission('customers'), updateAdminCustomerAddress);
 router.patch('/customers/:customerId/addresses/:addressId/default', requireAdminPermission('customers'), setDefaultAdminCustomerAddress);

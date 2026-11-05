@@ -4,18 +4,25 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { finalize, Subscription } from 'rxjs';
 import {
     AdminApiService,
+    AdminCustomer,
     AdminCustomerAddress,
     AdminCustomerAddressPayload,
-    AdminCustomerDetailResponse
+    AdminCustomerDetailResponse,
+    AdminCustomerNote,
+    AdminCustomerReview,
+    AdminLastLogin
 } from '../../../services/admin-api.service';
 
 type DetailTab = 'overview' | 'orders' | 'favorites' | 'reviews';
 type OrderFilter = 'all' | 'completed' | 'pending' | 'cancelled';
+type AddressField = 'name' | 'phone' | 'province' | 'district' | 'ward' | 'detailAddress';
 
 type Rank = 'Đồng' | 'Bạc' | 'Vàng' | 'Kim cương';
 
+const PHONE_PATTERN = /^0\d{9}$/;
+
 interface CustomerDetail {
-    id: number;
+    id: string | number;
     code: string;
     name: string;
     avatarText: string;
@@ -26,20 +33,52 @@ interface CustomerDetail {
     createdAt: Date;
     birthDate?: string;
     gender?: string;
+    status: string;
+    locked: boolean;
+    lockReason: string;
     totalOrders: number;
+    completedOrders: number;
     totalSpent: number;
+    debt: number;
     averageRating: number;
     reviewCount: number;
     latestOrderDate?: string;
+    lastLogin: AdminLastLogin | null;
+    internalNote: string;
 }
 
+/** AD40: chỉ họ tên, ngày sinh, giới tính được sửa; SĐT/email do khách tự đổi. */
 interface CustomerEditForm {
     name: string;
     birthDate: string;
     gender: string;
-    email: string;
-    phone: string;
 }
+
+interface ReviewItem extends AdminCustomerReview {
+    replyOpen: boolean;
+    replyDraft: string;
+    replySaving: boolean;
+    replyError: string;
+    hideOpen: boolean;
+    hideReason: string;
+    visibilitySaving: boolean;
+    visibilityError: string;
+}
+
+interface LockDialogState {
+    locking: boolean;
+    reason: string;
+    error: string;
+    saving: boolean;
+}
+
+type RawCustomer = AdminCustomer & {
+    points?: number;
+    id?: unknown;
+    averageRating?: number;
+    reviewCount?: number;
+    internalNote?: string;
+};
 
 interface AddressItem {
     id: string;
@@ -68,22 +107,27 @@ interface ProvinceOption {
 }
 
 interface CustomerOrderItem {
-    id: number;
+    id: string | number;
     code: string;
     createdAt: string;
     total: number;
+    paid: number;
+    remaining: number;
     paymentStatus: string;
     status: string;
 }
 
 interface FavoriteProductItem {
-    id: number;
+    id: string | number;
     code: string;
     name: string;
     image: string;
     price: number;
     originalPrice: number;
     salePrice: number;
+    likedAt: string;
+    availability: string;
+    canOpen: boolean;
 }
 
 interface RankConfig {
@@ -110,16 +154,34 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
     isCustomerEditing = false;
     isCustomerSaving = false;
     customerFormError = '';
+    customerFieldErrors: Partial<Record<keyof CustomerEditForm, string>> = {};
     customerForm: CustomerEditForm = {
         name: '',
         birthDate: '',
-        gender: '',
-        email: '',
-        phone: ''
+        gender: ''
     };
+    readonly todayInputValue = this.toLocalDateInput(new Date());
+
+    isLoading = false;
+    loadError = '';
+
+    lockDialog: LockDialogState | null = null;
+
+    notes: AdminCustomerNote[] = [];
+    noteDraft = '';
+    isNoteSaving = false;
+    noteError = '';
+
+    reviews: ReviewItem[] = [];
+
+    toastMessage = '';
+    toastType: 'success' | 'error' = 'success';
+    private toastTimer: ReturnType<typeof setTimeout> | null = null;
+
     isAddressModalOpen = false;
     addressModalMode: 'create' | 'edit' = 'create';
     addressFormError = '';
+    addressFieldErrors: Partial<Record<AddressField, string>> = {};
     isAddressSaving = false;
     editingAddressId: string | null = null;
     addressForm: AdminCustomerAddressPayload = {
@@ -143,11 +205,18 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
         point: 0,
         membershipTier: '',
         createdAt: new Date(),
+        status: '',
+        locked: false,
+        lockReason: '',
         totalOrders: 0,
+        completedOrders: 0,
         totalSpent: 0,
+        debt: 0,
         averageRating: 0,
         reviewCount: 0,
-        latestOrderDate: ''
+        latestOrderDate: '',
+        lastLogin: null,
+        internalNote: ''
     };
 
     addresses: AddressItem[] = [];
@@ -262,6 +331,292 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
 
     ngOnDestroy(): void {
         this.routeSub?.unsubscribe();
+        if (this.toastTimer) {
+            clearTimeout(this.toastTimer);
+        }
+    }
+
+    retryLoad(): void {
+        const customerId = this.route.snapshot.paramMap.get('id') || this.customer.code;
+        if (customerId) {
+            this.loadCustomerDetail(customerId);
+        }
+    }
+
+    private showToast(message: string, type: 'success' | 'error' = 'success'): void {
+        this.toastMessage = message;
+        this.toastType = type;
+
+        if (this.toastTimer) {
+            clearTimeout(this.toastTimer);
+        }
+
+        this.toastTimer = setTimeout(() => {
+            this.toastMessage = '';
+            this.cdr.detectChanges();
+        }, 3500);
+    }
+
+    private errorMessage(error: any, fallback: string): string {
+        if (error?.name === 'TimeoutError') {
+            return 'Yêu cầu quá lâu, vui lòng thử lại.';
+        }
+
+        return error?.error?.message || fallback;
+    }
+
+    // ---------- Trạng thái tài khoản (AD35) ----------
+    get statusKey(): 'active' | 'locked' | 'pending' {
+        if (this.customer.locked) return 'locked';
+        const key = this.normalizeText(this.customer.status);
+        if (key.includes('khoa')) return 'locked';
+        if (key.includes('xac minh')) return 'pending';
+        return 'active';
+    }
+
+    get statusLabel(): string {
+        return this.customer.status || (this.customer.locked ? 'Bị khóa' : 'Hoạt động');
+    }
+
+    openLockDialog(): void {
+        if (!this.customer.code) {
+            return;
+        }
+
+        this.lockDialog = {
+            locking: !this.customer.locked,
+            reason: '',
+            error: '',
+            saving: false
+        };
+    }
+
+    closeLockDialog(): void {
+        if (this.lockDialog?.saving) {
+            return;
+        }
+
+        this.lockDialog = null;
+    }
+
+    updateLockReason(event: Event): void {
+        if (this.lockDialog) {
+            this.lockDialog.reason = (event.target as HTMLTextAreaElement).value;
+            this.lockDialog.error = '';
+        }
+    }
+
+    confirmLockDialog(): void {
+        const dialog = this.lockDialog;
+
+        if (!dialog || dialog.saving) {
+            return;
+        }
+
+        const reason = dialog.reason.trim();
+
+        if (dialog.locking && !reason) {
+            dialog.error = 'Vui lòng nhập lý do khóa tài khoản.';
+            return;
+        }
+
+        if (reason.length > 300) {
+            dialog.error = 'Lý do tối đa 300 ký tự.';
+            return;
+        }
+
+        dialog.saving = true;
+        dialog.error = '';
+
+        this.adminApi.setCustomerLock(this.customer.code, dialog.locking, reason)
+            .pipe(finalize(() => {
+                dialog.saving = false;
+                this.cdr.detectChanges();
+            }))
+            .subscribe({
+                next: (response) => {
+                    this.mergeCustomer(response.customer);
+                    this.lockDialog = null;
+                    this.showToast(response.message || (dialog.locking ? 'Đã khóa tài khoản.' : 'Đã mở khóa tài khoản.'));
+                },
+                error: (error) => {
+                    dialog.error = this.errorMessage(error, 'Không thể cập nhật trạng thái tài khoản.');
+                }
+            });
+    }
+
+    // ---------- Ghi chú nội bộ (AD35) ----------
+    updateNoteDraft(event: Event): void {
+        this.noteDraft = (event.target as HTMLTextAreaElement).value;
+        this.noteError = '';
+    }
+
+    addNote(): void {
+        if (this.isNoteSaving) {
+            return;
+        }
+
+        const content = this.noteDraft.trim();
+
+        if (!content) {
+            this.noteError = 'Vui lòng nhập nội dung ghi chú.';
+            return;
+        }
+
+        if (content.length > 1000) {
+            this.noteError = 'Ghi chú tối đa 1000 ký tự.';
+            return;
+        }
+
+        this.isNoteSaving = true;
+        this.noteError = '';
+
+        this.adminApi.addCustomerNote(this.customer.code, content)
+            .pipe(finalize(() => {
+                this.isNoteSaving = false;
+                this.cdr.detectChanges();
+            }))
+            .subscribe({
+                next: (response) => {
+                    if (response.note) {
+                        this.notes = [response.note, ...this.notes];
+                    }
+                    this.noteDraft = '';
+                    this.showToast(response.message || 'Đã thêm ghi chú.');
+                },
+                error: (error) => {
+                    this.noteError = this.errorMessage(error, 'Không thể thêm ghi chú.');
+                }
+            });
+    }
+
+    // ---------- Đánh giá (AD38) ----------
+    get visibleReviewCount(): number {
+        return this.reviews.filter((review) => !review.hidden).length;
+    }
+
+    starList(rating: number): boolean[] {
+        const value = Math.round(Number(rating || 0));
+        return [1, 2, 3, 4, 5].map((star) => star <= value);
+    }
+
+    toggleReplyForm(review: ReviewItem): void {
+        if (review.replySaving) {
+            return;
+        }
+
+        review.replyOpen = !review.replyOpen;
+        review.replyDraft = review.replyOpen ? (review.reply || '') : '';
+        review.replyError = '';
+        review.hideOpen = false;
+    }
+
+    updateReplyDraft(review: ReviewItem, event: Event): void {
+        review.replyDraft = (event.target as HTMLTextAreaElement).value;
+        review.replyError = '';
+    }
+
+    submitReply(review: ReviewItem): void {
+        if (review.replySaving) {
+            return;
+        }
+
+        const reply = review.replyDraft.trim();
+
+        if (!reply) {
+            review.replyError = 'Vui lòng nhập nội dung trả lời.';
+            return;
+        }
+
+        review.replySaving = true;
+        review.replyError = '';
+
+        this.adminApi.replyToReview(review.id, reply)
+            .pipe(finalize(() => {
+                review.replySaving = false;
+                this.cdr.detectChanges();
+            }))
+            .subscribe({
+                next: (response) => {
+                    review.reply = response.review?.shopReply || reply;
+                    review.replyDate = response.review?.shopReplyDate || new Date().toISOString();
+                    review.replyOpen = false;
+                    review.replyDraft = '';
+                    this.showToast(response.message || 'Đã gửi trả lời.');
+                },
+                error: (error) => {
+                    review.replyError = this.errorMessage(error, 'Không thể gửi trả lời.');
+                }
+            });
+    }
+
+    toggleHideForm(review: ReviewItem): void {
+        if (review.visibilitySaving) {
+            return;
+        }
+
+        review.hideOpen = !review.hideOpen;
+        review.hideReason = '';
+        review.visibilityError = '';
+        review.replyOpen = false;
+    }
+
+    updateHideReason(review: ReviewItem, event: Event): void {
+        review.hideReason = (event.target as HTMLTextAreaElement).value;
+        review.visibilityError = '';
+    }
+
+    setReviewHidden(review: ReviewItem, hidden: boolean): void {
+        if (review.visibilitySaving) {
+            return;
+        }
+
+        const reason = hidden ? review.hideReason.trim() : '';
+
+        if (hidden && !reason) {
+            review.visibilityError = 'Vui lòng nhập lý do ẩn đánh giá.';
+            return;
+        }
+
+        review.visibilitySaving = true;
+        review.visibilityError = '';
+
+        this.adminApi.setReviewVisibility(review.id, hidden, reason)
+            .pipe(finalize(() => {
+                review.visibilitySaving = false;
+                this.cdr.detectChanges();
+            }))
+            .subscribe({
+                next: (response) => {
+                    review.hidden = typeof response.hidden === 'boolean' ? response.hidden : hidden;
+                    review.hiddenReason = review.hidden ? reason : '';
+                    review.hideOpen = false;
+                    review.hideReason = '';
+                    this.showToast(response.message || (hidden ? 'Đã ẩn đánh giá.' : 'Đã hiện lại đánh giá.'));
+                },
+                error: (error) => {
+                    review.visibilityError = this.errorMessage(error, 'Không thể cập nhật hiển thị đánh giá.');
+                }
+            });
+    }
+
+    openReviewOrder(review: AdminCustomerReview): void {
+        if (review.orderId) {
+            this.router.navigate(['/orders/order-detail', review.orderId]);
+        }
+    }
+
+    // ---------- Yêu thích (AD37) ----------
+    getAvailabilityClass(product: FavoriteProductItem): string {
+        const key = this.normalizeText(product.availability);
+        if (key.includes('dang ban')) return 'availability-selling';
+        if (key.includes('het hang')) return 'availability-out';
+        if (key.includes('xoa')) return 'availability-deleted';
+        return 'availability-stopped';
+    }
+
+    isFavoriteUnavailable(product: FavoriteProductItem): boolean {
+        return this.normalizeText(product.availability) !== 'dang ban';
     }
 
     get districtOptions(): DistrictOption[] {
@@ -315,8 +670,13 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
         return this.rankConfigs.find((config) => config.name === this.rank) || this.rankConfigs[0];
     }
 
+    /** Số đơn không tính đơn đã hủy (khớp số liệu server). */
     get totalOrders(): number {
-        return this.orders.length || this.customer.totalOrders;
+        return this.customer.totalOrders || this.orders.filter((order) => !this.isCancelledOrder(order)).length;
+    }
+
+    get debt(): number {
+        return this.customer.debt || 0;
     }
 
     get filteredOrders(): CustomerOrderItem[] {
@@ -359,12 +719,13 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
         return `${this.customer.averageRating || 0} / 5`;
     }
 
-    get latestOrderDate(): Date {
-        return this.customer.latestOrderDate ? new Date(this.customer.latestOrderDate) : this.customer.createdAt;
+    get latestOrderDate(): Date | null {
+        return this.parseDate(this.customer.latestOrderDate || '');
     }
 
     get latestOrderAgoText(): string {
-        return this.customer.code ? this.relativeDateText(this.latestOrderDate) : '';
+        const date = this.latestOrderDate;
+        return this.customer.code && date ? this.relativeDateText(date) : 'Chưa có đơn';
     }
 
     get totalSpent(): number {
@@ -474,7 +835,7 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
     }
 
     formatPrice(price: number): string {
-        return price.toLocaleString('vi-VN') + 'đ';
+        return Number(price || 0).toLocaleString('vi-VN') + 'đ';
     }
 
     toggleAddressMenu(addressId: string): void {
@@ -738,15 +1099,20 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
         }
 
         this.adminApi.setDefaultCustomerAddress(this.customer.code, address.id).subscribe({
-            next: () => {
-                this.addresses = this.sortAddresses(this.addresses.map((item) => ({
-                    ...item,
-                    isDefault: item.id === address.id
-                })));
+            next: (response) => {
+                const saved = response?.address ? this.mapAddress(response.address) : null;
+                this.addresses = this.sortAddresses(this.addresses.map((item) => {
+                    if (item.id === address.id) {
+                        return { ...(saved || item), isDefault: true };
+                    }
+                    return { ...item, isDefault: false };
+                }));
+                this.showToast(response?.message || 'Đã đặt địa chỉ mặc định.');
+                this.cdr.detectChanges();
             },
             error: (error) => {
-                console.error('Cannot set default address', error);
-                alert('Không thể đặt địa chỉ mặc định.');
+                this.showToast(this.errorMessage(error, 'Không thể đặt địa chỉ mặc định.'), 'error');
+                this.cdr.detectChanges();
             }
         });
     }
@@ -757,6 +1123,7 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
         this.editingAddressId = address.id;
         this.addressForm = this.resolveAddressFormValues(address);
         this.addressFormError = '';
+        this.addressFieldErrors = {};
         this.isAddressModalOpen = true;
     }
 
@@ -769,27 +1136,43 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
 
         this.openedAddressMenuId = null;
         this.adminApi.deleteCustomerAddress(this.customer.code, address.id).subscribe({
-            next: () => {
+            next: (response) => {
+                const newDefaultId = (response as { newDefaultId?: string | null })?.newDefaultId || null;
                 this.addresses = this.addresses.filter((item) => item.id !== address.id);
+
+                if (newDefaultId) {
+                    this.addresses = this.sortAddresses(this.addresses.map((item) => ({
+                        ...item,
+                        isDefault: item.id === newDefaultId
+                    })));
+                } else if (address.isDefault && this.addresses.length > 0) {
+                    // Server tự chuyển mặc định nhưng không báo id: tải lại để đồng bộ.
+                    this.retryLoad();
+                }
+
+                this.showToast(response?.message || 'Đã xóa địa chỉ.');
+                this.cdr.detectChanges();
             },
             error: (error) => {
-                console.error('Cannot delete address', error);
-                alert('Không thể xóa địa chỉ.');
+                this.showToast(this.errorMessage(error, 'Không thể xóa địa chỉ.'), 'error');
+                this.cdr.detectChanges();
             }
         });
     }
 
     copyText(value: string, label: string): void {
-        if (!isPlatformBrowser(this.platformId)) {
+        if (!isPlatformBrowser(this.platformId) || !value) {
             return;
         }
 
         navigator.clipboard.writeText(value)
             .then(() => {
-                alert(`Đã sao chép ${label}!`);
+                this.showToast(`Đã sao chép ${label}.`);
+                this.cdr.detectChanges();
             })
             .catch(() => {
-                alert(`Không thể sao chép ${label}.`);
+                this.showToast(`Không thể sao chép ${label}.`, 'error');
+                this.cdr.detectChanges();
             });
     }
 
@@ -798,14 +1181,16 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
     }
 
     openOrderDetail(order: CustomerOrderItem): void {
-        if (!order.code) {
+        const orderCode = String(order.code || order.id || '').trim();
+
+        if (!orderCode) {
             return;
         }
 
-        this.router.navigate(['/orders/order-detail', order.code], {
+        this.router.navigate(['/orders/order-detail', orderCode], {
             state: {
                 order: {
-                    id: order.code,
+                    id: orderCode,
                     customerId: this.customer.code,
                     createdAt: order.createdAt,
                     total: order.total,
@@ -817,19 +1202,21 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
     }
 
     openChat(): void {
-        alert('Mở khung chat với khách hàng');
+        this.router.navigate(['/customer-service/customer-chat'], {
+            queryParams: { customerId: this.customer.code || null }
+        });
     }
 
     startCustomerEdit(): void {
         this.customerForm = {
             name: this.customer.name || '',
             birthDate: this.toDateInputValue(this.customer.birthDate || ''),
-            gender: this.customer.gender || '',
-            email: this.customer.email || '',
-            phone: this.customer.phone || ''
+            gender: this.customer.gender || ''
         };
         this.customerFormError = '';
+        this.customerFieldErrors = {};
         this.isCustomerEditing = true;
+        this.activeTab = 'overview';
     }
 
     cancelCustomerEdit(): void {
@@ -839,6 +1226,7 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
 
         this.isCustomerEditing = false;
         this.customerFormError = '';
+        this.customerFieldErrors = {};
     }
 
     updateCustomerForm(field: keyof CustomerEditForm, event: Event): void {
@@ -848,22 +1236,39 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
             [field]: target.value
         };
 
-        if (this.customerFormError) {
-            this.customerFormError = '';
+        this.customerFieldErrors = { ...this.customerFieldErrors, [field]: '' };
+        this.customerFormError = '';
+    }
+
+    private validateCustomerForm(): boolean {
+        const errors: Partial<Record<keyof CustomerEditForm, string>> = {};
+        const name = this.customerForm.name.trim();
+
+        if (!name) {
+            errors.name = 'Vui lòng nhập họ tên.';
+        } else if (name.length > 100) {
+            errors.name = 'Họ tên tối đa 100 ký tự.';
         }
+
+        if (this.customerForm.birthDate) {
+            const birth = this.parseDate(this.customerForm.birthDate);
+            if (!birth) {
+                errors.birthDate = 'Ngày sinh không hợp lệ.';
+            } else if (this.customerForm.birthDate > this.todayInputValue) {
+                errors.birthDate = 'Ngày sinh không được ở tương lai.';
+            }
+        }
+
+        if (this.customerForm.gender && !['Nam', 'Nữ', 'Khác'].includes(this.customerForm.gender)) {
+            errors.gender = 'Giới tính không hợp lệ.';
+        }
+
+        this.customerFieldErrors = errors;
+        return Object.values(errors).every((message) => !message);
     }
 
     saveCustomerInfo(): void {
-        const payload = {
-            name: this.customerForm.name.trim(),
-            phone: this.customerForm.phone.trim(),
-            email: this.customerForm.email.trim(),
-            birthDate: this.customerForm.birthDate,
-            gender: this.customerForm.gender.trim()
-        };
-
-        if (!payload.name || !payload.phone) {
-            this.customerFormError = 'Vui lòng nhập họ tên và số điện thoại.';
+        if (this.isCustomerSaving) {
             return;
         }
 
@@ -872,48 +1277,95 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
             return;
         }
 
-        const previousCustomer = { ...this.customer };
+        if (!this.validateCustomerForm()) {
+            return;
+        }
 
-        this.customer = {
-            ...this.customer,
-            name: payload.name,
-            avatarText: this.getCustomerAvatarText(payload.name),
-            phone: payload.phone,
-            email: payload.email,
-            birthDate: payload.birthDate,
-            gender: payload.gender
+        const payload = {
+            name: this.customerForm.name.trim(),
+            birthDate: this.customerForm.birthDate,
+            gender: this.customerForm.gender.trim()
         };
-        this.isCustomerEditing = false;
+
         this.isCustomerSaving = true;
+        this.customerFormError = '';
 
         this.adminApi.updateCustomer(this.customer.code, payload)
             .pipe(finalize(() => {
                 this.isCustomerSaving = false;
+                this.cdr.detectChanges();
             }))
             .subscribe({
-            next: (response) => {
-                const updated = response.customer;
-                this.customer = {
-                    ...this.customer,
-                    name: updated.name,
-                    avatarText: updated.avatarText,
-                    phone: updated.phone,
-                    email: updated.email,
-                    birthDate: updated.birthDate,
-                    gender: updated.gender,
-                    point: Number(updated.point || this.customer.point),
-                    createdAt: updated.createdAt ? new Date(updated.createdAt) : this.customer.createdAt
-                };
-            },
-            error: (error) => {
-                console.error('Cannot update customer', error);
-                this.customer = previousCustomer;
-                this.isCustomerEditing = true;
-                this.customerFormError = error?.name === 'TimeoutError'
-                    ? 'Lưu quá lâu, vui lòng thử lại.'
-                    : (error?.error?.message || 'Không thể lưu thông tin khách hàng.');
+                next: (response) => {
+                    this.mergeCustomer(response.customer);
+                    this.isCustomerEditing = false;
+                    this.showToast(response.message || 'Đã lưu thông tin khách hàng.');
+                },
+                error: (error) => {
+                    const field = error?.error?.field as keyof CustomerEditForm | undefined;
+                    const message = this.errorMessage(error, 'Không thể lưu thông tin khách hàng.');
+
+                    if (field && field in this.customerForm) {
+                        this.customerFieldErrors = { ...this.customerFieldErrors, [field]: message };
+                    } else {
+                        this.customerFormError = message;
+                    }
+                }
+            });
+    }
+
+    /** Gộp customer đã map từ server vào state hiện tại. */
+    private mergeCustomer(updated: AdminCustomer | null | undefined): void {
+        if (!updated) {
+            return;
+        }
+
+        const raw = updated as RawCustomer & Record<string, unknown>;
+        const mapped = this.mapCustomer(raw) as unknown as Record<string, unknown>;
+        const merged = { ...this.customer } as unknown as Record<string, unknown>;
+        const isPresent = (key: string): boolean => {
+            if (key === 'point') return raw.point !== undefined || raw.points !== undefined;
+            if (key === 'locked') return raw.locked !== undefined || raw.status !== undefined;
+            return raw[key] !== undefined && raw[key] !== null || (key === 'lastLogin' && raw[key] === null);
+        };
+
+        Object.keys(mapped).forEach((key) => {
+            if (isPresent(key)) {
+                merged[key] = mapped[key];
             }
         });
+
+        this.customer = merged as unknown as CustomerDetail;
+    }
+
+    private mapCustomer(customer: RawCustomer): CustomerDetail {
+        const status = customer.status || (customer.locked ? 'Bị khóa' : 'Hoạt động');
+
+        return {
+            id: (customer.id as string | number) ?? customer.code,
+            code: String(customer.code || customer.id || ''),
+            name: customer.name || '',
+            avatarText: customer.avatarText || this.getCustomerAvatarText(customer.name || ''),
+            phone: customer.phone || '',
+            email: customer.email || '',
+            point: Number(customer.points ?? customer.point ?? 0) || 0,
+            membershipTier: customer.membershipTier || '',
+            createdAt: customer.createdAt ? new Date(customer.createdAt) : new Date(),
+            birthDate: customer.birthDate || '',
+            gender: customer.gender || '',
+            status,
+            locked: Boolean(customer.locked) || this.normalizeText(status) === 'bi khoa',
+            lockReason: customer.lockReason || '',
+            totalOrders: Number(customer.totalOrders || 0),
+            completedOrders: Number(customer.completedOrders || 0),
+            totalSpent: Number(customer.totalSpent || 0),
+            debt: Number(customer.debt || 0),
+            averageRating: Number(customer.averageRating || 0),
+            reviewCount: Number(customer.reviewCount || 0),
+            latestOrderDate: customer.latestOrderDate || '',
+            lastLogin: customer.lastLogin || null,
+            internalNote: customer.internalNote || ''
+        };
     }
 
     addAddress(): void {
@@ -931,6 +1383,7 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
             isDefault: this.addresses.length === 0
         };
         this.addressFormError = '';
+        this.addressFieldErrors = {};
         this.isAddressModalOpen = true;
     }
 
@@ -949,9 +1402,14 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
             [field]: value
         };
 
-        if (this.addressFormError) {
-            this.addressFormError = '';
-        }
+        this.clearAddressError(field);
+    }
+
+    private clearAddressError(...fields: Array<keyof AdminCustomerAddressPayload>): void {
+        const next = { ...this.addressFieldErrors } as Record<string, string>;
+        fields.forEach((field) => delete next[field]);
+        this.addressFieldErrors = next;
+        this.addressFormError = '';
     }
 
     onProvinceChange(event: Event): void {
@@ -962,9 +1420,7 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
             ward: ''
         };
 
-        if (this.addressFormError) {
-            this.addressFormError = '';
-        }
+        this.clearAddressError('province', 'district', 'ward');
     }
 
     onDistrictChange(event: Event): void {
@@ -974,9 +1430,7 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
             ward: ''
         };
 
-        if (this.addressFormError) {
-            this.addressFormError = '';
-        }
+        this.clearAddressError('district', 'ward');
     }
 
     closeAddressModal(): void {
@@ -987,6 +1441,7 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
         this.isAddressModalOpen = false;
         this.editingAddressId = null;
         this.addressFormError = '';
+        this.addressFieldErrors = {};
     }
 
     saveAddress(): void {
@@ -1001,8 +1456,19 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
             isDefault: this.addressForm.isDefault
         };
 
-        if (!payload.name || !payload.phone || !payload.province || !payload.district || !payload.ward || !payload.detailAddress) {
-            this.addressFormError = 'Vui lòng nhập đầy đủ tên, số điện thoại và địa chỉ.';
+        const errors: Partial<Record<AddressField, string>> = {};
+        if (!payload.name) errors.name = 'Vui lòng nhập tên người nhận.';
+        else if (payload.name.length > 100) errors.name = 'Tên người nhận tối đa 100 ký tự.';
+        if (!payload.phone) errors.phone = 'Vui lòng nhập số điện thoại.';
+        else if (!PHONE_PATTERN.test(payload.phone)) errors.phone = 'Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0.';
+        if (!payload.province) errors.province = 'Vui lòng chọn Tỉnh/Thành phố.';
+        if (!payload.district) errors.district = 'Vui lòng chọn Quận/Huyện.';
+        if (!payload.ward) errors.ward = 'Vui lòng chọn Phường/Xã.';
+        if (!payload.detailAddress) errors.detailAddress = 'Vui lòng nhập địa chỉ cụ thể.';
+
+        this.addressFieldErrors = errors;
+        if (Object.keys(errors).length > 0) {
+            this.addressFormError = '';
             return;
         }
 
@@ -1012,6 +1478,7 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
         }
 
         this.isAddressSaving = true;
+        this.addressFormError = '';
         const request = this.addressModalMode === 'edit' && this.editingAddressId
             ? this.adminApi.updateCustomerAddress(this.customer.code, this.editingAddressId, payload)
             : this.adminApi.createCustomerAddress(this.customer.code, payload);
@@ -1038,11 +1505,20 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
                 this.addresses = this.sortAddresses(this.addresses);
                 this.isAddressSaving = false;
                 this.closeAddressModal();
+                this.showToast(response.message || 'Đã lưu địa chỉ.');
+                this.cdr.detectChanges();
             },
             error: (error) => {
-                console.error('Cannot save address', error);
                 this.isAddressSaving = false;
-                this.addressFormError = error?.error?.message || 'Không thể lưu địa chỉ.';
+                const message = this.errorMessage(error, 'Không thể lưu địa chỉ.');
+                const field = error?.error?.field as AddressField | undefined;
+
+                if (field && ['name', 'phone', 'province', 'district', 'ward', 'detailAddress'].includes(field)) {
+                    this.addressFieldErrors = { ...this.addressFieldErrors, [field]: message };
+                } else {
+                    this.addressFormError = message;
+                }
+                this.cdr.detectChanges();
             }
         });
     }
@@ -1055,26 +1531,15 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
         this.visibleFavoriteCount += 8;
     }
 
+    /** AD37: mở trang chi tiết sản phẩm thật (theo mã), chỉ khi sản phẩm còn tồn tại. */
     openFavoriteProduct(product: FavoriteProductItem): void {
-        if (!isPlatformBrowser(this.platformId)) {
+        if (!product.canOpen || !product.code) {
             return;
         }
 
-        localStorage.setItem('selectedProduct', JSON.stringify({
-            image: product.image || this.fallbackProductImage,
-            name: product.name,
-            sku: product.code,
-            price: this.formatPrice(product.price),
-            rating: 0,
-            quantity: 0,
-            featured: false,
-            sale: product.salePrice > 0 && product.salePrice < product.originalPrice,
-            status: 'Đang bán',
-            statusClass: 'selling',
-            selected: false,
-        }));
-
-        this.router.navigate(['/products/product-detail']);
+        this.router.navigate(['/products/product-detail'], {
+            queryParams: { id: product.code }
+        });
     }
 
     onFavoriteImageError(event: Event): void {
@@ -1102,7 +1567,7 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
             return 'payment-deposit';
         }
 
-        if (key.includes('thanh toan')) {
+        if (key.includes('da thanh toan')) {
             return 'payment-paid';
         }
 
@@ -1113,7 +1578,7 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
         const key = this.normalizeText(status);
 
         if (key.includes('huy')) return 'status-cancelled';
-        if (key.includes('hoan thanh') || key.includes('giao thanh cong') || key.includes('da giao')) return 'status-completed';
+        if (key.includes('hoan thanh') || key.includes('giao thanh cong') || key === 'da giao') return 'status-completed';
         if (key.includes('van chuyen')) return 'status-shipping';
         if (key.includes('chuan bi')) return 'status-preparing';
         if (key.includes('dang giao')) return 'status-delivering';
@@ -1121,11 +1586,28 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
         return 'status-pending';
     }
 
-    formatDate(value: string): string {
-        if (!value) return '--';
+    /** Nhận 'dd/mm/yyyy', 'yyyy-mm-dd' hoặc ISO. */
+    parseDate(value: string): Date | null {
+        const text = String(value || '').trim();
+        if (!text) return null;
 
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return '--';
+        const vi = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(text);
+        if (vi) {
+            return new Date(Number(vi[3]), Number(vi[2]) - 1, Number(vi[1]));
+        }
+
+        const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+        if (ymd) {
+            return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+        }
+
+        const date = new Date(text);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    formatDate(value: string): string {
+        const date = this.parseDate(value);
+        if (!date) return '--';
 
         return new Intl.DateTimeFormat('vi-VN', {
             day: '2-digit',
@@ -1134,17 +1616,32 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
         }).format(date);
     }
 
+    formatDateTime(value: string): string {
+        const text = String(value || '').trim();
+        if (!text) return '--';
+        if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(text)) return text;
+
+        const date = new Date(text);
+        if (Number.isNaN(date.getTime())) return text;
+
+        return new Intl.DateTimeFormat('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        }).format(date);
+    }
+
     private toDateInputValue(value: string): string {
-        if (!value) {
-            return '';
-        }
+        const date = this.parseDate(value);
+        return date ? this.toLocalDateInput(date) : '';
+    }
 
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) {
-            return '';
-        }
-
-        return date.toISOString().slice(0, 10);
+    private toLocalDateInput(date: Date): string {
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${date.getFullYear()}-${month}-${day}`;
     }
 
     private getCustomerAvatarText(name: string): string {
@@ -1165,67 +1662,81 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
     }
 
     private loadCustomerDetail(customerId: string): void {
-        this.adminApi.getCustomerDetail(customerId).subscribe({
-            next: (response) => {
-                this.applyCustomerDetail(response);
+        this.isLoading = true;
+        this.loadError = '';
+
+        this.adminApi.getCustomerDetail(customerId)
+            .pipe(finalize(() => {
+                this.isLoading = false;
                 this.cdr.detectChanges();
-            },
-            error: (error) => {
-                console.error('Cannot load customer detail', error);
-                alert('Không thể tải thông tin khách hàng.');
-                this.cdr.detectChanges();
-            }
-        });
+            }))
+            .subscribe({
+                next: (response) => {
+                    this.applyCustomerDetail(response);
+                },
+                error: (error) => {
+                    this.loadError = this.errorMessage(error, 'Không thể tải thông tin khách hàng.');
+                }
+            });
     }
 
     private applyCustomerDetail(response: AdminCustomerDetailResponse): void {
-        const customer = response.customer;
-
-        this.customer = {
-            id: customer.id,
-            code: customer.code,
-            name: customer.name,
-            avatarText: customer.avatarText,
-            phone: customer.phone,
-            email: customer.email,
-            point: Number(customer.point || 0),
-            membershipTier: customer.membershipTier || '',
-            createdAt: customer.createdAt ? new Date(customer.createdAt) : new Date(),
-            birthDate: customer.birthDate,
-            gender: customer.gender,
-            totalOrders: Number(customer.totalOrders || 0),
-            totalSpent: Number(customer.totalSpent || 0),
-            averageRating: Number(customer.averageRating || 0),
-            reviewCount: Number(customer.reviewCount || 0),
-            latestOrderDate: customer.latestOrderDate || customer.createdAt
-        };
+        this.customer = this.mapCustomer(response.customer as RawCustomer);
 
         this.addresses = this.sortAddresses((response.addresses || []).map((address) => this.mapAddress(address)));
 
-        this.orders = (response.orders || []).map((order) => ({
-            id: order.id,
-            code: order.code,
-            createdAt: order.createdAt,
-            total: Number(order.total || 0),
-            paymentStatus: order.paymentStatus || 'Chờ thanh toán',
-            status: order.status || 'Chờ xử lý'
-        }));
+        this.orders = (response.orders || []).map((order) => {
+            const total = Number(order.total || 0);
+            const paid = Number(order.paid ?? 0);
+            return {
+                id: order.id,
+                code: String(order.code || order.id || ''),
+                createdAt: order.createdAt,
+                total,
+                paid,
+                remaining: Number(order.remaining ?? Math.max(total - paid, 0)),
+                paymentStatus: order.paymentStatus || 'Chờ thanh toán',
+                status: order.status || 'Chờ xử lý'
+            };
+        });
 
-        this.favoriteProducts = (response.favorites || []).map((product) => ({
-            id: product.id,
-            code: product.code,
-            name: product.name,
-            image: product.image || this.fallbackProductImage,
-            price: Number(product.salePrice || product.price || 0),
-            originalPrice: Number(product.originalPrice || product.price || 0),
-            salePrice: Number(product.salePrice || 0),
-        }));
+        this.favoriteProducts = (response.favorites || []).map((product) => {
+            const availability = product.availability || 'Đang bán';
+            return {
+                id: product.id,
+                code: product.code,
+                name: product.name,
+                image: product.image || this.fallbackProductImage,
+                price: Number(product.salePrice || product.price || 0),
+                originalPrice: Number(product.originalPrice || product.price || 0),
+                salePrice: Number(product.salePrice || 0),
+                likedAt: product.likedAt || '',
+                availability,
+                canOpen: product.canOpen ?? (this.normalizeText(availability) !== 'da xoa' && !!product.code)
+            };
+        });
         this.visibleFavoriteCount = 8;
 
-        this.customer = {
-            ...this.customer,
-            totalOrders: this.orders.length || this.customer.totalOrders,
-        };
+        this.reviews = (response.reviews || []).map((review) => ({
+            ...review,
+            rating: Number(review.rating || 0),
+            hidden: Boolean(review.hidden),
+            hiddenReason: review.hiddenReason || '',
+            reply: review.reply || '',
+            replyDate: review.replyDate || '',
+            replyOpen: false,
+            replyDraft: '',
+            replySaving: false,
+            replyError: '',
+            hideOpen: false,
+            hideReason: '',
+            visibilitySaving: false,
+            visibilityError: ''
+        }));
+
+        this.notes = [...(response.notes || [])].sort((left, right) => (
+            new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+        ));
     }
 
     private matchesOrderFilter(order: CustomerOrderItem): boolean {
@@ -1238,18 +1749,16 @@ export class CustomerDetailComponent implements OnInit, OnDestroy {
 
     private isCompletedOrder(order: CustomerOrderItem): boolean {
         const key = this.normalizeText(order.status);
-        return key.includes('hoan thanh') || key.includes('giao thanh cong') || key.includes('da giao');
+        return key === 'da giao' || key.includes('hoan thanh') || key.includes('giao thanh cong');
     }
 
+    /** Đang xử lý: mọi trạng thái chuẩn hóa còn lại (Đã đặt hàng thành công, Chờ thanh toán, Đang chuẩn bị hàng, Chờ vận chuyển, Đang giao). */
     private isPendingOrder(order: CustomerOrderItem): boolean {
-        const key = this.normalizeText(order.status);
-        return !this.isCompletedOrder(order) && !this.isCancelledOrder(order) && (
-            key.includes('cho') ||
-            key.includes('chuan bi') ||
-            key.includes('van chuyen') ||
-            key.includes('dang giao') ||
-            key.includes('dang')
-        );
+        return !this.isCompletedOrder(order) && !this.isCancelledOrder(order);
+    }
+
+    showPaymentBreakdown(order: CustomerOrderItem): boolean {
+        return !this.isCancelledOrder(order) && order.remaining > 0;
     }
 
     private isCancelledOrder(order: CustomerOrderItem): boolean {

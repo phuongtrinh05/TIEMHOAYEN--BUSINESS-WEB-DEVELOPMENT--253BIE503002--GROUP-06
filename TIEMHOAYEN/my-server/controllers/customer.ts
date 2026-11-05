@@ -4,7 +4,7 @@ import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordH
 import { randomUUID } from 'node:crypto';
 import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
 import { createCustomerOrderAccess } from '../services/order-access.service.js';
-import { audit } from '../services/auth.service.js';
+import { assertLoginNotLocked, assertStrongPassword, audit, AuthError, recordLoginFailure, recordLoginSuccess, wrongPasswordError } from '../services/auth.service.js';
 import { derivePromotionStatus } from '../services/pricing-voucher.service.js';
 import { expireCustomerPoints } from '../services/loyalty-policy.service.js';
 
@@ -18,7 +18,7 @@ const sanitizeCustomer = (customer: any) => {
     return customer;
   }
 
-  const { MAT_KHAU, GHI_CHU_NOI_BO, ...safeCustomer } = customer;
+  const { MAT_KHAU, GHI_CHU_NOI_BO, SO_LAN_DANG_NHAP_SAI, KHOA_DANG_NHAP_DEN, ...safeCustomer } = customer;
   return safeCustomer;
 };
 
@@ -136,42 +136,51 @@ export const getAllCustomers = async (_req: Request, res: Response) => {
   }
 };
 
+const GENDERS = ['Nam', 'Nữ', 'Khác'];
+const authFailure = (res: Response, error: any, fallback: string) => {
+  if (error instanceof AuthError) return res.status(error.status).json({ ...error.extra, message: error.message });
+  console.error(fallback, error?.message);
+  return res.status(500).json({ message: fallback });
+};
+
 export const registerCustomer = async (req: Request, res: Response) => {
   try {
-    const { TEN, GIOI_TINH, SDT, EMAIL, MAT_KHAU } = req.body;
+    const name = String(req.body.TEN || '').trim().replace(/\s+/g, ' ');
+    const gender = String(req.body.GIOI_TINH || '').trim();
+    const phone = String(req.body.SDT || '').replace(/[\s.-]/g, '');
+    const emailValue = String(req.body.EMAIL || '').trim().toLowerCase();
+    const password = String(req.body.MAT_KHAU || '');
 
-    if (!TEN || !SDT || !MAT_KHAU || !GIOI_TINH || !EMAIL || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(EMAIL)) || String(MAT_KHAU).length < 8 || String(MAT_KHAU).length > 72) {
-      return res.status(400).json({ message: 'Thiếu thông tin bắt buộc.' });
-    }
+    if (!name || name.length > 100) return res.status(400).json({ field: 'name', message: 'Vui lòng nhập họ tên (tối đa 100 ký tự).' });
+    if (!GENDERS.includes(gender)) return res.status(400).json({ field: 'gender', message: 'Vui lòng chọn giới tính.' });
+    if (!/^0\d{9}$/.test(phone)) return res.status(400).json({ field: 'phone', message: 'Số điện thoại cần gồm 10 chữ số, bắt đầu bằng 0.' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) return res.status(400).json({ field: 'email', message: 'Email không hợp lệ.' });
+    assertStrongPassword(password);
 
     const customerCollection = await getCustomerCollection();
-    const phone = String(SDT).trim();
-    const emailValue = EMAIL && String(EMAIL).trim() !== '' ? String(EMAIL).trim() : null;
-
-    if (await customerCollection.findOne({ SDT: phone })) {
+    const samePhone = await customerCollection.findOne({ SDT: phone });
+    if (samePhone) {
+      const pending = /chờ xác minh/i.test(String(samePhone.TRANG_THAI || ''));
       return res.status(409).json({
-        field: 'phone',
-        message: 'Số điện thoại đã được đăng ký.',
+        field: 'phone', pendingVerification: pending,
+        message: pending ? 'Số điện thoại này đã đăng ký nhưng chưa xác minh. Vui lòng gửi lại mã xác minh.' : 'Số điện thoại đã được đăng ký.',
       });
     }
-
-    if (emailValue && await customerCollection.findOne({ EMAIL: emailValue })) {
-      return res.status(409).json({
-        field: 'email',
-        message: 'Email đã được đăng ký.',
-      });
+    const escaped = emailValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (await customerCollection.findOne({ EMAIL: { $regex: `^${escaped}$`, $options: 'i' } })) {
+      return res.status(409).json({ field: 'email', message: 'Email đã được đăng ký.' });
     }
 
     const newId = await getNextPrefixedId('KHACH_HANG', 'KHACH_HANG_ID', 'CUST', 4);
     const customer = {
       _id: newId,
       KHACH_HANG_ID: newId,
-      TEN: String(TEN).trim(),
+      TEN: name,
       EMAIL: emailValue,
       SDT: phone,
-      MAT_KHAU: await hashPassword(String(MAT_KHAU)),
+      MAT_KHAU: await hashPassword(password),
       DOB: null,
-      GIOI_TINH: String(GIOI_TINH).trim(),
+      GIOI_TINH: gender,
       NGAY_DANG_KY: new Date(),
       LOAI_THANH_VIEN: 'Thành viên',
       DIEM_TICH_LUY: 0,
@@ -181,56 +190,56 @@ export const registerCustomer = async (req: Request, res: Response) => {
     };
 
     await customerCollection.insertOne(customer);
+    await audit(req, 'DANG_KY', newId);
 
     return res.status(201).json({
-      message: 'Đăng ký thành công',
+      message: 'Đăng ký thành công. Vui lòng nhập mã xác minh để kích hoạt tài khoản.',
       customer: sanitizeCustomer(customer),
       requiresVerification: true,
     });
   } catch (error: any) {
-    console.error('Lỗi registerCustomer:', error.message);
-    return res.status(500).json({ message: 'Lỗi server: ' + error.message });
+    return authFailure(res, error, 'Chưa đăng ký được tài khoản. Vui lòng thử lại.');
   }
 };
 
 export const loginCustomer = async (req: Request, res: Response) => {
   try {
-    const { SDT, MAT_KHAU } = req.body;
-
-    if (!SDT || !MAT_KHAU) {
-      return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin.' });
-    }
+    const phone = String(req.body.SDT || '').replace(/[\s.-]/g, '');
+    const password = String(req.body.MAT_KHAU || '');
+    if (!phone || !password) return res.status(400).json({ message: 'Vui lòng nhập số điện thoại và mật khẩu.' });
 
     const customerCollection = await getCustomerCollection();
-    const customer = await customerCollection.findOne({ SDT: String(SDT).trim() });
-
-    if (!customer) {
-      return res.status(404).json({ message: 'Số điện thoại không tồn tại.' });
+    const customer = await customerCollection.findOne({ SDT: phone });
+    // Không tiết lộ số điện thoại có tồn tại hay không (KH02).
+    if (!customer || !isActiveRow(customer)) {
+      await audit(req, 'DANG_NHAP', 'KHACH_HANG', { LY_DO: 'Sai thông tin' }, false);
+      return res.status(401).json({ message: 'Số điện thoại hoặc mật khẩu không đúng.' });
     }
-
-    const isValidPassword = await verifyPassword(String(MAT_KHAU), customer.MAT_KHAU);
-    if (!isValidPassword) {
-      return res.status(401).json({ message: 'Mật khẩu không chính xác.' });
+    assertLoginNotLocked(customer);
+    if (!await verifyPassword(password, customer.MAT_KHAU)) {
+      await audit(req, 'DANG_NHAP', customer.KHACH_HANG_ID, { LY_DO: 'Sai mật khẩu' }, false);
+      throw wrongPasswordError(await recordLoginFailure('KHACH_HANG', customer), 'Số điện thoại hoặc mật khẩu không đúng.');
     }
-    if (/chờ xác minh/i.test(String(customer.TRANG_THAI || ''))) return res.status(403).json({ message: 'Tài khoản chưa xác minh email. Vui lòng hoàn tất xác minh đăng ký.' });
-    if (!isActiveRow(customer) || /khóa|ngừng|inactive/i.test(String(customer.TRANG_THAI || ''))) return res.status(403).json({ message: 'Tài khoản không còn hoạt động.' });
+    if (/chờ xác minh/i.test(String(customer.TRANG_THAI || ''))) return res.status(403).json({ pendingVerification: true, message: 'Tài khoản chưa xác minh. Vui lòng hoàn tất xác minh đăng ký.' });
+    if (/khóa|ngừng|inactive/i.test(String(customer.TRANG_THAI || ''))) return res.status(403).json({ locked: true, message: 'Tài khoản đã bị khóa. Vui lòng liên hệ cửa hàng để được hỗ trợ.' });
 
     if (!isPasswordHash(customer.MAT_KHAU)) {
       await customerCollection.updateOne(
         { KHACH_HANG_ID: customer.KHACH_HANG_ID },
-        { $set: { MAT_KHAU: await hashPassword(String(MAT_KHAU)) } },
+        { $set: { MAT_KHAU: await hashPassword(password) } },
       );
     }
 
     const orderAccess = await createCustomerOrderAccess(customer);
     req.identity = { id: customer.KHACH_HANG_ID, type: 'KHACH_HANG', account: customer, sessionId: '' };
+    const lastLogin = await recordLoginSuccess('KHACH_HANG', customer, req);
     await audit(req, 'DANG_NHAP', customer.KHACH_HANG_ID);
     return res.status(200).json({
-      message: 'Đăng nhập thành công.', token: orderAccess.accessToken, orderAccess,
+      message: 'Đăng nhập thành công.', token: orderAccess.accessToken, orderAccess, lastLogin,
       customer: sanitizeCustomer(customer),
     });
   } catch (error: any) {
-    return res.status(500).json({ message: 'Lỗi server: ' + error.message });
+    return authFailure(res, error, 'Chưa đăng nhập được. Vui lòng thử lại.');
   }
 };
 
@@ -260,14 +269,19 @@ export const updateCustomerById = async (req: Request, res: Response) => {
     if (existing && ((EMAIL !== undefined && !same(EMAIL, existing.EMAIL)) || (SDT !== undefined && !same(SDT, existing.SDT)))) {
       return res.status(400).json({ message: 'Đổi email hoặc số điện thoại cần được xác minh riêng.' });
     }
-    if (!String(TEN || '').trim()) return res.status(400).json({ message: 'Vui lòng nhập họ tên.' });
+    const name = String(TEN || '').trim().replace(/\s+/g, ' ');
+    if (!name || name.length > 100) return res.status(400).json({ field: 'name', message: 'Vui lòng nhập họ tên (tối đa 100 ký tự).' });
+    const birthDate = DOB ? toDate(DOB) : null;
+    if (DOB && (!birthDate || birthDate.getTime() > Date.now() || birthDate.getFullYear() < 1900)) return res.status(400).json({ field: 'birthDate', message: 'Ngày sinh không hợp lệ.' });
+    if (GIOI_TINH !== undefined && GIOI_TINH !== null && GIOI_TINH !== '' && !GENDERS.includes(String(GIOI_TINH))) return res.status(400).json({ field: 'gender', message: 'Giới tính không hợp lệ.' });
     const result = await customerCollection.findOneAndUpdate(
       { KHACH_HANG_ID: id },
       {
         $set: {
-          TEN,
-          DOB: toDate(DOB),
-          GIOI_TINH: GIOI_TINH ?? existing?.GIOI_TINH,
+          TEN: name,
+          DOB: birthDate,
+          GIOI_TINH: GIOI_TINH || existing?.GIOI_TINH,
+          NGAY_CAP_NHAT: new Date(),
         },
       },
       { returnDocument: 'after' },
@@ -277,7 +291,7 @@ export const updateCustomerById = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
     }
 
-    await audit(req, 'CAP_NHAT_HO_SO', id, { TRUOC: { TEN: existing?.TEN, DOB: existing?.DOB, GIOI_TINH: existing?.GIOI_TINH }, SAU: { TEN, DOB, GIOI_TINH } });
+    await audit(req, 'CAP_NHAT_HO_SO', id, { TRUOC: { TEN: existing?.TEN, DOB: existing?.DOB, GIOI_TINH: existing?.GIOI_TINH }, SAU: { TEN: name, DOB: birthDate, GIOI_TINH } });
     return res.status(200).json({
       message: 'Cập nhật thông tin thành công.',
       customer: sanitizeCustomer(result),

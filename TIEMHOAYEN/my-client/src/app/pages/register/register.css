@@ -1116,3 +1116,182 @@ body {
   .login-redirect { font-size:.9rem; }
 }
 .form-control.is-invalid { border: 2px solid #dc3545; color: #dc3545; background: #fff5f5; }
+
+/* =========================
+   KH01 – ổn định chiều cao lỗi, checklist mật khẩu, bước OTP
+========================= */
+
+/* Luôn giữ chỗ cho 1 dòng lỗi để thẻ không bị "giãn" khi lỗi xuất hiện */
+.register-form .error-msg {
+  display: block;
+  min-height: 1.15em;
+  line-height: 1.15;
+}
+
+.register-form .error-msg.is-ok {
+  color: #2e7d32;
+}
+
+.register-form .form-error {
+  margin: 0;
+  text-align: center;
+}
+
+.gender-row {
+  display: flex;
+}
+
+.password-row {
+  margin-bottom: 0;
+}
+
+.password-checklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 2px 14px;
+  margin: -4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.76rem;
+  color: #9a9a9a;
+}
+
+.password-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.2s;
+}
+
+.password-checklist li.is-met {
+  color: #2e7d32;
+}
+
+.pending-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #fff6e8;
+  border: 1px solid #f0d9b5;
+  font-size: 0.82rem;
+  color: var(--text-color);
+}
+
+.verify-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(253, 250, 247, 0.9);
+  border: 1.5px solid #e5d9c8;
+}
+
+.verify-box__message {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--text-color);
+}
+
+.verify-box__row {
+  display: flex;
+  gap: 10px;
+}
+
+.verify-box__input {
+  flex: 1;
+  padding: 0 14px;
+  letter-spacing: 0.4em;
+  font-weight: 700;
+}
+
+.btn-verify {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 120px;
+  height: 39px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 9px;
+  background: var(--primary-color);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-verify:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.verify-box__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  font-size: 0.8rem;
+}
+
+.verify-box__timer {
+  color: rgba(36, 24, 24, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+
+.verify-link {
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  text-decoration: underline;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.verify-link:disabled {
+  color: #9a9a9a;
+  text-decoration: none;
+  cursor: not-allowed;
+  font-variant-numeric: tabular-nums;
+}
+
+.verify-link:not(:disabled):hover {
+  color: var(--color-scarlet-red);
+}
+
+.btn-register {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-register[aria-busy="true"] {
+  cursor: wait;
+  opacity: 0.85;
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: register-spin 0.7s linear infinite;
+}
+
+@keyframes register-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .btn-spinner { animation-duration: 2s; } }
+
+@media (max-width: 480px) {
+  .verify-box__row { flex-direction: column; }
+  .btn-verify { width: 100%; }
+}

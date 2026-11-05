@@ -101,6 +101,18 @@
                 class="profile-menu"
                 *ngIf="showProfileMenu">
 
+                <div class="profile-summary">
+                    <strong>{{ profileName || 'Tài khoản' }}</strong>
+                    <span *ngIf="profileRole">{{ profileRole }}</span>
+                    <div class="last-login" *ngIf="lastLogin; else firstLogin">
+                        <span class="last-login-title">Lần đăng nhập trước</span>
+                        <span><i class="bi bi-clock-history"></i> {{ formatLastLogin(lastLogin.time) }}</span>
+                        <span><i class="bi bi-globe2"></i> IP {{ lastLogin.ip || 'không xác định' }}</span>
+                        <span><i class="bi bi-laptop"></i> {{ lastLogin.device }}</span>
+                    </div>
+                    <ng-template #firstLogin><span class="last-login-title">Đây là lần đăng nhập đầu tiên.</span></ng-template>
+                </div>
+
                 <button>
                     <i class="bi bi-person"></i>
                     Hồ sơ cá nhân

@@ -7,30 +7,26 @@ import { Observable } from 'rxjs';
 })
 export class LoginService {
 
-  private apiUrl =
-    'https://tiem-hoa-yen-api.onrender.com/api/customers/login';
+  private baseUrl = 'https://tiem-hoa-yen-api.onrender.com/api/customers';
 
   constructor(
     private http: HttpClient
   ) {}
 
-  login(data: any): Observable<any> {
-    return this.http.post(
-      this.apiUrl,
-      data
-    );
+  login(data: { SDT: string; MAT_KHAU: string }): Observable<any> {
+    return this.http.post(`${this.baseUrl}/login`, data);
   }
-  sendOtp(data:any){
-  return this.http.post(
-    'https://tiem-hoa-yen-api.onrender.com/api/customers/send-otp',
-    data
-  );
-}
 
-verifyOtp(data:any){
-  return this.http.post(
-    'https://tiem-hoa-yen-api.onrender.com/api/customers/verify-otp',
-    data
-  );
-}
+  /**
+   * Gửi mã OTP.
+   * - Đăng ký: { EMAIL | SDT, purpose: 'DANG_KY' }
+   * - Khôi phục mật khẩu: { SDT } hoặc { EMAIL } (server luôn trả thông báo chung)
+   */
+  sendOtp(data: { SDT?: string; EMAIL?: string; purpose?: string }): Observable<any> {
+    return this.http.post(`${this.baseUrl}/send-otp`, data);
+  }
+
+  verifyOtp(data: { challengeId: string; OTP: string; purpose?: string }): Observable<any> {
+    return this.http.post(`${this.baseUrl}/verify-otp`, data);
+  }
 }

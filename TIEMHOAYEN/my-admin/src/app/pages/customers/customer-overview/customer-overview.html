@@ -1,4 +1,48 @@
 <div class="customer-page">
+    <!-- SUMMARY (AD33) -->
+    <div class="summary-row">
+        <button type="button" class="summary-card" [class.active]="selectedStatus === 'all'" (click)="setStatusFilter('all')">
+            <span class="summary-icon"><i class="bi bi-people"></i></span>
+            <span class="summary-body">
+                <span class="summary-label">Tổng khách hàng</span>
+                <strong>{{ summary.total }}</strong>
+            </span>
+        </button>
+
+        <button type="button" class="summary-card green" [class.active]="selectedStatus === 'active'" (click)="setStatusFilter('active')">
+            <span class="summary-icon"><i class="bi bi-person-check"></i></span>
+            <span class="summary-body">
+                <span class="summary-label">Đang hoạt động</span>
+                <strong>{{ summary.active }}</strong>
+            </span>
+        </button>
+
+        <button type="button" class="summary-card red" [class.active]="selectedStatus === 'locked'" (click)="setStatusFilter('locked')">
+            <span class="summary-icon"><i class="bi bi-lock"></i></span>
+            <span class="summary-body">
+                <span class="summary-label">Bị khóa</span>
+                <strong>{{ summary.locked }}</strong>
+            </span>
+        </button>
+
+        <div class="summary-card blue">
+            <span class="summary-icon"><i class="bi bi-person-plus"></i></span>
+            <span class="summary-body">
+                <span class="summary-label">Mới trong tháng</span>
+                <strong>{{ summary.newThisMonth }}</strong>
+            </span>
+        </div>
+
+        <button type="button" class="summary-card orange" [class.active]="selectedStatus === 'debt'" (click)="setStatusFilter('debt')">
+            <span class="summary-icon"><i class="bi bi-cash-coin"></i></span>
+            <span class="summary-body">
+                <span class="summary-label">Đang có nợ</span>
+                <strong>{{ summary.withDebt }}</strong>
+                <small>Tổng nợ: {{ formatMoney(summary.totalDebt) }}</small>
+            </span>
+        </button>
+    </div>
+
     <div class="customer-card">
         <!-- TOOLBAR -->
         <div class="toolbar">
@@ -16,72 +60,67 @@
             </div>
 
             <div class="toolbar-actions">
-                <span class="selected-text">
-                    Đã chọn: {{ selectedCount }}
-                </span>
-
-                <button
-                    class="delete-selected-btn"
-                    type="button"
-                    [disabled]="selectedCount === 0"
-                    (click)="deleteSelectedCustomers()"
-                >
-                    <i class="bi bi-trash3"></i>
-                    Xóa
-                </button>
+                <div class="status-filter" role="group" aria-label="Lọc theo trạng thái">
+                    <button
+                        type="button"
+                        *ngFor="let option of statusOptions"
+                        [class.active]="selectedStatus === option.value"
+                        (click)="setStatusFilter(option.value)"
+                    >
+                        {{ option.label }}
+                    </button>
+                </div>
 
                 <!-- FILTER -->
-<div class="dropdown-wrapper">
-<button
-class="tool-btn"
-type="button"
-(click)="$event.stopPropagation(); toggleFilterMenu()"
->
-<i class="bi bi-filter"></i>
-<span>Lọc</span>
-</button>
+                <div class="dropdown-wrapper">
+                    <button
+                        class="tool-btn"
+                        type="button"
+                        (click)="$event.stopPropagation(); toggleFilterMenu()"
+                    >
+                        <i class="bi bi-filter"></i>
+                        <span>Lọc</span>
+                    </button>
 
-<div
-class="dropdown-menu filter-menu"
-*ngIf="isFilterMenuOpen"
-(click)="$event.stopPropagation()"
->
-<div class="filter-group">
-    <label>Hạng</label>
+                    <div
+                        class="dropdown-menu filter-menu"
+                        *ngIf="isFilterMenuOpen"
+                        (click)="$event.stopPropagation()"
+                    >
+                        <div class="filter-group">
+                            <label>Hạng</label>
 
-    <select
-        [(ngModel)]="selectedRank"
-        (change)="applyFilters()"
-    >
-        <option value="Tất cả">Tất cả</option>
-        <option value="Đồng">Đồng</option>
-        <option value="Bạc">Bạc</option>
-        <option value="Vàng">Vàng</option>
-        <option value="Kim cương">Kim cương</option>
-    </select>
-</div>
+                            <select
+                                [(ngModel)]="selectedRank"
+                                (change)="applyFilters()"
+                            >
+                                <option value="Tất cả">Tất cả</option>
+                                <option value="Đồng">Đồng</option>
+                                <option value="Bạc">Bạc</option>
+                                <option value="Vàng">Vàng</option>
+                                <option value="Kim cương">Kim cương</option>
+                            </select>
+                        </div>
 
-<div class="filter-group">
-    <label>Ngày tạo</label>
+                        <div class="filter-group">
+                            <label>Trạng thái</label>
 
-    <select
-        [(ngModel)]="selectedDateFilter"
-        (change)="applyFilters()"
-    >
-        <option value="Tất cả">Tất cả</option>
-        <option value="7 ngày gần đây">7 ngày gần đây</option>
-        <option value="30 ngày gần đây">30 ngày gần đây</option>
-        <option value="1 năm gần đây">1 năm gần đây</option>
-    </select>
-</div>
-</div>
-</div>
+                            <select
+                                [(ngModel)]="selectedStatus"
+                                (change)="applyFilters()"
+                            >
+                                <option *ngFor="let option of statusOptions" [value]="option.value">{{ option.label }}</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- SORT -->
                 <div class="dropdown-wrapper">
                     <button
                         class="tool-btn"
                         type="button"
+                        title="Sắp xếp"
                         (click)="$event.stopPropagation(); toggleSortMenu()"
                     >
                         <i class="bi bi-arrow-down-up"></i>
@@ -92,21 +131,13 @@ class="dropdown-menu filter-menu"
                         *ngIf="isSortMenuOpen"
                         (click)="$event.stopPropagation()"
                     >
-                        <button type="button" (click)="sortCustomers('name')">
-                            Theo tên
-                        </button>
-
-                        <button type="button" (click)="sortCustomers('code')">
-                            Theo mã khách hàng
-                        </button>
-
-                        <button type="button" (click)="sortCustomers('point')">
-                            Theo điểm
-                        </button>
-
-                        <button type="button" (click)="sortCustomers('createdAt')">
-                            Theo ngày tạo
-                        </button>
+                        <button type="button" (click)="sortCustomers('name')">Theo tên</button>
+                        <button type="button" (click)="sortCustomers('code')">Theo mã khách hàng</button>
+                        <button type="button" (click)="sortCustomers('totalOrders')">Theo số đơn</button>
+                        <button type="button" (click)="sortCustomers('latestOrder')">Theo đơn gần nhất</button>
+                        <button type="button" (click)="sortCustomers('debt')">Theo nợ phải thu</button>
+                        <button type="button" (click)="sortCustomers('totalSpent')">Theo tổng chi tiêu</button>
+                        <button type="button" (click)="sortCustomers('point')">Theo điểm</button>
                     </div>
                 </div>
 
@@ -127,49 +158,55 @@ class="dropdown-menu filter-menu"
                         *ngIf="isExportMenuOpen"
                         (click)="$event.stopPropagation()"
                     >
-                        <button type="button">Xuất PDF</button>
-                        <button type="button">Xuất Excel</button>
+                        <button type="button" (click)="exportCsv()">Xuất Excel (CSV)</button>
                     </div>
                 </div>
             </div>
         </div>
 
+        <!-- LOADING / ERROR -->
+        <div class="list-state" *ngIf="isLoading && customers.length === 0">
+            <span class="spinner"></span>
+            <p>Đang tải danh sách khách hàng...</p>
+        </div>
+
+        <div class="list-state error" *ngIf="!isLoading && loadError">
+            <i class="bi bi-exclamation-triangle"></i>
+            <p>{{ loadError }}</p>
+            <button type="button" class="retry-btn" (click)="loadCustomers()">
+                <i class="bi bi-arrow-clockwise"></i>
+                Thử lại
+            </button>
+        </div>
+
         <!-- TABLE -->
-        <div class="table-wrapper">
+        <div class="table-wrapper" *ngIf="!loadError && (!isLoading || customers.length > 0)">
             <table>
                 <thead>
                     <tr>
-                        <th class="checkbox-col">
-                            <input
-                                type="checkbox"
-                                [checked]="isAllSelected()"
-                                (change)="toggleSelectAll($event)"
-                            >
-                        </th>
-                        <th>Mã khách hàng</th>
-                        <th>Tên</th>
+                        <th>Mã KH</th>
+                        <th>Khách hàng</th>
                         <th>SĐT</th>
                         <th class="email-col">Email</th>
-                        <th>Điểm tích lũy</th>
-                        <th>Hạng</th>
-                        <th>Ngày tạo</th>
+                        <th>Số đơn</th>
+                        <th>Đơn gần nhất</th>
+                        <th>Nợ phải thu</th>
+                        <th>Tổng chi tiêu</th>
+                        <th>Hạng/Điểm</th>
+                        <th>Trạng thái</th>
                         <th class="action-col">Thao tác</th>
                     </tr>
                 </thead>
 
                 <tbody>
+                    <tr *ngIf="filteredCustomers.length === 0">
+                        <td colspan="11" class="empty-row">Không có khách hàng phù hợp.</td>
+                    </tr>
+
                     <tr
                         *ngFor="let customer of pagedCustomers"
-                        [class.selected-row]="customer.selected"
+                        [class.editing-row]="editingCustomerCode === customer.code"
                     >
-                        <td class="checkbox-col">
-                            <input
-                                type="checkbox"
-                                [(ngModel)]="customer.selected"
-                                (change)="onCustomerSelectionChange(customer)"
-                            >
-                        </td>
-
                         <td class="customer-code">
                             <button
                                 type="button"
@@ -180,84 +217,123 @@ class="dropdown-menu filter-menu"
                             </button>
                         </td>
 
-                        <td>
+                        <td class="name-cell">
                             <div class="customer-name">
                                 <div class="avatar">
                                     {{ getAvatarText(customer.name) }}
                                 </div>
 
-                                <input
-                                    *ngIf="editingCustomerId === customer.id"
-                                    class="table-input name-input"
-                                    type="text"
-                                    [(ngModel)]="customer.name"
-                                >
+                                <ng-container *ngIf="editingCustomerCode === customer.code; else nameView">
+                                    <div class="inline-edit">
+                                        <input
+                                            class="table-input name-input"
+                                            type="text"
+                                            maxlength="100"
+                                            [(ngModel)]="editName"
+                                            [disabled]="isEditSaving"
+                                            (keydown.enter)="saveInlineEdit(customer)"
+                                            (keydown.escape)="cancelInlineEdit()"
+                                        >
+                                        <span class="inline-error" *ngIf="editError">{{ editError }}</span>
+                                    </div>
+                                </ng-container>
 
-                                <button
-                                    *ngIf="editingCustomerId !== customer.id"
-                                    type="button"
-                                    class="link-cell customer-name-link"
-                                    (click)="goToCustomerDetail(customer)"
-                                >
-                                    {{ customer.name }}
-                                </button>
+                                <ng-template #nameView>
+                                    <button
+                                        type="button"
+                                        class="link-cell customer-name-link"
+                                        [title]="customer.name"
+                                        (click)="goToCustomerDetail(customer)"
+                                    >
+                                        {{ customer.name }}
+                                    </button>
+                                </ng-template>
                             </div>
                         </td>
 
                         <td>
-                            <input
-                                *ngIf="editingCustomerId === customer.id"
-                                class="table-input"
-                                type="text"
-                                [(ngModel)]="customer.phone"
-                            >
-
-                            <span *ngIf="editingCustomerId !== customer.id">
-                                {{ customer.phone }}
+                            <span [title]="editingCustomerCode === customer.code ? 'Khách tự đổi trong tài khoản' : customer.phone">
+                                {{ customer.phone || '--' }}
                             </span>
+                            <small class="readonly-hint" *ngIf="editingCustomerCode === customer.code">Khách tự đổi trong tài khoản</small>
                         </td>
 
                         <td class="email-col">
-                            <input
-                                *ngIf="editingCustomerId === customer.id"
-                                class="table-input email-input"
-                                type="email"
-                                [(ngModel)]="customer.email"
-                            >
+                            <span [title]="customer.email">{{ customer.email || '--' }}</span>
+                            <small class="readonly-hint" *ngIf="editingCustomerCode === customer.code">Khách tự đổi trong tài khoản</small>
+                        </td>
 
-                            <span *ngIf="editingCustomerId !== customer.id">
-                                {{ customer.email }}
+                        <td>{{ customer.totalOrders }}</td>
+
+                        <td>{{ customer.latestOrderDate || '--' }}</td>
+
+                        <td [class.debt-cell]="customer.debt > 0">{{ formatMoney(customer.debt) }}</td>
+
+                        <td>{{ formatMoney(customer.totalSpent) }}</td>
+
+                        <td>
+                            <div class="rank-cell">
+                                <img
+                                    class="rank-image"
+                                    [src]="getRankImage(customer)"
+                                    [alt]="getCustomerRank(customer)"
+                                    [title]="getCustomerRank(customer)"
+                                >
+                                <span>{{ customer.point }} điểm</span>
+                            </div>
+                        </td>
+
+                        <td>
+                            <span [class]="getStatusClass(customer)" [title]="customer.lockReason || customer.status">
+                                {{ customer.status }}
                             </span>
                         </td>
 
-                        <td>
-                            {{ customer.point }}
-                        </td>
-
-                        <td>
-                            <img
-                                class="rank-image"
-                                [src]="getRankImage(customer)"
-                                [alt]="getCustomerRank(customer)"
-                            >
-                        </td>
-
-                        <td>{{ customer.createdAt | date: 'dd/MM/yyyy' }}</td>
-
                         <td class="action-col">
-                            <button
-                                class="edit-row-btn"
-                                type="button"
-                                title="Chỉnh sửa"
-                                [disabled]="isEditButtonDisabled(customer)"
-                                (click)="toggleInlineEdit(customer)"
-                            >
-                                <i
-                                    class="bi"
-                                    [class.bi-pencil-square]="editingCustomerId !== customer.id"
-                                    [class.bi-check2-square]="editingCustomerId === customer.id"
-                                ></i>
-                            </button>
+                            <div class="row-actions">
+                                <ng-container *ngIf="editingCustomerCode === customer.code; else editBtn">
+                                    <button
+                                        class="edit-row-btn"
+                                        type="button"
+                                        title="Lưu"
+                                        [disabled]="isEditSaving"
+                                        (click)="saveInlineEdit(customer)"
+                                    >
+                                        <i class="bi" [class.bi-check2-square]="!isEditSaving" [class.bi-hourglass-split]="isEditSaving"></i>
+                                    </button>
+                                    <button
+                                        class="edit-row-btn"
+                                        type="button"
+                                        title="Hủy"
+                                        [disabled]="isEditSaving"
+                                        (click)="cancelInlineEdit()"
+                                    >
+                                        <i class="bi bi-x-square"></i>
+                                    </button>
+                                </ng-container>
+
+                                <ng-template #editBtn>
+                                    <button
+                                        class="edit-row-btn"
+                                        type="button"
+                                        title="Sửa họ tên"
+                                        [disabled]="isEditSaving"
+                                        (click)="startInlineEdit(customer)"
+                                    >
+                                        <i class="bi bi-pencil-square"></i>
+                                    </button>
+                                </ng-template>
+
+                                <button
+                                    class="edit-row-btn lock-row-btn"
+                                    type="button"
+                                    [class.unlock]="customer.locked"
+                                    [title]="customer.locked ? 'Mở khóa tài khoản' : 'Khóa tài khoản'"
+                                    (click)="openLockDialog(customer)"
+                                >
+                                    <i class="bi" [class.bi-lock]="!customer.locked" [class.bi-unlock]="customer.locked"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 </tbody>
@@ -265,7 +341,7 @@ class="dropdown-menu filter-menu"
         </div>
 
         <!-- PAGINATION -->
-        <div class="pagination">
+        <div class="pagination" *ngIf="!loadError && filteredCustomers.length > 0">
             <button
                 class="page-nav"
                 type="button"
@@ -299,6 +375,48 @@ class="dropdown-menu filter-menu"
                 <i class="bi bi-arrow-right"></i>
             </button>
         </div>
+    </div>
 
+    <!-- LOCK DIALOG -->
+    <div class="lock-backdrop" *ngIf="lockDialog as dialog" (click)="closeLockDialog()">
+        <div class="lock-dialog" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+            <h3>{{ dialog.locking ? 'Khóa tài khoản' : 'Mở khóa tài khoản' }}</h3>
+
+            <p *ngIf="dialog.locking">
+                Khóa tài khoản <strong>{{ dialog.customer.name }}</strong> ({{ dialog.customer.code }})?
+                Khách sẽ bị đăng xuất khỏi mọi thiết bị.
+            </p>
+            <p *ngIf="!dialog.locking">
+                Mở khóa tài khoản <strong>{{ dialog.customer.name }}</strong> ({{ dialog.customer.code }})?
+                <span class="lock-reason-note" *ngIf="dialog.customer.lockReason">Lý do khóa trước đó: {{ dialog.customer.lockReason }}</span>
+            </p>
+
+            <label class="lock-field" *ngIf="dialog.locking">
+                <span>Lý do khóa <em>*</em></span>
+                <textarea
+                    rows="3"
+                    maxlength="300"
+                    [(ngModel)]="dialog.reason"
+                    [disabled]="dialog.saving"
+                    placeholder="Nhập lý do (tối đa 300 ký tự)"
+                ></textarea>
+                <small>{{ dialog.reason.length }}/300</small>
+            </label>
+
+            <p class="lock-error" *ngIf="dialog.error">{{ dialog.error }}</p>
+
+            <div class="lock-actions">
+                <button type="button" class="lock-cancel" [disabled]="dialog.saving" (click)="closeLockDialog()">Hủy</button>
+                <button type="button" class="lock-confirm" [class.unlock]="!dialog.locking" [disabled]="dialog.saving" (click)="confirmLockDialog()">
+                    {{ dialog.saving ? 'Đang xử lý...' : (dialog.locking ? 'Khóa' : 'Mở khóa') }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div class="toast" *ngIf="toastMessage" [class.error]="toastType === 'error'" role="status">
+        <i class="bi" [class.bi-check-circle]="toastType === 'success'" [class.bi-exclamation-circle]="toastType === 'error'"></i>
+        {{ toastMessage }}
     </div>
 </div>

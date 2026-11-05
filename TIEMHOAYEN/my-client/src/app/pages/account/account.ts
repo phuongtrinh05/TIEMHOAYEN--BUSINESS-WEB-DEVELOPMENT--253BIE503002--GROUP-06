@@ -7,7 +7,10 @@ import { PageHeader } from '../../components/page-header/page-header';
 import { PageFooter } from '../../components/page-footer/page-footer';
 import { CustomerService, Customer, CustomerAddress, CustomerOrder, CustomerVoucher, CustomerWishlistItem } from '../../services/customer.service';
 import { CartService } from '../../services/cart.service';
+import { endSession } from '../../services/session-auth';
 import { Subscription } from 'rxjs';
+import { AccountChangePassword } from './change-password/change-password';
+import { ACCOUNT_SECTIONS, AccountSection, DEFAULT_ACCOUNT_SECTION, resolveAccountSection } from './account-sections';
 
 
 // ===== INTERFACES =====
@@ -99,9 +102,9 @@ interface WardOption extends Ward {
 @Component({
   selector: 'app-account',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, PageFooter, PageHeader, MarketingPreferences],
+  imports: [CommonModule, FormsModule, RouterLink, PageFooter, PageHeader, MarketingPreferences, AccountChangePassword],
   templateUrl: './account.html',
-  styleUrl: './account.css',
+  styleUrls: ['./account.css', './account-sections.css'],
 })
 export class AccountComponent implements OnInit, OnDestroy {
   private readonly platformId = inject(PLATFORM_ID);
@@ -149,12 +152,16 @@ export class AccountComponent implements OnInit, OnDestroy {
       return 'delivering';
     }
 
-    if (value.includes('giao hàng thành công') || value.includes('hoàn thành')) {
+    if (value.includes('giao hàng thành công') || value.includes('hoàn thành') || value.includes('đã giao')) {
       return 'delivered';
     }
 
     if (value.includes('hủy')) {
       return 'cancelled';
+    }
+
+    if (value.includes('trả hàng') || value.includes('hoàn tiền')) {
+      return 'returned';
     }
 
     return value;
@@ -214,23 +221,32 @@ export class AccountComponent implements OnInit, OnDestroy {
     return 'Đồng';
   }
 
-  canViewOrderDetail(order: Order): boolean {
+  /** Đơn chưa thanh toán xong / thanh toán thất bại: cho khách thanh toán lại thay vì tạo đơn mới. */
+  needsPayment(order: Order): boolean {
     const status = this.normalizeOrderStatus(order.status);
 
-    return status !== 'payment' && status !== 'payment_failed';
+    return status === 'payment' || status === 'payment_failed';
   }
 
+  canViewOrderDetail(order: Order): boolean {
+    return !this.needsPayment(order);
+  }
+
+  /** Trang chi tiết đơn đã có nút thanh toán lại (PUT /orders/:id/payment-retry). */
   goToOrderDetail(order: Order): void {
-    if (!this.canViewOrderDetail(order)) {
+    if (!order?.id) {
       return;
     }
 
     this.router.navigate(['/order-detail', order.id]);
   }
-  // ===== ACTIVE SECTION =====
-  activeSection = 'thongtin';
-  private accountSectionsObserver?: IntersectionObserver;
+
+  // ===== ACTIVE SECTION (KH19: mỗi mục là một URL /account/<mục>) =====
+  readonly accountSections = ACCOUNT_SECTIONS;
+  activeSection: AccountSection = DEFAULT_ACCOUNT_SECTION;
   private loadedAccountSections = new Set<string>();
+  ordersLoaded = false;
+  ordersLoadError = '';
 
   // ===== TODO: replace with API call GET /api/user/profile =====
   userInfo: UserInfo = {
@@ -246,13 +262,33 @@ export class AccountComponent implements OnInit, OnDestroy {
   orders: Order[] = [];
 
   showAllOrders = false;
+  readonly ordersPreviewSize = 10;
+
+  /** Lịch sử = đơn đã kết thúc (đã giao/hoàn thành, đã hủy, trả hàng/hoàn tiền). */
+  private isFinishedOrder(order: Order): boolean {
+    return ['delivered', 'cancelled', 'returned'].includes(this.normalizeOrderStatus(order.status));
+  }
+
+  /** "Đơn hàng của tôi": đơn đang xử lý hoặc chờ thanh toán. */
+  get activeOrders(): Order[] {
+    return this.orders.filter(order => !this.isFinishedOrder(order));
+  }
+
+  get historyOrders(): Order[] {
+    return this.orders.filter(order => this.isFinishedOrder(order));
+  }
+
+  get currentOrderList(): Order[] {
+    return this.activeSection === 'order-history' ? this.historyOrders : this.activeOrders;
+  }
 
   get displayedOrders(): Order[] {
-    return this.showAllOrders ? this.orders : this.orders.slice(0, 4);
+    const list = this.currentOrderList;
+    return this.showAllOrders ? list : list.slice(0, this.ordersPreviewSize);
   }
 
   get hasMoreOrders(): boolean {
-    return this.orders.length > 4;
+    return this.currentOrderList.length > this.ordersPreviewSize;
   }
 
   // ===== TODO: replace with API call GET /api/user/membership =====
@@ -390,6 +426,11 @@ export class AccountComponent implements OnInit, OnDestroy {
     gender: '',
   };
 
+  readonly genderOptions = ['Nam', 'Nữ', 'Khác'];
+  savingProfile = false;
+  profileError = '';
+  profileFieldErrors: { fullName?: string; birthDate?: string; gender?: string } = {};
+
   // ===== MODAL THÊM/SỬA ĐỊA CHỈ =====
   showAddAddressModal = false;
   editingAddressId: string | null = null;
@@ -426,7 +467,6 @@ export class AccountComponent implements OnInit, OnDestroy {
     }
 
   ngOnDestroy(): void {
-    this.accountSectionsObserver?.disconnect();
     if (isPlatformBrowser(this.platformId)) {
       window.removeEventListener('wishlist-changed', this.wishlistChangedHandler);
     }
@@ -461,64 +501,42 @@ export class AccountComponent implements OnInit, OnDestroy {
   }
 
   private loadAccountData(): void {
+    // Hồ sơ luôn cần (tên, hạng, điểm); các mục khác tải khi được mở.
     this.loadCustomerInfo();
-    // Voucher section is conditional in the template; other sections load as
-    // they approach the viewport or are selected from the account menu.
-    this.loadCustomerVouchers();
-    setTimeout(() => {
-      if (typeof IntersectionObserver === 'undefined') {
-        ['donhang', 'wishlist', 'diachi'].forEach(section => this.loadAccountSection(section));
-        return;
-      }
-      this.accountSectionsObserver = new IntersectionObserver(entries => {
-        for (const entry of entries) if (entry.isIntersecting) {
-          this.loadAccountSection(entry.target.id);
-          this.accountSectionsObserver?.unobserve(entry.target);
-        }
-      }, { rootMargin: '150px' });
-      ['donhang', 'wishlist', 'diachi'].forEach(id => {
-        const section = document.getElementById(id);
-        if (section) this.accountSectionsObserver!.observe(section);
-      });
-    });
   }
 
-  private loadAccountSection(section: string): void {
-    if (section === 'diem' || section === 'hang') section = 'donhang';
-    if (this.loadedAccountSections.has(section)) return;
-    this.loadedAccountSections.add(section);
-    if (section === 'donhang') this.loadCustomerOrders();
-    if (section === 'wishlist') this.loadCustomerWishlist();
-    if (section === 'diachi') this.loadCustomerAddresses();
+  /** Tải dữ liệu của mục đang mở (mỗi nhóm dữ liệu chỉ tải một lần). */
+  private loadAccountSection(section: AccountSection): void {
+    const dataKey =
+      section === 'orders' || section === 'order-history' || section === 'points' ? 'orders'
+      : section === 'vouchers' ? 'vouchers'
+      : section === 'wishlist' ? 'wishlist'
+      : section === 'addresses' ? 'addresses'
+      : '';
+    if (!dataKey || this.loadedAccountSections.has(dataKey)) return;
+    this.loadedAccountSections.add(dataKey);
+    if (dataKey === 'orders') this.loadCustomerOrders();
+    if (dataKey === 'vouchers') this.loadCustomerVouchers();
+    if (dataKey === 'wishlist') this.loadCustomerWishlist();
+    if (dataKey === 'addresses') this.loadCustomerAddresses();
   }
 
+  /** /account/:section → mục đang mở. Tên mục cũ (diem, hang, donhang…) được đổi sang URL mới. */
   private listenAccountSectionFromRoute(): void {
-    this.sectionSubscription = this.route.queryParamMap.subscribe(params => {
-      const section = String(params.get('section') || '').trim();
+    this.sectionSubscription = this.route.paramMap.subscribe(params => {
+      const raw = String(params.get('section') || '');
+      const section = resolveAccountSection(raw) ?? DEFAULT_ACCOUNT_SECTION;
 
-      if (this.isValidAccountSection(section)) {
-        this.setActiveSection(section);
+      if (raw !== section) {
+        this.router.navigate(['/account', section], { replaceUrl: true });
         return;
       }
 
-      const fragment = String(this.route.snapshot.fragment || '').trim();
-
-      if (this.isValidAccountSection(fragment)) {
-        this.setActiveSection(fragment);
-      }
+      if (this.activeSection !== section) this.showAllOrders = false;
+      this.activeSection = section;
+      this.loadAccountSection(section);
+      this.cdr.detectChanges();
     });
-  }
-
-  private isValidAccountSection(section: string): boolean {
-    return [
-      'thongtin',
-      'donhang',
-      'wishlist',
-      'diachi',
-      'voucher',
-      'diem',
-      'hang',
-    ].includes(section);
   }
 
     loadCustomerInfo(): void {
@@ -588,7 +606,7 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi load địa chỉ:', err);
-        this.loadedAccountSections.delete('diachi');
+        this.loadedAccountSections.delete('addresses');
       }
     });
   }
@@ -604,6 +622,8 @@ export class AccountComponent implements OnInit, OnDestroy {
 
     this.customerService.getOrders(khachHang.KHACH_HANG_ID).subscribe({
       next: (data: CustomerOrder[]) => {
+        this.ordersLoaded = true;
+        this.ordersLoadError = '';
         this.orders = data
           .map(item => ({
             id: item.DON_HANG_ID,
@@ -620,7 +640,10 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi load đơn hàng:', err);
-        this.loadedAccountSections.delete('donhang');
+        this.ordersLoaded = true;
+        this.ordersLoadError = 'Chưa tải được danh sách đơn hàng. Vui lòng thử lại.';
+        this.loadedAccountSections.delete('orders');
+        this.cdr.detectChanges();
       }
     });
   }
@@ -661,6 +684,7 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Lỗi load voucher:', err);
+        this.loadedAccountSections.delete('vouchers');
         if (err?.status === 401) {
           this.router.navigate(['/login']);
           return;
@@ -790,10 +814,8 @@ export class AccountComponent implements OnInit, OnDestroy {
   }
   get hasProfileChanged(): boolean {
     return (
-      this.editData.fullName !== this.userInfo.fullName ||
-      this.normalizePhone(this.editData.phone) !== this.normalizePhone(this.userInfo.phone) ||
-      this.editData.email !== this.userInfo.email ||
-      this.editData.birthDate !== this.userInfo.birthDate ||
+      this.editData.fullName.trim() !== this.userInfo.fullName ||
+      this.toDisplayDate(this.editData.birthDate) !== this.toDisplayDate(this.userInfo.birthDate) ||
       this.editData.gender !== this.userInfo.gender
     );
   }
@@ -806,11 +828,15 @@ export class AccountComponent implements OnInit, OnDestroy {
       birthDate: this.toDisplayDate(this.userInfo.birthDate),
       gender: this.userInfo.gender,
     };
+    this.profileError = '';
+    this.profileFieldErrors = {};
+    this.savingProfile = false;
 
     this.showEditModal = true;
   }
 
   closeModal(): void {
+    if (this.savingProfile) return;
     this.showEditModal = false;
   }
 
@@ -818,12 +844,55 @@ export class AccountComponent implements OnInit, OnDestroy {
     const target = event.target as HTMLElement;
 
     if (target.classList.contains('modal-overlay')) {
-      this.showEditModal = false;
+      this.closeModal();
     }
   }
 
+  /** Ngày sinh dd/mm/yyyy hợp lệ (có thật) và không ở tương lai. Rỗng = hợp lệ. */
+  birthDateError(value: string): string {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text);
+    if (!match) return 'Ngày sinh không hợp lệ (định dạng DD/MM/YYYY).';
+    const [, dd, mm, yyyy] = match;
+    const date = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+    if (date.getFullYear() !== Number(yyyy) || date.getMonth() !== Number(mm) - 1 || date.getDate() !== Number(dd)) {
+      return 'Ngày sinh không hợp lệ.';
+    }
+    if (Number(yyyy) < 1900) return 'Ngày sinh không hợp lệ.';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (date.getTime() > today.getTime()) return 'Ngày sinh không được ở tương lai.';
+    return '';
+  }
+
+  get todayIso(): string {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+
+  clearProfileError(field: 'fullName' | 'birthDate' | 'gender'): void {
+    delete this.profileFieldErrors[field];
+    this.profileError = '';
+  }
+
   saveProfile(form: NgForm): void {
-    if (form.invalid) {
+    if (this.savingProfile) return;
+    this.profileError = '';
+    this.profileFieldErrors = {};
+
+    const fullName = this.editData.fullName.trim().replace(/\s+/g, ' ');
+    if (!fullName) this.profileFieldErrors.fullName = 'Vui lòng nhập họ và tên.';
+    else if (fullName.length > 100) this.profileFieldErrors.fullName = 'Họ và tên tối đa 100 ký tự.';
+
+    const birthDateError = this.birthDateError(this.editData.birthDate);
+    if (birthDateError) this.profileFieldErrors.birthDate = birthDateError;
+
+    if (this.editData.gender && !this.genderOptions.includes(this.editData.gender)) {
+      this.profileFieldErrors.gender = 'Vui lòng chọn giới tính hợp lệ.';
+    }
+
+    if (form.invalid || Object.keys(this.profileFieldErrors).length) {
       form.control.markAllAsTouched();
       return;
     }
@@ -842,34 +911,50 @@ export class AccountComponent implements OnInit, OnDestroy {
 
     const khachHang = JSON.parse(saved);
 
-    const payload = {
-      TEN: this.editData.fullName,
-      EMAIL: this.editData.email,
-      SDT: this.normalizePhone(this.editData.phone),
-      DOB: this.toIsoDate(this.editData.birthDate) || null,
-      GIOI_TINH: this.editData.gender,
+    // Email/SĐT không gửi lên: đổi các trường này cần xác minh riêng (KH20).
+    const payload: Partial<Customer> = {
+      TEN: fullName,
+      DOB: this.toIsoDate(this.toDisplayDate(this.editData.birthDate)) || null,
+      ...(this.editData.gender ? { GIOI_TINH: this.editData.gender } : {}),
     };
 
+    this.savingProfile = true;
     this.customerService.updateById(khachHang.KHACH_HANG_ID, payload).subscribe({
       next: (res) => {
-        const updated = res.customer;
+        const updated = res?.customer || ({} as Customer);
+        const merged = { ...khachHang, ...updated };
 
         this.userInfo = {
-          fullName: updated.TEN || '',
-          gender: updated.GIOI_TINH || '',
-          email: updated.EMAIL || '',
-          birthDate: updated.DOB ? this.toDisplayDate(updated.DOB.split('T')[0]) : '',
-          phone: updated.SDT || '',
-          avatar: updated.AVATAR || 'assets/images/account/default-avatar.png',
+          fullName: merged.TEN || '',
+          gender: merged.GIOI_TINH || '',
+          email: merged.EMAIL || '',
+          birthDate: merged.DOB ? this.toDisplayDate(String(merged.DOB).split('T')[0]) : '',
+          phone: merged.SDT || '',
+          avatar: merged.AVATAR || 'assets/images/account/default-avatar.png',
         };
 
-        localStorage.setItem('khachHang', JSON.stringify(updated));
+        localStorage.setItem('khachHang', JSON.stringify(merged));
+        window.dispatchEvent(new Event('auth-changed'));
 
+        this.savingProfile = false;
         this.showEditModal = false;
         this.cdr.detectChanges();
       },
       error: (err) => {
-        console.error('Lỗi cập nhật thông tin:', err);
+        this.savingProfile = false;
+        const message = typeof err?.error?.message === 'string' && err.error.message
+          ? err.error.message
+          : err?.status === 0 || err?.status >= 500
+            ? 'Chưa lưu được thông tin do lỗi kết nối hoặc hệ thống. Vui lòng thử lại.'
+            : err?.status === 401
+              ? 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+              : 'Chưa lưu được thông tin. Vui lòng thử lại.';
+        const field = String(err?.error?.field || '').toUpperCase();
+        if (field === 'TEN' || field === 'FULLNAME' || field === 'NAME') this.profileFieldErrors.fullName = message;
+        else if (field === 'DOB' || field === 'BIRTHDATE') this.profileFieldErrors.birthDate = message;
+        else if (field === 'GIOI_TINH' || field === 'GENDER') this.profileFieldErrors.gender = message;
+        else this.profileError = message;
+        this.cdr.detectChanges();
       }
     });
   }
@@ -1213,58 +1298,30 @@ export class AccountComponent implements OnInit, OnDestroy {
   }
 
   // ===== METHODS =====
-  private getStickyHeaderOffset(): number {
-    const selectors = ['.header', '.menu', '.mobile-header'];
-    const fixedBottom = selectors.reduce((bottom, selector) => {
-      const element = document.querySelector(selector) as HTMLElement | null;
-
-      if (!element) {
-        return bottom;
+  /** Sidebar: đổi URL /account/<mục>; chỉ phần nội dung bên phải thay đổi. */
+  setActiveSection(section: AccountSection): void {
+    if (section === this.activeSection) return;
+    this.router.navigate(['/account', section]).then(() => {
+      if (!isPlatformBrowser(this.platformId)) return;
+      const content = document.getElementById('account-content');
+      if (content && content.getBoundingClientRect().top < 0) {
+        window.scrollTo({ top: Math.max(window.scrollY + content.getBoundingClientRect().top - 120, 0), behavior: 'smooth' });
       }
-
-      const styles = window.getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-      const isPinned =
-        (styles.position === 'fixed' || styles.position === 'sticky') &&
-        rect.height > 0 &&
-        rect.bottom > 0 &&
-        rect.top <= rect.height + 1;
-
-      return isPinned ? Math.max(bottom, rect.bottom) : bottom;
-    }, 0);
-
-    return fixedBottom + 44;
+    });
   }
 
-  setActiveSection(section: string): void {
-    this.loadAccountSection(section);
-    this.activeSection = section;
+  onMobileSectionChange(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    if (value === '__logout') {
+      this.logout();
+      return;
+    }
+    const section = resolveAccountSection(value);
+    if (section) this.setActiveSection(section);
+  }
 
-    const sectionMap: Record<string, string> = {
-      thongtin: 'thongtin',
-      donhang: 'donhang',
-      wishlist: 'wishlist',
-      diachi: 'diachi',
-      voucher: 'voucher',
-      diem: 'member-reward',
-      hang: 'member-reward',
-    };
-
-    setTimeout(() => {
-      const targetId = sectionMap[section];
-      const target = document.getElementById(targetId);
-
-      if (target) {
-        const headerOffset = this.getStickyHeaderOffset();
-        const targetPosition = target.getBoundingClientRect().top + window.scrollY;
-        const scrollPosition = targetPosition - headerOffset;
-
-        window.scrollTo({
-          top: scrollPosition,
-          behavior: 'smooth',
-        });
-      }
-    }, 0);
+  get activeSectionLabel(): string {
+    return this.accountSections.find(item => item.key === this.activeSection)?.label || 'Tài khoản';
   }
 
   getStatusClass(status: string): string {
@@ -1618,17 +1675,10 @@ export class AccountComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Thu hồi token trên server + xoá phiên ở trình duyệt (endSession), rồi về /login. */
   logout(): void {
     if (isPlatformBrowser(this.platformId)) {
-      localStorage.removeItem('khachHang');
-      localStorage.removeItem('token');
-
-      localStorage.removeItem('tiemHoaYenRegistrantOrder');
-      localStorage.removeItem('tiemHoaYenGuestOrder');
-      localStorage.removeItem('tiemHoaYenCreatedOrder');
-      localStorage.removeItem('tiemHoaYenCheckoutItems');
-
-      window.dispatchEvent(new Event('auth-changed'));
+      endSession();
       window.dispatchEvent(new Event('cart-changed'));
     }
 

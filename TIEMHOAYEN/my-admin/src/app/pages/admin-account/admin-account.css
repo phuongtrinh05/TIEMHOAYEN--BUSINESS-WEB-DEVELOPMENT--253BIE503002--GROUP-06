@@ -12,7 +12,8 @@
 .toolbar{
     display:flex;
     justify-content:flex-end;
-    gap:16px;
+    flex-wrap:wrap;
+    gap:12px;
     margin-bottom:24px;
 }
 
@@ -130,20 +131,28 @@ input[type="checkbox"] {
     color:#000;
 }
 
-.status{
+.status-badge{
+    display:inline-block;
+    padding:4px 10px;
+    border-radius:999px;
+    font-size:13px;
     font-weight:700;
+    white-space:nowrap;
 }
 
-.active{
-    color:#58C16A;
+.status-badge.active{
+    color:#2E8B3E;
+    background:#E7F7EA;
 }
 
-.locked{
-    color:#FF6464;
+.status-badge.locked{
+    color:#D93636;
+    background:#FFECEC;
 }
 
-.inactive{
-    color:#8A8F98;
+.status-badge.inactive{
+    color:#6B7280;
+    background:#F1F2F4;
 }
 
 .empty-row{
@@ -299,4 +308,252 @@ input[type="checkbox"] {
 
 .sort-item:not(:last-child){
     border-bottom:1px solid #F3F3F3;
+}
+
+/* ---- AD52 ---- */
+.page-note{
+    display:flex;
+    gap:10px;
+    align-items:flex-start;
+    background:#FFF7F7;
+    border:1px solid #F2CACA;
+    color:#5B1414;
+    border-radius:8px;
+    padding:10px 14px;
+    margin-bottom:16px;
+    font-size:14px;
+}
+
+.page-note a{
+    color:#731919;
+    font-weight:700;
+    text-decoration:underline;
+}
+
+.alert{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    border-radius:8px;
+    padding:10px 14px;
+    margin-bottom:16px;
+    font-size:14px;
+}
+
+.alert span{
+    flex:1;
+}
+
+.alert-success-inline{
+    background:#ECFDF3;
+    border:1px solid #B7EBC6;
+    color:#1F7A35;
+}
+
+.alert-error-inline{
+    background:#FEF2F2;
+    border:1px solid #FECACA;
+    color:#B91C1C;
+}
+
+.alert-close,
+.link-btn{
+    border:none;
+    background:none;
+    color:inherit;
+    cursor:pointer;
+    font-weight:600;
+}
+
+.link-btn{
+    text-decoration:underline;
+}
+
+.toolbar-select{
+    height:42px;
+    border:1px solid #E4E4E4;
+    border-radius:6px;
+    padding:0 10px;
+    background:#fff;
+    min-width:170px;
+}
+
+.tool-btn:disabled,
+.export-btn:disabled{
+    opacity:.5;
+    cursor:not-allowed;
+}
+
+.sort-item.current{
+    color:#8B1E1E;
+    font-weight:700;
+}
+
+.table-wrapper{
+    overflow-x:auto;
+}
+
+td.text-left{
+    text-align:left;
+}
+
+.self-row td{
+    background:#FFFBF5;
+}
+
+.self-tag{
+    display:inline-block;
+    margin-left:6px;
+    padding:1px 6px;
+    border-radius:4px;
+    font-size:11px;
+    font-weight:700;
+    background:#FFD6D6;
+    color:#731919;
+}
+
+.last-login{
+    font-size:13px;
+    min-width:160px;
+}
+
+.last-login small{
+    display:block;
+    color:#8A8F98;
+}
+
+.last-login .device{
+    max-width:200px;
+    margin:0 auto;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.muted{
+    color:#8A8F98;
+}
+
+.small{
+    font-size:12px;
+}
+
+.row-actions{
+    white-space:nowrap;
+}
+
+.row-btn{
+    width:32px;
+    height:32px;
+    border:1px solid #E4E4E4;
+    border-radius:6px;
+    background:#fff;
+    color:#731919;
+    cursor:pointer;
+    margin:0 2px;
+}
+
+.row-btn:hover{
+    background:#FFF2F2;
+}
+
+.row-btn.danger{
+    color:#D93636;
+}
+
+.row-btn.muted-btn{
+    color:#6B7280;
+}
+
+.modal-backdrop{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.35);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:2000;
+    padding:16px;
+}
+
+.modal-card{
+    width:560px;
+    max-width:100%;
+    max-height:90vh;
+    overflow-y:auto;
+    background:#fff;
+    border-radius:12px;
+    padding:24px;
+    box-shadow:0 12px 32px rgba(0,0,0,.2);
+}
+
+.modal-card.small{
+    width:440px;
+}
+
+.modal-card h3{
+    color:#731919;
+    margin:0 0 8px;
+    font-size:20px;
+}
+
+.form-hint,
+.confirm-text{
+    color:#555;
+    font-size:14px;
+    margin:0 0 16px;
+}
+
+.form-row{
+    display:flex;
+    gap:12px;
+}
+
+.form-row .form-group{
+    flex:1;
+}
+
+.form-group{
+    margin-bottom:14px;
+}
+
+.form-group label{
+    display:block;
+    margin-bottom:6px;
+    font-size:14px;
+    font-weight:600;
+    color:#8B1E1E;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea{
+    width:100%;
+    box-sizing:border-box;
+    border:1px solid #E5E7EB;
+    border-radius:10px;
+    padding:10px 12px;
+    font-size:14px;
+}
+
+.form-group .invalid{
+    border-color:#FF6464;
+}
+
+.field-error{
+    display:block;
+    margin-top:4px;
+    color:#D93636;
+    font-size:12px;
+}
+
+.modal-actions{
+    display:flex;
+    gap:10px;
+    margin-top:8px;
+}
+
+.modal-actions button:disabled{
+    opacity:.6;
+    cursor:not-allowed;
 }

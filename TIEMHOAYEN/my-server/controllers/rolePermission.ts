@@ -10,7 +10,7 @@ import {
 } from '../services/role-permission.service.js';
 import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordHash.js';
 import { createStaffAccess } from '../services/order-access.service.js';
-import { active } from '../services/auth.service.js';
+import { active, assertLoginNotLocked, audit, AuthError, clientIp, describeDevice, recordLoginFailure, recordLoginSuccess, wrongPasswordError } from '../services/auth.service.js';
 
 export const getAdminRolePermissions = async (_req: Request, res: Response) => {
   try {
@@ -35,7 +35,10 @@ export const getAdminRolePermissions = async (_req: Request, res: Response) => {
       permissions: getRolePermissions(roleName),
     }));
 
+    res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({
+      // AD53: chỉ quản trị viên cao nhất được sửa ma trận quyền.
+      canEdit: resolveRoleName(res.locals.adminEmployee?.VAI_TRO) === 'Admin',
       actions: permissionActions,
       modules: permissionModules,
       roles,
@@ -50,7 +53,7 @@ export const getAdminRolePermissions = async (_req: Request, res: Response) => {
 
 export const loginAdminEmployee = async (req: Request, res: Response) => {
   try {
-    const email = String(req.body.email || '').trim();
+    const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '');
 
     if (!email || !password) {
@@ -58,9 +61,21 @@ export const loginAdminEmployee = async (req: Request, res: Response) => {
     }
 
     const employeeCollection = await getCollection('NHAN_VIEN');
-    const employee = await employeeCollection.findOne({ EMAIL: email });
-    if (!employee || employee.DA_XOA === true || employee.DA_XOA === 1 || !(await verifyPassword(password, employee.MAT_KHAU))) {
+    const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const employee = await employeeCollection.findOne({ EMAIL: { $regex: `^${escaped}$`, $options: 'i' } });
+    if (!employee || employee.DA_XOA === true || employee.DA_XOA === 1) {
+      await audit(req, 'DANG_NHAP_ADMIN', email, { LY_DO: 'Sai thông tin' }, false);
       return res.status(401).json({ message: 'Email hoặc mật khẩu không đúng.' });
+    }
+    assertLoginNotLocked(employee);
+    if (!(await verifyPassword(password, employee.MAT_KHAU))) {
+      req.identity = { id: employee.NHAN_VIEN_ID, type: 'NHAN_VIEN', account: employee, sessionId: '' };
+      await audit(req, 'DANG_NHAP_ADMIN', employee.NHAN_VIEN_ID, { LY_DO: 'Sai mật khẩu' }, false);
+      throw wrongPasswordError(await recordLoginFailure('NHAN_VIEN', employee), 'Email hoặc mật khẩu không đúng.');
+    }
+
+    if (!active(employee)) {
+      return res.status(403).json({ locked: true, message: 'Tài khoản nhân viên đã bị khóa hoặc ngừng hoạt động.' });
     }
 
     if (!isPasswordHash(employee.MAT_KHAU)) {
@@ -72,10 +87,6 @@ export const loginAdminEmployee = async (req: Request, res: Response) => {
       employee.MAT_KHAU = passwordHash;
     }
 
-    if (!active(employee)) {
-      return res.status(403).json({ message: 'Tài khoản nhân viên không hoạt động.' });
-    }
-
     const role = resolveRoleName(employee.VAI_TRO);
     const session = await createStaffAccess(employee);
     // Admin navigation/account APIs use the existing as_ session; business APIs
@@ -85,10 +96,14 @@ export const loginAdminEmployee = async (req: Request, res: Response) => {
       _id: createHash('sha256').update(adminSessionToken).digest('hex'),
       employeeId: employee.NHAN_VIEN_ID, expiresAt: session.expiresAt,
     });
+    req.identity = { id: employee.NHAN_VIEN_ID, type: 'NHAN_VIEN', account: employee, sessionId: '' };
+    const lastLogin = await recordLoginSuccess('NHAN_VIEN', employee, req);
+    await audit(req, 'DANG_NHAP_ADMIN', employee.NHAN_VIEN_ID, { IP: clientIp(req), THIET_BI: describeDevice(req.headers?.['user-agent']) });
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({
       ...session,
       adminSessionToken,
+      lastLogin,
       employee: {
         id: employee.NHAN_VIEN_ID,
         name: employee.HO_TEN,
@@ -99,9 +114,7 @@ export const loginAdminEmployee = async (req: Request, res: Response) => {
       permissions: getRolePermissions(role),
     });
   } catch (error: any) {
-    return res.status(500).json({
-      message: 'Không thể đăng nhập nhân viên.',
-      detail: error.message,
-    });
+    if (error instanceof AuthError) return res.status(error.status).json({ ...error.extra, message: error.message });
+    return res.status(500).json({ message: 'Không thể đăng nhập nhân viên. Vui lòng thử lại.' });
   }
 };

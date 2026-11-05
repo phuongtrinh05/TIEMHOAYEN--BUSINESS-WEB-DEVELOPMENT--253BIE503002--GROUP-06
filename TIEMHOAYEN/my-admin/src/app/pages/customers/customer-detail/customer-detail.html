@@ -1,4 +1,18 @@
 <section class="customer-detail-page">
+    <div class="detail-state error" *ngIf="loadError && !isLoading">
+        <i class="bi bi-exclamation-triangle"></i>
+        <span>{{ loadError }}</span>
+        <button type="button" class="detail-retry-btn" (click)="retryLoad()">
+            <i class="bi bi-arrow-clockwise"></i>
+            Thử lại
+        </button>
+    </div>
+
+    <div class="detail-state" *ngIf="isLoading">
+        <span class="detail-spinner"></span>
+        <span>Đang tải thông tin khách hàng...</span>
+    </div>
+
     <section class="profile-card">
         <button type="button" class="back-btn" (click)="goBack()">
             <i class="bi bi-arrow-left"></i>
@@ -14,6 +28,17 @@
             <button type="button" class="primary-action" (click)="openChat()">
                 <i class="bi bi-chat-dots"></i>
                 <span>Chat</span>
+            </button>
+
+            <button
+                type="button"
+                class="lock-action"
+                [class.unlock]="customer.locked"
+                [disabled]="!customer.code"
+                (click)="openLockDialog()"
+            >
+                <i class="bi" [class.bi-lock]="!customer.locked" [class.bi-unlock]="customer.locked"></i>
+                <span>{{ customer.locked ? 'Mở khóa' : 'Khóa' }}</span>
             </button>
 
             <button type="button" class="edit-icon-btn" title="Chỉnh sửa" (click)="startCustomerEdit()">
@@ -35,7 +60,16 @@
                         [src]="getRankImage(customer.point)"
                         [alt]="rank"
                     >
+
+                    <span class="account-status" [ngClass]="'account-' + statusKey" *ngIf="customer.code">
+                        {{ statusLabel }}
+                    </span>
                 </div>
+
+                <p class="lock-reason-line" *ngIf="customer.locked && customer.lockReason">
+                    <i class="bi bi-info-circle"></i>
+                    Lý do khóa: {{ customer.lockReason }}
+                </p>
 
                 <div class="code-row">
                     <strong>Mã khách hàng:</strong>
@@ -89,6 +123,18 @@
                 Thành viên từ {{ customer.createdAt | date: 'dd/MM/yyyy' }}
             </span>
         </p>
+
+        <p class="contact-row last-login-row" *ngIf="customer.lastLogin as login">
+            <span class="contact-icon">
+                <i class="bi bi-box-arrow-in-right"></i>
+            </span>
+
+            <span class="contact-text">
+                Đăng nhập gần nhất: {{ formatDateTime(login.time) }}
+                <ng-container *ngIf="login.ip"> · IP {{ login.ip }}</ng-container>
+                <ng-container *ngIf="login.device"> · {{ login.device }}</ng-container>
+            </span>
+        </p>
             </div>
         </div>
 
@@ -113,6 +159,7 @@
                 <div>
                     <p>Tổng chi tiêu</p>
                     <h3>{{ formatPrice(totalSpent) }}</h3>
+                    <span class="debt-text" [class.has-debt]="debt > 0">Nợ phải thu: {{ formatPrice(debt) }}</span>
                 </div>
             </article>
 
@@ -135,7 +182,7 @@
 
                 <div>
                     <p>Đơn gần nhất</p>
-                    <h3>{{ latestOrderDate | date: 'dd/MM/yyyy' }}</h3>
+                    <h3>{{ latestOrderDate ? (latestOrderDate | date: 'dd/MM/yyyy') : '--' }}</h3>
                     <span>{{ latestOrderAgoText }}</span>
                 </div>
             </article>
@@ -183,7 +230,7 @@
             [class.active]="activeTab === 'reviews'"
             (click)="setActiveTab('reviews')"
         >
-            Đánh giá
+            Đánh giá <span *ngIf="reviews.length">({{ reviews.length }})</span>
         </button>
     </nav>
 
@@ -194,7 +241,7 @@
                     <h2>Thông tin cá nhân</h2>
 
                     <div class="customer-edit-actions" *ngIf="isCustomerEditing">
-                        <button type="button" class="customer-cancel-btn" (click)="cancelCustomerEdit()">Hủy</button>
+                        <button type="button" class="customer-cancel-btn" [disabled]="isCustomerSaving" (click)="cancelCustomerEdit()">Hủy</button>
                         <button type="button" class="customer-save-btn" [disabled]="isCustomerSaving" (click)="saveCustomerInfo()">
                             {{ isCustomerSaving ? 'Đang lưu...' : 'Lưu' }}
                         </button>
@@ -203,13 +250,18 @@
 
                 <div class="info-row">
                     <strong>Họ tên:</strong>
-                    <input
-                        *ngIf="isCustomerEditing; else customerNameView"
-                        class="info-edit-control"
-                        type="text"
-                        [value]="customerForm.name"
-                        (input)="updateCustomerForm('name', $event)"
-                    />
+                    <div *ngIf="isCustomerEditing; else customerNameView" class="info-edit-field">
+                        <input
+                            class="info-edit-control"
+                            [class.invalid]="customerFieldErrors.name"
+                            type="text"
+                            maxlength="100"
+                            [disabled]="isCustomerSaving"
+                            [value]="customerForm.name"
+                            (input)="updateCustomerForm('name', $event)"
+                        />
+                        <small class="field-error" *ngIf="customerFieldErrors.name">{{ customerFieldErrors.name }}</small>
+                    </div>
                     <ng-template #customerNameView>
                         <span>{{ customer.name }}</span>
                     </ng-template>
@@ -217,31 +269,39 @@
 
                 <div class="info-row">
                     <strong>Ngày sinh:</strong>
-                    <input
-                        *ngIf="isCustomerEditing; else customerBirthView"
-                        class="info-edit-control"
-                        type="date"
-                        [value]="customerForm.birthDate"
-                        (input)="updateCustomerForm('birthDate', $event)"
-                    />
+                    <div *ngIf="isCustomerEditing; else customerBirthView" class="info-edit-field">
+                        <input
+                            class="info-edit-control"
+                            [class.invalid]="customerFieldErrors.birthDate"
+                            type="date"
+                            [max]="todayInputValue"
+                            [disabled]="isCustomerSaving"
+                            [value]="customerForm.birthDate"
+                            (input)="updateCustomerForm('birthDate', $event)"
+                        />
+                        <small class="field-error" *ngIf="customerFieldErrors.birthDate">{{ customerFieldErrors.birthDate }}</small>
+                    </div>
                     <ng-template #customerBirthView>
-                        <span>{{ customer.birthDate ? (customer.birthDate | date: 'dd/MM/yyyy') : '--' }}</span>
+                        <span>{{ customer.birthDate ? formatDate(customer.birthDate) : '--' }}</span>
                     </ng-template>
                 </div>
 
                 <div class="info-row">
                     <strong>Giới tính:</strong>
-                    <select
-                        *ngIf="isCustomerEditing; else customerGenderView"
-                        class="info-edit-control"
-                        [value]="customerForm.gender"
-                        (change)="updateCustomerForm('gender', $event)"
-                    >
-                        <option value="">--</option>
-                        <option value="Nam">Nam</option>
-                        <option value="Nữ">Nữ</option>
-                        <option value="Khác">Khác</option>
-                    </select>
+                    <div *ngIf="isCustomerEditing; else customerGenderView" class="info-edit-field">
+                        <select
+                            class="info-edit-control"
+                            [disabled]="isCustomerSaving"
+                            [value]="customerForm.gender"
+                            (change)="updateCustomerForm('gender', $event)"
+                        >
+                            <option value="" [selected]="!customerForm.gender">--</option>
+                            <option value="Nam" [selected]="customerForm.gender === 'Nam'">Nam</option>
+                            <option value="Nữ" [selected]="customerForm.gender === 'Nữ'">Nữ</option>
+                            <option value="Khác" [selected]="customerForm.gender === 'Khác'">Khác</option>
+                        </select>
+                        <small class="field-error" *ngIf="customerFieldErrors.gender">{{ customerFieldErrors.gender }}</small>
+                    </div>
                     <ng-template #customerGenderView>
                         <span>{{ customer.gender || '--' }}</span>
                     </ng-template>
@@ -249,30 +309,18 @@
 
                 <div class="info-row">
                     <strong>Email:</strong>
-                    <input
-                        *ngIf="isCustomerEditing; else customerEmailView"
-                        class="info-edit-control"
-                        type="email"
-                        [value]="customerForm.email"
-                        (input)="updateCustomerForm('email', $event)"
-                    />
-                    <ng-template #customerEmailView>
-                        <span>{{ customer.email }}</span>
-                    </ng-template>
+                    <span>
+                        {{ customer.email || '--' }}
+                        <small class="readonly-hint" *ngIf="isCustomerEditing">Khách tự đổi trong tài khoản</small>
+                    </span>
                 </div>
 
                 <div class="info-row">
                     <strong>Số điện thoại:</strong>
-                    <input
-                        *ngIf="isCustomerEditing; else customerPhoneView"
-                        class="info-edit-control"
-                        type="tel"
-                        [value]="customerForm.phone"
-                        (input)="updateCustomerForm('phone', $event)"
-                    />
-                    <ng-template #customerPhoneView>
-                        <span>{{ customer.phone }}</span>
-                    </ng-template>
+                    <span>
+                        {{ customer.phone || '--' }}
+                        <small class="readonly-hint" *ngIf="isCustomerEditing">Khách tự đổi trong tài khoản</small>
+                    </span>
                 </div>
 
                 <div class="info-row">
@@ -407,6 +455,44 @@
                 </article>
             </div>
         </article>
+
+        <article class="notes-section">
+            <div class="section-header">
+                <h2>Ghi chú nội bộ</h2>
+                <span class="notes-staff-only"><i class="bi bi-shield-lock"></i> Chỉ nhân viên xem</span>
+            </div>
+
+            <div class="note-form">
+                <textarea
+                    rows="3"
+                    maxlength="1000"
+                    placeholder="Nhập ghi chú về khách hàng (tối đa 1000 ký tự)"
+                    [value]="noteDraft"
+                    [disabled]="isNoteSaving"
+                    (input)="updateNoteDraft($event)"
+                ></textarea>
+                <div class="note-form-footer">
+                    <small>{{ noteDraft.length }}/1000</small>
+                    <span class="field-error" *ngIf="noteError">{{ noteError }}</span>
+                    <button type="button" class="add-note-btn" [disabled]="isNoteSaving || !customer.code" (click)="addNote()">
+                        <i class="bi bi-plus-circle"></i>
+                        {{ isNoteSaving ? 'Đang lưu...' : 'Thêm ghi chú' }}
+                    </button>
+                </div>
+            </div>
+
+            <p class="empty-address" *ngIf="notes.length === 0">Chưa có ghi chú nội bộ.</p>
+
+            <ul class="note-list" *ngIf="notes.length > 0">
+                <li *ngFor="let note of notes">
+                    <div class="note-meta">
+                        <strong>{{ note.staffName || 'Nhân viên' }}</strong>
+                        <span>{{ formatDateTime(note.createdAt) }}</span>
+                    </div>
+                    <p>{{ note.content }}</p>
+                </li>
+            </ul>
+        </article>
     </section>
 
     <div class="address-modal-backdrop" *ngIf="isAddressModalOpen">
@@ -422,25 +508,32 @@
                 <span>Họ và tên</span>
                 <input
                     type="text"
+                    maxlength="100"
+                    [class.invalid]="addressFieldErrors.name"
                     [value]="addressForm.name"
                     (input)="updateAddressForm('name', $event)"
                     placeholder="Nhập tên người nhận"
                 />
+                <small class="field-error" *ngIf="addressFieldErrors.name">{{ addressFieldErrors.name }}</small>
             </label>
 
             <label>
                 <span>Số điện thoại</span>
                 <input
                     type="tel"
+                    maxlength="10"
+                    inputmode="numeric"
+                    [class.invalid]="addressFieldErrors.phone"
                     [value]="addressForm.phone"
                     (input)="updateAddressForm('phone', $event)"
-                    placeholder="Nhập số điện thoại"
+                    placeholder="VD: 0901234567"
                 />
+                <small class="field-error" *ngIf="addressFieldErrors.phone">{{ addressFieldErrors.phone }}</small>
             </label>
 
             <label>
                 <span>Tỉnh/Thành phố</span>
-                <select [value]="addressForm.province" (change)="onProvinceChange($event)">
+                <select [class.invalid]="addressFieldErrors.province" [value]="addressForm.province" (change)="onProvinceChange($event)">
                     <option value="">Tỉnh/Thành phố</option>
                     <option
                         *ngFor="let province of provinceSelectOptions"
@@ -450,11 +543,13 @@
                         {{ province.name }}
                     </option>
                 </select>
+                <small class="field-error" *ngIf="addressFieldErrors.province">{{ addressFieldErrors.province }}</small>
             </label>
 
             <label>
                 <span>Quận/Huyện</span>
                 <select
+                    [class.invalid]="addressFieldErrors.district"
                     [value]="addressForm.district"
                     (change)="onDistrictChange($event)"
                     [disabled]="!addressForm.province"
@@ -468,11 +563,13 @@
                         {{ district.name }}
                     </option>
                 </select>
+                <small class="field-error" *ngIf="addressFieldErrors.district">{{ addressFieldErrors.district }}</small>
             </label>
 
             <label>
                 <span>Phường/Xã</span>
                 <select
+                    [class.invalid]="addressFieldErrors.ward"
                     [value]="addressForm.ward"
                     (change)="updateAddressForm('ward', $event)"
                     [disabled]="!addressForm.district"
@@ -486,16 +583,19 @@
                         {{ ward }}
                     </option>
                 </select>
+                <small class="field-error" *ngIf="addressFieldErrors.ward">{{ addressFieldErrors.ward }}</small>
             </label>
 
             <label>
                 <span>Địa chỉ cụ thể</span>
                 <textarea
                     rows="3"
+                    [class.invalid]="addressFieldErrors.detailAddress"
                     [value]="addressForm.detailAddress"
                     (input)="updateAddressForm('detailAddress', $event)"
                     placeholder="Nhập địa chỉ chi tiết"
                 ></textarea>
+                <small class="field-error" *ngIf="addressFieldErrors.detailAddress">{{ addressFieldErrors.detailAddress }}</small>
             </label>
 
             <label class="address-default-check">
@@ -510,7 +610,7 @@
             <p class="address-form-error" *ngIf="addressFormError">{{ addressFormError }}</p>
 
             <div class="address-modal-actions">
-                <button type="button" class="address-cancel-btn" (click)="closeAddressModal()">Hủy</button>
+                <button type="button" class="address-cancel-btn" [disabled]="isAddressSaving" (click)="closeAddressModal()">Hủy</button>
                 <button type="submit" class="address-save-btn" [disabled]="isAddressSaving">
                     {{ isAddressSaving ? 'Đang lưu...' : 'Lưu' }}
                 </button>
@@ -569,9 +669,6 @@
             <table class="orders-table">
                 <thead>
                     <tr>
-                        <th>
-                            <input type="checkbox" aria-label="Chọn tất cả đơn hàng">
-                        </th>
                         <th>Mã đơn</th>
                         <th>Ngày tạo</th>
                         <th>Tổng tiền</th>
@@ -591,25 +688,21 @@
                         (keydown.enter)="openOrderDetail(order)"
                         (keydown.space)="openOrderDetail(order); $event.preventDefault()"
                     >
-                        <td>
-                            <input
-                                type="checkbox"
-                                [attr.aria-label]="'Chọn đơn ' + order.code"
-                                (click)="$event.stopPropagation()"
-                                (keydown.enter)="$event.stopPropagation()"
-                                (keydown.space)="$event.stopPropagation()"
-                            >
-                        </td>
                         <td class="order-code">#{{ order.code }}</td>
                         <td>{{ formatDate(order.createdAt) }}</td>
-                        <td>{{ formatPrice(order.total) }}</td>
                         <td>
-                            <span class="payment-status" [ngClass]="getPaymentStatusClass(order.paymentStatus)">
+                            {{ formatPrice(order.total) }}
+                            <small class="order-paid-line" *ngIf="showPaymentBreakdown(order)">
+                                Đã trả {{ formatPrice(order.paid) }} · Còn {{ formatPrice(order.remaining) }}
+                            </small>
+                        </td>
+                        <td>
+                            <span class="payment-status order-badge" [ngClass]="getPaymentStatusClass(order.paymentStatus)">
                                 {{ order.paymentStatus }}
                             </span>
                         </td>
                         <td>
-                            <span class="order-status" [ngClass]="getOrderStatusClass(order.status)">
+                            <span class="order-status order-badge" [ngClass]="getOrderStatusClass(order.status)">
                                 {{ order.status }}
                             </span>
                         </td>
@@ -629,10 +722,14 @@
     <section class="favorites-content" *ngIf="activeTab === 'favorites'">
         <ng-container *ngIf="favoriteProducts.length > 0; else emptyFavorites">
             <div class="favorites-grid">
-                <article class="favorite-card" *ngFor="let product of visibleFavoriteProducts">
-                    <button type="button" class="favorite-heart" aria-label="Sản phẩm yêu thích">
-                        <i class="bi bi-heart-fill"></i>
-                    </button>
+                <article
+                    class="favorite-card"
+                    *ngFor="let product of visibleFavoriteProducts"
+                    [class.unavailable]="isFavoriteUnavailable(product)"
+                >
+                    <span class="availability-badge" [ngClass]="getAvailabilityClass(product)">
+                        {{ product.availability }}
+                    </span>
 
                     <img
                         [src]="product.image"
@@ -643,7 +740,15 @@
                     <p>{{ product.code }}</p>
                     <strong>{{ formatPrice(product.price) }}</strong>
 
-                    <button type="button" class="favorite-detail-btn" (click)="openFavoriteProduct(product)">
+                    <small class="favorite-liked" *ngIf="product.likedAt">Thích ngày {{ formatDate(product.likedAt) }}</small>
+
+                    <button
+                        type="button"
+                        class="favorite-detail-btn"
+                        [disabled]="!product.canOpen"
+                        [title]="product.canOpen ? 'Xem chi tiết sản phẩm' : 'Sản phẩm không còn tồn tại'"
+                        (click)="openFavoriteProduct(product)"
+                    >
                         CHI TIẾT
                     </button>
                 </article>
@@ -666,8 +771,163 @@
         </ng-template>
     </section>
 
-    <section class="placeholder-content" *ngIf="activeTab === 'reviews'">
-        <i class="bi bi-star"></i>
-        <p>Chưa có dữ liệu đánh giá.</p>
+    <section class="reviews-content" *ngIf="activeTab === 'reviews'">
+        <div class="placeholder-content" *ngIf="reviews.length === 0">
+            <i class="bi bi-star"></i>
+            <p>Khách hàng này chưa có đánh giá.</p>
+        </div>
+
+        <article class="review-card" *ngFor="let review of reviews" [class.review-hidden]="review.hidden">
+            <img
+                class="review-product-img"
+                [src]="review.productImage || fallbackProductImage"
+                [alt]="review.productName"
+                (error)="onFavoriteImageError($event)"
+            >
+
+            <div class="review-body">
+                <div class="review-head">
+                    <h3>{{ review.productName || 'Sản phẩm' }}</h3>
+                    <span class="review-hidden-badge" *ngIf="review.hidden">Đã ẩn</span>
+                </div>
+
+                <div class="review-meta">
+                    <span class="review-stars" [attr.aria-label]="review.rating + ' sao'">
+                        <i *ngFor="let filled of starList(review.rating)" class="bi" [class.bi-star-fill]="filled" [class.bi-star]="!filled"></i>
+                    </span>
+                    <span>{{ formatDateTime(review.createdAt) }}</span>
+                    <button
+                        type="button"
+                        class="review-order-link"
+                        *ngIf="review.orderId"
+                        (click)="openReviewOrder(review)"
+                    >
+                        Đơn #{{ review.orderId }}
+                    </button>
+                </div>
+
+                <p class="review-text">{{ review.content || '(Không có nội dung)' }}</p>
+
+                <p class="review-hidden-reason" *ngIf="review.hidden && review.hiddenReason">
+                    <i class="bi bi-eye-slash"></i> Lý do ẩn: {{ review.hiddenReason }}
+                </p>
+
+                <div class="review-reply" *ngIf="review.reply && !review.replyOpen">
+                    <strong>Phản hồi của shop</strong>
+                    <span *ngIf="review.replyDate"> · {{ formatDateTime(review.replyDate) }}</span>
+                    <p>{{ review.reply }}</p>
+                </div>
+
+                <div class="review-actions">
+                    <button type="button" class="review-action-btn" [disabled]="review.replySaving" (click)="toggleReplyForm(review)">
+                        <i class="bi bi-reply"></i>
+                        {{ review.replyOpen ? 'Đóng' : (review.reply ? 'Sửa trả lời' : 'Trả lời') }}
+                    </button>
+
+                    <button
+                        *ngIf="!review.hidden"
+                        type="button"
+                        class="review-action-btn danger"
+                        [disabled]="review.visibilitySaving"
+                        (click)="toggleHideForm(review)"
+                    >
+                        <i class="bi bi-eye-slash"></i>
+                        {{ review.hideOpen ? 'Đóng' : 'Ẩn' }}
+                    </button>
+
+                    <button
+                        *ngIf="review.hidden"
+                        type="button"
+                        class="review-action-btn"
+                        [disabled]="review.visibilitySaving"
+                        (click)="setReviewHidden(review, false)"
+                    >
+                        <i class="bi bi-eye"></i>
+                        {{ review.visibilitySaving ? 'Đang xử lý...' : 'Hiện lại' }}
+                    </button>
+                </div>
+
+                <div class="review-inline-form" *ngIf="review.replyOpen">
+                    <textarea
+                        rows="3"
+                        placeholder="Nhập phản hồi của shop"
+                        [value]="review.replyDraft"
+                        [disabled]="review.replySaving"
+                        (input)="updateReplyDraft(review, $event)"
+                    ></textarea>
+                    <div class="review-inline-footer">
+                        <span class="field-error" *ngIf="review.replyError">{{ review.replyError }}</span>
+                        <button type="button" class="review-submit-btn" [disabled]="review.replySaving" (click)="submitReply(review)">
+                            {{ review.replySaving ? 'Đang gửi...' : 'Gửi trả lời' }}
+                        </button>
+                    </div>
+                </div>
+
+                <div class="review-inline-form" *ngIf="review.hideOpen && !review.hidden">
+                    <textarea
+                        rows="2"
+                        placeholder="Lý do ẩn đánh giá (bắt buộc)"
+                        [value]="review.hideReason"
+                        [disabled]="review.visibilitySaving"
+                        (input)="updateHideReason(review, $event)"
+                    ></textarea>
+                    <div class="review-inline-footer">
+                        <span class="field-error" *ngIf="review.visibilityError">{{ review.visibilityError }}</span>
+                        <button type="button" class="review-submit-btn danger" [disabled]="review.visibilitySaving" (click)="setReviewHidden(review, true)">
+                            {{ review.visibilitySaving ? 'Đang ẩn...' : 'Xác nhận ẩn' }}
+                        </button>
+                    </div>
+                </div>
+
+                <p class="field-error" *ngIf="review.hidden && review.visibilityError">{{ review.visibilityError }}</p>
+            </div>
+        </article>
     </section>
+
+    <!-- LOCK DIALOG -->
+    <div class="address-modal-backdrop" *ngIf="lockDialog as dialog" (click)="closeLockDialog()">
+        <div class="address-modal lock-modal" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+            <div class="address-modal-header">
+                <h2>{{ dialog.locking ? 'Khóa tài khoản' : 'Mở khóa tài khoản' }}</h2>
+                <button type="button" class="address-modal-close" [disabled]="dialog.saving" (click)="closeLockDialog()">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+
+            <p class="lock-modal-text" *ngIf="dialog.locking">
+                Khóa tài khoản <strong>{{ customer.name }}</strong> ({{ customer.code }})? Khách sẽ bị đăng xuất khỏi mọi thiết bị.
+            </p>
+            <p class="lock-modal-text" *ngIf="!dialog.locking">
+                Mở khóa tài khoản <strong>{{ customer.name }}</strong> ({{ customer.code }})?
+            </p>
+
+            <label *ngIf="dialog.locking">
+                <span>Lý do khóa *</span>
+                <textarea
+                    rows="3"
+                    maxlength="300"
+                    placeholder="Nhập lý do (tối đa 300 ký tự)"
+                    [value]="dialog.reason"
+                    [disabled]="dialog.saving"
+                    (input)="updateLockReason($event)"
+                ></textarea>
+                <small class="lock-counter">{{ dialog.reason.length }}/300</small>
+            </label>
+
+            <p class="address-form-error" *ngIf="dialog.error">{{ dialog.error }}</p>
+
+            <div class="address-modal-actions">
+                <button type="button" class="address-cancel-btn" [disabled]="dialog.saving" (click)="closeLockDialog()">Hủy</button>
+                <button type="button" class="address-save-btn" [class.unlock-confirm]="!dialog.locking" [disabled]="dialog.saving" (click)="confirmLockDialog()">
+                    {{ dialog.saving ? 'Đang xử lý...' : (dialog.locking ? 'Khóa' : 'Mở khóa') }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div class="detail-toast" *ngIf="toastMessage" [class.error]="toastType === 'error'" role="status">
+        <i class="bi" [class.bi-check-circle]="toastType === 'success'" [class.bi-exclamation-circle]="toastType === 'error'"></i>
+        {{ toastMessage }}
+    </div>
 </section>

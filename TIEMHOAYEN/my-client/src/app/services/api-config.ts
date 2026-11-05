@@ -1,6 +1,12 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
+import { inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { tap } from 'rxjs';
 import { endSession, memberAccessToken } from './session-auth';
+import { AppErrorService } from './app-error.service';
+
+/** Trang chỉ dành cho thành viên: khi phiên hết hạn (401) mới chuyển về /login. */
+const MEMBER_ONLY_ROUTES = /^\/account(?:[/?#]|$)/;
 
 export type OrderAccessSession = { accessToken: string; phone: string; expiresAt: string; accountKey: string; authType?: string; customerId?: string; readOnly?: boolean; orderId?: string; requestId?: string };
 
@@ -33,6 +39,8 @@ export function apiBaseUrl(): string {
 
 /** Keep catalog, login, cart and checkout on the same backend during local testing. */
 export const apiEndpointInterceptor: HttpInterceptorFn = (request, next) => {
+  const router = inject(Router, { optional: true });
+  const appErrors = inject(AppErrorService, { optional: true });
   const prefix = /^https?:\/\/(?:tiem-hoa-yen-api\.onrender\.com|localhost:3000)\/api(?=\/|$)/;
   let target = prefix.test(request.url) ? request.clone({ url: request.url.replace(prefix, apiBaseUrl()) }) : request;
   if ((/^\/cart(?:s)?(?:\/|$)/.test(target.url.slice(apiBaseUrl().length)) || target.url.startsWith(`${apiBaseUrl()}/orders`) || target.url.startsWith(`${apiBaseUrl()}/support`) || target.url.startsWith(`${apiBaseUrl()}/customers/`) || target.url.startsWith(`${apiBaseUrl()}/notifications`)) && target.url.startsWith(`${apiBaseUrl()}/`) && typeof sessionStorage !== 'undefined') {
@@ -46,11 +54,29 @@ export const apiEndpointInterceptor: HttpInterceptorFn = (request, next) => {
     const checkout = payment ? sessionStorage.getItem(`checkoutOrderAccess:${decodeURIComponent(payment[1])}`) : null;
     if (checkout) target = target.clone({ setHeaders: { 'x-checkout-access': checkout } });
   }
+  // /api/auth/* (me, logout, change-password…) xác thực bằng Bearer token của thành viên.
+  if (target.url.startsWith(`${apiBaseUrl()}/auth/`) && !target.url.startsWith(`${apiBaseUrl()}/auth/admin/`) && !target.headers.has('Authorization')) {
+    const memberToken = memberAccessToken();
+    if (memberToken) target = target.clone({ setHeaders: { Authorization: `Bearer ${memberToken}` } });
+  }
+  const isApiRequest = target.url.startsWith(`${apiBaseUrl()}/`);
   return next(target).pipe(tap({
     error: (error: unknown) => {
+      if (!(error instanceof HttpErrorResponse)) return;
       // Phiên thành viên hết hạn/bị thu hồi: đăng xuất để người dùng đăng nhập lại.
       const sentToken = target.headers.get('x-order-access') || target.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') || '';
-      if (sentToken && sentToken === memberAccessToken() && currentOrderAccountKey() && error instanceof HttpErrorResponse && error.status === 401 && !target.url.includes('/customers/login')) endSession();
+      if (error.status === 401 && sentToken && sentToken === memberAccessToken() && currentOrderAccountKey() && !target.url.includes('/customers/login')) {
+        endSession();
+        // Chỉ rời trang khi đang ở trang dành riêng cho thành viên; trang công khai giữ nguyên.
+        if (router && MEMBER_ONLY_ROUTES.test(router.url)) void router.navigate(['/login']);
+        return;
+      }
+      if (!isApiRequest || !appErrors) return;
+      // KH33: lỗi mạng / máy chủ / không có quyền → banner có thể đóng, không điều hướng.
+      // 404 của API do từng component tự xử lý ("không tìm thấy dữ liệu").
+      if (error.status === 0) appErrors.show('network');
+      else if (error.status >= 500) appErrors.show('server');
+      else if (error.status === 403) appErrors.show('forbidden');
     },
   }));
 };

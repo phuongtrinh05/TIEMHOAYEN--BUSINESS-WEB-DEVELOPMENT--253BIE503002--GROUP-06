@@ -36,7 +36,7 @@
 .oops-title{
     margin:0;
 
-    font-size:56px;
+    font-size:44px;
     font-style:italic;
     font-weight:700;
     line-height:1;
@@ -61,6 +61,8 @@
 
 .not-found-text{
     margin-bottom:30px;
+    max-width:560px;
+    line-height:1.6;
 
     font-size:18px;
     font-weight:500;
@@ -243,7 +245,7 @@
     }
 
     .oops-title{
-        font-size:42px;
+        font-size:32px;
     }
 
     .oops-subtitle{
@@ -264,4 +266,8 @@
     .petal{
         width:35px;
     }
+}
+button.not-found-btn{
+    cursor:pointer;
+    font-family:inherit;
 }

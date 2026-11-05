@@ -14,7 +14,7 @@ import { audit } from '../services/auth.service.js';
 import { derivePromotionStatus, ensureVoucherStorage, normalizeVoucherCode } from '../services/pricing-voucher.service.js';
 const escapeAfterSalesSearch = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const toDate = (value: unknown): Date | null => {
+export const toDate = (value: unknown): Date | null => {
   if (!value) return null;
   const displayMatch = String(value).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (displayMatch) {
@@ -25,7 +25,7 @@ const toDate = (value: unknown): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const formatDate = (value: unknown): string => {
+export const formatDate = (value: unknown): string => {
   const date = toDate(value);
   if (!date) return '';
   return new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
@@ -46,7 +46,7 @@ const parseOptionalDate = (value: unknown): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const normalizeText = (value: unknown): string => String(value || '')
+export const normalizeText = (value: unknown): string => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .replace(/[đĐ]/g, 'd')
@@ -55,7 +55,7 @@ const normalizeText = (value: unknown): string => String(value || '')
 
 const toBool = (value: unknown): boolean => value === true || value === 1 || value === '1' || value === 'true';
 
-const normalizeOrderStatus = (status: unknown): string => {
+export const normalizeOrderStatus = (status: unknown): string => {
   const raw = String(status || '').trim();
   const key = normalizeText(raw);
   if (!raw) return 'Đã đặt hàng thành công';
@@ -221,30 +221,40 @@ const standardProductCategories: Record<string, string[]> = {
   topic: ['Sinh nhật', 'Tình yêu', 'Kỷ niệm', 'Chúc mừng', 'Khai trương', 'Tốt nghiệp', 'Cảm ơn', 'Xin lỗi', 'Cưới hỏi', 'Chia buồn', 'Ngày lễ', 'Hoa văn phòng'],
 };
 
-export const getAdminAddressOptions = async (_req: Request, res: Response) => {
-  try {
-    const addressCollection = await getCollection<any>('DIA_CHI_GIAO_HANG');
-    const addresses = await addressCollection.find({ DA_XOA: { $ne: true } }).toArray();
-    const unique = (field: string) => Array.from(new Set(addresses.map((item) => String(item[field] || '').trim()).filter(Boolean))).sort();
-    return res.status(200).json({
-      provinces: unique('TINH_THANH'),
-      districts: unique('QUAN_HUYEN'),
-      wards: unique('PHUONG_XA'),
-    });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Không thể tải dữ liệu địa chỉ: ' + error.message });
-  }
-};
+// AD52/AD54: danh sách nhân viên + tài khoản. Trả trường đã ánh xạ cho giao diện, không trả mật khẩu.
+const mapStaffAccount = (row: any) => ({
+  code: row.NHAN_VIEN_ID || '',
+  name: row.HO_TEN || '',
+  email: row.EMAIL || '',
+  phone: row.SDT ? String(row.SDT) : '',
+  role: row.VAI_TRO || '',
+  createdAt: formatDate(row.NGAY_TAO),
+  createdDate: toDate(row.NGAY_TAO)?.toISOString() || '',
+  status: /nghỉ|nghi viec/i.test(String(row.TRANG_THAI || '')) ? 'Nghỉ việc'
+    : /khóa|khoa|ngừng|ngung|inactive/i.test(String(row.TRANG_THAI || '')) ? 'Bị khóa' : 'Hoạt động',
+  lastLogin: row.DANG_NHAP_GAN_NHAT ? { time: row.DANG_NHAP_GAN_NHAT.THOI_GIAN, ip: row.DANG_NHAP_GAN_NHAT.IP, device: row.DANG_NHAP_GAN_NHAT.THIET_BI } : null,
+  loginLockedUntil: row.KHOA_DANG_NHAP_DEN && new Date(row.KHOA_DANG_NHAP_DEN).getTime() > Date.now() ? row.KHOA_DANG_NHAP_DEN : null,
+  selected: false,
+});
 
 export const getAdminStaffAccounts = async (req: Request, res: Response) => {
   try {
     const employeeCollection = await getCollection<any>('NHAN_VIEN');
-    let staff = (await employeeCollection.find({}).sort({ NHAN_VIEN_ID: 1 }).toArray()).map(sanitizeEmployee);
-    if (req.query.scope === 'delivery') staff = staff.filter(row => /giao|shipper|vận chuyển|van chuyen/i.test(String(row.role || ''))
-      && !/khóa|nghỉ|inactive/i.test(String(row.status || ''))).map(row => ({ code:row.code,name:row.name,phone:row.phone,role:row.role,status:row.status,selected:false } as any));
+    let staff = (await employeeCollection.find({ DA_XOA: { $ne: true } }, { projection: { MAT_KHAU: 0 } }).sort({ NHAN_VIEN_ID: 1 }).toArray()).map(mapStaffAccount);
+    if (req.query.scope === 'delivery') {
+      staff = staff.filter(row => /giao|shipper|vận chuyển|van chuyen/i.test(row.role) && row.status === 'Hoạt động')
+        .map(row => ({ code: row.code, name: row.name, phone: row.phone, role: row.role, status: row.status, selected: false } as any));
+    }
+    const keyword = normalizeText(req.query.search || '');
+    const role = String(req.query.role || '').trim();
+    const status = String(req.query.status || '').trim();
+    if (keyword) staff = staff.filter(row => normalizeText([row.code, row.name, row.email, row.phone].join(' ')).includes(keyword));
+    if (role) staff = staff.filter(row => row.role === role);
+    if (status) staff = staff.filter(row => row.status === status);
+    res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ total: staff.length, staff, accounts: staff });
   } catch (error: any) {
-    return res.status(500).json({ message: 'Không thể tải danh sách tài khoản quản trị.', detail: error.message });
+    return res.status(500).json({ message: 'Không thể tải danh sách tài khoản quản trị.' });
   }
 };
 
@@ -367,231 +377,6 @@ export const createAdminOrder = async (req: Request, res: Response) => {
     giftCard: body.giftCard || null,
   };
   return createOrder(req, res);
-};
-
-export const getAdminCustomers = async (_req: Request, res: Response) => {
-  try {
-    const [customerCollection, orderCollection] = await Promise.all([
-      getCollection<any>('KHACH_HANG'),
-      getCollection<any>('DON_HANG'),
-    ]);
-
-    const ordersStats = await orderCollection.aggregate([
-      {
-        $group: {
-          _id: '$KHACH_HANG_ID',
-          totalOrders: { $sum: 1 },
-          totalSpent: { $sum: { $ifNull: ['$TONG_TIEN', 0] } },
-          latestOrderDate: { $max: '$NGAY_TAO' }
-        }
-      }
-    ]).toArray();
-
-    const statsMap = new Map<string, { totalOrders: number; totalSpent: number; latestOrderDate: any }>();
-    for (const stat of ordersStats) {
-      if (stat._id) {
-        statsMap.set(String(stat._id), {
-          totalOrders: Number(stat.totalOrders || 0),
-          totalSpent: Number(stat.totalSpent || 0),
-          latestOrderDate: stat.latestOrderDate
-        });
-      }
-    }
-
-    const customers = (await customerCollection.find({}).sort({ KHACH_HANG_ID: 1 }).toArray()).map((customer) => {
-      const { MAT_KHAU, ...safe } = customer;
-      const stats = statsMap.get(customer.KHACH_HANG_ID) || { totalOrders: 0, totalSpent: 0, latestOrderDate: null };
-      return {
-        ...safe,
-        id: customer.KHACH_HANG_ID,
-        code: customer.KHACH_HANG_ID,
-        name: customer.TEN,
-        phone: customer.SDT,
-        email: customer.EMAIL,
-        memberType: customer.LOAI_THANH_VIEN,
-        membershipTier: customer.LOAI_THANH_VIEN,
-        points: Number(customer.DIEM_TICH_LUY || 0),
-        status: customer.TRANG_THAI || 'Hoạt động',
-        totalOrders: stats.totalOrders,
-        totalSpent: stats.totalSpent,
-        latestOrderDate: stats.latestOrderDate ? formatDate(stats.latestOrderDate) : '',
-        createdAt: customer.NGAY_DANG_KY,
-        selected: false,
-      };
-    });
-    return res.status(200).json({ total: customers.length, customers });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Không thể tải khách hàng: ' + error.message });
-  }
-};
-
-export const getAdminCustomerDetail = async (req: Request, res: Response) => {
-  try {
-    const { customerId } = req.params;
-    const [customerCollection, addressCollection, orderCollection, wishlistCollection] = await Promise.all([
-      getCollection<any>('KHACH_HANG'),
-      getCollection<any>('DIA_CHI_GIAO_HANG'),
-      getCollection<any>('DON_HANG'),
-      getCollection<any>('YEU_THICH'),
-    ]);
-    const customer = await customerCollection.findOne({ KHACH_HANG_ID: customerId });
-    if (!customer) return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
-    const [addresses, orders, wishlist] = await Promise.all([
-      addressCollection.find({ KHACH_HANG_ID: customerId, DA_XOA: { $ne: true } }).toArray(),
-      orderCollection.find({ KHACH_HANG_ID: customerId }).sort({ NGAY_TAO: -1 }).toArray(),
-      wishlistCollection.find({ KHACH_HANG_ID: customerId }).toArray(),
-    ]);
-    const { MAT_KHAU, ...safeCustomer } = customer;
-    return res.status(200).json({
-      customer: safeCustomer,
-      addresses,
-      orders,
-      favorites: wishlist,
-      stats: {
-        totalOrders: orders.length,
-        totalSpent: orders.reduce((sum, order) => sum + Number(order.TONG_TIEN || 0), 0),
-        favorites: wishlist.length,
-      },
-    });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Không thể tải chi tiết khách hàng: ' + error.message });
-  }
-};
-
-export const updateAdminCustomer = async (req: Request, res: Response) => {
-  try {
-    const { customerId } = req.params;
-    const { name, phone, email, birthDate, gender, status, note, ghiChuNoiBo } = req.body;
-    const customerCollection = await getCollection<any>('KHACH_HANG');
-    const existing = await customerCollection.findOne({ KHACH_HANG_ID: customerId });
-    if (!existing) return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
-
-    const nextPhone = (phone ?? req.body.SDT ?? existing.SDT)?.trim();
-    const nextEmail = (email ?? req.body.EMAIL ?? existing.EMAIL)?.trim();
-
-    if (nextPhone && nextPhone !== existing.SDT) {
-      const dupPhone = await customerCollection.findOne({ KHACH_HANG_ID: { $ne: customerId }, SDT: nextPhone });
-      if (dupPhone) return res.status(409).json({ message: 'Số điện thoại đã thuộc về khách hàng khác.' });
-    }
-    if (nextEmail && nextEmail !== existing.EMAIL) {
-      const dupEmail = await customerCollection.findOne({ KHACH_HANG_ID: { $ne: customerId }, EMAIL: nextEmail });
-      if (dupEmail) return res.status(409).json({ message: 'Email đã thuộc về khách hàng khác.' });
-    }
-
-    const nextStatus = status ?? req.body.TRANG_THAI;
-    const updateDoc: any = {};
-    if (name || req.body.TEN) updateDoc.TEN = (name ?? req.body.TEN).trim();
-    if (nextPhone) updateDoc.SDT = nextPhone;
-    if (nextEmail !== undefined) updateDoc.EMAIL = nextEmail || null;
-    if (birthDate !== undefined || req.body.DOB !== undefined) updateDoc.DOB = parseOptionalDate(birthDate ?? req.body.DOB);
-    if (gender !== undefined || req.body.GIOI_TINH !== undefined) updateDoc.GIOI_TINH = gender ?? req.body.GIOI_TINH;
-    if (nextStatus) updateDoc.TRANG_THAI = nextStatus;
-    if (note !== undefined || ghiChuNoiBo !== undefined || req.body.GHI_CHU_NOI_BO !== undefined) {
-      updateDoc.GHI_CHU_NOI_BO = note ?? ghiChuNoiBo ?? req.body.GHI_CHU_NOI_BO;
-    }
-
-    const result = await customerCollection.findOneAndUpdate(
-      { KHACH_HANG_ID: customerId },
-      { $set: updateDoc },
-      { returnDocument: 'after' },
-    );
-    if (!result) return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
-
-    if (nextStatus && ['ngừng hoạt động', 'ngung hoat dong', 'khóa', 'khoa'].includes(String(nextStatus).toLowerCase())) {
-      const sessionCol = await getCollection('PHIEN_DANG_NHAP');
-      await sessionCol.updateMany(
-        { TAI_KHOAN_ID: customerId, LOAI_TAI_KHOAN: 'KHACH_HANG' },
-        { $set: { DA_THU_HOI: true } }
-      );
-    }
-
-    await audit(req, nextStatus && nextStatus !== existing.TRANG_THAI ? 'DOI_TRANG_THAI_KHACH_HANG' : 'CAP_NHAT_KHACH_HANG', customerId, {
-      truoc: { TEN: existing.TEN, SDT: existing.SDT, EMAIL: existing.EMAIL, TRANG_THAI: existing.TRANG_THAI },
-      sau: updateDoc,
-    });
-
-    const { MAT_KHAU, ...safeCustomer } = result;
-    return res.status(200).json({ message: 'Cập nhật khách hàng thành công.', customer: safeCustomer });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot update customer: ' + error.message });
-  }
-};
-
-const normalizeAddressBody = (body: any) => ({
-  TEN_NGUOI_NHAN: body.receiverName || body.TEN_NGUOI_NHAN || '',
-  SDT_NGUOI_NHAN: body.receiverPhone || body.SDT_NGUOI_NHAN || '',
-  TINH_THANH: body.province || body.TINH_THANH || '',
-  QUAN_HUYEN: body.district || body.QUAN_HUYEN || '',
-  PHUONG_XA: body.ward || body.PHUONG_XA || '',
-  DIA_CHI_CHI_TIET: body.detailAddress || body.DIA_CHI_CHI_TIET || '',
-});
-
-export const createAdminCustomerAddress = async (req: Request, res: Response) => {
-  try {
-    const { customerId } = req.params;
-    const addressCollection = await getCollection<any>('DIA_CHI_GIAO_HANG');
-    const addressId = await getNextPrefixedId('DIA_CHI_GIAO_HANG', 'DIA_CHI_ID', 'DC', 4);
-    const isDefault = toBool(req.body.isDefault ?? req.body.LA_MAC_DINH);
-    if (isDefault) await addressCollection.updateMany({ KHACH_HANG_ID: customerId }, { $set: { LA_MAC_DINH: false } });
-    const address = {
-      _id: addressId,
-      DIA_CHI_ID: addressId,
-      KHACH_HANG_ID: customerId,
-      ...normalizeAddressBody(req.body),
-      LA_MAC_DINH: isDefault,
-      DA_XOA: false,
-    };
-    await addressCollection.insertOne(address);
-    return res.status(201).json({ message: 'Address created.', address });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot create address: ' + error.message });
-  }
-};
-
-export const updateAdminCustomerAddress = async (req: Request, res: Response) => {
-  try {
-    const { customerId, addressId } = req.params;
-    const addressCollection = await getCollection<any>('DIA_CHI_GIAO_HANG');
-    const isDefault = toBool(req.body.isDefault ?? req.body.LA_MAC_DINH);
-    if (isDefault) await addressCollection.updateMany({ KHACH_HANG_ID: customerId }, { $set: { LA_MAC_DINH: false } });
-    const result = await addressCollection.findOneAndUpdate(
-      { KHACH_HANG_ID: customerId, DIA_CHI_ID: addressId },
-      { $set: { ...normalizeAddressBody(req.body), LA_MAC_DINH: isDefault } },
-      { returnDocument: 'after' },
-    );
-    if (!result) return res.status(404).json({ message: 'Không tìm thấy địa chỉ.' });
-    return res.status(200).json({ message: 'Address updated.', address: result });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot update address: ' + error.message });
-  }
-};
-
-export const setDefaultAdminCustomerAddress = async (req: Request, res: Response) => {
-  try {
-    const { customerId, addressId } = req.params;
-    const addressCollection = await getCollection<any>('DIA_CHI_GIAO_HANG');
-    await addressCollection.updateMany({ KHACH_HANG_ID: customerId }, { $set: { LA_MAC_DINH: false } });
-    const result = await addressCollection.updateOne({ KHACH_HANG_ID: customerId, DIA_CHI_ID: addressId }, { $set: { LA_MAC_DINH: true } });
-    if (result.matchedCount === 0) return res.status(404).json({ message: 'Không tìm thấy địa chỉ.' });
-    return res.status(200).json({ message: 'Default address updated.' });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot set default address: ' + error.message });
-  }
-};
-
-export const deleteAdminCustomerAddress = async (req: Request, res: Response) => {
-  try {
-    const { customerId, addressId } = req.params;
-    const addressCollection = await getCollection<any>('DIA_CHI_GIAO_HANG');
-    const result = await addressCollection.updateOne(
-      { KHACH_HANG_ID: customerId, DIA_CHI_ID: addressId },
-      { $set: { DA_XOA: true, LA_MAC_DINH: false } },
-    );
-    if (result.matchedCount === 0) return res.status(404).json({ message: 'Không tìm thấy địa chỉ.' });
-    return res.status(200).json({ message: 'Address deleted.' });
-  } catch (error: any) {
-    return res.status(500).json({ message: 'Cannot delete address: ' + error.message });
-  }
 };
 
 export const getAdminTransactions = async (req: Request, res: Response) => {

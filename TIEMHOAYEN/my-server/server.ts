@@ -60,6 +60,8 @@ import adminRoutes from './routes/admin.js';
 import { accountAdministration } from './routes/accountAdministration.js';
 import { authRoutes } from './routes/auth.js';
 import { requireAdminPermission } from './middleware/rolePermission.js';
+import { attachVerifiedStaff } from './middleware/verifiedStaff.js';
+import { getCollection } from './mongo.js';
 import { loadRolePermissionOverrides } from './services/role-permission.service.js';
 import rolePermissionRoutes from './routes/rolePermission.js';
 import inventoryRoutes from './routes/inventory.js';
@@ -70,6 +72,8 @@ import { ensureInventoryIndexes, startInventoryJobs } from './services/inventory
 import { startSalesRequestExpiryJob } from './services/sales-request-expiry.service.js';
 
 const app = express();
+// Render/Vercel đứng sau proxy: lấy đúng IP người dùng cho nhật ký đăng nhập.
+app.set('trust proxy', 1);
 
 const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
   .split(',')
@@ -93,6 +97,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json({ limit: '8mb' }));
+app.use(attachVerifiedStaff);
 app.use('/api/support', supportRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/marketing', express.urlencoded({ extended: false, limit: '8kb' }), marketingRoutes);
@@ -183,6 +188,20 @@ app.get('/health', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// KH33: API không tồn tại trả 404 rõ ràng, lỗi khác trả mã phù hợp và không lộ chi tiết nội bộ.
+app.use('/api', (req: Request, res: Response) => {
+  res.status(404).json({ code: 'NOT_FOUND', message: 'Không tìm thấy chức năng hoặc dữ liệu được yêu cầu.' });
+});
+app.use((error: any, _req: Request, res: Response, next: express.NextFunction) => {
+  if (res.headersSent) return next(error);
+  if (error?.type === 'entity.parse.failed') return res.status(400).json({ code: 'BAD_REQUEST', message: 'Dữ liệu gửi lên không hợp lệ.' });
+  if (error?.type === 'entity.too.large' || error?.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ code: 'PAYLOAD_TOO_LARGE', message: 'Dữ liệu hoặc tệp tải lên vượt quá dung lượng cho phép.' });
+  const status = Number(error?.status || error?.statusCode || 500);
+  if (status >= 400 && status < 500) return res.status(status).json({ message: error?.message || 'Yêu cầu không hợp lệ.' });
+  console.error('Unhandled error:', error?.message || error);
+  return res.status(500).json({ code: 'SERVER_ERROR', message: 'Hệ thống đang gặp sự cố. Vui lòng thử lại sau.' });
+});
+
 const PORT = Number(process.env.PORT ?? 3000);
 
 (async () => {
@@ -193,6 +212,13 @@ const PORT = Number(process.env.PORT ?? 3000);
       await ensureSalesRequestIndexes();
       await (await import('./services/order-access.service.js')).ensureOrderAccessIndexes();
       await (await import('./services/support.service.js')).ensureSupportIndexes();
+      const auditLogs = await getCollection<any>('NHAT_KY_HE_THONG');
+      await Promise.all([
+        auditLogs.createIndex({ THOI_GIAN: -1 }),
+        auditLogs.createIndex({ NGUOI_THUC_HIEN_ID: 1, THOI_GIAN: -1 }),
+        auditLogs.createIndex({ DOI_TUONG_ID: 1, THOI_GIAN: -1 }),
+        auditLogs.createIndex({ HANH_DONG: 1, THOI_GIAN: -1 }),
+      ]);
     }
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') { startInventoryJobs(); startSalesRequestExpiryJob(); }
     if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureNotificationIndexes();

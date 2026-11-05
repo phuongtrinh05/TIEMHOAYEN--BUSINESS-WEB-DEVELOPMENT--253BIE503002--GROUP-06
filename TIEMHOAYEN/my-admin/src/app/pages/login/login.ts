@@ -30,27 +30,61 @@ export class Login implements AfterViewInit {
   otpChecking = false;
   challengeId = '';
   otpSeconds = 0;
+  resendSeconds = 0;
+  otpAttemptLimit = 3;
+  otpRemainingAttempts: number | null = null;
+  recoveryMessage = '';
   private otpTimer?: ReturnType<typeof setInterval>;
-  startOtpCountdown(): void {
+  private resendTimer?: ReturnType<typeof setInterval>;
+  // Đếm ngược hiệu lực mã (60 giây) theo thời gian server trả về.
+  startOtpCountdown(seconds = 60): void {
     clearInterval(this.otpTimer);
-    const deadline = Date.now() + 60000;
-    this.otpSeconds = 60;
+    const deadline = Date.now() + seconds * 1000;
+    this.otpSeconds = seconds;
     this.otpTimer = setInterval(() => {
       this.otpSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       this.cdr.markForCheck();
       if (!this.otpSeconds) clearInterval(this.otpTimer);
     }, 250);
   }
-  ngOnDestroy(): void { clearInterval(this.otpTimer); }
+  // Khoảng chờ trước khi được gửi lại mã (AD01: gửi lại sẽ hủy mã cũ).
+  startResendCountdown(seconds = 60): void {
+    clearInterval(this.resendTimer);
+    const deadline = Date.now() + seconds * 1000;
+    this.resendSeconds = seconds;
+    this.resendTimer = setInterval(() => {
+      this.resendSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      this.cdr.markForCheck();
+      if (!this.resendSeconds) clearInterval(this.resendTimer);
+    }, 250);
+  }
+  ngOnDestroy(): void { clearInterval(this.otpTimer); clearInterval(this.resendTimer); }
+
+  readonly passwordRules = [
+    { label: 'Từ 8 đến 72 ký tự', test: (p: string) => p.length >= 8 && p.length <= 72 },
+    { label: 'Có chữ thường (a-z)', test: (p: string) => /[a-z]/.test(p) },
+    { label: 'Có chữ hoa (A-Z)', test: (p: string) => /[A-Z]/.test(p) },
+    { label: 'Có chữ số (0-9)', test: (p: string) => /\d/.test(p) },
+    { label: 'Có ký tự đặc biệt (!@#...)', test: (p: string) => /[^A-Za-z0-9\s]/.test(p) },
+  ];
 
   resetToken = '';
   private recoveryRequest(path: string, data: object, done: (result: any) => void): void {
     if (this.recoveryBusy) return;
     this.recoveryBusy = true;
     this.recoveryError = '';
+    this.recoveryMessage = '';
     this.http.post(`${apiBaseUrl()}/auth/admin/` + path, data)
       .pipe(timeout(20000), finalize(() => { this.recoveryBusy = false; this.cdr.markForCheck(); }))
-      .subscribe({ next: done, error: e => { this.recoveryError = e.error?.message || 'Chưa xử lý được yêu cầu. Vui lòng thử lại.'; } });
+      .subscribe({ next: done, error: e => {
+        const body = e?.error || {};
+        this.recoveryError = e?.status === 0 ? 'Không kết nối được máy chủ. Vui lòng kiểm tra mạng và thử lại.'
+          : body.message || 'Chưa xử lý được yêu cầu. Vui lòng thử lại.';
+        if (Number(body.resendAfter) > 0) this.startResendCountdown(Number(body.resendAfter));
+        if (typeof body.remainingAttempts === 'number') this.otpRemainingAttempts = body.remainingAttempts;
+        if (body.attemptsExceeded || body.expired) { this.otpSeconds = 0; clearInterval(this.otpTimer); }
+        if (path === 'verify-otp') this.resetOtp();
+      } });
   }
   loginError = '';
   showPassword = false;
@@ -157,10 +191,15 @@ export class Login implements AfterViewInit {
         localStorage.setItem('adminEmployeeId', response.employee.id);
         localStorage.setItem('adminRole', response.employee.role);
         localStorage.setItem('adminPermissions', JSON.stringify(response.permissions));
+        if (response.employee.name) localStorage.setItem('adminName', response.employee.name);
+        // AD01: lưu lần đăng nhập gần nhất (thời gian, IP, thiết bị) để header hiển thị.
+        if (response.lastLogin) localStorage.setItem('adminLastLogin', JSON.stringify(response.lastLogin));
+        else localStorage.removeItem('adminLastLogin');
         this.router.navigate(['/dashboard']);
       },
       error: (error) => {
-        this.loginError = error?.error?.message || 'Email hoặc mật khẩu không đúng.';
+        this.loginError = error?.status === 0 ? 'Không kết nối được máy chủ. Vui lòng kiểm tra mạng và thử lại.'
+          : error?.error?.message || 'Email hoặc mật khẩu không đúng.';
         this.cdr.detectChanges();
       },
     });
@@ -176,6 +215,8 @@ export class Login implements AfterViewInit {
       'adminPermissions',
       'adminToken',
       'adminUser',
+      'adminName',
+      'adminLastLogin',
     ].forEach((key) => localStorage.removeItem(key));
   }
 
@@ -187,6 +228,8 @@ export class Login implements AfterViewInit {
     this.forgotEmail = '';
     this.forgotSubmitted = false;
     this.forgotEmailError = '';
+    this.recoveryError = '';
+    this.recoveryMessage = '';
   }
 
   closeForgotPopup(): void {
@@ -220,7 +263,12 @@ export class Login implements AfterViewInit {
     }
 
     this.recoveryRequest('send-otp', { EMAIL: email }, result => {
-    this.challengeId = result.challengeId; this.startOtpCountdown();
+    this.challengeId = result.challengeId;
+    this.startOtpCountdown(Number(result.expiresIn) || 60);
+    this.startResendCountdown(Number(result.resendAfter) || 60);
+    this.otpAttemptLimit = Number(result.attemptLimit) || 3;
+    this.otpRemainingAttempts = null;
+    this.recoveryMessage = result.message || 'Đã gửi mã xác thực đến email của bạn.';
     this.showForgotPopup = false;
     this.showOtpPopup = true;
     this.forgotSubmitted = false;
@@ -303,6 +351,7 @@ export class Login implements AfterViewInit {
 
     this.recoveryRequest('verify-otp', { challengeId: this.challengeId, OTP: this.otpValues.join('') }, result => {
     this.resetToken = result.resetToken;
+    this.recoveryMessage = result.message || 'Xác thực thành công.';
     this.showOtpPopup = false;
     this.showNewPasswordPopup = true;
     this.otpSubmitted = false;
@@ -311,7 +360,7 @@ export class Login implements AfterViewInit {
   }
 
   resendOtp(): void {
-    if (this.recoveryBusy) return;
+    if (this.recoveryBusy || this.resendSeconds > 0) return;
     this.resetOtp();
     this.sendResetEmail();
   }
@@ -330,13 +379,7 @@ export class Login implements AfterViewInit {
   }
 
   isPasswordStrong(password: string): boolean {
-    return (
-      password.length >= 8 &&
-      /[A-Z]/.test(password) &&
-      /[a-z]/.test(password) &&
-      /[0-9]/.test(password) &&
-      /[^A-Za-z0-9]/.test(password)
-    );
+    return this.passwordRules.every(rule => rule.test(password));
   }
 
   getNewPasswordError(): string {
@@ -364,6 +407,7 @@ export class Login implements AfterViewInit {
     this.recoveryRequest('reset-password', { resetToken: this.resetToken, NEW_PASSWORD: this.newPassword }, () => {
     this.resetToken = '';
     this.showSuccessToast = true;
+    clearInterval(this.otpTimer); clearInterval(this.resendTimer);
 
     setTimeout(() => {
       this.showSuccessToast = false;

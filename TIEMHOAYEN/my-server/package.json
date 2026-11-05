@@ -24,7 +24,8 @@
     "analytics:check": "tsx scripts/analytics-setup.ts --check",
     "test:analytics": "tsx --test tests/analytics.test.ts",
     "test:content": "tsx --test tests/content.test.ts",
-    "test:marketing": "tsx --test tests/marketing.test.ts tests/apps-script-marketing.test.ts"
+    "test:marketing": "tsx --test tests/marketing.test.ts tests/apps-script-marketing.test.ts",
+    "test:auth": "tsx --test tests/otp-email.test.ts tests/admin-login-session.test.ts tests/auth-account-feedback.test.ts tests/customer-browser-session.test.ts"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",

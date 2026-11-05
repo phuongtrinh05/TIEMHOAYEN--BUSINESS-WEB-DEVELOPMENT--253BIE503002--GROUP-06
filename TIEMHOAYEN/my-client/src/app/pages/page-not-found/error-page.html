@@ -1,0 +1,28 @@
+<section class="not-found-container" aria-labelledby="error-page-title">
+  <h1 class="oops-title" id="error-page-title">{{ title() }}</h1>
+
+  <div class="divider" aria-hidden="true">
+    <i [class]="'bi ' + icon()"></i>
+  </div>
+
+  <p class="not-found-text" role="status">{{ message() }}</p>
+
+  <div class="button-group">
+    @if (type() !== 'forbidden') {
+      <button type="button" class="btn not-found-btn" (click)="retry()">
+        <i class="bi bi-arrow-clockwise"></i>
+        Thử lại
+      </button>
+    }
+
+    <a routerLink="/" class="btn not-found-btn">
+      <i class="bi bi-house-heart"></i>
+      Về trang chủ
+    </a>
+
+    <a routerLink="/category" class="btn not-found-btn">
+      <i class="bi bi-flower1"></i>
+      Xem sản phẩm
+    </a>
+  </div>
+</section>

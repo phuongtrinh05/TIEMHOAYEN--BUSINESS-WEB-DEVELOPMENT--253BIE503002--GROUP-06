@@ -38,6 +38,11 @@ export function switchApiBaseUrl(target: 'local' | 'render'): void {
 
 export function endAdminSession():void {
   const token=localStorage.getItem('adminSessionToken');
+  const bearer=localStorage.getItem('adminToken');
   localStorage.removeItem('adminSessionToken');
-  if(token)void fetch(`${apiBaseUrl()}/admin/auth/logout`,{method:'POST',headers:{'x-admin-session':token}}).catch(()=>{});
+  // Gửi cả hai token để server thu hồi phiên điều hướng (as_) và token nghiệp vụ (sa_).
+  const headers:Record<string,string>={};
+  if(token)headers['x-admin-session']=token;
+  if(bearer && /^sa_[a-f0-9]{64}$/.test(bearer))headers['Authorization']=`Bearer ${bearer}`;
+  if(token||headers['Authorization'])void fetch(`${apiBaseUrl()}/admin/auth/logout`,{method:'POST',headers}).catch(()=>{});
 }

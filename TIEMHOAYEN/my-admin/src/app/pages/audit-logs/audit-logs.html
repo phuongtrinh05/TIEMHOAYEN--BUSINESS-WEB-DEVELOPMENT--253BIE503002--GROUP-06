@@ -2,7 +2,7 @@
   <div class="page-header">
     <div class="header-title">
       <h2><i class="bi bi-clock-history"></i> Nhật ký hệ thống (Audit Logs)</h2>
-      <p class="subtitle">Theo dõi lịch sử thay đổi, quyền hạn, tài khoản và các thao tác quan trọng.</p>
+      <p class="subtitle">Theo dõi lịch sử thay đổi, quyền hạn, tài khoản và các thao tác quan trọng. Nhật ký chỉ đọc, không thể sửa hoặc xóa.</p>
     </div>
   </div>
 
@@ -20,17 +20,43 @@
       </div>
 
       <div class="filter-actions">
-        <div class="filter-select">
-          <label><i class="bi bi-funnel"></i></label>
-          <select [(ngModel)]="selectedAction" (change)="onFilterAction()">
-            <option *ngFor="let item of actionList" [value]="item.value">{{ item.label }}</option>
-          </select>
-        </div>
-
         <button class="btn-refresh" (click)="fetchLogs()" [disabled]="isLoading">
           <i class="bi bi-arrow-clockwise" [class.spin]="isLoading"></i> Làm mới
         </button>
       </div>
+    </div>
+
+    <div class="filter-bar">
+      <div class="filter-field">
+        <label for="audit-from">Từ ngày</label>
+        <input id="audit-from" type="date" [(ngModel)]="fromDate" [max]="toDate || null" (change)="onFilterChange()">
+      </div>
+      <div class="filter-field">
+        <label for="audit-to">Đến ngày</label>
+        <input id="audit-to" type="date" [(ngModel)]="toDate" [min]="fromDate || null" (change)="onFilterChange()">
+      </div>
+      <div class="filter-field">
+        <label for="audit-action">Hành động</label>
+        <select id="audit-action" [(ngModel)]="selectedAction" (change)="onFilterChange()">
+          <option value="">Tất cả hành động</option>
+          <option *ngFor="let item of actionOptions" [value]="item.value">{{ item.label }}</option>
+        </select>
+      </div>
+      <div class="filter-field">
+        <label for="audit-result">Kết quả</label>
+        <select id="audit-result" [(ngModel)]="selectedResult" (change)="onFilterChange()">
+          <option value="">Tất cả</option>
+          <option value="success">Thành công</option>
+          <option value="fail">Thất bại</option>
+        </select>
+      </div>
+      <button *ngIf="hasFilter" type="button" class="btn-clear" (click)="resetFilters()">
+        <i class="bi bi-x-circle"></i> Xóa lọc
+      </button>
+    </div>
+
+    <div *ngIf="dateError" class="alert-error" role="alert">
+      <i class="bi bi-exclamation-triangle-fill"></i> {{ dateError }}
     </div>
 
     <!-- Error message -->
@@ -50,46 +76,63 @@
         <thead>
           <tr>
             <th style="width: 170px;">Thời gian</th>
-            <th style="width: 140px;">Người thực hiện</th>
-            <th style="width: 100px;">Vai trò</th>
-            <th style="width: 160px;">Hành động</th>
-            <th style="width: 130px;">Đối tượng ID</th>
+            <th style="width: 190px;">Người thực hiện</th>
+            <th style="width: 180px;">Hành động</th>
+            <th style="width: 130px;">Đối tượng</th>
             <th style="width: 110px;">Kết quả</th>
             <th>Nội dung thay đổi</th>
           </tr>
         </thead>
         <tbody>
           <tr *ngIf="logs.length === 0">
-            <td colspan="7" class="empty-state">
+            <td colspan="6" class="empty-state">
               <i class="bi bi-inbox"></i>
-              <p>Chưa có dữ liệu nhật ký nào phù hợp.</p>
+              <p>{{ loadError ? 'Không có dữ liệu.' : (hasFilter ? 'Không có nhật ký phù hợp bộ lọc.' : 'Chưa có dữ liệu nhật ký nào.') }}</p>
             </td>
           </tr>
 
           <tr *ngFor="let log of logs" [class.expanded]="expandedLogId === log.NHAT_KY_ID">
             <td class="time-col">{{ formatDate(log.THOI_GIAN) }}</td>
             <td class="actor-col">
-              <strong>{{ log.NGUOI_THUC_HIEN_ID || 'Khách vãng lai' }}</strong>
+              <strong>{{ getActorName(log) }}</strong>
+              <div class="actor-meta">
+                <span *ngIf="getActorRole(log)" class="role-badge">{{ getActorRole(log) }}</span>
+                <span *ngIf="getActorId(log)" class="actor-id">{{ getActorId(log) }}</span>
+              </div>
             </td>
             <td>
-              <span class="role-badge">{{ log.LOAI_NGUOI_THUC_HIEN }}</span>
-            </td>
-            <td>
-              <span class="badge" [ngClass]="getActionBadgeClass(log.HANH_DONG)">
+              <span class="badge" [ngClass]="getActionBadgeClass(log.HANH_DONG)" [title]="log.HANH_DONG">
                 {{ getActionLabel(log.HANH_DONG) }}
               </span>
             </td>
             <td class="target-col">{{ log.DOI_TUONG_ID || '—' }}</td>
             <td>
-              <span class="status-tag" [class.success]="log.KET_QUA === 'Thanh cong'" [class.failed]="log.KET_QUA !== 'Thanh cong'">
-                {{ log.KET_QUA === 'Thanh cong' ? 'Thành công' : 'Thất bại' }}
+              <span class="status-tag" [class.success]="isSuccess(log)" [class.failed]="!isSuccess(log)">
+                {{ isSuccess(log) ? 'Thành công' : 'Thất bại' }}
               </span>
             </td>
             <td class="changes-col">
-              <div class="changes-preview" (click)="toggleExpand(log.NHAT_KY_ID)" title="Nhấn để xem chi tiết">
-                <code>{{ formatJson(log.NOI_DUNG_THAY_DOI) }}</code>
-                <i class="bi" [ngClass]="expandedLogId === log.NHAT_KY_ID ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
-              </div>
+              <span *ngIf="!hasChanges(log)" class="no-changes">—</span>
+              <ng-container *ngIf="hasChanges(log)">
+                <button type="button" class="changes-toggle" (click)="toggleExpand(log.NHAT_KY_ID)"
+                  [attr.aria-expanded]="expandedLogId === log.NHAT_KY_ID">
+                  <span class="changes-summary">{{ getChangeSummary(log) }}</span>
+                  <i class="bi" [ngClass]="expandedLogId === log.NHAT_KY_ID ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                </button>
+                <table *ngIf="expandedLogId === log.NHAT_KY_ID" class="changes-table">
+                  <tbody>
+                    <tr *ngFor="let row of getChangeRows(log)">
+                      <th>{{ row.field }}</th>
+                      <td *ngIf="row.isPair">
+                        <span class="val-before">{{ row.before }}</span>
+                        <i class="bi bi-arrow-right"></i>
+                        <span class="val-after">{{ row.after }}</span>
+                      </td>
+                      <td *ngIf="!row.isPair">{{ row.value }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </ng-container>
             </td>
           </tr>
         </tbody>

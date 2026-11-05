@@ -10,6 +10,7 @@ import { PageFooter1 } from './components/page-footer-1/page-footer-1';
 import { PageFooter2 } from './components/page-footer-2/page-footer-2';
 import { ChatbotWidget } from './components/chatbot-widget/chatbot-widget';
 import { OrderAccessService } from './services/order-access.service';
+import { GlobalErrorBanner } from './components/global-error-banner/global-error-banner';
 
 
 @Component({
@@ -21,7 +22,7 @@ import { OrderAccessService } from './services/order-access.service';
             PageFooter,
             PageFooter1,
             PageFooter2,
-            ChatbotWidget, MarketingPreferences
+            ChatbotWidget, MarketingPreferences, GlobalErrorBanner
           ],
   templateUrl: './app.html',
   styleUrl: './app.css'

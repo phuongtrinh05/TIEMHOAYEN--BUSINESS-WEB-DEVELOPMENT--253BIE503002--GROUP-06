@@ -30,7 +30,10 @@ export interface AdminStaffAccount {
   role: string;
   createdAt: string;
   createdDate: string;
+  /** Hoạt động | Bị khóa | Nghỉ việc */
   status: string;
+  lastLogin?: AdminLastLogin | null;
+  loginLockedUntil?: string | null;
   selected: boolean;
 }
 
@@ -49,6 +52,9 @@ export interface AdminAuditLog {
   THOI_GIAN: string;
   KET_QUA: string;
   NOI_DUNG_THAY_DOI: any;
+  /** Tên và vai trò người thực hiện do server ghép thêm (AD55). */
+  TEN_NGUOI_THUC_HIEN?: string;
+  VAI_TRO_NGUOI_THUC_HIEN?: string;
 }
 
 export interface AdminAuditLogsResponse {
@@ -56,6 +62,21 @@ export interface AdminAuditLogsResponse {
   page: number;
   limit: number;
   logs: AdminAuditLog[];
+  /** Danh sách mã hành động đang có trong nhật ký, dùng cho bộ lọc. */
+  actions?: string[];
+}
+
+export interface AdminAuditLogQuery {
+  page?: number;
+  limit?: number;
+  action?: string;
+  search?: string;
+  actor?: string;
+  target?: string;
+  /** yyyy-mm-dd, theo giờ Việt Nam */
+  from?: string;
+  to?: string;
+  result?: 'success' | 'fail' | '';
 }
 
 export type AdminPermissionAction = 'view' | 'create' | 'update' | 'delete' | 'grant';
@@ -75,6 +96,8 @@ export interface AdminRolePermission {
 }
 
 export interface AdminRolePermissionsResponse {
+  /** AD53: chỉ quản trị viên cao nhất (Admin) được sửa ma trận quyền. */
+  canEdit?: boolean;
   actions: AdminPermissionAction[];
   modules: AdminPermissionModule[];
   roles: AdminRolePermission[];
@@ -92,6 +115,13 @@ export interface AdminLoginResponse {
     status: string;
   };
   permissions: AdminRolePermissionSet;
+  lastLogin?: AdminLastLogin | null;
+}
+
+export interface AdminLastLogin {
+  time: string;
+  ip: string;
+  device: string;
 }
 
 export interface AdminOrderProduct {
@@ -173,18 +203,31 @@ export interface AdminReviewReplyResponse {
 }
 
 export interface AdminCustomer {
-  id: number;
+  /** Server trả mã khách (KHACH_HANG_ID) dạng chuỗi. */
+  id: number | string;
   code: string;
   name: string;
   avatarText: string;
   phone: string;
   email: string;
   point: number;
+  points?: number;
   membershipTier?: string;
   createdAt: string;
   birthDate?: string;
   gender?: string;
   selected: boolean;
+  /** Hoạt động | Bị khóa | Chờ xác minh */
+  status?: string;
+  locked?: boolean;
+  lockReason?: string;
+  /** AD33: số liệu tính ở server từ đơn/thanh toán, không sửa tay. */
+  totalOrders?: number;
+  completedOrders?: number;
+  totalSpent?: number;
+  debt?: number;
+  latestOrderDate?: string;
+  lastLogin?: AdminLastLogin | null;
 }
 
 export interface AdminCustomerDetail extends AdminCustomer {
@@ -195,6 +238,41 @@ export interface AdminCustomerDetail extends AdminCustomer {
   averageRating: number;
   reviewCount: number;
   latestOrderDate: string;
+  internalNote?: string;
+}
+
+export interface AdminCustomerSummary {
+  total: number;
+  active: number;
+  locked: number;
+  pendingVerification: number;
+  newThisMonth: number;
+  withDebt: number;
+  totalDebt: number;
+  totalSpent: number;
+}
+
+export interface AdminCustomerNote {
+  id: string;
+  content: string;
+  createdAt: string;
+  staffId: string;
+  staffName: string;
+}
+
+export interface AdminCustomerReview {
+  id: string;
+  orderId: string;
+  productId: string;
+  productName: string;
+  productImage: string;
+  rating: number;
+  content: string;
+  createdAt: string;
+  hidden: boolean;
+  hiddenReason: string;
+  reply: string;
+  replyDate: string;
 }
 
 export interface AdminCustomerAddress {
@@ -244,8 +322,11 @@ export interface AdminCustomerOrder {
   code: string;
   createdAt: string;
   total: number;
+  /** AD36: trạng thái thanh toán tách riêng trạng thái đơn. */
   paymentStatus: string;
   status: string;
+  paid?: number;
+  remaining?: number;
 }
 
 export interface AdminCustomerFavoriteProduct {
@@ -257,6 +338,9 @@ export interface AdminCustomerFavoriteProduct {
   originalPrice: number;
   salePrice: number;
   likedAt: string;
+  /** AD37: Đang bán | Hết hàng | Ngừng bán | Đã xóa */
+  availability?: string;
+  canOpen?: boolean;
 }
 
 export interface AdminCustomerDetailResponse {
@@ -264,11 +348,14 @@ export interface AdminCustomerDetailResponse {
   addresses: AdminCustomerAddress[];
   orders: AdminCustomerOrder[];
   favorites: AdminCustomerFavoriteProduct[];
+  reviews?: AdminCustomerReview[];
+  notes?: AdminCustomerNote[];
 }
 
 export interface AdminCustomersResponse {
   total: number;
   customers: AdminCustomer[];
+  summary?: AdminCustomerSummary;
 }
 
 export interface AdminChatProduct {
@@ -755,13 +842,16 @@ export class AdminApiService {
     return this.http.put(`${this.apiUrl}/role-permissions/${encodeURIComponent(role)}`, { QUYEN: matrix });
   }
 
-  getAuditLogs(params?: { page?: number; limit?: number; action?: string; search?: string }): Observable<AdminAuditLogsResponse> {
-    let httpParams = new HttpParams();
-    if (params?.page) httpParams = httpParams.set('page', params.page.toString());
-    if (params?.limit) httpParams = httpParams.set('limit', params.limit.toString());
-    if (params?.action) httpParams = httpParams.set('action', params.action);
-    if (params?.search) httpParams = httpParams.set('search', params.search);
+  /** AD52: vô hiệu mật khẩu cũ + đăng xuất nhân viên; nhân viên tự đặt lại bằng "Gửi mã xác thực". */
+  resetStaffPassword(code: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.apiUrl}/staff-accounts/${encodeURIComponent(code)}/reset-password`, {});
+  }
 
+  getAuditLogs(params?: AdminAuditLogQuery): Observable<AdminAuditLogsResponse> {
+    let httpParams = new HttpParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') httpParams = httpParams.set(key, String(value));
+    });
     return this.http.get<AdminAuditLogsResponse>(`${this.apiUrl}/audit-logs`, { params: httpParams });
   }
 
@@ -911,19 +1001,29 @@ export class AdminApiService {
     return this.http.get<AdminCustomersResponse>(`${this.apiUrl}/customers`);
   }
 
+  // AD35/AD36: luôn tải mới để lịch sử đơn/thanh toán khớp module Đơn hàng (không giữ cache cũ).
   getCustomerDetail(customerId: string): Observable<AdminCustomerDetailResponse> {
-    const cacheKey = customerId.trim().toUpperCase();
-    const cached = this.customerDetailCache.get(cacheKey);
-
-    if (cached) {
-      return of(cached);
-    }
-
     return this.http.get<AdminCustomerDetailResponse>(
       `${this.apiUrl}/customers/${encodeURIComponent(customerId)}`
-    ).pipe(
-      tap((response) => this.customerDetailCache.set(cacheKey, response))
     );
+  }
+
+  /** AD33: khóa (bắt buộc lý do) hoặc mở khóa tài khoản khách. Khóa sẽ đăng xuất khách khỏi mọi thiết bị. */
+  setCustomerLock(customerId: string, locked: boolean, reason = ''): Observable<{ message: string; customer: AdminCustomer }> {
+    return this.http.patch<{ message: string; customer: AdminCustomer }>(
+      `${this.apiUrl}/customers/${encodeURIComponent(customerId)}/lock`, { locked, reason });
+  }
+
+  /** AD35: ghi chú nội bộ, chỉ nhân viên xem. */
+  addCustomerNote(customerId: string, content: string): Observable<{ message: string; note: AdminCustomerNote }> {
+    return this.http.post<{ message: string; note: AdminCustomerNote }>(
+      `${this.apiUrl}/customers/${encodeURIComponent(customerId)}/notes`, { content });
+  }
+
+  /** AD38: ẩn (bắt buộc lý do) / hiện lại đánh giá trên trang sản phẩm. */
+  setReviewVisibility(reviewId: string, hidden: boolean, reason = ''): Observable<{ message: string; hidden: boolean }> {
+    return this.http.patch<{ message: string; hidden: boolean }>(
+      `${this.apiUrl}/reviews/${encodeURIComponent(reviewId)}/visibility`, { hidden, reason });
   }
 
   getAddressOptions(): Observable<AdminAddressOptionsResponse> {
@@ -1001,13 +1101,15 @@ export class AdminApiService {
 
   updateCustomer(
     customerId: string,
-    payload: { name: string; phone: string; email: string; birthDate?: string; gender?: string }
+    // AD34/AD40: server chỉ nhận họ tên, ngày sinh, giới tính, ghi chú nội bộ.
+    // SĐT/email là thông tin đăng nhập; gửi giá trị khác hiện tại sẽ bị từ chối (400, field phone/email).
+    payload: { name?: string; phone?: string; email?: string; birthDate?: string; gender?: string; internalNote?: string }
   ): Observable<{ message: string; customer: AdminCustomer }> {
     return this.http.put<{ message: string; customer: AdminCustomer }>(
       `${this.apiUrl}/customers/${encodeURIComponent(customerId)}`,
       payload
     ).pipe(
-      timeout(5000),
+      timeout(15000),
       tap(() => this.customerDetailCache.delete(customerId.trim().toUpperCase()))
     );
   }

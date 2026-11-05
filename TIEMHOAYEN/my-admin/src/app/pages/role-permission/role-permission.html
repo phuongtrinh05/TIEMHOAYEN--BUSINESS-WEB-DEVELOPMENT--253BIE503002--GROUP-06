@@ -9,6 +9,14 @@
           (input)="searchRole()">
         <i class="bi bi-search"></i>
       </div>
+      <button
+        type="button"
+        class="icon-btn"
+        [disabled]="loading || saving || hasAnyDirty"
+        [title]="hasAnyDirty ? 'Lưu hoặc hoàn tác thay đổi trước khi làm mới' : 'Tải lại từ máy chủ'"
+        (click)="refreshRolePermissions()">
+        <i class="bi bi-arrow-clockwise" [class.spin]="loading"></i>
+      </button>
     </div>
 
     <table>
@@ -23,17 +31,39 @@
           *ngFor="let role of filteredRoles"
           (click)="selectRole(role.name)"
           [class.active]="selectedRole === role.name">
-          <td>{{ role.name }}</td>
+          <td>
+            {{ role.name }}
+            <span *ngIf="isDirty(role.name)" class="dirty-dot" title="Có thay đổi chưa lưu">●</span>
+          </td>
           <td>{{ role.total }}</td>
+        </tr>
+        <tr *ngIf="!filteredRoles.length" class="empty">
+          <td colspan="2">{{ loading ? 'Đang tải…' : 'Không có vai trò phù hợp.' }}</td>
         </tr>
       </tbody>
     </table>
   </div>
 
   <div class="permission-card">
-    <h2>Vai trò {{ selectedRole }}</h2>
+    <div class="permission-header">
+      <h2>Vai trò {{ selectedRole }}</h2>
+      <span *ngIf="isDirty(selectedRole)" class="dirty-badge"><i class="bi bi-pencil"></i> Có thay đổi chưa lưu</span>
+    </div>
 
-    <table>
+    <div *ngIf="loading" class="permission-state info">
+      <span class="spinner"></span> Đang tải phân quyền từ máy chủ…
+    </div>
+    <div *ngIf="!loading && !loadedFromServer && roles.length" class="permission-state info">
+      <i class="bi bi-info-circle"></i> Đang hiển thị bản lưu tạm, chỉ đọc cho tới khi tải xong dữ liệu từ máy chủ.
+    </div>
+    <div *ngIf="readOnlyReason" class="permission-state notice">
+      <i class="bi bi-lock"></i> {{ readOnlyReason }}
+    </div>
+    <p *ngIf="canEdit && loadedFromServer && selectedRole !== 'Admin'" class="permission-hint">
+      Bật một quyền bất kỳ sẽ tự bật quyền "Xem"; tắt "Xem" sẽ tắt các quyền còn lại của danh mục đó.
+    </p>
+
+    <table *ngIf="modules.length && selected; else noMatrix">
       <thead>
         <tr>
           <th>Danh mục quyền</th>
@@ -43,22 +73,53 @@
       <tbody>
         <tr *ngFor="let item of modules">
           <td>{{ item.name }}</td>
-          <td *ngFor="let action of actions">
-            <button type="button" style="border:0;background:transparent" [disabled]="selectedRole === 'Admin' || loading" [attr.aria-label]="action.label + ' ' + item.name" [attr.aria-pressed]="hasPermission(item.key, action.key)" (click)="togglePermission(item.key, action.key)">
-            <i
-              class="bi"
-              [class.bi-check-circle-fill]="hasPermission(item.key, action.key)"
-              [class.bi-x-circle-fill]="!hasPermission(item.key, action.key)"
-              [class.success]="hasPermission(item.key, action.key)"
-              [class.locked]="!hasPermission(item.key, action.key)">
-            </i>
+          <td *ngFor="let action of actions" [class.changed]="isCellChanged(item.key, action.key)">
+            <button
+              type="button"
+              class="perm-toggle"
+              [disabled]="!editable"
+              [attr.aria-label]="action.label + ' ' + item.name"
+              [attr.aria-pressed]="hasPermission(item.key, action.key)"
+              (click)="togglePermission(item.key, action.key)">
+              <i
+                class="bi"
+                [class.bi-check-circle-fill]="hasPermission(item.key, action.key)"
+                [class.bi-x-circle-fill]="!hasPermission(item.key, action.key)"
+                [class.success]="hasPermission(item.key, action.key)"
+                [class.locked]="!hasPermission(item.key, action.key)">
+              </i>
             </button>
           </td>
         </tr>
       </tbody>
     </table>
+    <ng-template #noMatrix>
+      <p class="permission-state" *ngIf="!loading">Chưa có dữ liệu phân quyền để hiển thị.</p>
+    </ng-template>
 
-    <p *ngIf="errorMessage" class="permission-state error">{{ errorMessage }}</p>
-    <button type="button" class="btn btn-success" [disabled]="selectedRole === 'Admin' || loading" (click)="savePermissions()">{{ loading ? 'Đang lưu…' : 'Lưu phân quyền' }}</button>
+    <div *ngIf="successMessage" class="permission-state success-msg" role="status">
+      <i class="bi bi-check-circle-fill"></i> {{ successMessage }}
+    </div>
+    <div *ngIf="errorMessage" class="permission-state error" role="alert">
+      <i class="bi bi-exclamation-triangle-fill"></i> {{ errorMessage }}
+      <button *ngIf="!loadedFromServer && !loading" type="button" class="link-btn" (click)="refreshRolePermissions()">Thử lại</button>
+    </div>
+
+    <div class="permission-actions" *ngIf="editable || saving">
+      <button
+        type="button"
+        class="btn-undo"
+        [disabled]="saving || !isDirty(selectedRole)"
+        (click)="undoChanges()">
+        <i class="bi bi-arrow-counterclockwise"></i> Hoàn tác
+      </button>
+      <button
+        type="button"
+        class="btn-save"
+        [disabled]="saving || !isDirty(selectedRole)"
+        (click)="savePermissions()">
+        {{ saving ? 'Đang lưu…' : 'Lưu phân quyền' }}
+      </button>
+    </div>
   </div>
 </div>

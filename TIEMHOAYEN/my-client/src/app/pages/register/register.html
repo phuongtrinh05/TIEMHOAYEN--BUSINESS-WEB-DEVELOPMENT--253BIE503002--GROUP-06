@@ -73,32 +73,36 @@
               id="fullName"
               name="fullName"
               class="form-input"
-              [class.is-invalid]="fullName.invalid && (fullName.touched || submitted)"
+              [class.is-invalid]="((fullName.touched || submitted) && formData.fullName.trim().length < 2) || !!serverErrors.name"
               placeholder="Nhập Họ và Tên"
               [(ngModel)]="formData.fullName"
+              (ngModelChange)="clearServerError('name')"
               #fullName="ngModel"
+              autocomplete="name"
               required
-              minlength="2"
             >
           </div>
-          <span class="error-msg" *ngIf="fullName.invalid && (fullName.touched || submitted)">
-            Vui lòng nhập họ và tên (tối thiểu 2 ký tự).
+          <span class="error-msg" aria-live="polite">
+            <ng-container *ngIf="(fullName.touched || submitted) && formData.fullName.trim().length < 2; else nameServer">Vui lòng nhập họ và tên (tối thiểu 2 ký tự).</ng-container>
+            <ng-template #nameServer>{{ serverErrors.name }}</ng-template>
           </span>
         </div>
 
         <!-- Giới tính -->
-        <div class="form-group gender-row">
-          <label class="form-label gender-label">Giới tính</label>
-          <div class="gender-group">
-            <label class="gender-option">
-              <input type="radio" name="gender" value="Nữ" [(ngModel)]="formData.gender" required [class.is-invalid]="submitted && !formData.gender">
-              <span>Nữ</span>
-            </label>
-            <label class="gender-option">
-              <input type="radio" name="gender" value="Nam" [(ngModel)]="formData.gender" required [class.is-invalid]="submitted && !formData.gender">
-              <span>Nam</span>
-            </label>
+        <div class="form-group">
+          <div class="gender-row">
+            <span class="form-label gender-label" id="gender-label">Giới tính</span>
+            <div class="gender-group" role="radiogroup" aria-labelledby="gender-label">
+              <label class="gender-option" *ngFor="let g of genders">
+                <input type="radio" name="gender" [value]="g" [(ngModel)]="formData.gender" (ngModelChange)="clearServerError('gender')" required [class.is-invalid]="(submitted && !formData.gender) || !!serverErrors.gender">
+                <span>{{ g }}</span>
+              </label>
+            </div>
           </div>
+          <span class="error-msg" aria-live="polite">
+            <ng-container *ngIf="submitted && !formData.gender; else genderServer">Vui lòng chọn giới tính.</ng-container>
+            <ng-template #genderServer>{{ serverErrors.gender }}</ng-template>
+          </span>
         </div>
 
         <!-- Số điện thoại & Email -->
@@ -112,28 +116,29 @@
                 id="phone"
                 name="phone"
                 class="form-input"
-                [class.is-invalid]="(phone.invalid && (phone.touched || submitted)) || (phoneError && phone.valid)"
+                [class.is-invalid]="((phone.touched || submitted) && !phoneFormatValid) || !!serverErrors.phone"
                 placeholder="Nhập số điện thoại"
                 [(ngModel)]="formData.phone"
                 #phone="ngModel"
-                (ngModelChange)="phoneError = ''"
+                (ngModelChange)="clearServerError('phone')"
+                inputmode="numeric"
+                autocomplete="tel"
                 required
-                pattern="^(0[35789])\d{8}$"
                 maxlength="10"
               >
             </div>
-            <!-- Chỉ show 1 trong 2: format lỗi ưu tiên hơn lỗi trùng -->
-            <span class="error-msg" *ngIf="phone.invalid && (phone.touched || submitted)">
-              Số điện thoại không hợp lệ.
-            </span>
-            <span class="error-msg" *ngIf="phoneError && phone.valid">
-              {{ phoneError }}
+            <!-- Lỗi định dạng ưu tiên hơn lỗi từ máy chủ -->
+            <span class="error-msg" aria-live="polite">
+              <ng-container *ngIf="(phone.touched || submitted) && !phoneFormatValid; else phoneServer">
+                {{ formData.phone.trim() ? 'Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 0.' : 'Vui lòng nhập số điện thoại.' }}
+              </ng-container>
+              <ng-template #phoneServer>{{ serverErrors.phone }}</ng-template>
             </span>
           </div>
 
           <div class="form-group">
             <label class="form-label" for="email">
-              Email <span class="optional">(không bắt buộc)</span>
+              Email <span class="optional">(để nhận mã xác minh)</span>
             </label>
             <div class="input-wrapper">
               <i class="bi bi-envelope input-icon"></i>
@@ -142,20 +147,20 @@
                 id="email"
                 name="email"
                 class="form-input"
-                [class.is-invalid]="(email.invalid && (email.touched || submitted)) || (emailError && email.valid)"
+                [class.is-invalid]="((email.touched || submitted) && !emailFormatValid) || !!serverErrors.email"
                 placeholder="Nhập Email"
                 [(ngModel)]="formData.email"
                 #email="ngModel"
-                (ngModelChange)="emailError = ''"
-                email
+                (ngModelChange)="clearServerError('email')"
+                autocomplete="email"
+                required
               >
             </div>
-            <!-- Chỉ show 1 trong 2: format lỗi ưu tiên hơn lỗi trùng -->
-            <span class="error-msg" *ngIf="email.invalid && (email.touched || submitted)">
-              Email không hợp lệ.
-            </span>
-            <span class="error-msg" *ngIf="emailError && email.valid">
-              {{ emailError }}
+            <span class="error-msg" aria-live="polite">
+              <ng-container *ngIf="(email.touched || submitted) && !emailFormatValid; else emailServer">
+                {{ formData.email.trim() ? 'Email không hợp lệ.' : 'Vui lòng nhập email để nhận mã xác minh.' }}
+              </ng-container>
+              <ng-template #emailServer>{{ serverErrors.email }}</ng-template>
             </span>
           </div>
         </div>
@@ -171,19 +176,23 @@
                 id="password"
                 name="password"
                 class="form-input"
-                [class.is-invalid]="password.invalid && (password.touched || submitted)"
+                [class.is-invalid]="((password.touched || submitted) && !passwordValid) || !!serverErrors.password"
                 placeholder="Nhập mật khẩu"
                 [(ngModel)]="formData.password"
+                (ngModelChange)="clearServerError('password')"
                 #password="ngModel"
+                autocomplete="new-password"
+                aria-describedby="password-rules"
                 required
-                minlength="8"
+                maxlength="72"
               >
               <button type="button" class="toggle-password" (click)="togglePassword()" aria-label="Hiện/ẩn mật khẩu">
                 <i class="bi" [ngClass]="showPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
               </button>
             </div>
-            <span class="error-msg" *ngIf="password.invalid && (password.touched || submitted)">
-              Mật khẩu tối thiểu 8 ký tự.
+            <span class="error-msg" aria-live="polite">
+              <ng-container *ngIf="serverErrors.password; else pwLocal">{{ serverErrors.password }}</ng-container>
+              <ng-template #pwLocal>{{ submitted && !passwordValid ? 'Mật khẩu chưa đáp ứng đủ yêu cầu bên dưới.' : '' }}</ng-template>
             </span>
           </div>
 
@@ -196,45 +205,97 @@
                 id="confirmPassword"
                 name="confirmPassword"
                 class="form-input"
-                [class.is-invalid]="(confirmPassword.touched || submitted) && formData.password !== formData.confirmPassword"
+                [class.is-invalid]="(confirmPassword.touched || submitted) && !passwordsMatch"
                 placeholder="Nhập lại mật khẩu"
                 [(ngModel)]="formData.confirmPassword"
                 #confirmPassword="ngModel"
+                autocomplete="new-password"
                 required
               >
               <button type="button" class="toggle-password" (click)="toggleConfirmPassword()" aria-label="Hiện/ẩn xác nhận mật khẩu">
                 <i class="bi" [ngClass]="showConfirmPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
               </button>
             </div>
-            <span class="error-msg" *ngIf="(confirmPassword.touched || submitted) && formData.password !== formData.confirmPassword">
-              Mật khẩu không khớp.
+            <span class="error-msg" [class.is-ok]="passwordsMatch" aria-live="polite">
+              <ng-container *ngIf="passwordsMatch; else mismatch"><i class="bi bi-check-circle-fill"></i> Mật khẩu xác nhận khớp.</ng-container>
+              <ng-template #mismatch>{{ (confirmPassword.touched || submitted) && !passwordsMatch ? (formData.confirmPassword ? 'Mật khẩu không khớp.' : 'Vui lòng nhập lại mật khẩu.') : '' }}</ng-template>
             </span>
           </div>
         </div>
+
+        <!-- Checklist quy tắc mật khẩu -->
+        <ul class="password-checklist" id="password-rules" aria-label="Yêu cầu mật khẩu">
+          <li *ngFor="let rule of passwordRules" [class.is-met]="ruleMet(rule.key)">
+            <i class="bi" [ngClass]="ruleMet(rule.key) ? 'bi-check-circle-fill' : 'bi-circle'" aria-hidden="true"></i>
+            <span>{{ rule.label }}</span>
+            <span class="visually-hidden">{{ ruleMet(rule.key) ? '(đã đạt)' : '(chưa đạt)' }}</span>
+          </li>
+        </ul>
 
         <!-- Điều khoản -->
         <div class="terms-group">
           <input type="checkbox" id="agreeTerms" name="agreeTerms" [(ngModel)]="formData.agreeTerms">
           <label for="agreeTerms">
             Tôi đồng ý với
-            <a routerLink="/policy/registration-terms-conditions" class="terms-link">Điều khoản và Điều kiện</a>
+            <a routerLink="/policy/registration-terms" target="_blank" rel="noopener" class="terms-link">Điều khoản và Điều kiện</a>
             và đã đọc
-            <a routerLink="/policy/privacy-policy" class="terms-link">Chính sách bảo mật</a>
+            <a routerLink="/policy/privacy" target="_blank" rel="noopener" class="terms-link">Chính sách bảo mật</a>
             của Tiệm Hoa Yên.
           </label>
         </div>
 
-        <span class="error-msg terms-error" *ngIf="submitted && !formData.agreeTerms">
-          Vui lòng đồng ý điều khoản và điều kiện.
+        <span class="error-msg terms-error" aria-live="polite">
+          {{ submitted && !formData.agreeTerms ? 'Vui lòng đồng ý điều khoản và điều kiện.' : '' }}
         </span>
 
-        <button type="submit" class="btn-register is-ready" [disabled]="busy || needsVerification">{{ busy ? 'Đang xử lý…' : 'Đăng ký' }}</button>
-        <div *ngIf="needsVerification" class="form-group">
-          <p role="status">{{ verificationMessage }}</p>
-          <label for="registration-code">Mã xác minh email</label>
-          <input id="registration-code" class="form-control" name="verificationCode" [ngModel]="verificationCode" (ngModelChange)="onVerificationInput($event)" [class.is-invalid]="verificationInvalid" [disabled]="busy" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
-          <p *ngIf="busy" role="status">Đang xác minh…</p>
-          <button type="button" class="terms-link" [disabled]="busy" (click)="sendVerification()">Gửi lại mã</button>
+        <!-- SĐT đã đăng ký nhưng chưa xác minh -->
+        <div class="pending-box" *ngIf="pendingVerification && !needsVerification" role="status">
+          <span>Tài khoản này chưa được xác minh. Bạn có thể nhận lại mã xác minh để hoàn tất đăng ký.</span>
+          <button type="button" class="verify-link" (click)="resendForPending()" [disabled]="otpSending">Gửi lại mã xác minh</button>
+        </div>
+
+        <p class="error-msg form-error" role="alert" *ngIf="formError">{{ formError }}</p>
+
+        <button type="submit" class="btn-register is-ready" [disabled]="busy || needsVerification" [attr.aria-busy]="busy">
+          <span *ngIf="busy" class="btn-spinner" aria-hidden="true"></span>
+          {{ busy ? 'Đang xử lý…' : 'Đăng ký' }}
+        </button>
+
+        <!-- Bước xác minh mã OTP -->
+        <div *ngIf="needsVerification" class="verify-box">
+          <p class="verify-box__message" role="status">
+            {{ otpSending && !challengeId ? 'Đang gửi mã xác minh…' : verificationMessage }}
+          </p>
+          <label class="form-label" for="registration-code">Mã xác minh (6 chữ số)</label>
+          <div class="verify-box__row">
+            <input
+              id="registration-code"
+              class="form-input verify-box__input"
+              name="verificationCode"
+              [ngModel]="verificationCode"
+              (ngModelChange)="onVerificationInput($event)"
+              [class.is-invalid]="verificationInvalid"
+              [disabled]="otpVerifying || attemptsExceeded || !challengeId"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              maxlength="6"
+              placeholder="••••••"
+            >
+            <button type="button" class="btn-verify" (click)="verifyRegistration()" [disabled]="otpVerifying || attemptsExceeded || verificationCode.length !== 6" [attr.aria-busy]="otpVerifying">
+              <span *ngIf="otpVerifying" class="btn-spinner" aria-hidden="true"></span>
+              {{ otpVerifying ? 'Đang xác minh…' : 'Xác minh' }}
+            </button>
+          </div>
+          <span class="error-msg" role="alert">{{ verificationError }}</span>
+          <a *ngIf="attemptsExceeded" class="verify-link" routerLink="/login" [queryParams]="{ recover: 1 }">Quên mật khẩu?</a>
+          <div class="verify-box__footer">
+            <span class="verify-box__timer" aria-live="off">
+              {{ challengeId ? (expiresSeconds > 0 ? 'Mã hết hạn sau ' + expiresSeconds + ' giây' : 'Mã đã hết hạn') : '' }}
+            </span>
+            <button type="button" class="verify-link" [disabled]="otpSending || otpVerifying || resendSeconds > 0" (click)="sendVerification()">
+              {{ otpSending ? 'Đang gửi…' : (resendSeconds > 0 ? 'Gửi lại sau ' + resendSeconds + 's' : 'Gửi lại mã') }}
+            </button>
+          </div>
         </div>
 
         <p class="login-redirect">

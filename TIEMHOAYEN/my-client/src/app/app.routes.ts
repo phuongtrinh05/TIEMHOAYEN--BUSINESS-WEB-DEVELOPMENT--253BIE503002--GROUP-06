@@ -13,6 +13,8 @@ import { Homepage } from './pages/homepage/homepage';
 import { Contact } from './pages/contact/contact';
 import { AboutUs } from './pages/about-us/about-us';
 import { AccountComponent } from './pages/account/account';
+import { accountLegacyRedirect } from './pages/account/account-sections';
+import { ErrorPageComponent } from './pages/page-not-found/error-page';
 import { BlogComponent } from './pages/blog/blog';
 import { BlogDetailComponent } from './pages/blog-detail/blog-detail';
 import { CategoryComponent } from './pages/category/category';
@@ -84,7 +86,15 @@ export const routes: Routes = [
     title: 'Về chúng tôi - Tiệm Hoa Yên',
   },
   {
+    // KH19: /account (và link cũ ?section= / #fragment) → /account/<mục>
     path: 'account',
+    pathMatch: 'full',
+    redirectTo: accountLegacyRedirect,
+  },
+  {
+    // Cùng một route config cho mọi mục → component được tái sử dụng,
+    // sidebar giữ nguyên, chỉ nội dung bên phải đổi theo :section.
+    path: 'account/:section',
     component: AccountComponent,
     title: 'Tài khoản - Tiệm Hoa Yên',
   },
@@ -333,6 +343,15 @@ export const routes: Routes = [
     path: 'registration-terms-conditions',
     redirectTo: 'policy/registration-terms',
     pathMatch: 'full',
+  },
+
+  // =========================
+  // ERROR (KH33) – /error?type=network|server|forbidden
+  // =========================
+  {
+    path: 'error',
+    component: ErrorPageComponent,
+    title: 'Đã có lỗi xảy ra - Tiệm Hoa Yên',
   },
 
   // =========================

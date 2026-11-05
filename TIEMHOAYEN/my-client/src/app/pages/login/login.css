@@ -1381,3 +1381,199 @@ button[aria-busy="true"] { cursor: wait; opacity: .8; }
 @media (prefers-reduced-motion: reduce) { .login-spinner { animation-duration: 2s; } }
 
 .otp-input.is-invalid, .otp-popup__input.is-invalid { border: 2px solid #dc3545; color: #dc3545; background: #fff5f5; }
+
+/* =========================
+   KH02–KH04: giữ chỗ dòng lỗi, thông báo đăng nhập, OTP
+========================= */
+
+/* Luôn giữ chỗ 1 dòng lỗi để thẻ không bị giãn khi lỗi xuất hiện */
+.login-form .error-msg {
+  display: block;
+  min-height: 1.15em;
+  line-height: 1.15;
+}
+
+.login-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 9px;
+  background: #fff1f1;
+  border: 1px solid rgba(220, 53, 69, 0.28);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--color-scarlet-red);
+  text-align: left;
+}
+
+.login-alert.is-lock {
+  background: #fff6e8;
+  border-color: #f0d9b5;
+  color: #8a4b00;
+}
+
+.login-alert.is-success {
+  background: #eef8ef;
+  border-color: rgba(46, 125, 50, 0.3);
+  color: #2e7d32;
+}
+
+.login-alert__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.login-alert__action {
+  padding: 0;
+  background: none;
+  border: none;
+  font-weight: 800;
+  color: var(--primary-color);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.login-alert__action:disabled {
+  color: #9a9a9a;
+  cursor: wait;
+}
+
+.verify-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(253, 250, 247, 0.9);
+  border: 1.5px solid #e5d9c8;
+  text-align: left;
+}
+
+.verify-block__message {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.verify-block__row {
+  display: flex;
+  gap: 10px;
+}
+
+.verify-block__input {
+  flex: 1;
+  padding: 0 14px !important;
+  letter-spacing: 0.4em;
+  font-weight: 700;
+}
+
+.verify-block__submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 118px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 9px;
+  background: var(--primary-color);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.verify-block__submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.verify-block__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  font-size: 0.82rem;
+}
+
+.verify-block .error-msg {
+  display: block;
+  min-height: 1.15em;
+}
+
+.social-notice {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: #f3f0ff;
+  font-size: 0.82rem;
+  color: #4a3b7a;
+  text-align: center;
+}
+
+.forgot-popup__error {
+  display: block;
+  min-height: 1.15em;
+}
+
+.forgot-popup__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.forgot-popup__button:disabled {
+  cursor: wait;
+  opacity: 0.8;
+}
+
+.otp-popup__inputs.is-busy {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.otp-popup__status {
+  min-height: 1.2em;
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: rgba(36, 24, 24, 0.76);
+}
+
+.otp-popup__notice {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+.otp-popup__error {
+  display: block;
+  min-height: 2.4em;
+  margin: 2px auto 6px;
+  text-align: center;
+}
+
+.otp-countdown {
+  font-variant-numeric: tabular-nums;
+  color: rgba(36, 24, 24, 0.76);
+}
+
+.otp-countdown.is-expired {
+  color: var(--color-scarlet-red);
+}
+
+.otp-popup__resend-button:disabled {
+  color: #9a9a9a;
+  cursor: not-allowed;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 480px) {
+  .verify-block__row { flex-direction: column; }
+  .verify-block__submit { height: 39px; }
+}
+
+/* Thông báo sau khi đổi mật khẩu */
+.login-notice { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: #ecfdf3; color: #146c43; border: 1px solid #b7ebc6; font-size: .85rem; margin-bottom: 10px; }

@@ -37,6 +37,23 @@ export class AdminHeader implements OnInit, OnDestroy {
   isProductPage = false;
   showProfileMenu = false;
   currentLanguage = 'vi';
+
+  // AD01: thông tin tài khoản và lần đăng nhập gần nhất (trước phiên hiện tại).
+  get profileName(): string {
+    if (typeof localStorage === 'undefined') return '';
+    return localStorage.getItem('adminName') || localStorage.getItem('adminEmail') || '';
+  }
+  get profileRole(): string {
+    return typeof localStorage === 'undefined' ? '' : localStorage.getItem('adminRole') || '';
+  }
+  get lastLogin(): { time: string; ip: string; device: string } | null {
+    if (typeof localStorage === 'undefined') return null;
+    try { return JSON.parse(localStorage.getItem('adminLastLogin') || 'null'); } catch { return null; }
+  }
+  formatLastLogin(value: string): string {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Ho_Chi_Minh' }).format(date);
+  }
   private productCountLoaded = false;
 
   private readonly routeTitles: Array<{ match: string; title: string; exact?: boolean }> = [
@@ -72,7 +89,8 @@ export class AdminHeader implements OnInit, OnDestroy {
     { match: '/content/create-article', title: 'Tạo bài viết' },
     { match: '/content/article-detail', title: 'Chi tiết bài viết' },
     { match: '/admin-account', title: 'Tài khoản quản trị' },
-    { match: '/role-permission', title: 'Phân quyền' }
+    { match: '/role-permission', title: 'Phân quyền' },
+    { match: '/audit-logs', title: 'Nhật ký hệ thống' }
   ];
   constructor(
     private router: Router,
@@ -259,13 +277,7 @@ export class AdminHeader implements OnInit, OnDestroy {
 
   logout(): void {
     endAdminSession();
-    [
-      'adminLoggedIn',
-      'adminEmail',
-      'adminToken',
-      'adminUser',
-      'selectedProduct'
-    ].forEach((key) => localStorage.removeItem(key));
+    ['selectedProduct'].forEach((key) => localStorage.removeItem(key));
 
     sessionStorage.clear();
     this.showProfileMenu = false;

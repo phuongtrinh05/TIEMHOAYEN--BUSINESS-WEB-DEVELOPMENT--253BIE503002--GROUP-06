@@ -1,0 +1,161 @@
+/* =========================
+   KH19 – ACCOUNT SECTIONS (sidebar cố định, nội dung đổi theo mục)
+========================= */
+
+.sidebar-menu li:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.sidebar-select-wrap {
+  display: none;
+}
+
+.sidebar-select {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #f0ded5;
+  border-radius: 10px;
+  background: var(--color-blush-white);
+  color: var(--primary-color);
+  font-family: var(--font-body, 'Nunito Sans', sans-serif);
+  font-size: 14px;
+  font-weight: 700;
+  outline: none;
+}
+
+#account-content {
+  min-height: 420px;
+}
+
+.section-title--with-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.section-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+.section-link:hover {
+  text-decoration: underline;
+  color: var(--primary-color);
+}
+
+.section-hint {
+  margin: -6px 0 14px;
+  font-size: 13px;
+  color: #888;
+}
+
+.section-empty {
+  margin: 8px 0;
+  padding: 18px;
+  border-radius: 10px;
+  background: var(--color-blush-white);
+  color: #777;
+  font-size: 14px;
+  text-align: center;
+}
+
+.section-empty--error {
+  color: var(--color-scarlet-red);
+}
+
+.profile-extra {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid #f2e8e2;
+}
+
+.btn-continue-payment {
+  background: var(--primary-color);
+  color: #fff;
+  white-space: nowrap;
+}
+
+.btn-continue-payment:hover {
+  background: #5c1414;
+  color: var(--accent-color);
+}
+
+.points-section .reward-note {
+  margin: 0;
+  font-size: 13px;
+  color: #888;
+}
+
+/* KH20 – popup sửa hồ sơ */
+.modal-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid #f0c9c9;
+  border-radius: 8px;
+  background: #fff5f5;
+  color: var(--color-scarlet-red);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.modal-input--readonly {
+  background: #f3f0ee;
+  border-color: #ccc;
+  color: #777;
+  cursor: not-allowed;
+}
+
+.modal-input--readonly:focus {
+  background: #f3f0ee;
+  border-color: #ccc;
+}
+
+.modal-select {
+  appearance: auto;
+  cursor: pointer;
+}
+
+.modal-note {
+  margin: -6px 0 0;
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #888;
+}
+
+.modal-btn-save {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  align-self: center;
+}
+
+.modal-btn-save:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (max-width: 480px) {
+  .sidebar-menu {
+    display: none;
+  }
+
+  .sidebar-select-wrap {
+    display: block;
+    padding: 8px;
+  }
+}

@@ -5,7 +5,7 @@ export function endSession(): void {
   if (typeof localStorage === 'undefined') return;
   endAdminSession();
   localStorage.removeItem('adminToken');
-  ['adminLoggedIn', 'adminEmployeeId', 'adminEmail', 'adminRole', 'adminPermissions', 'adminUser'].forEach(k => localStorage.removeItem(k));
+  ['adminLoggedIn', 'adminEmployeeId', 'adminEmail', 'adminRole', 'adminPermissions', 'adminUser', 'adminName', 'adminLastLogin'].forEach(k => localStorage.removeItem(k));
   sessionStorage.removeItem('passwordResetToken');
   window.dispatchEvent(new Event('auth-changed'));
 }

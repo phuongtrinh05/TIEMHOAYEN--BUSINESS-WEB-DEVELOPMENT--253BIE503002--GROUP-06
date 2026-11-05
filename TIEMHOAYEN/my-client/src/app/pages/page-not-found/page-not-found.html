@@ -1,59 +1,39 @@
-<section class="not-found-container">
-<div class="petals">
+<section class="not-found-container" aria-labelledby="not-found-title">
+  <div class="petals" aria-hidden="true">
+    <img src="assets/images/page-not-found-flower.png" class="petal p1" alt="">
+    <img src="assets/images/page-not-found-flower.png" class="petal p2" alt="">
+    <img src="assets/images/page-not-found-flower.png" class="petal p3" alt="">
+    <img src="assets/images/page-not-found-flower.png" class="petal p4" alt="">
+    <img src="assets/images/page-not-found-flower.png" class="petal p5" alt="">
+    <img src="assets/images/page-not-found-flower.png" class="petal p6" alt="">
+    <img src="assets/images/page-not-found-flower.png" class="petal p7" alt="">
+    <img src="assets/images/page-not-found-flower.png" class="petal p8" alt="">
+  </div>
 
-    <img src="assets/images/page-not-found-flower.png" class="petal p1">
-    <img src="assets/images/page-not-found-flower.png" class="petal p2">
-    <img src="assets/images/page-not-found-flower.png" class="petal p3">
-    <img src="assets/images/page-not-found-flower.png" class="petal p4">
-    <img src="assets/images/page-not-found-flower.png" class="petal p5">
-    <img src="assets/images/page-not-found-flower.png" class="petal p6">
-    <img src="assets/images/page-not-found-flower.png" class="petal p7">
-    <img src="assets/images/page-not-found-flower.png" class="petal p8">
+  <img src="/assets/images/page-not-found.png" alt="Lỗi 404" class="not-found-image">
 
-</div>
+  <h1 class="oops-title" id="not-found-title">Không tìm thấy trang</h1>
 
-    <img
-        src="/assets/images/page-not-found.png"
-        alt="404"
-        class="not-found-image">
+  <p class="oops-subtitle">Trang này đã... héo rồi!</p>
 
-    <h1 class="oops-title">
-        Oops!
-    </h1>
+  <div class="divider" aria-hidden="true">
+    <i class="bi bi-heartbreak-fill"></i>
+  </div>
 
-    <p class="oops-subtitle">
-        Trang này đã... héo rồi!
-    </p>
+  <p class="not-found-text">
+    Đường dẫn bạn truy cập không tồn tại hoặc đã được di chuyển.<br>
+    Hãy quay về trang chủ hoặc xem các mẫu hoa của Tiệm Hoa Yên nhé.
+  </p>
 
-    <div class="divider">
-        <i class="bi bi-heartbreak-fill"></i>
-    </div>
+  <div class="button-group">
+    <a routerLink="/" class="btn not-found-btn">
+      <i class="bi bi-house-heart"></i>
+      Về trang chủ
+    </a>
 
-    <p class="not-found-text">
-        Trang bạn tìm không tồn tại!
-    </p>
-
-    <div class="button-group">
-
-        <div class="button-group">
-
-  <a
-    routerLink="/"
-    class="btn not-found-btn">
-    <i class="bi bi-house-heart"></i>
-    Về trang chủ
-  </a>
-
-  <a
-    routerLink="/category"
-    class="btn not-found-btn">
-    <i class="bi bi-flower1"></i>
-    Xem sản phẩm
-  </a>
-
-
-
-</div>
-    </div>
-
+    <a routerLink="/category" class="btn not-found-btn">
+      <i class="bi bi-flower1"></i>
+      Xem sản phẩm
+    </a>
+  </div>
 </section>

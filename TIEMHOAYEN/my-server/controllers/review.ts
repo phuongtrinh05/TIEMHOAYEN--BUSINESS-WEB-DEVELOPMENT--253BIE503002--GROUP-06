@@ -548,7 +548,7 @@ export const getProductReviews = async (req: Request, res: Response) => {
   try {
     const { productId } = req.params;
     const reviewCollection = await getCollection<any>('DANH_GIA');
-    const reviews = await reviewCollection.find({ SAN_PHAM_ID: productId }).toArray();
+    const reviews = await reviewCollection.find({ SAN_PHAM_ID: productId, DA_AN: { $ne: true } }).toArray();
     const rows = await buildReviewRows(reviews);
 
     return res.status(200).json({

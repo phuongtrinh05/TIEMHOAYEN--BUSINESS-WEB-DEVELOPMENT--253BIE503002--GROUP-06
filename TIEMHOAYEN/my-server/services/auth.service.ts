@@ -9,7 +9,7 @@ import { getRolePermissions, resolveRoleName } from './role-permission.service.j
 export type AccountType = 'KHACH_HANG' | 'NHAN_VIEN';
 export type Identity = { id: string; type: AccountType; account: any; sessionId: string };
 declare global { namespace Express { interface Request { identity?: Identity } } }
-export class AuthError extends Error { constructor(public status: number, message: string) { super(message); } }
+export class AuthError extends Error { constructor(public status: number, message: string, public extra: Record<string, unknown> = {}) { super(message); } }
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 export const accountKey = (type: AccountType) => type === 'KHACH_HANG' ? 'KHACH_HANG_ID' : 'NHAN_VIEN_ID';
 // Dữ liệu cũ dùng nhiều nhãn trạng thái hoạt động (Hoạt động, Đang hoạt động,
@@ -23,9 +23,79 @@ export const active = (row: any) => {
 const collection = (name: string) => getCollection<any>(name);
 export const endpoint = (handler: (req: Request, res: Response) => Promise<any>) => async (req: Request, res: Response) => {
   try { await handler(req, res); } catch (e) {
-    res.status(e instanceof AuthError ? e.status : 500).json({ message: e instanceof AuthError ? e.message : 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
+    if (e instanceof AuthError) { res.status(e.status).json({ ...e.extra, message: e.message }); return; }
+    res.status(500).json({ message: 'Không thể xử lý yêu cầu. Vui lòng thử lại.' });
   }
 };
+
+// ===== Quy tắc mật khẩu dùng chung (KH01, KH05, AD01) =====
+export const PASSWORD_RULES = [
+  { key: 'length', label: 'từ 8 đến 72 ký tự', test: (p: string) => p.length >= 8 && p.length <= 72 },
+  { key: 'lower', label: 'ít nhất 1 chữ thường', test: (p: string) => /[a-z]/.test(p) },
+  { key: 'upper', label: 'ít nhất 1 chữ hoa', test: (p: string) => /[A-Z]/.test(p) },
+  { key: 'digit', label: 'ít nhất 1 chữ số', test: (p: string) => /\d/.test(p) },
+  { key: 'special', label: 'ít nhất 1 ký tự đặc biệt', test: (p: string) => /[^A-Za-z0-9\s]/.test(p) },
+];
+export function assertStrongPassword(password: string) {
+  const missing = PASSWORD_RULES.filter(rule => !rule.test(password));
+  if (missing.length) throw new AuthError(400, `Mật khẩu cần ${missing.map(rule => rule.label).join(', ')}.`, { field: 'password', failedRules: missing.map(rule => rule.key) });
+}
+
+// ===== Giới hạn đăng nhập sai và lần đăng nhập gần nhất (AD01, KH02) =====
+export const MAX_LOGIN_FAILURES = 5;
+export const LOGIN_LOCK_MINUTES = 15;
+export const OTP_TTL_SECONDS = 60;
+export const OTP_RESEND_SECONDS = 60;
+export const otpAttemptLimit = (type: AccountType) => type === 'NHAN_VIEN' ? 3 : 5;
+const firstHeader = (value: string | string[] | undefined) => String(Array.isArray(value) ? value[0] : value || '');
+export const clientIp = (req: Request) => (firstHeader(req.headers?.['x-forwarded-for']).split(',')[0].trim() || req.ip || '').replace(/^::ffff:/, '');
+export function describeDevice(userAgent: unknown) {
+  const ua = String(userAgent || '');
+  if (!ua) return 'Không xác định';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\/|Opera/.test(ua) ? 'Opera' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Trình duyệt khác';
+  const os = /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad|iOS/.test(ua) ? 'iOS' : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'Hệ điều hành khác';
+  return `${browser} trên ${os}`;
+}
+export function assertLoginNotLocked(account: any) {
+  const until = account?.KHOA_DANG_NHAP_DEN ? new Date(account.KHOA_DANG_NHAP_DEN) : null;
+  if (until && until.getTime() > Date.now()) {
+    const minutes = Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60000));
+    throw new AuthError(429, `Bạn đã nhập sai mật khẩu quá ${MAX_LOGIN_FAILURES} lần. Vui lòng thử lại sau ${minutes} phút hoặc dùng Quên mật khẩu để đặt lại.`, { locked: true, retryAfterMinutes: minutes });
+  }
+}
+// Ghi nhận một lần sai mật khẩu; khóa tạm khi chạm ngưỡng. Trả về số lần còn lại.
+export async function recordLoginFailure(type: AccountType, account: any) {
+  const c = await collection(type);
+  const key = { [accountKey(type)]: account[accountKey(type)] };
+  const row = await c.findOneAndUpdate(key, { $inc: { SO_LAN_DANG_NHAP_SAI: 1 } }, { returnDocument: 'after' });
+  const failures = Number(row?.SO_LAN_DANG_NHAP_SAI || 0);
+  if (failures >= MAX_LOGIN_FAILURES) {
+    await c.updateOne(key, { $set: { SO_LAN_DANG_NHAP_SAI: 0, KHOA_DANG_NHAP_DEN: new Date(Date.now() + LOGIN_LOCK_MINUTES * 60000) } });
+    return 0;
+  }
+  return MAX_LOGIN_FAILURES - failures;
+}
+export function wrongPasswordError(remaining: number, label = 'Thông tin đăng nhập không đúng.') {
+  if (remaining <= 0) return new AuthError(429, `Bạn đã nhập sai mật khẩu quá ${MAX_LOGIN_FAILURES} lần. Tài khoản tạm khóa đăng nhập ${LOGIN_LOCK_MINUTES} phút. Vui lòng dùng Quên mật khẩu để đặt lại.`, { locked: true, retryAfterMinutes: LOGIN_LOCK_MINUTES });
+  return new AuthError(401, `${label} Bạn còn ${remaining} lần thử.`, { remainingAttempts: remaining });
+}
+// Lưu lần đăng nhập hiện tại, trả về lần đăng nhập trước đó để hiển thị cho người dùng.
+export async function recordLoginSuccess(type: AccountType, account: any, req: Request) {
+  const previous = account?.DANG_NHAP_GAN_NHAT || null;
+  const current = { THOI_GIAN: new Date(), IP: clientIp(req), THIET_BI: describeDevice(req.headers?.['user-agent']) };
+  await (await collection(type)).updateOne({ [accountKey(type)]: account[accountKey(type)] }, { $set: { DANG_NHAP_GAN_NHAT: current, SO_LAN_DANG_NHAP_SAI: 0 }, $unset: { KHOA_DANG_NHAP_DEN: '' } });
+  return previous ? { time: previous.THOI_GIAN, ip: previous.IP, device: previous.THIET_BI } : null;
+}
+// Thu hồi mọi loại phiên của một tài khoản (đổi/đặt lại mật khẩu, khóa tài khoản).
+export async function revokeAllSessions(type: AccountType, accountId: string) {
+  await (await collection('PHIEN_DANG_NHAP')).updateMany({ TAI_KHOAN_ID: accountId, LOAI_TAI_KHOAN: type }, { $set: { DA_THU_HOI: true } });
+  if (type === 'NHAN_VIEN') {
+    await (await collection('PHIEN_DANG_NHAP_ADMIN')).deleteMany({ employeeId: accountId });
+    await (await collection('XAC_THUC_TRA_CUU_DON')).deleteMany({ kind: 'staff', employeeId: accountId });
+  } else {
+    await (await collection('XAC_THUC_TRA_CUU_DON')).deleteMany({ authType: 'member', customerId: accountId });
+  }
+}
 export async function audit(req: Request, action: string, target: string, changes: Record<string, unknown> = {}, success = true) {
   await (await collection('NHAT_KY_HE_THONG')).insertOne({
     NHAT_KY_ID: randomBytes(16).toString('hex'), NGUOI_THUC_HIEN_ID: req.identity?.id || null,
@@ -108,9 +178,14 @@ export async function login(type: AccountType, req: Request) {
   await rateLimit(`login:${type}:${identifier}`, 5, 900);
   await rateLimit(`login-ip:${req.ip}`, 30, 900);
   const account = await (await collection(type)).findOne(type === 'KHACH_HANG' ? { SDT: identifier } : { EMAIL: identifier });
-  if (!account || !await verifyPassword(password, account.MAT_KHAU)) {
+  if (!account) {
     await audit(req, 'DANG_NHAP', type, {}, false);
     throw new AuthError(401, 'Thông tin đăng nhập không đúng.');
+  }
+  assertLoginNotLocked(account);
+  if (!await verifyPassword(password, account.MAT_KHAU)) {
+    await audit(req, 'DANG_NHAP', account[accountKey(type)], { LY_DO: 'Sai mật khẩu' }, false);
+    throw wrongPasswordError(await recordLoginFailure(type, account));
   }
   if (!active(account)) throw new AuthError(403, 'Tài khoản chưa xác minh hoặc đã bị khóa.');
   if (!isPasswordHash(account.MAT_KHAU)) {
@@ -121,8 +196,9 @@ export async function login(type: AccountType, req: Request) {
   }
   const token = await createSession(type, account);
   req.identity = { id: account[accountKey(type)], type, account, sessionId: digest(token) };
-  await audit(req, 'DANG_NHAP', req.identity.id);
-  return { account, token };
+  const lastLogin = await recordLoginSuccess(type, account, req);
+  await audit(req, 'DANG_NHAP', req.identity.id, { IP: clientIp(req), THIET_BI: describeDevice(req.headers?.['user-agent']) });
+  return { account, token, lastLogin };
 }
 function otpDigest(id: string, code: string) {
   const secret = process.env.AUTH_OTP_SECRET || 'tiem-hoa-yen-default-auth-otp-secret-key-2026-secure';
@@ -168,50 +244,97 @@ export async function deliverSmsOtp(phone: string, code: string) {
   });
   if (!result.ok) throw new AuthError(503, 'Chưa gửi được SMS. Vui lòng thử lại sau.');
 }
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const maskEmail = (email: string) => email.replace(/^(.).*(@.*)$/, '$1***$2');
+const maskPhone = (phone: string) => phone.replace(/^(\d{3})\d+(\d{3})$/, '$1****$2');
+const escapePattern = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Khách hàng quên mật khẩu: không tiết lộ tài khoản có tồn tại hay không (KH03).
+const genericRecoveryResponse = () => ({
+  challengeId: digest(randomBytes(16).toString('hex')), expiresIn: OTP_TTL_SECONDS, resendAfter: OTP_RESEND_SECONDS,
+  attemptLimit: otpAttemptLimit('KHACH_HANG'), delivery: 'registered',
+  message: `Nếu thông tin trùng khớp với tài khoản đã đăng ký, mã xác minh đã được gửi tới email/số điện thoại đã đăng ký. Mã có hiệu lực ${OTP_TTL_SECONDS} giây.`,
+});
 export async function sendChallenge(type: AccountType, req: Request, purpose = 'KHOI_PHUC_MAT_KHAU') {
   const customerRecovery = type === 'KHACH_HANG' && purpose === 'KHOI_PHUC_MAT_KHAU';
-  const identifier = String(customerRecovery ? req.body.SDT || '' : req.body.EMAIL || req.body.email || req.body.SDT || '').trim();
-  if (customerRecovery && !/^0\d{9}$/.test(identifier)) throw new AuthError(400, 'Số điện thoại không hợp lệ.');
-  await rateLimit(`otp-ip:${req.ip}`, 20, 3600);
+  const rawIdentifier = String(req.body.EMAIL || req.body.email || req.body.SDT || req.body.identifier || '').trim();
+  const isEmail = rawIdentifier.includes('@');
+  const identifier = isEmail ? rawIdentifier.toLowerCase() : rawIdentifier.replace(/[\s.-]/g, '');
+  if (!identifier) throw new AuthError(400, type === 'NHAN_VIEN' ? 'Vui lòng nhập email.' : 'Vui lòng nhập số điện thoại hoặc email.');
+  if (isEmail ? !EMAIL_PATTERN.test(identifier) : !/^0\d{9}$/.test(identifier)) throw new AuthError(400, isEmail ? 'Email không hợp lệ.' : 'Số điện thoại không hợp lệ.');
+  await rateLimit(`otp-ip:${clientIp(req)}`, 20, 3600);
   await rateLimit(`otp-account:${type}:${identifier}`, 5, 3600);
   const id = digest(`${type}:${purpose}:${identifier}`);
   otpDigest(id, 'configuration-check');
-  const account = await (await collection(type)).findOne(identifier.includes('@') ? { EMAIL: identifier } : { SDT: identifier });
-  if (!account || account.DA_XOA) throw new AuthError(404, 'Tài khoản chưa được đăng ký. Vui lòng kiểm tra lại thông tin.');
-  const email = String(account.EMAIL || '').trim();
-  const sms = type === 'KHACH_HANG' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  if (!sms && !email) throw new AuthError(400, 'Tài khoản chưa có email nhận mã xác minh.');
-  if (purpose === 'DANG_KY' ? account.TRANG_THAI !== 'Chờ xác minh' : !active(account)) {
+  const query = isEmail ? { EMAIL: { $regex: `^${escapePattern(identifier)}$`, $options: 'i' } } : { SDT: identifier };
+  const account = await (await collection(type)).findOne(query);
+  const usable = account && !account.DA_XOA && (purpose === 'DANG_KY' ? account.TRANG_THAI === 'Chờ xác minh' : active(account));
+  if (!usable) {
+    if (customerRecovery) return genericRecoveryResponse();
+    if (!account || account.DA_XOA) throw new AuthError(404, 'Không tìm thấy tài khoản với thông tin này. Vui lòng kiểm tra lại.');
     throw new AuthError(403, purpose === 'DANG_KY' ? 'Tài khoản không ở trạng thái chờ xác minh.' : 'Tài khoản chưa xác minh hoặc đã bị khóa.');
   }
+  const email = String(account.EMAIL || '').trim();
+  const sms = type === 'KHACH_HANG' && !EMAIL_PATTERN.test(email);
+  if (!sms && !email) throw new AuthError(400, 'Tài khoản chưa có email nhận mã xác minh.');
   const challenges = await collection('XAC_THUC_TAI_KHOAN');
-  const ttl = 60;
+  const now = Date.now();
+  const previous = await challenges.findOne({ _id: id });
+  // Chờ 60 giây giữa hai lần gửi (KH04). Gửi lại thì mã cũ bị thay bằng mã mới.
+  if (previous && !previous.DA_SU_DUNG && previous.GUI_LAI_SAU && new Date(previous.GUI_LAI_SAU).getTime() > now) {
+    const wait = Math.ceil((new Date(previous.GUI_LAI_SAU).getTime() - now) / 1000);
+    throw new AuthError(429, `Vui lòng chờ ${wait} giây trước khi gửi lại mã.`, { resendAfter: wait });
+  }
+  const attemptLimit = otpAttemptLimit(type);
   let code = '';
   let stored = false;
   for (let attempt = 0; attempt < 5 && !stored; attempt++) {
-    const previous = await challenges.findOne({ _id: id });
-    do { code = String(randomInt(100000, 1000000)); } while (previous?.MA_BAM === otpDigest(id, code));
+    const current = attempt === 0 ? previous : await challenges.findOne({ _id: id });
+    do { code = String(randomInt(100000, 1000000)); } while (current?.MA_BAM === otpDigest(id, code));
     try {
       const result = await challenges.updateOne(
-        { _id: id, MA_BAM: previous?.MA_BAM ?? { $exists: false } },
-        { $set: { MA_BAM: otpDigest(id, code), LOAI_TAI_KHOAN: type, TAI_KHOAN_ID: account[accountKey(type)], MUC_DICH: purpose, HET_HAN: new Date(Date.now() + ttl * 1000), SO_LAN_SAI: 0, GIOI_HAN_SAI: 5, DA_SU_DUNG: false, GUI_LAI_SAU: new Date() } },
-        { upsert: !previous });
+        { _id: id, MA_BAM: current?.MA_BAM ?? { $exists: false } },
+        { $set: { MA_BAM: otpDigest(id, code), LOAI_TAI_KHOAN: type, TAI_KHOAN_ID: account[accountKey(type)], MUC_DICH: purpose, HET_HAN: new Date(now + OTP_TTL_SECONDS * 1000), SO_LAN_SAI: 0, GIOI_HAN_SAI: attemptLimit, DA_SU_DUNG: false, GUI_LUC: new Date(now), GUI_LAI_SAU: new Date(now + OTP_RESEND_SECONDS * 1000) } },
+        { upsert: !current });
       stored = !!(result.matchedCount || result.upsertedCount);
     } catch (error: any) { if (error.code !== 11000) throw error; }
   }
   if (!stored) throw new AuthError(409, 'Có yêu cầu gửi mã mới hơn. Vui lòng thử lại.');
-  try { if (sms) { console.log(`[OTP SMS] ${account.SDT}: ${code} (hết hạn sau 60 giây)`); } else await deliverOtp(email, code); }
-  catch (error) { await challenges.updateOne({ _id: id, MA_BAM: otpDigest(id, code) }, { $set: { DA_SU_DUNG: true } }); throw error; }
-  const maskedEmail = email.replace(/^(.).*(@.*)$/, '$1***$2');
-  return { challengeId: id, expiresIn: ttl, resendAfter: 0, delivery: sms ? 'console' : 'email', message: sms ? 'Mã xác minh có hiệu lực trong 60 giây.' : `Mã xác minh đã được gửi đến email ${maskedEmail}.` };
+  try { if (sms) await deliverSmsOtp(String(account.SDT), code); else await deliverOtp(email, code); }
+  catch (error) {
+    // Gửi thất bại: hủy mã và cho phép gửi lại ngay.
+    await challenges.updateOne({ _id: id, MA_BAM: otpDigest(id, code) }, { $set: { DA_SU_DUNG: true, GUI_LAI_SAU: new Date() } });
+    throw error;
+  }
+  await audit(req, 'GUI_OTP', account[accountKey(type)], { MUC_DICH: purpose, KENH: sms ? 'SMS' : 'EMAIL' });
+  if (customerRecovery) return { ...genericRecoveryResponse(), challengeId: id };
+  return {
+    challengeId: id, expiresIn: OTP_TTL_SECONDS, resendAfter: OTP_RESEND_SECONDS, attemptLimit, delivery: sms ? 'sms' : 'email',
+    message: sms ? `Mã xác minh đã được gửi tới số điện thoại ${maskPhone(String(account.SDT))}. Mã có hiệu lực ${OTP_TTL_SECONDS} giây.`
+      : `Mã xác minh đã được gửi đến email ${maskEmail(email)}. Mã có hiệu lực ${OTP_TTL_SECONDS} giây.`,
+  };
 }
 export async function verifyChallenge(type: AccountType, req: Request, purpose = 'KHOI_PHUC_MAT_KHAU') {
   const id = String(req.body.challengeId || '');
-  const code = String(req.body.OTP || '');
+  const code = String(req.body.OTP || req.body.otp || '').trim();
+  if (!/^\d{6}$/.test(code)) throw new AuthError(400, 'Vui lòng nhập đủ 6 chữ số của mã xác minh.');
   const c = await collection('XAC_THUC_TAI_KHOAN');
+  const current = await c.findOne({ _id: id, LOAI_TAI_KHOAN: type, MUC_DICH: purpose });
+  if (!current || current.DA_SU_DUNG || new Date(current.HET_HAN).getTime() <= Date.now()) {
+    throw new AuthError(400, 'Mã xác minh đã hết hạn hoặc không còn hiệu lực. Vui lòng bấm Gửi lại mã.', { expired: true });
+  }
+  const limit = Number(current.GIOI_HAN_SAI || otpAttemptLimit(type));
+  if (Number(current.SO_LAN_SAI || 0) >= limit) {
+    throw new AuthError(429, `Bạn đã nhập sai mã quá ${limit} lần. Vui lòng bấm Gửi lại mã để nhận mã mới.`, { attemptsExceeded: true, remainingAttempts: 0 });
+  }
   const filter = { _id: id, LOAI_TAI_KHOAN: type, MUC_DICH: purpose, DA_SU_DUNG: false, HET_HAN: { $gt: new Date() }, $expr: { $lt: ['$SO_LAN_SAI', '$GIOI_HAN_SAI'] } };
   const row = await c.findOneAndUpdate({ ...filter, MA_BAM: otpDigest(id, code) }, { $set: { DA_SU_DUNG: true } }, { returnDocument: 'before' });
-  if (!row) { await c.updateOne(filter, { $inc: { SO_LAN_SAI: 1 } }); throw new AuthError(400, 'Mã không hợp lệ, đã hết hạn hoặc vượt số lần thử.'); }
+  if (!row) {
+    const failed = await c.findOneAndUpdate(filter, { $inc: { SO_LAN_SAI: 1 } }, { returnDocument: 'after' });
+    const remaining = Math.max(0, limit - Number(failed?.SO_LAN_SAI ?? limit));
+    await audit(req, 'XAC_MINH_OTP', String(current.TAI_KHOAN_ID || ''), { MUC_DICH: purpose }, false);
+    if (remaining <= 0) throw new AuthError(429, `Bạn đã nhập sai mã quá ${limit} lần. Vui lòng bấm Gửi lại mã để nhận mã mới.`, { attemptsExceeded: true, remainingAttempts: 0 });
+    throw new AuthError(400, `Mã xác minh không đúng. Bạn còn ${remaining} lần thử.`, { remainingAttempts: remaining });
+  }
   if (purpose === 'DANG_KY') {
     await (await collection(type)).updateOne({ [accountKey(type)]: row.TAI_KHOAN_ID, TRANG_THAI: 'Chờ xác minh' }, { $set: { TRANG_THAI: 'Hoạt động' } });
     await audit(req, 'XAC_MINH_DANG_KY', row.TAI_KHOAN_ID);
@@ -221,20 +344,22 @@ export async function verifyChallenge(type: AccountType, req: Request, purpose =
   const account = await (await collection(type)).findOne({ [accountKey(type)]: row.TAI_KHOAN_ID });
   if (!active(account)) throw new AuthError(403, 'Tài khoản không hoạt động.');
   await c.insertOne({ _id: digest(token), MUC_DICH: 'DAT_LAI_MAT_KHAU', LOAI_TAI_KHOAN: type, TAI_KHOAN_ID: row.TAI_KHOAN_ID, PHIEN_BAN_MAT_KHAU: digest(String(account.MAT_KHAU)), HET_HAN: new Date(Date.now() + 300000), DA_SU_DUNG: false });
-  return { resetToken: token, message: 'OTP hợp lệ.' };
+  await audit(req, 'XAC_MINH_OTP', row.TAI_KHOAN_ID, { MUC_DICH: purpose });
+  return { resetToken: token, expiresIn: 300, message: 'Mã xác minh hợp lệ. Vui lòng đặt mật khẩu mới trong 5 phút.' };
 }
 export async function resetPassword(type: AccountType, req: Request) {
   const password = String(req.body.NEW_PASSWORD || '');
-  if (password.length < 8 || password.length > 72) throw new AuthError(400, 'Mật khẩu cần từ 8 đến 72 ký tự.');
+  assertStrongPassword(password);
   const hashed = await hashPassword(password);
   const c = await collection('XAC_THUC_TAI_KHOAN');
   const row = await c.findOneAndUpdate({ _id: digest(String(req.body.resetToken || '')), LOAI_TAI_KHOAN: type, MUC_DICH: 'DAT_LAI_MAT_KHAU', DA_SU_DUNG: false, HET_HAN: { $gt: new Date() } }, { $set: { DA_SU_DUNG: true } }, { returnDocument: 'before' });
-  if (!row) throw new AuthError(400, 'Vui lòng xác minh OTP trước khi đặt lại mật khẩu.');
+  if (!row) throw new AuthError(400, 'Phiên đặt lại mật khẩu đã hết hạn. Vui lòng xác minh OTP lại.', { expired: true });
   const account = await (await collection(type)).findOne({ [accountKey(type)]: row.TAI_KHOAN_ID });
   if (!active(account) || digest(String(account.MAT_KHAU)) !== row.PHIEN_BAN_MAT_KHAU) throw new AuthError(400, 'Tài khoản đã thay đổi. Vui lòng xác minh lại.');
-  const result = await (await collection(type)).updateOne({ [accountKey(type)]: row.TAI_KHOAN_ID, MAT_KHAU: account.MAT_KHAU }, { $set: { MAT_KHAU: hashed } });
+  if (await verifyPassword(password, account.MAT_KHAU)) throw new AuthError(400, 'Mật khẩu mới phải khác mật khẩu hiện tại.', { field: 'password' });
+  const result = await (await collection(type)).updateOne({ [accountKey(type)]: row.TAI_KHOAN_ID, MAT_KHAU: account.MAT_KHAU }, { $set: { MAT_KHAU: hashed, SO_LAN_DANG_NHAP_SAI: 0, NGAY_DOI_MAT_KHAU: new Date() }, $unset: { KHOA_DANG_NHAP_DEN: '' } });
   if (!result.modifiedCount) throw new AuthError(400, 'Mật khẩu đã thay đổi. Vui lòng xác minh lại.');
-  await (await collection('PHIEN_DANG_NHAP')).updateMany({ TAI_KHOAN_ID: row.TAI_KHOAN_ID, LOAI_TAI_KHOAN: type }, { $set: { DA_THU_HOI: true } });
+  await revokeAllSessions(type, row.TAI_KHOAN_ID);
   await audit(req, 'DAT_LAI_MAT_KHAU', row.TAI_KHOAN_ID);
   return { message: 'Đổi mật khẩu thành công. Vui lòng đăng nhập lại.' };
 }

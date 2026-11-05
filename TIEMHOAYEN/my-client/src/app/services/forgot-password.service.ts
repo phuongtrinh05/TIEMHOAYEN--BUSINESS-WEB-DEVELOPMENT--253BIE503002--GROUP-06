@@ -12,7 +12,8 @@ export class ForgotPasswordService {
 
   constructor(private http: HttpClient) {}
 
-  changePassword(data: any): Observable<any> {
+  /** Đặt mật khẩu mới bằng resetToken nhận được sau khi xác minh OTP. */
+  changePassword(data: { resetToken: string; NEW_PASSWORD: string }): Observable<any> {
     return this.http.put(
       this.apiUrl,
       data

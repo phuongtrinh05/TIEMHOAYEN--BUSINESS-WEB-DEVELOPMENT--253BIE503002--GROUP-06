@@ -169,3 +169,164 @@
 .permission-state.error{
     color:#8b1e1e;
 }
+
+/* ---- AD53 ---- */
+.icon-btn{
+    cursor:pointer;
+    color:#731919;
+}
+
+.icon-btn:disabled{
+    opacity:.5;
+    cursor:not-allowed;
+}
+
+.spin{
+    display:inline-block;
+    animation:rp-spin 1s linear infinite;
+}
+
+@keyframes rp-spin{
+    from{ transform:rotate(0deg); }
+    to{ transform:rotate(360deg); }
+}
+
+.dirty-dot{
+    color:#D97706;
+    font-size:12px;
+    margin-left:4px;
+}
+
+.role-sidebar tr.empty td{
+    text-align:center;
+    color:#8A8F98;
+}
+
+.permission-header{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+    margin-bottom:12px;
+}
+
+.permission-header h2{
+    margin-bottom:0;
+}
+
+.dirty-badge{
+    background:#FEF3C7;
+    color:#B45309;
+    border-radius:999px;
+    padding:4px 10px;
+    font-size:13px;
+    font-weight:600;
+}
+
+.permission-state{
+    border-radius:8px;
+    padding:10px 14px;
+    margin:0 0 14px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+}
+
+.permission-state.info{
+    background:#F3F4F6;
+    color:#555;
+}
+
+.permission-state.notice{
+    background:#FFF7F7;
+    border:1px solid #F2CACA;
+    color:#731919;
+    font-weight:600;
+}
+
+.permission-state.success-msg{
+    margin:18px 0 0;
+    background:#ECFDF3;
+    border:1px solid #B7EBC6;
+    color:#1F7A35;
+}
+
+.permission-state.error{
+    margin:18px 0 0;
+    background:#FEF2F2;
+    border:1px solid #FECACA;
+    color:#B91C1C;
+}
+
+.permission-hint{
+    color:#666;
+    font-size:13px;
+    margin:0 0 12px;
+}
+
+.spinner{
+    width:16px;
+    height:16px;
+    border:2px solid #E5E7EB;
+    border-top-color:#731919;
+    border-radius:50%;
+    display:inline-block;
+    animation:rp-spin .8s linear infinite;
+}
+
+.perm-toggle{
+    border:0;
+    background:transparent;
+    cursor:pointer;
+}
+
+.perm-toggle:disabled{
+    cursor:default;
+}
+
+.permission-card td.changed{
+    background:#FFFBEB;
+}
+
+.link-btn{
+    border:none;
+    background:none;
+    color:inherit;
+    text-decoration:underline;
+    font-weight:600;
+    cursor:pointer;
+}
+
+.permission-actions{
+    display:flex;
+    justify-content:flex-end;
+    gap:10px;
+    margin-top:18px;
+}
+
+.btn-undo,
+.btn-save{
+    height:40px;
+    padding:0 18px;
+    border-radius:8px;
+    font-weight:600;
+    cursor:pointer;
+}
+
+.btn-undo{
+    border:1px solid #ddd;
+    background:#fff;
+    color:#555;
+}
+
+.btn-save{
+    border:none;
+    background:#731919;
+    color:#fff;
+}
+
+.btn-undo:disabled,
+.btn-save:disabled{
+    opacity:.5;
+    cursor:not-allowed;
+}

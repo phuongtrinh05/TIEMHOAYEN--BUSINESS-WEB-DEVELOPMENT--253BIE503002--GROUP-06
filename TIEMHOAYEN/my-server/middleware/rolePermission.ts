@@ -26,6 +26,8 @@ export const requireAdminPermission = (moduleKey: string, forcedAction?: Permiss
       const action = forcedAction || actionByMethod[req.method] || 'view';
       const employee = await authenticatedEmployee(req);
       res.locals.adminEmployee = employee;
+      // Nhật ký hệ thống (AD55) lấy người thực hiện từ phiên đã xác thực.
+      req.identity ||= { id: employee.NHAN_VIEN_ID, type: 'NHAN_VIEN', account: employee, sessionId: '' };
       const role = String(employee.VAI_TRO || '');
 
       if (!role || !hasPermission(role, moduleKey, action)) {

@@ -546,3 +546,20 @@ button[aria-busy="true"] { cursor: wait; opacity: .8; }
 @media (prefers-reduced-motion: reduce) { .login-spinner { animation-duration: 2s; } }
 
 .otp-input.is-invalid, .otp-popup__input.is-invalid { border: 2px solid #dc3545; color: #dc3545; background: #fff5f5; }
+
+/* ===== AD01: trạng thái gửi/xác thực mã rõ ràng ===== */
+.auth-alert { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; font-size: .85rem; line-height: 1.4; margin: 0 0 12px; text-align: left; }
+.auth-alert i { flex: 0 0 auto; margin-top: 1px; }
+.auth-alert--success { background: #ecfdf3; color: #146c43; border: 1px solid #b7ebc6; }
+.auth-alert--error { background: #fff1f2; color: #b42318; border: 1px solid #fecdd3; }
+.otp-meta { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: .8rem; color: #555; margin: 0 0 12px; }
+.otp-meta--expired { color: #b42318; font-weight: 600; }
+.otp-checking { display: flex; align-items: center; justify-content: center; font-size: .85rem; color: #555; margin: 8px 0 0; }
+.otp-hint { font-size: .75rem; color: #888; text-align: center; margin: 4px 0 0; }
+.resend-btn:disabled { opacity: .6; cursor: not-allowed; text-decoration: none; }
+.btn-auth--forgot:disabled, .btn-auth--reset:disabled { opacity: .7; cursor: not-allowed; }
+.password-rules { list-style: none; padding: 0; margin: 8px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: .78rem; color: #777; }
+.password-rules li { display: flex; align-items: center; gap: 6px; }
+.password-rules li.is-met { color: #146c43; }
+.password-rules li.is-met i { color: #198754; }
+@media (max-width: 480px) { .password-rules { grid-template-columns: 1fr; } }

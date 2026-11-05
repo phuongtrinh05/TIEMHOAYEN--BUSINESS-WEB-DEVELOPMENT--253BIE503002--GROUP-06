@@ -57,27 +57,23 @@
               id="phone"
               name="phone"
               class="form-input"
-              [class.is-invalid]="(phone.invalid && (phone.touched || submitted)) || !!loginPhoneError"
+              [class.is-invalid]="phone.invalid && (phone.touched || submitted)"
               placeholder="Nhập số điện thoại"
               [(ngModel)]="formData.phone"
-              (ngModelChange)="loginError = ''; loginPhoneError = ''"
+              (ngModelChange)="clearLoginFeedback()"
               #phone="ngModel"
+              inputmode="numeric"
+              autocomplete="tel"
               required
               pattern="^0[0-9]{9}$"
             >
           </div>
-          <span class="error-msg" *ngIf="phone.invalid && (phone.touched || submitted)" >
-          <ng-container *ngIf="phone.errors?.['required']">
-            Vui lòng nhập số điện thoại.
-          </ng-container>
-
-          <ng-container *ngIf="phone.errors?.['pattern']">
-            Số điện thoại không hợp lệ.
-          </ng-container>
-        </span>
-        <span class="error-msg" *ngIf="loginPhoneError && phone.valid">
-          {{ loginPhoneError }}
-        </span>
+          <span class="error-msg" aria-live="polite">
+            <ng-container *ngIf="phone.invalid && (phone.touched || submitted)">
+              <ng-container *ngIf="phone.errors?.['required']">Vui lòng nhập số điện thoại.</ng-container>
+              <ng-container *ngIf="phone.errors?.['pattern']">Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 0.</ng-container>
+            </ng-container>
+          </span>
         </div>
 
         <!-- Mật khẩu -->
@@ -93,8 +89,9 @@
               [class.is-invalid]="password.invalid && (password.touched || submitted)"
               placeholder="Nhập mật khẩu"
               [(ngModel)]="formData.password"
-              (ngModelChange)="loginError = ''"
+              (ngModelChange)="clearLoginFeedback()"
               #password="ngModel"
+              autocomplete="current-password"
               required
               minlength="8"
             >
@@ -107,25 +104,71 @@
               <i class="bi" [ngClass]="showPassword ? 'bi-eye-slash' : 'bi-eye'"></i>
             </button>
           </div>
-          <span
-          class="error-msg"
-          *ngIf="password.invalid && (password.touched || submitted)"
-        >
-          <ng-container *ngIf="password.errors?.['required']">
-            Vui lòng nhập mật khẩu.
-          </ng-container>
-
-          <ng-container *ngIf="password.errors?.['minlength']">
-            Vui lòng nhập mật khẩu ít nhất 8 ký tự.
-          </ng-container>
-        </span>
+          <span class="error-msg" aria-live="polite">
+            <ng-container *ngIf="password.invalid && (password.touched || submitted)">
+              <ng-container *ngIf="password.errors?.['required']">Vui lòng nhập mật khẩu.</ng-container>
+              <ng-container *ngIf="password.errors?.['minlength']">Vui lòng nhập mật khẩu ít nhất 8 ký tự.</ng-container>
+            </ng-container>
+          </span>
         </div>
-        <span
-          class="error-msg"
-          *ngIf="loginError && password.valid && phone.valid"
-        >
-          {{ loginError }}
-        </span>
+
+        <div class="login-notice" role="status" *ngIf="pageNotice && !loginError">
+          <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+          <span>{{ pageNotice }}</span>
+        </div>
+
+        <!-- Thông báo từ máy chủ -->
+        <div class="login-alert"[class.is-lock]="loginLocked" role="alert" *ngIf="loginError">
+          <i class="bi" [ngClass]="loginLocked ? 'bi-lock-fill' : 'bi-exclamation-circle'" aria-hidden="true"></i>
+          <div class="login-alert__body">
+            <span>{{ loginError }}</span>
+            <button type="button" class="login-alert__action" *ngIf="loginLocked" (click)="openForgotPasswordPopup()">Quên mật khẩu?</button>
+            <button type="button" class="login-alert__action" *ngIf="loginPendingVerification && !verifyChallengeId" (click)="sendVerifyCode()" [disabled]="verifySending">
+              {{ verifySending ? 'Đang gửi mã…' : 'Gửi mã xác minh' }}
+            </button>
+          </div>
+        </div>
+        <p class="login-alert is-success" role="status" *ngIf="verifySuccess">
+          <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+          <span>{{ verifySuccess }}</span>
+        </p>
+
+        <!-- Xác minh tài khoản chưa xác minh -->
+        <div class="verify-block" *ngIf="loginPendingVerification && (verifyChallengeId || verifyError)">
+          <p class="verify-block__message" role="status" *ngIf="verifyMessage">{{ verifyMessage }}</p>
+          <ng-container *ngIf="verifyChallengeId">
+            <label class="form-label" for="login-verify-code">Mã xác minh (6 chữ số)</label>
+            <div class="verify-block__row">
+              <input
+                id="login-verify-code"
+                name="verifyCode"
+                class="form-input verify-block__input"
+                [ngModel]="verifyCode"
+                (ngModelChange)="onVerifyCodeInput($event)"
+                [ngModelOptions]="{ standalone: true }"
+                [class.is-invalid]="!!verifyError"
+                [disabled]="verifyChecking || verifyExceeded"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                maxlength="6"
+                placeholder="••••••"
+              >
+              <button type="button" class="verify-block__submit" (click)="submitVerifyCode()" [disabled]="verifyChecking || verifyExceeded || verifyCode.length !== 6" [attr.aria-busy]="verifyChecking">
+                <span *ngIf="verifyChecking" class="login-spinner" aria-hidden="true"></span>
+                {{ verifyChecking ? 'Đang xác minh…' : 'Xác minh' }}
+              </button>
+            </div>
+          </ng-container>
+          <span class="error-msg" role="alert">{{ verifyError }}</span>
+          <div class="verify-block__footer">
+            <span class="otp-countdown" *ngIf="verifyChallengeId">
+              {{ verifyTimers.expiresSeconds > 0 ? 'Mã hết hạn sau ' + verifyTimers.expiresSeconds + ' giây' : 'Mã đã hết hạn' }}
+            </span>
+            <button type="button" class="otp-popup__resend-button" (click)="sendVerifyCode()" [disabled]="verifySending || verifyChecking || verifyTimers.resendSeconds > 0">
+              {{ verifySending ? 'Đang gửi…' : (verifyTimers.resendSeconds > 0 ? 'Gửi lại sau ' + verifyTimers.resendSeconds + 's' : 'Gửi lại mã') }}
+            </button>
+          </div>
+        </div>
         <!-- Ghi nhớ & Quên mật khẩu -->
         <div class="login-options">
           <label class="remember-option">
@@ -176,6 +219,9 @@
             Đăng nhập với Facebook
           </button>
         </div>
+        <p class="social-notice" role="status" *ngIf="socialNotice">
+          <i class="bi bi-info-circle" aria-hidden="true"></i> {{ socialNotice }}
+        </p>
 
         <!-- Link đăng ký -->
         <p class="register-redirect">
@@ -190,84 +236,94 @@
 
 <!-- POPUP QUÊN MẬT KHẨU -->
 <div class="forgot-popup-overlay" *ngIf="showForgotPasswordPopup" (click)="closeForgotPasswordPopup()">
-  <div class="forgot-popup" (click)="$event.stopPropagation()">
-    <button type="button" class="popup-close" (click)="closeForgotPasswordPopup()">
+  <div class="forgot-popup" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="forgot-title">
+    <button type="button" class="popup-close" (click)="closeForgotPasswordPopup()" aria-label="Đóng">
       <i class="bi bi-x-lg"></i>
     </button>
-    <h2 class="forgot-popup__title">Quên mật khẩu</h2>
+    <h2 class="forgot-popup__title" id="forgot-title">Quên mật khẩu</h2>
 
     <p class="forgot-popup__desc">
-      Vui lòng nhập số điện thoại để nhận mã OTP
+      Nhập số điện thoại hoặc email đã đăng ký để nhận mã xác minh
     </p>
 
+    <label class="visually-hidden" for="forgot-identifier">Số điện thoại hoặc email</label>
     <input
-      type="tel"
+      id="forgot-identifier"
+      type="text"
       class="forgot-popup__input"
-      [class.is-invalid]="!!forgotPhoneError"
-      placeholder="Nhập số điện thoại"
-      [(ngModel)]="forgotPhone"
-      (ngModelChange)="forgotPhoneError = ''"
+      [class.is-invalid]="!!forgotIdentifierError"
+      placeholder="Số điện thoại hoặc email"
+      autocomplete="username"
+      [(ngModel)]="forgotIdentifier"
+      (ngModelChange)="forgotIdentifierError = ''"
+      (keyup.enter)="sendOtp()"
     >
-    <p class="error-msg forgot-popup__error" *ngIf="forgotPhoneError">
-      {{ forgotPhoneError }}
-    </p>
+    <p class="error-msg forgot-popup__error" aria-live="polite">{{ forgotIdentifierError }}</p>
 
     <button
       type="button"
       class="forgot-popup__button"
-      [class.is-default]="!forgotPhone"
-      [class.is-disabled]="forgotPhone && !isForgotPhoneValid()"
-      [class.is-ready]="isForgotPhoneValid()"
+      [class.is-default]="!forgotIdentifier"
+      [class.is-disabled]="forgotIdentifier && !isForgotIdentifierValid()"
+      [class.is-ready]="isForgotIdentifierValid()"
+      [disabled]="otpSending"
+      [attr.aria-busy]="otpSending"
       (click)="sendOtp()"
     >
-      Gửi
+      <span *ngIf="otpSending" class="login-spinner" aria-hidden="true"></span>
+      {{ otpSending ? 'Đang gửi…' : 'Gửi' }}
     </button>
   </div>
 </div>
 
 <!-- POPUP NHẬP MÃ OTP -->
 <div class="otp-popup-overlay" *ngIf="showOtpPopup" (click)="closeOtpPopup()">
-  <div class="otp-popup" (click)="$event.stopPropagation()">
-    <button type="button" class="popup-close" (click)="closeOtpPopup()">
+  <div class="otp-popup" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="otp-title">
+    <button type="button" class="popup-close" (click)="closeOtpPopup()" aria-label="Đóng">
       <i class="bi bi-x-lg"></i>
     </button>
-    <h2 class="otp-popup__title">Xác minh mã code</h2>
+    <h2 class="otp-popup__title" id="otp-title">Xác minh mã code</h2>
 
     <p class="otp-popup__desc">
       {{ otpDestinationMessage }}<br>
-      Hãy nhập vào các ô dưới đây
+      Hãy nhập mã 6 chữ số vào các ô dưới đây
     </p>
 
-    <div class="otp-popup__inputs">
+    <div class="otp-popup__inputs" [class.is-busy]="otpChecking">
       <input
         *ngFor="let value of otpValues; let i = index; trackBy: trackOtpIndex"
         [id]="'otp-' + i"
         type="text"
         inputmode="numeric"
+        autocomplete="one-time-code"
         maxlength="1"
         class="otp-popup__input"
+        [attr.aria-label]="'Chữ số thứ ' + (i + 1)"
         [class.is-invalid]="!!otpError"
+        [disabled]="otpExceeded"
         [value]="otpValues[i]"
         (keydown)="onOtpKeydown($event, i)"
         (paste)="onOtpPaste($event)"
       >
     </div>
-    <p class="error-msg otp-popup__error" *ngIf="otpError">{{ otpError }}</p>
-    <p role="status">{{ otpSeconds > 0 ? 'Mã hết hạn sau ' + otpSeconds + ' giây. Tối đa 5 lần nhập sai.' : 'Mã đã hết hạn. Vui lòng gửi mã mới.' }}</p>
-
-
+    <p class="otp-popup__status" role="status">
+      <ng-container *ngIf="otpChecking"><span class="login-spinner" aria-hidden="true"></span> Đang xác minh…</ng-container>
+      <ng-container *ngIf="!otpChecking && otpNotice"><span class="otp-popup__notice">{{ otpNotice }}</span></ng-container>
+    </p>
+    <p class="error-msg otp-popup__error" role="alert">{{ otpError }}</p>
 
     <div class="otp-popup__resend">
-      <span>Bạn chưa nhận được mã?</span>
+      <span class="otp-countdown" [class.is-expired]="otpTimers.expiresSeconds <= 0">
+        {{ otpTimers.expiresSeconds > 0 ? 'Mã hết hạn sau ' + otpTimers.expiresSeconds + ' giây' : 'Mã đã hết hạn' }}
+      </span>
       <button
         type="button"
         class="otp-popup__resend-button"
         (click)="resendOtp()"
-        [disabled]="otpSending || otpChecking"
+        [disabled]="otpSending || otpChecking || otpTimers.resendSeconds > 0"
       >
-        Gửi mã mới
+        {{ otpSending ? 'Đang gửi…' : (otpTimers.resendSeconds > 0 ? 'Gửi lại sau ' + otpTimers.resendSeconds + 's' : 'Gửi mã mới') }}
       </button>
     </div>
   </div>
 </div>
-
