@@ -45,7 +45,10 @@ export class CartService {
       customerId,
       productId,
       quantity,
-      ...line,
+      lineKey: line?.lineKey || productId,
+      variantId: line?.variantId ?? null,
+      designId: line?.designId ?? null,
+      configuration: line?.configuration || {},
     }).pipe(tap(() => this.notifyCartChanged()));
   }
 

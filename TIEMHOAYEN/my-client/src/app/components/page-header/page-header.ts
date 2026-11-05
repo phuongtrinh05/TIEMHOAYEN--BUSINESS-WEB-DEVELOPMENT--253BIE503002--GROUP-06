@@ -491,9 +491,8 @@ export class PageHeader implements OnInit, OnDestroy {
         if (customerId !== this.getLoggedInCustomerId()) { this.isLoadingCartCount = false; this.loadCartCount(); return; }
         const items = Array.isArray(res?.items) ? res.items : [];
 
-        this.cartCount = items.length;
-
         this.cartItems = items.map((item: any) => this.normalizeCartItem(item));
+        this.cartCount = this.cartItems.reduce((total, item) => total + item.quantity, 0);
 
         this.isLoadingCartCount = false;
         this.cdr.detectChanges();
@@ -620,7 +619,10 @@ export class PageHeader implements OnInit, OnDestroy {
         return 0;
       }
 
-      return cart.length;
+      return cart.reduce(
+        (total: number, item: any) => total + Math.max(1, Number(item?.quantity ?? item?.qty ?? item?.SO_LUONG ?? 1)),
+        0
+      );
     } catch {
       return 0;
     }

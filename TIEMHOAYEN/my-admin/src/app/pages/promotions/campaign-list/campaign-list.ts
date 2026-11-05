@@ -267,7 +267,7 @@ export class CampaignListComponent implements OnInit {
 
         this.newCampaign = {
             id: nextId,
-            code: 'Tự tạo',
+            code: this.getNextCampaignCode(),
             name: '',
             description: '',
             startDate: today,
@@ -287,6 +287,15 @@ export class CampaignListComponent implements OnInit {
         this.newEndDateText = this.toPayloadDate(endDate);
 
         this.isAddModalOpen = true;
+    }
+
+    private getNextCampaignCode(): string {
+        const highestNumber = this.campaigns.reduce((highest, campaign) => {
+            const match = /^CD(\d+)$/i.exec(String(campaign.code || '').trim());
+            return match ? Math.max(highest, Number(match[1])) : highest;
+        }, 0);
+
+        return `CD${String(highestNumber + 1).padStart(3, '0')}`;
     }
 
     saveNewCampaign(): void {
