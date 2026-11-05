@@ -92,8 +92,6 @@ export class LoginComponent implements OnInit, OnDestroy {
   loginError = '';
   /** 429: khóa tạm 15 phút sau 5 lần sai mật khẩu. */
   loginLocked = false;
-  /** 403 pendingVerification: tài khoản chưa xác minh. */
-  loginPendingVerification = false;
   socialNotice = '';
   isLoggingIn = false;
   showPassword = false;
@@ -103,17 +101,6 @@ export class LoginComponent implements OnInit, OnDestroy {
     password: '',
     rememberMe: false,
   };
-
-  /* ---------- Xác minh tài khoản chưa xác minh (DANG_KY) ---------- */
-  verifyChallengeId = '';
-  verifyCode = '';
-  verifyMessage = '';
-  verifyError = '';
-  verifySuccess = '';
-  verifySending = false;
-  verifyChecking = false;
-  verifyExceeded = false;
-  readonly verifyTimers = new OtpTimers(() => this.cdr.markForCheck());
 
   /* ---------- Quên mật khẩu ---------- */
   showForgotPasswordPopup = false;
@@ -141,7 +128,6 @@ export class LoginComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.otpTimers.stop();
-    this.verifyTimers.stop();
   }
 
   trackOtpIndex(index: number): number { return index; }
@@ -163,7 +149,6 @@ export class LoginComponent implements OnInit, OnDestroy {
   clearLoginFeedback(): void {
     this.loginError = '';
     this.loginLocked = false;
-    if (!this.verifyChallengeId) this.loginPendingVerification = false;
   }
 
   onSubmit(): void {
@@ -183,8 +168,6 @@ export class LoginComponent implements OnInit, OnDestroy {
     }
 
     this.isLoggingIn = true;
-    this.loginPendingVerification = false;
-    this.resetVerifyBlock();
     this.loginService.login({
       SDT: this.formData.phone,
       MAT_KHAU: this.formData.password
@@ -218,9 +201,6 @@ export class LoginComponent implements OnInit, OnDestroy {
             const minutes = Number(body.retryAfterMinutes) || 15;
             this.loginError = body.message
               || `Bạn đã nhập sai mật khẩu quá 5 lần. Vui lòng thử lại sau ${minutes} phút hoặc dùng Quên mật khẩu.`;
-          } else if (err.status === 403 && body.pendingVerification) {
-            this.loginPendingVerification = true;
-            this.loginError = body.message || 'Tài khoản chưa được xác minh. Vui lòng xác minh để đăng nhập.';
           } else if (err.status === 403 && body.locked) {
             this.loginError = body.message || 'Tài khoản đã bị khóa. Vui lòng liên hệ Tiệm Hoa Yên để được hỗ trợ.';
           } else if (err.status === 401) {
@@ -242,79 +222,6 @@ export class LoginComponent implements OnInit, OnDestroy {
 
   loginWithFacebook(): void {
     this.socialNotice = 'Đăng nhập bằng Facebook sẽ sớm được hỗ trợ. Vui lòng đăng nhập bằng số điện thoại.';
-  }
-
-  /* ================= Xác minh tài khoản (403 pendingVerification) ================= */
-
-  private resetVerifyBlock(): void {
-    this.verifyTimers.stop();
-    this.verifyChallengeId = '';
-    this.verifyCode = '';
-    this.verifyMessage = '';
-    this.verifyError = '';
-    this.verifySuccess = '';
-    this.verifyExceeded = false;
-  }
-
-  sendVerifyCode(): void {
-    if (this.verifySending || this.verifyChecking || this.verifyTimers.resendSeconds > 0) return;
-    if (!PHONE_RE.test(this.formData.phone)) return;
-    const isResend = !!this.verifyChallengeId;
-    this.verifySending = true;
-    this.verifyError = '';
-    this.loginService.sendOtp({ SDT: this.formData.phone, purpose: 'DANG_KY' })
-      .pipe(timeout(30000), finalize(() => { this.verifySending = false; this.cdr.markForCheck(); }))
-      .subscribe({
-        next: (res: any) => {
-          this.verifyChallengeId = res.challengeId;
-          this.verifyCode = '';
-          this.verifyExceeded = false;
-          this.verifyMessage = isResend ? 'Đã gửi lại mã mới. Mã cũ không còn hiệu lực.' : (res.message || 'Mã xác minh đã được gửi.');
-          this.verifyTimers.start(Number(res.expiresIn) || 60, Number(res.resendAfter) || 60);
-          setTimeout(() => document.getElementById('login-verify-code')?.focus());
-        },
-        error: (err) => {
-          if (err?.status === 429 && err.error?.resendAfter) this.verifyTimers.delayResend(Number(err.error.resendAfter));
-          this.verifyError = isOffline(err) ? OFFLINE_MESSAGE : (err?.error?.message || 'Chưa gửi được mã xác minh.');
-        }
-      });
-  }
-
-  onVerifyCodeInput(value: string): void {
-    this.verifyCode = (value || '').replace(/\D/g, '').slice(0, 6);
-    if (!this.verifyExceeded) this.verifyError = '';
-    if (this.verifyCode.length === 6) this.submitVerifyCode();
-  }
-
-  submitVerifyCode(): void {
-    if (this.verifyChecking || this.verifyExceeded || !/^\d{6}$/.test(this.verifyCode)) return;
-    if (this.verifyTimers.expiresSeconds <= 0) { this.verifyError = 'Mã đã hết hạn. Vui lòng bấm Gửi lại mã.'; return; }
-    this.verifyChecking = true;
-    this.verifyError = '';
-    this.loginService.verifyOtp({ challengeId: this.verifyChallengeId, OTP: this.verifyCode, purpose: 'DANG_KY' })
-      .pipe(timeout(30000), finalize(() => { this.verifyChecking = false; this.cdr.markForCheck(); }))
-      .subscribe({
-        next: (res: any) => {
-          this.resetVerifyBlock();
-          this.loginPendingVerification = false;
-          this.loginError = '';
-          this.verifySuccess = res?.message || 'Xác minh thành công. Vui lòng đăng nhập lại.';
-        },
-        error: (err) => {
-          const body = err?.error || {};
-          this.verifyCode = '';
-          if (body.attemptsExceeded) {
-            this.verifyExceeded = true;
-            this.verifyError = 'Bạn đã nhập sai quá 5 lần. Vui lòng bấm Gửi lại mã.';
-          } else if (body.expired) {
-            this.verifyTimers.expireNow();
-            this.verifyError = body.message || 'Mã đã hết hạn. Vui lòng bấm Gửi lại mã.';
-          } else {
-            this.verifyError = isOffline(err) ? OFFLINE_MESSAGE : otpErrorText(body);
-          }
-          setTimeout(() => document.getElementById('login-verify-code')?.focus());
-        }
-      });
   }
 
   /* ================= Quên mật khẩu – bước 1 ================= */

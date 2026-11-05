@@ -123,50 +123,6 @@
           <div class="login-alert__body">
             <span>{{ loginError }}</span>
             <button type="button" class="login-alert__action" *ngIf="loginLocked" (click)="openForgotPasswordPopup()">Quên mật khẩu?</button>
-            <button type="button" class="login-alert__action" *ngIf="loginPendingVerification && !verifyChallengeId" (click)="sendVerifyCode()" [disabled]="verifySending">
-              {{ verifySending ? 'Đang gửi mã…' : 'Gửi mã xác minh' }}
-            </button>
-          </div>
-        </div>
-        <p class="login-alert is-success" role="status" *ngIf="verifySuccess">
-          <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
-          <span>{{ verifySuccess }}</span>
-        </p>
-
-        <!-- Xác minh tài khoản chưa xác minh -->
-        <div class="verify-block" *ngIf="loginPendingVerification && (verifyChallengeId || verifyError)">
-          <p class="verify-block__message" role="status" *ngIf="verifyMessage">{{ verifyMessage }}</p>
-          <ng-container *ngIf="verifyChallengeId">
-            <label class="form-label" for="login-verify-code">Mã xác minh (6 chữ số)</label>
-            <div class="verify-block__row">
-              <input
-                id="login-verify-code"
-                name="verifyCode"
-                class="form-input verify-block__input"
-                [ngModel]="verifyCode"
-                (ngModelChange)="onVerifyCodeInput($event)"
-                [ngModelOptions]="{ standalone: true }"
-                [class.is-invalid]="!!verifyError"
-                [disabled]="verifyChecking || verifyExceeded"
-                inputmode="numeric"
-                autocomplete="one-time-code"
-                maxlength="6"
-                placeholder="••••••"
-              >
-              <button type="button" class="verify-block__submit" (click)="submitVerifyCode()" [disabled]="verifyChecking || verifyExceeded || verifyCode.length !== 6" [attr.aria-busy]="verifyChecking">
-                <span *ngIf="verifyChecking" class="login-spinner" aria-hidden="true"></span>
-                {{ verifyChecking ? 'Đang xác minh…' : 'Xác minh' }}
-              </button>
-            </div>
-          </ng-container>
-          <span class="error-msg" role="alert">{{ verifyError }}</span>
-          <div class="verify-block__footer">
-            <span class="otp-countdown" *ngIf="verifyChallengeId">
-              {{ verifyTimers.expiresSeconds > 0 ? 'Mã hết hạn sau ' + verifyTimers.expiresSeconds + ' giây' : 'Mã đã hết hạn' }}
-            </span>
-            <button type="button" class="otp-popup__resend-button" (click)="sendVerifyCode()" [disabled]="verifySending || verifyChecking || verifyTimers.resendSeconds > 0">
-              {{ verifySending ? 'Đang gửi…' : (verifyTimers.resendSeconds > 0 ? 'Gửi lại sau ' + verifyTimers.resendSeconds + 's' : 'Gửi lại mã') }}
-            </button>
           </div>
         </div>
         <!-- Ghi nhớ & Quên mật khẩu -->

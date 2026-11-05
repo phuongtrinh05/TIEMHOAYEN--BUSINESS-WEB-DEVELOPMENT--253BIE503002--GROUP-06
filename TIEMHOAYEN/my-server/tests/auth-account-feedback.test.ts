@@ -23,15 +23,29 @@ test('auth + account administration feedback rules', { skip: !process.env.TEST_M
     return { status, body };
   };
   try {
-    // KH01: mật khẩu yếu bị từ chối, đăng ký hợp lệ ở trạng thái chờ xác minh.
+    // KH01: mật khẩu yếu bị từ chối; không còn xác minh email nên tài khoản hoạt động ngay.
     let r = await call(registerCustomer, { body: { TEN: 'Khách Test', GIOI_TINH: 'Nữ', SDT: '0911111111', EMAIL: 'KH@Example.test', MAT_KHAU: 'weakpass' } });
     assert.equal(r.status, 400); assert.equal(r.body.field, 'password');
     r = await call(registerCustomer, { body: { TEN: 'Khách Test', GIOI_TINH: 'Nữ', SDT: '0911111111', EMAIL: 'KH@Example.test', MAT_KHAU: 'Strong#Pass1' } });
-    assert.equal(r.status, 201); assert.equal(r.body.customer.TRANG_THAI, 'Chờ xác minh'); assert.equal(r.body.customer.EMAIL, 'kh@example.test');
+    assert.equal(r.status, 201); assert.equal(r.body.customer.TRANG_THAI, 'Hoạt động'); assert.equal(r.body.customer.EMAIL, 'kh@example.test');
+    assert.equal(r.body.requiresVerification, false);
     r = await call(registerCustomer, { body: { TEN: 'Khách Test', GIOI_TINH: 'Nữ', SDT: '0911111111', EMAIL: 'other@example.test', MAT_KHAU: 'Strong#Pass1' } });
-    assert.equal(r.status, 409); assert.equal(r.body.pendingVerification, true);
+    assert.equal(r.status, 409); assert.equal(r.body.field, 'phone');
+    // Email không bắt buộc: bỏ trống vẫn đăng ký được; có nhập thì phải đúng định dạng và không trùng.
+    r = await call(registerCustomer, { body: { TEN: 'Khách Không Email', GIOI_TINH: 'Nam', SDT: '0922220000', EMAIL: '', MAT_KHAU: 'Strong#Pass1' } });
+    assert.equal(r.status, 201); assert.equal(r.body.customer.EMAIL, null);
+    r = await call(registerCustomer, { body: { TEN: 'Khách Không Email 2', GIOI_TINH: 'Nam', SDT: '0922220001', MAT_KHAU: 'Strong#Pass1' } });
+    assert.equal(r.status, 201);
+    r = await call(registerCustomer, { body: { TEN: 'Email Sai', GIOI_TINH: 'Nam', SDT: '0922220002', EMAIL: 'khong-hop-le', MAT_KHAU: 'Strong#Pass1' } });
+    assert.equal(r.status, 400); assert.equal(r.body.field, 'email');
+    r = await call(registerCustomer, { body: { TEN: 'Email Trùng', GIOI_TINH: 'Nam', SDT: '0922220003', EMAIL: 'kh@example.test', MAT_KHAU: 'Strong#Pass1' } });
+    assert.equal(r.status, 409); assert.equal(r.body.field, 'email');
+    // Tài khoản cũ còn "Chờ xác minh" được kích hoạt khi đăng nhập đúng mật khẩu.
+    await db.collection('KHACH_HANG').updateOne({ SDT: '0922220000' }, { $set: { TRANG_THAI: 'Chờ xác minh' } });
+    r = await call(loginCustomer, { body: { SDT: '0922220000', MAT_KHAU: 'Strong#Pass1' } });
+    assert.equal(r.status, 200);
+    assert.equal((await db.collection('KHACH_HANG').findOne({ SDT: '0922220000' }))!.TRANG_THAI, 'Hoạt động');
     const customerId = (await db.collection('KHACH_HANG').findOne({ SDT: '0911111111' }))!.KHACH_HANG_ID;
-    await db.collection('KHACH_HANG').updateOne({ KHACH_HANG_ID: customerId }, { $set: { TRANG_THAI: 'Hoạt động' } });
 
     // KH02: không lộ SĐT có tồn tại; sai 5 lần thì khóa tạm, mật khẩu đúng cũng bị chặn.
     r = await call(loginCustomer, { body: { SDT: '0900000000', MAT_KHAU: 'x' } });

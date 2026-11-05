@@ -154,21 +154,19 @@ export const registerCustomer = async (req: Request, res: Response) => {
     if (!name || name.length > 100) return res.status(400).json({ field: 'name', message: 'Vui lòng nhập họ tên (tối đa 100 ký tự).' });
     if (!GENDERS.includes(gender)) return res.status(400).json({ field: 'gender', message: 'Vui lòng chọn giới tính.' });
     if (!/^0\d{9}$/.test(phone)) return res.status(400).json({ field: 'phone', message: 'Số điện thoại cần gồm 10 chữ số, bắt đầu bằng 0.' });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) return res.status(400).json({ field: 'email', message: 'Email không hợp lệ.' });
+    // Email không bắt buộc; nếu có nhập thì phải đúng định dạng và chưa được dùng.
+    if (emailValue && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) return res.status(400).json({ field: 'email', message: 'Email không hợp lệ.' });
     assertStrongPassword(password);
 
     const customerCollection = await getCustomerCollection();
-    const samePhone = await customerCollection.findOne({ SDT: phone });
-    if (samePhone) {
-      const pending = /chờ xác minh/i.test(String(samePhone.TRANG_THAI || ''));
-      return res.status(409).json({
-        field: 'phone', pendingVerification: pending,
-        message: pending ? 'Số điện thoại này đã đăng ký nhưng chưa xác minh. Vui lòng gửi lại mã xác minh.' : 'Số điện thoại đã được đăng ký.',
-      });
+    if (await customerCollection.findOne({ SDT: phone })) {
+      return res.status(409).json({ field: 'phone', message: 'Số điện thoại đã được đăng ký. Vui lòng đăng nhập hoặc dùng Quên mật khẩu.' });
     }
-    const escaped = emailValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (await customerCollection.findOne({ EMAIL: { $regex: `^${escaped}$`, $options: 'i' } })) {
-      return res.status(409).json({ field: 'email', message: 'Email đã được đăng ký.' });
+    if (emailValue) {
+      const escaped = emailValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (await customerCollection.findOne({ EMAIL: { $regex: `^${escaped}$`, $options: 'i' } })) {
+        return res.status(409).json({ field: 'email', message: 'Email đã được đăng ký.' });
+      }
     }
 
     const newId = await getNextPrefixedId('KHACH_HANG', 'KHACH_HANG_ID', 'CUST', 4);
@@ -176,7 +174,7 @@ export const registerCustomer = async (req: Request, res: Response) => {
       _id: newId,
       KHACH_HANG_ID: newId,
       TEN: name,
-      EMAIL: emailValue,
+      EMAIL: emailValue || null,
       SDT: phone,
       MAT_KHAU: await hashPassword(password),
       DOB: null,
@@ -185,7 +183,8 @@ export const registerCustomer = async (req: Request, res: Response) => {
       LOAI_THANH_VIEN: 'Thành viên',
       DIEM_TICH_LUY: 0,
       AVATAR: null,
-      TRANG_THAI: 'Chờ xác minh',
+      // Không còn bước xác minh email khi đăng ký: tài khoản dùng được ngay.
+      TRANG_THAI: 'Hoạt động',
       DA_XOA: false,
     };
 
@@ -193,9 +192,9 @@ export const registerCustomer = async (req: Request, res: Response) => {
     await audit(req, 'DANG_KY', newId);
 
     return res.status(201).json({
-      message: 'Đăng ký thành công. Vui lòng nhập mã xác minh để kích hoạt tài khoản.',
+      message: 'Đăng ký thành công. Bạn có thể đăng nhập ngay.',
       customer: sanitizeCustomer(customer),
-      requiresVerification: true,
+      requiresVerification: false,
     });
   } catch (error: any) {
     return authFailure(res, error, 'Chưa đăng ký được tài khoản. Vui lòng thử lại.');
@@ -220,7 +219,12 @@ export const loginCustomer = async (req: Request, res: Response) => {
       await audit(req, 'DANG_NHAP', customer.KHACH_HANG_ID, { LY_DO: 'Sai mật khẩu' }, false);
       throw wrongPasswordError(await recordLoginFailure('KHACH_HANG', customer), 'Số điện thoại hoặc mật khẩu không đúng.');
     }
-    if (/chờ xác minh/i.test(String(customer.TRANG_THAI || ''))) return res.status(403).json({ pendingVerification: true, message: 'Tài khoản chưa xác minh. Vui lòng hoàn tất xác minh đăng ký.' });
+    // Tài khoản cũ còn "Chờ xác minh" (từ khi còn bắt buộc xác minh email) được kích hoạt khi đăng nhập đúng mật khẩu.
+    if (/chờ xác minh/i.test(String(customer.TRANG_THAI || ''))) {
+      await customerCollection.updateOne({ KHACH_HANG_ID: customer.KHACH_HANG_ID, TRANG_THAI: customer.TRANG_THAI }, { $set: { TRANG_THAI: 'Hoạt động' } });
+      customer.TRANG_THAI = 'Hoạt động';
+      await audit(req, 'KICH_HOAT_TAI_KHOAN', customer.KHACH_HANG_ID, { LY_DO: 'Bỏ xác minh email khi đăng ký' });
+    }
     if (/khóa|ngừng|inactive/i.test(String(customer.TRANG_THAI || ''))) return res.status(403).json({ locked: true, message: 'Tài khoản đã bị khóa. Vui lòng liên hệ cửa hàng để được hỗ trợ.' });
 
     if (!isPasswordHash(customer.MAT_KHAU)) {

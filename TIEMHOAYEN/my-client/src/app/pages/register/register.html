@@ -138,7 +138,7 @@
 
           <div class="form-group">
             <label class="form-label" for="email">
-              Email <span class="optional">(để nhận mã xác minh)</span>
+              Email <span class="optional">(không bắt buộc)</span>
             </label>
             <div class="input-wrapper">
               <i class="bi bi-envelope input-icon"></i>
@@ -153,13 +153,10 @@
                 #email="ngModel"
                 (ngModelChange)="clearServerError('email')"
                 autocomplete="email"
-                required
               >
             </div>
             <span class="error-msg" aria-live="polite">
-              <ng-container *ngIf="(email.touched || submitted) && !emailFormatValid; else emailServer">
-                {{ formData.email.trim() ? 'Email không hợp lệ.' : 'Vui lòng nhập email để nhận mã xác minh.' }}
-              </ng-container>
+              <ng-container *ngIf="(email.touched || submitted) && !emailFormatValid; else emailServer">Email không hợp lệ.</ng-container>
               <ng-template #emailServer>{{ serverErrors.email }}</ng-template>
             </span>
           </div>
@@ -248,55 +245,12 @@
           {{ submitted && !formData.agreeTerms ? 'Vui lòng đồng ý điều khoản và điều kiện.' : '' }}
         </span>
 
-        <!-- SĐT đã đăng ký nhưng chưa xác minh -->
-        <div class="pending-box" *ngIf="pendingVerification && !needsVerification" role="status">
-          <span>Tài khoản này chưa được xác minh. Bạn có thể nhận lại mã xác minh để hoàn tất đăng ký.</span>
-          <button type="button" class="verify-link" (click)="resendForPending()" [disabled]="otpSending">Gửi lại mã xác minh</button>
-        </div>
-
         <p class="error-msg form-error" role="alert" *ngIf="formError">{{ formError }}</p>
 
-        <button type="submit" class="btn-register is-ready" [disabled]="busy || needsVerification" [attr.aria-busy]="busy">
+        <button type="submit" class="btn-register is-ready" [disabled]="busy" [attr.aria-busy]="busy">
           <span *ngIf="busy" class="btn-spinner" aria-hidden="true"></span>
           {{ busy ? 'Đang xử lý…' : 'Đăng ký' }}
         </button>
-
-        <!-- Bước xác minh mã OTP -->
-        <div *ngIf="needsVerification" class="verify-box">
-          <p class="verify-box__message" role="status">
-            {{ otpSending && !challengeId ? 'Đang gửi mã xác minh…' : verificationMessage }}
-          </p>
-          <label class="form-label" for="registration-code">Mã xác minh (6 chữ số)</label>
-          <div class="verify-box__row">
-            <input
-              id="registration-code"
-              class="form-input verify-box__input"
-              name="verificationCode"
-              [ngModel]="verificationCode"
-              (ngModelChange)="onVerificationInput($event)"
-              [class.is-invalid]="verificationInvalid"
-              [disabled]="otpVerifying || attemptsExceeded || !challengeId"
-              inputmode="numeric"
-              autocomplete="one-time-code"
-              maxlength="6"
-              placeholder="••••••"
-            >
-            <button type="button" class="btn-verify" (click)="verifyRegistration()" [disabled]="otpVerifying || attemptsExceeded || verificationCode.length !== 6" [attr.aria-busy]="otpVerifying">
-              <span *ngIf="otpVerifying" class="btn-spinner" aria-hidden="true"></span>
-              {{ otpVerifying ? 'Đang xác minh…' : 'Xác minh' }}
-            </button>
-          </div>
-          <span class="error-msg" role="alert">{{ verificationError }}</span>
-          <a *ngIf="attemptsExceeded" class="verify-link" routerLink="/login" [queryParams]="{ recover: 1 }">Quên mật khẩu?</a>
-          <div class="verify-box__footer">
-            <span class="verify-box__timer" aria-live="off">
-              {{ challengeId ? (expiresSeconds > 0 ? 'Mã hết hạn sau ' + expiresSeconds + ' giây' : 'Mã đã hết hạn') : '' }}
-            </span>
-            <button type="button" class="verify-link" [disabled]="otpSending || otpVerifying || resendSeconds > 0" (click)="sendVerification()">
-              {{ otpSending ? 'Đang gửi…' : (resendSeconds > 0 ? 'Gửi lại sau ' + resendSeconds + 's' : 'Gửi lại mã') }}
-            </button>
-          </div>
-        </div>
 
         <p class="login-redirect">
           Bạn có tài khoản?
