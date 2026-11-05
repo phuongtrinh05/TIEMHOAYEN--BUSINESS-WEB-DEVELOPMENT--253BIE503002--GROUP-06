@@ -74,8 +74,13 @@ export const apiEndpointInterceptor: HttpInterceptorFn = (request, next) => {
       if (!isApiRequest || !appErrors) return;
       // KH33: lỗi mạng / máy chủ / không có quyền → banner có thể đóng, không điều hướng.
       // 404 của API do từng component tự xử lý ("không tìm thấy dữ liệu").
-      if (error.status === 0) appErrors.show('network');
-      else if (error.status >= 500) appErrors.show('server');
+      if (error.status === 0) { appErrors.show('network'); return; }
+      // Lỗi nghiệp vụ có thông báo cụ thể từ server (vd. chưa gửi được mã) đã được trang hiển thị tại chỗ,
+      // không bật thêm banner chung. Chỉ dùng banner khi server không giải thích được lỗi.
+      const body: any = (error as any).error;
+      const explained = body && typeof body === 'object' && typeof body.message === 'string' && body.message && body.code !== 'SERVER_ERROR';
+      if (explained) return;
+      if (error.status >= 500) appErrors.show('server');
       else if (error.status === 403) appErrors.show('forbidden');
     },
   }));

@@ -390,9 +390,14 @@ if (!uri) {
       await access.requestOrderOtp('0900111225','test-otp-ip');await assert.rejects(access.verifyOrderOtp(replaced.challengeId,oldCode));
     } finally {console.info=log;}
   });
-  test('console OTP cannot be enabled in production', async()=>{
+  test('production prints the order OTP to the server log and never returns it', async()=>{
     const access=await import('../services/order-access.service.js');const old=process.env.NODE_ENV;process.env.NODE_ENV='production';
-    try {await assert.rejects(access.requestOrderOtp('0900111226','test-prod'),/chưa được cấu hình/);} finally { if(old===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=old; }
+    const log=console.info;let printed='';console.info=(...args:any[])=>{printed+=args.join(' ');};
+    try {
+      const result:any=await access.requestOrderOtp('0900111226','test-prod');
+      const code=printed.match(/0900111226: (\d{6})/)?.[1];
+      assert.ok(code);assert.ok(!JSON.stringify(result).includes(code!));
+    } finally { console.info=log; if(old===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=old; }
   });
 
   test('member login opens only account-owned orders and requests without lookup OTP', async()=>{

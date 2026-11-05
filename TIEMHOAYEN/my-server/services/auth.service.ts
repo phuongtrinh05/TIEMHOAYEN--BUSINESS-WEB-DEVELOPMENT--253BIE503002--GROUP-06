@@ -226,18 +226,20 @@ export async function deliverOtp(email: string, code: string) {
   if (!result.ok) throw new AuthError(503, 'Chưa gửi được email. Vui lòng thử lại sau.');
 }
 export async function deliverSmsOtp(phone: string, code: string) {
-  if (process.env.AUTH_OTP_DELIVERY === 'console' || process.env.NODE_ENV !== 'production' && (process.env.AUTH_SMS_DELIVERY === 'console' || !process.env.AUTH_SMS_GATEWAY_URL)) {
-    console.log(`[OTP SMS LOCAL] ${phone}: ${code} (hết hạn sau 60 giây)`);
-    return;
-  }
   if (process.env.AUTH_OTP_DELIVERY === 'test' && process.env.NODE_ENV !== 'production' && /^mongodb:\/\/(127\.0\.0\.1|localhost):/.test(process.env.MONGO_URI || '') && /_LOCAL_TEST$/.test(process.env.MONGO_DATABASE || '')) {
     await (await collection('HOP_THU_THU_NGHIEM')).insertOne({ SDT: phone, MA_OTP: code, NGAY_TAO: new Date() });
     return;
   }
   const url = process.env.AUTH_SMS_GATEWAY_URL;
   const secret = process.env.AUTH_SMS_GATEWAY_TOKEN;
-  if (!url || !url.startsWith('https://') || !secret) throw new AuthError(503, 'Chưa cấu hình dịch vụ gửi SMS OTP. Vui lòng liên hệ quản trị viên.');
-  const result = await fetch(url, {
+  const gatewayReady = !!url && url.startsWith('https://') && !!secret;
+  // Chưa có dịch vụ SMS (hoặc chủ động chọn console): in mã ra terminal/log của server
+  // (Render → Logs) để nhân viên đọc mã cho khách, thay vì báo lỗi.
+  if (!gatewayReady || process.env.AUTH_OTP_DELIVERY === 'console' || process.env.AUTH_SMS_DELIVERY === 'console') {
+    console.log(`[OTP SMS] ${phone}: ${code} (hết hạn sau 60 giây)`);
+    return;
+  }
+  const result = await fetch(url!, {
     method: 'POST', headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone: phone.replace(/^0/, '+84'), message: `Tiem Hoa Yen: Ma OTP cua ban la ${code}. Het han sau 60 giay. Khong chia se ma nay.` }),
     signal: AbortSignal.timeout(15000), redirect: 'error',

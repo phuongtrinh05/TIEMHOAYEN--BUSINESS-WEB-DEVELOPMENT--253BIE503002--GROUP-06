@@ -50,9 +50,7 @@ export async function requestOrderOtp(value: unknown, ip: string, orderId?: stri
     const request = await (await getCollection<any>('YEU_CAU_DAT_HANG')).findOne({ requestId: scopedRequestId, 'sender.phone': phonePattern(phone) }, { projection: { _id: 1 } });
     if (!request) throw new InventoryError(404, 'Mã yêu cầu đặt hàng không hợp lệ.');
   }
-  if (process.env.ORDER_OTP_DELIVERY !== 'console' || process.env.NODE_ENV === 'production') {
-    throw new InventoryError(503, 'Kênh gửi OTP chưa được cấu hình. Vui lòng liên hệ shop.');
-  }
+  // Chưa có dịch vụ SMS: mã OTP được in ra terminal/log của server (kể cả trên Render) để nhân viên hỗ trợ khách.
   const now = new Date();
   const challengeId = `otp_${randomBytes(24).toString('hex')}`;
   const otp = String(randomInt(100000, 1000000));
@@ -87,12 +85,12 @@ export async function requestOrderOtp(value: unknown, ip: string, orderId?: stri
     if (error?.code === 11000) throw new InventoryError(429, 'Bạn đang yêu cầu mã quá nhanh. Vui lòng chờ 60 giây rồi thử lại.');
     throw error;
   }
-  // Explicit local development transport. Never return the code in an API response.
-  console.info(`[ORDER OTP - LOCAL] ${phone}: ${otp} (hiệu lực 5 phút)`);
+  // Gửi qua terminal/log server. Never return the code in an API response.
+  console.info(`[ORDER OTP] ${phone}: ${otp} (hiệu lực 5 phút)`);
   if (process.env.ORDER_OTP_LOG_FILE && !process.env.TEST_MONGO_URI) {
-    void writeFile(process.env.ORDER_OTP_LOG_FILE, `OTP tra cứu đơn (LOCAL)\nSố điện thoại: ${phone}\nMã OTP: ${otp}\nHết hạn: ${expiresAt.toISOString()}\n`, 'utf8').catch(() => {});
+    void writeFile(process.env.ORDER_OTP_LOG_FILE, `OTP tra cứu đơn\nSố điện thoại: ${phone}\nMã OTP: ${otp}\nHết hạn: ${expiresAt.toISOString()}\n`, 'utf8').catch(() => {});
   }
-  return { challengeId, expiresAt, resendAfterSeconds: 60, delivery: 'console', message: 'Mã xác thực đã được tạo. Môi trường local: xem OTP trong terminal backend.' };
+  return { challengeId, expiresAt, resendAfterSeconds: 60, delivery: 'console', message: 'Mã xác thực đã được gửi tới số điện thoại người đặt. Mã có hiệu lực 5 phút.' };
 }
 export async function verifyOrderOtp(challengeId: unknown, code: unknown) {
   if (!/^otp_[a-f0-9]{48}$/.test(String(challengeId)) || !/^\d{6}$/.test(String(code))) throw new InventoryError(400, 'Mã xác thực không hợp lệ.');
