@@ -12,9 +12,12 @@ const cartLine = (body: any) => {
   const configuration = body.configuration && typeof body.configuration === 'object' ? body.configuration : {};
   const variantId = body.variantId ? String(body.variantId) : null;
   const designId = body.designId ? String(body.designId) : null;
-  const generated = `${productId}:${createHash('sha256').update(JSON.stringify({ variantId, designId, configuration })).digest('hex').slice(0, 16)}`;
+  const isStandardLine = !variantId && !designId && Object.keys(configuration).length === 0;
+  const generated = isStandardLine
+    ? productId
+    : `${productId}:${createHash('sha256').update(JSON.stringify({ variantId, designId, configuration })).digest('hex').slice(0, 16)}`;
   const lineKey = /^[\w:.-]{3,120}$/.test(String(body.lineKey || '')) ? String(body.lineKey) : generated;
-  return { productId, lineKey, variantId, designId, configuration };
+  return { productId, lineKey, variantId, designId, configuration, isStandardLine };
 };
 
 const sortPrimaryImages = (left: any, right: any): number => {
@@ -149,7 +152,7 @@ export const getCartByCustomer = async (req: Request, res: Response) => {
 export const addCartItem = async (req: Request, res: Response) => {
   try {
     const customerId = String(req.body.customerId || '');
-    const { productId, lineKey, variantId, designId, configuration } = cartLine(req.body);
+    const { productId, lineKey, variantId, designId, configuration, isStandardLine } = cartLine(req.body);
     const quantity = Number(req.body.quantity);
 
     if (!customerId || !productId) {
@@ -172,7 +175,19 @@ export const addCartItem = async (req: Request, res: Response) => {
 
     const cartId = await getOrCreateCart(customerId);
     const detailCollection = await getCollection<any>('GIO_HANG_CHI_TIET');
-    const lineFilter = { GIO_HANG_ID: cartId, $or: [{ LINE_KEY: lineKey }, { SAN_PHAM_ID: productId, LINE_KEY: { $exists: false } }] };
+    const lineFilter = {
+      GIO_HANG_ID: cartId,
+      $or: [
+        { LINE_KEY: lineKey },
+        { SAN_PHAM_ID: productId, LINE_KEY: { $exists: false } },
+        ...(isStandardLine ? [{
+          SAN_PHAM_ID: productId,
+          BIEN_THE_ID: { $in: [null, ''] },
+          THIET_KE_ID: { $in: [null, ''] },
+          $or: [{ CAU_HINH: { $exists: false } }, { CAU_HINH: {} }],
+        }] : []),
+      ],
+    };
     const existing = await detailCollection.findOne(lineFilter);
     const totalQuantity = Number(existing?.SO_LUONG || 0) + quantity;
     if (totalQuantity > 1000) return res.status(400).json({ message: 'Tổng số lượng trong giỏ không được vượt quá 1000.' });
