@@ -116,16 +116,8 @@ export class OrderHauntComponent implements OnInit {
   private static publicVouchersCache: Voucher[] | null = null;
   private static provincesCache: Province[] | null = null;
 
-  /**
-   * Giỏ hàng khách chưa đăng nhập.
-   * Trang order-haunt tuyệt đối không đọc database.
-   */
   private readonly cartStorageKey = 'tiemHoaYenCart';
 
-  /**
-   * CartComponent sẽ lưu các sản phẩm đã chọn vào key này trước khi qua order-haunt.
-   * Nhờ vậy order-haunt chỉ đặt những sản phẩm đã chọn, không lấy toàn bộ giỏ hàng.
-   */
   private readonly checkoutItemsStorageKey = 'tiemHoaYenCheckoutItems';
 
   private readonly guestOrderStorageKey = 'tiemHoaYenGuestOrder';
@@ -195,11 +187,6 @@ export class OrderHauntComponent implements OnInit {
   availableVouchers: Voucher[] = [];
   isLoadingPublicVouchers = false;
 
-  /**
-   * Khách vãng lai chỉ áp dụng chính sách cọc khi chọn COD.
-   * Momo / VNPay / Chuyển khoản sẽ thanh toán toàn bộ tổng đơn, tiền cọc = 0.
-   * Tiền cọc tính theo TẠM TÍNH sản phẩm, không tính phí ship.
-   */
   paymentPolicies: PaymentPolicy[] = [
     {
       minTotal: 0,
@@ -762,7 +749,7 @@ export class OrderHauntComponent implements OnInit {
       customerId: null,
     }).subscribe({
       next: quote => { if (version === this.quoteVersion) this.serverQuote = quote; },
-      error: error => { if (version === this.quoteVersion) { this.serverQuote = null; this.voucherError = error?.error?.message || 'Không thể kiểm tra báo giá.'; } },
+      error: error => { if (version === this.quoteVersion) { this.serverQuote = null; this.voucherError = error?.error?.message; } },
     });
   }
 
@@ -777,7 +764,7 @@ export class OrderHauntComponent implements OnInit {
 
   private isCashVoucherType(type: string): boolean {
     const value = this.normalizeText(type);
-    return value.includes('freeship') || value.includes('van chuyen');
+    return value.includes('freeship') || value.includes('ship') || value.includes('van chuyen');
   }
 
   private getSelectedVoucherPayload(): any | null {
@@ -969,10 +956,10 @@ export class OrderHauntComponent implements OnInit {
   }
 
   get productVoucherDiscount(): number {
-    if (!this.selectedVoucher) return 0;
+    if (!this.selectedVoucher || this.isCashVoucherType(this.selectedVoucher.type)) return 0;
+    if (this.serverQuote) return this.serverQuote.productDiscount;
     if (this.isPercentVoucherType(this.selectedVoucher.type)) return Math.min(this.subtotal, Math.round(this.subtotal * this.selectedVoucher.value / 100));
-    return ['tien mat', 'so tien', 'tien co dinh', 'cash', 'fixed'].includes(this.normalizeText(this.selectedVoucher.type))
-      ? Math.min(this.subtotal, Math.max(0, this.selectedVoucher.value)) : 0;
+    return Math.min(this.subtotal, Math.max(0, this.selectedVoucher.value));
   }
 
   get shippingVoucherDiscount(): number {
@@ -1046,13 +1033,10 @@ export class OrderHauntComponent implements OnInit {
   }
 
   get isCashPaymentBlocked(): boolean {
-    // Giao nhanh chỉ thay đổi phí ship / thời gian giao.
-    // Không khóa COD, MoMo, VNPay hoặc chuyển khoản.
     return false;
   }
 
   isPaymentMethodDisabled(methodValue: string): boolean {
-    // Hiện tại chỉ khóa thẻ ngân hàng vì shop chưa hỗ trợ trực tiếp.
     return methodValue === 'card';
   }
 
@@ -1061,7 +1045,6 @@ export class OrderHauntComponent implements OnInit {
   }
 
   onShippingMethodChange(): void {
-    // Không tự đổi phương thức thanh toán khi khách đổi giao tiêu chuẩn / giao nhanh.
     if (this.formData.paymentMethod !== 'card') {
       this.paymentError = '';
     }
@@ -1210,8 +1193,6 @@ export class OrderHauntComponent implements OnInit {
           this.salesRequestId = createdOrder.requestId || '';
           this.salesRequestMessage = createdOrder.message || '';
           this.isSubmitting = false;
-          // Display the Sales-request result as soon as the single checkout
-          // request returns; no second click is part of the business flow.
           this.cdr.detectChanges();
           return;
         }
@@ -1236,15 +1217,13 @@ export class OrderHauntComponent implements OnInit {
         localStorage.setItem('tiemHoaYenRegistrantOrder', JSON.stringify(finalOrderForCheckout));
         localStorage.setItem('tiemHoaYenCreatedOrder', JSON.stringify(createdOrder));
 
-        // Không xóa giỏ hàng tại đây. Giỏ chỉ nên xóa sau khi thanh toán thành công.
-        // Checkout sẽ dùng dữ liệu trong tiemHoaYenRegistrantOrder và tiemHoaYenCreatedOrder.
         this.isSubmitting = false;
         void this.router.navigate(['/checkout']);
       },
       error: (err: any) => {
         console.error('Lỗi tạo đơn khách vãng lai:', err);
         this.isSubmitting = false;
-        this.submitOrderError = err?.error?.message || 'Không thể tạo đơn hàng. Vui lòng thử lại.';
+        this.submitOrderError = err?.error?.message ;
       },
     });
   }

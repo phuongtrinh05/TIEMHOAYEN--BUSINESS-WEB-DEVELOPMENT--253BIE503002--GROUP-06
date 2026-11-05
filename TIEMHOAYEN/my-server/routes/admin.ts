@@ -135,12 +135,12 @@ router.delete('/categories/:type/:categoryId', requireAdminPermission('products'
 router.get('/campaigns', requireAdminPermission('promotions'), getAdminCampaigns);
 router.post('/campaigns', requireAdminPermission('promotions'), createAdminCampaign);
 router.put('/campaigns/:campaignId', requireAdminPermission('promotions'), updateAdminCampaign);
-router.delete('/campaigns/:campaignId', requireAdminPermission('promotions'), deleteAdminCampaign);
+router.delete('/campaigns/:campaignId', requireAdminPermission('promotions', 'update'), deleteAdminCampaign);
 router.get('/vouchers', requireAdminPermission('promotions'), getAdminVouchers);
 router.get('/vouchers-next-id', requireAdminPermission('promotions'), getAdminNextVoucherId);
 router.post('/vouchers', requireAdminPermission('promotions'), createAdminVoucher);
 router.put('/vouchers/:voucherId', requireAdminPermission('promotions'), updateAdminVoucher);
-router.delete('/vouchers/:voucherId', requireAdminPermission('promotions'), deleteAdminVoucher);
+router.delete('/vouchers/:voucherId', requireAdminPermission('promotions', 'update'), deleteAdminVoucher);
 router.post('/materials/upload-image', requireAdminPermission('materials', 'create'), materialImageUpload.single('image'), uploadAdminMaterialImage);
 
 export default router;

@@ -1,4 +1,4 @@
-import {Design3dService} from '../../../services/design3d.service';
+﻿import {Design3dService} from '../../../services/design3d.service';
 ﻿import { CommonModule, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectorRef,
@@ -80,7 +80,6 @@ interface SuggestedProductResponse {
   CHU_DE_ID?: string | null;
   TEN_CHU_DE?: string | null;
 
-  // Giữ tương thích nếu backend cũ còn trả về format NGUYEN_VAT_LIEU.
   NGUYEN_VAT_LIEU_ID?: string;
   TEN_NGUYEN_VAT_LIEU?: string;
   GIA_BAN?: number | string | null;
@@ -111,16 +110,8 @@ interface CartVoucher {
   styleUrl: './cart.css',
 })
 export class CartComponent implements OnInit {
-  /**
-   * Key giỏ hàng của khách chưa đăng nhập.
-   * Không đăng nhập thì chỉ đọc/ghi key này, không gọi database.
-   */
-  private readonly guestCartStorageKey = 'tiemHoaYenCart';
 
-  /**
-   * Key riêng để chuyển sản phẩm đã chọn sang trang đặt hàng.
-   * Dùng key riêng để tránh làm giỏ khách bị lẫn với giỏ database.
-   */
+  private readonly guestCartStorageKey = 'tiemHoaYenCart';
   private readonly checkoutItemsStorageKey = 'tiemHoaYenCheckoutItems';
 
   private readonly defaultImage = 'assets/images/hoa.jpg';
@@ -208,11 +199,6 @@ export class CartComponent implements OnInit {
   get isLoggedIn(): boolean {
     return !!this.cachedCustomerId;
   }
-
-  /**
-   * Đăng nhập: chỉ lấy database.
-   * Không đăng nhập: chỉ lấy localStorage.
-   */
   private loadCartByLoginState(): void {
     if (this.isLoggedIn) {
       this.loadCartFromDatabase();
@@ -329,7 +315,6 @@ export class CartComponent implements OnInit {
         items: this.cartItems,
       }));
     } catch {
-      // Cache chỉ dùng để tăng tốc, không làm gián đoạn giỏ hàng.
     }
   }
 
@@ -592,15 +577,19 @@ export class CartComponent implements OnInit {
       },
       error: error => {
         if (requestVersion !== this.quoteRequestVersion) return;
+        if (selected) {
+          this.selectedProductVoucher = null;
+          this.selectedShippingVoucher = null;
+          this.recalculateServerQuote();
+          return;
+        }
         this.serverQuote = null; this.quoteError = error?.error?.message || 'Không thể kiểm tra voucher.'; this.cdr.detectChanges();
       }
     });
   }
 
   canCheckout(): boolean {
-    const hasSelectedVoucher = !!(this.selectedProductVoucher || this.selectedShippingVoucher);
-    return this.getSelectedCount() > 0 &&
-      (!hasSelectedVoucher || !this.quoteError);
+    return this.getSelectedCount() > 0;
   }
 
   private normalizeText(value: string): string {
@@ -690,11 +679,6 @@ export class CartComponent implements OnInit {
     this.saveGuestCartToStorage();
   }
 
-  /**
-   * Cập nhật số lượng lên database ở nền (background).
-   * Giao diện đã cập nhật tức thì ở increaseQty/decreaseQty nên không cần
-   * gọi lại loadCartFromDatabase() để tránh giật/tải lại giỏ hàng.
-   */
   private updateDatabaseQuantity(item: CartItem, previousQuantity: number): void {
     const customerId = this.getCustomerId();
 
@@ -708,7 +692,6 @@ export class CartComponent implements OnInit {
       },
       error: (err: unknown) => {
         console.error('Lỗi cập nhật số lượng database:', err);
-        // Hoàn tác số lượng nếu server từ chối cập nhật.
         item.quantity = previousQuantity;
         this.cartError = (err as any)?.error?.message || 'Không thể cập nhật số lượng sản phẩm.';
         this.cdr.detectChanges();
@@ -717,7 +700,6 @@ export class CartComponent implements OnInit {
   }
 
   removeItem(item: CartItem): void {
-    // Cập nhật giao diện tức thì trước, không chờ phản hồi từ server.
     const removedItems = this.cartItems.filter(
       (cartItem: CartItem) => cartItem.lineKey === item.lineKey
     );
@@ -737,7 +719,6 @@ export class CartComponent implements OnInit {
         },
         error: (err: unknown) => {
           console.error('Lỗi xóa sản phẩm database:', err);
-          // Hoàn tác nếu server từ chối xóa.
           this.cartItems = [...this.cartItems, ...removedItems];
           this.cdr.detectChanges();
         },
@@ -763,7 +744,6 @@ export class CartComponent implements OnInit {
         this.isProductItem(item)
       );
 
-      // Xóa giao diện tức thì, không chờ server.
       this.cartItems = [];
       this.saveCustomerCartCache();
       this.cdr.detectChanges();
@@ -783,7 +763,6 @@ export class CartComponent implements OnInit {
         },
         error: (err: unknown) => {
           console.error('Lỗi xóa toàn bộ giỏ hàng:', err);
-          // Hoàn tác nếu server từ chối xóa.
           this.cartItems = previousItems;
           this.cdr.detectChanges();
         },
@@ -900,7 +879,6 @@ export class CartComponent implements OnInit {
       return;
     }
 
-    // Cập nhật giao diện tức thì trước, không chờ phản hồi từ server.
     if (existingItem) {
       existingItem.quantity++;
       const topicName = this.getCartTopicName(product.status);

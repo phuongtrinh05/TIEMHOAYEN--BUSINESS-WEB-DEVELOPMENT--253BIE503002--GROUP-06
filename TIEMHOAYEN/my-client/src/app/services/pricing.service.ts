@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { map, Observable } from 'rxjs';
 import { apiBaseUrl } from './api-config';
 
 export interface ServerQuote {
@@ -17,6 +17,12 @@ export interface ServerQuote {
 export class PricingService {
   constructor(private http: HttpClient) {}
   quote(payload: { items: Array<{ id: string; quantity: number; lineKey?: string; variantId?: string | null; designId?: string | null; configuration?: Record<string, unknown>; displayedUnitPrice?: number }>; shippingFee: number; voucher?: any; customerId?: string | null }): Observable<ServerQuote> {
-    return this.http.post<ServerQuote>(`${apiBaseUrl()}/orders/quote`, payload);
+    return this.http.post<{ items: ServerQuote['items']; summary: Omit<ServerQuote, 'items' | 'voucherResult'>; voucherResult?: any }>(`${apiBaseUrl()}/orders/quote`, payload).pipe(
+      map(response => ({
+        items: response.items,
+        ...response.summary,
+        voucherResult: response.voucherResult || null,
+      })),
+    );
   }
 }

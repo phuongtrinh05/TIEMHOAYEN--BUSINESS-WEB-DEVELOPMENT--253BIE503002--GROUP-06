@@ -167,12 +167,6 @@ export class OrderRegistrantComponent implements OnInit {
   // ===== ĐIỂM THƯỞNG =====
   maxLoyaltyPoints = 0;
   useLoyaltyPoints = false;
-
-  /**
-   * Quy đổi điểm thưởng:
-   * 2 điểm = 1.000đ
-   * Chỉ dùng theo từng cặp 2 điểm, điểm lẻ sẽ không được tính.
-   */
   private readonly pointsPerRewardUnit = 1;
   private readonly rewardUnitValue = 500;
   private readonly largeOrderQuantityThreshold = 10;
@@ -406,11 +400,6 @@ export class OrderRegistrantComponent implements OnInit {
       ''
     );
   }
-
-  // ====================================================================
-  // ===== LẤY THÔNG TIN KHÁCH HÀNG & VOUCHER =====
-  // ====================================================================
-
   private loadCustomerDetail(): void {
     const customerId = this.getCustomerId();
 
@@ -575,16 +564,7 @@ export class OrderRegistrantComponent implements OnInit {
     return `${Number(value || 0).toLocaleString('vi-VN')}đ`;
   }
 
-  // ====================================================================
-  // ===== LẤY SẢN PHẨM ĐƯỢC CHỌN TỪ GIỎ HÀNG =====
-  // ====================================================================
-
   private loadOrderItemsFromSelectedCart(): void {
-    /**
-     * Ưu tiên 1:
-     * Lấy đúng các sản phẩm đã tick chọn ở trang cart.
-     * Key này được cart.ts lưu trước khi chuyển sang /order-registrant.
-     */
     const checkoutItems = this.readOrderItemsFromStorage(this.checkoutItemsStorageKey);
 
     if (checkoutItems.length > 0) {
@@ -592,11 +572,6 @@ export class OrderRegistrantComponent implements OnInit {
       this.refreshServerQuote();
       return;
     }
-
-    /**
-     * Ưu tiên 2:
-     * Fallback cho code cũ nếu trước đó vẫn còn lưu ở tiemHoaYenCart.
-     */
     const legacyItems = this.readOrderItemsFromStorage(this.legacyCartStorageKey);
 
     if (legacyItems.length > 0) {
@@ -605,12 +580,6 @@ export class OrderRegistrantComponent implements OnInit {
       return;
     }
 
-    /**
-     * Ưu tiên 3:
-     * Fallback database chỉ dùng khi user mở thẳng /order-registrant
-     * mà không đi từ nút Đặt hàng ở trang cart.
-     * Lưu ý: database không biết sản phẩm nào được tick chọn, nên sẽ lấy toàn bộ giỏ.
-     */
     this.loadCartItemsFromDatabaseFallback();
   }
 
@@ -657,10 +626,6 @@ export class OrderRegistrantComponent implements OnInit {
       .then((res: { items?: CartStorageItem[] }) => {
         const items = Array.isArray(res.items) ? res.items : [];
 
-        /**
-         * Database chỉ lưu sản phẩm trong giỏ, không lưu trạng thái checkbox.
-         * Vì vậy chỉ dùng fallback này khi không tìm thấy checkoutItemsStorageKey.
-         */
         this.orderItems = items
           .map((item: CartStorageItem) => this.mapCartItemToOrderItem(item))
           .filter((item: OrderItem) => !!item.id && item.qty > 0);
@@ -704,10 +669,6 @@ export class OrderRegistrantComponent implements OnInit {
       requiresReview: !!(item.requiresReview || item.CAN_SHOP_DUYET),
     };
   }
-
-  // ====================================================================
-  // ===== LẤY ĐỊA CHỈ CỦA TÀI KHOẢN =====
-  // ====================================================================
 
   private loadCustomerAddresses(preferredId?: string): void {
     const customerId = this.getCustomerId();
@@ -1011,10 +972,10 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   get productVoucherDiscount(): number {
-    if (!this.selectedVoucher) return 0;
+    if (!this.selectedVoucher || this.isCashVoucher(this.selectedVoucher)) return 0;
+    if (this.serverQuote) return this.serverQuote.productDiscount;
     if (this.isPercentVoucher(this.selectedVoucher)) return Math.min(this.subtotal, Math.round(this.subtotal * this.selectedVoucher.value / 100));
-    return ['tien mat', 'so tien', 'tien co dinh', 'cash', 'fixed'].includes(this.normalizeText(this.selectedVoucher.type))
-      ? Math.min(this.subtotal, Math.max(0, this.selectedVoucher.value)) : 0;
+    return Math.min(this.subtotal, Math.max(0, this.selectedVoucher.value));
   }
 
   get shippingVoucherDiscount(): number {
@@ -1123,13 +1084,10 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   get isCashPaymentBlocked(): boolean {
-    // Giao nhanh chỉ thay đổi phí ship / thời gian giao.
-    // Không khóa COD, MoMo, VNPay hoặc chuyển khoản.
     return false;
   }
 
   isPaymentMethodDisabled(methodValue: string): boolean {
-    // Hiện tại chỉ khóa thẻ ngân hàng vì shop chưa hỗ trợ trực tiếp.
     return methodValue === 'card';
   }
 
@@ -1138,7 +1096,6 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   onShippingMethodChange(): void {
-    // Không tự đổi phương thức thanh toán khi khách đổi giao tiêu chuẩn / giao nhanh.
     if (this.formData.paymentMethod !== 'card') {
       this.paymentCardError = '';
     }
@@ -1209,7 +1166,7 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   private isCashVoucher(voucher: Voucher): boolean {
-    return /freeship|van chuyen/.test(this.normalizeText(voucher.type));
+    return /ship|van chuyen/.test(this.normalizeText(voucher.type));
   }
 
   private normalizeText(value: string): string {
@@ -1360,13 +1317,10 @@ export class OrderRegistrantComponent implements OnInit {
       customerId: this.getCustomerId() || null,
     }).subscribe({
       next: quote => { if (version === this.quoteVersion) { this.serverQuote = quote; this.cdr.detectChanges(); } },
-      error: error => { if (version === this.quoteVersion) { this.serverQuote = null; this.voucherError = error?.error?.message || 'Không thể kiểm tra báo giá.'; this.cdr.detectChanges(); } },
+      error: error => { if (version === this.quoteVersion) { this.serverQuote = null; this.voucherError = error?.error?.message; this.cdr.detectChanges(); } },
     });
   }
 
-  // ====================================================================
-  // ===== MODAL THÊM/SỬA ĐỊA CHỈ =====
-  // ====================================================================
   showAddAddressModal = false;
   editingAddressId: string | null = null;
 
@@ -2011,9 +1965,6 @@ export class OrderRegistrantComponent implements OnInit {
           this.salesRequestId = createdOrder.requestId || '';
           this.salesRequestMessage = createdOrder.message || '';
           this.isSubmittingOrder = false;
-          // Angular 22 can run this HTTP callback outside the render tick in
-          // development/SSR mode. Render the result immediately so the customer
-          // never has to click the checkout screen a second time.
           this.cdr.detectChanges();
           return;
         }
@@ -2056,7 +2007,7 @@ export class OrderRegistrantComponent implements OnInit {
       },
       error: (err: any) => {
         console.error('Lỗi tạo đơn hàng:', err);
-        this.submitOrderError = err?.error?.message || 'Không thể tạo đơn hàng. Vui lòng thử lại.';
+        this.submitOrderError = err?.error?.message;
         this.isSubmittingOrder = false;
       },
     });

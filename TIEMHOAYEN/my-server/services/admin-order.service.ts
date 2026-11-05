@@ -170,7 +170,7 @@ export async function priceCheckout(payload: any, session?: ClientSession, colle
     if (/minigame|vòng quay/i.test(String(voucher.NGUON || voucher.SOURCE || ''))) throw new InventoryError(409, 'Voucher minigame chưa có contract xác minh kích hoạt và đơn gốc trong module hiện tại. Cần nhóm voucher xác nhận dữ liệu trước khi áp dụng.');
     if (voucher.NHOM_KHACH_HANG && !['tat ca', 'all', 'public'].includes(statusKey(voucher.NHOM_KHACH_HANG)) &&
       (!customer || ![statusKey(customer.LOAI_THANH_VIEN), 'thanh vien', 'member'].includes(statusKey(voucher.NHOM_KHACH_HANG)))) throw new InventoryError(400, 'Voucher không dành cho nhóm khách này.');
-    const minimum = Number(voucher.GIA_TRI_DON_TOI_THIEU ?? voucher.DON_HANG_TOI_THIEU ?? 0);
+    const minimum = Number(voucher.DON_TOI_THIEU ?? voucher.GIA_TRI_DON_TOI_THIEU ?? voucher.DON_HANG_TOI_THIEU ?? 0);
     if (!Number.isSafeInteger(minimum) || minimum < 0) throw new InventoryError(409, 'Điều kiện voucher chưa hợp lệ.');
     if (subtotal < minimum) throw new InventoryError(400, 'Đơn chưa đạt điều kiện voucher.');
     const value = Number(voucher.GIA_TRI_GIAM), kind = statusKey(voucher.LOAI_GIAM_GIA);
@@ -180,10 +180,10 @@ export async function priceCheckout(payload: any, session?: ClientSession, colle
       const cap = Number(voucher.GIAM_TOI_DA ?? subtotal);
       if (!Number.isSafeInteger(cap) || cap < 0) throw new InventoryError(409, 'Giới hạn giảm voucher chưa hợp lệ.');
       productDiscount = Math.min(subtotal, Math.round(subtotal * value / 100), cap);
-    } else if (['so tien', 'tien co dinh', 'tien mat', 'cash', 'fixed'].includes(kind)) {
+    } else if (kind === 'tien' || ['so tien', 'tien co dinh', 'tien mat', 'cash', 'fixed'].includes(kind)) {
       if (!Number.isSafeInteger(value)) throw new InventoryError(409, 'Mức giảm tiền phải là số nguyên đồng.');
       productDiscount = Math.min(subtotal, value);
-    } else if (kind.includes('freeship') || kind.includes('van chuyen')) {
+    } else if (kind.includes('ship') || kind.includes('van chuyen')) {
       if (!Number.isSafeInteger(value)) throw new InventoryError(409, 'Mức giảm tiền phải là số nguyên đồng.');
       shippingDiscount = Math.min(baseShippingFee, value);
     }

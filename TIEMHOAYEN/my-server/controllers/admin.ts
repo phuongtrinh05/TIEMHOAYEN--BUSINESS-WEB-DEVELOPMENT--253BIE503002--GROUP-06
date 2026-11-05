@@ -1266,7 +1266,7 @@ export const getAdminDashboard = async (_req: Request, res: Response) => {
 
 export const getAdminCampaigns = async (_req: Request, res: Response) => {
   try {
-    const campaigns = await (await getCollection<any>('CHIEN_DICH')).find({}).sort({ CHIEN_DICH_ID: 1 }).toArray();
+    const campaigns = await (await getCollection<any>('CHIEN_DICH')).find({ DA_XOA: { $ne: true } }).sort({ CHIEN_DICH_ID: 1 }).toArray();
     return res.status(200).json({ total: campaigns.length, campaigns: campaigns.map((item, index) => ({
       id: index + 1, code: item.CHIEN_DICH_ID, name: item.TEN_CHIEN_DICH || '', description: item.MO_TA || '',
       startDate: item.NGAY_BAT_DAU, endDate: item.NGAY_KET_THUC, status: derivePromotionStatus(item),
@@ -1346,7 +1346,7 @@ export const deleteAdminCampaign = async (req: Request, res: Response) => {
   try {
     const result = await (await getCollection<any>('CHIEN_DICH')).updateOne(
       { CHIEN_DICH_ID: req.params.campaignId },
-      { $set: { KICH_HOAT: false, TRANG_THAI: 'Tạm dừng', NGAY_CAP_NHAT: new Date() } },
+      { $set: { DA_XOA: true, KICH_HOAT: false, TRANG_THAI: 'Đã xóa', NGAY_CAP_NHAT: new Date() } },
     );
     if (!result.matchedCount) return res.status(404).json({ message: 'Không tìm thấy chiến dịch.' });
     return res.status(200).json({ message: 'Đã tạm dừng chiến dịch; dữ liệu voucher và đơn cũ được bảo toàn.' });
@@ -1357,7 +1357,7 @@ export const deleteAdminCampaign = async (req: Request, res: Response) => {
 
 export const getAdminVouchers = async (_req: Request, res: Response) => {
   try {
-    const vouchers = await (await getCollection<any>('VOUCHER')).find({}).sort({ VOUCHER_ID: 1 }).toArray();
+    const vouchers = await (await getCollection<any>('VOUCHER')).find({ DA_XOA: { $ne: true } }).sort({ VOUCHER_ID: 1 }).toArray();
     const customerIds = [...new Set(vouchers.map(item => item.KHACH_HANG_ID).filter(Boolean))];
     const customers = customerIds.length ? await (await getCollection<any>('KHACH_HANG')).find({ KHACH_HANG_ID: { $in: customerIds } }).toArray() : [];
     const customerNames = new Map(customers.map(item => [item.KHACH_HANG_ID, item.HO_TEN || item.TEN_KHACH_HANG || '']));
@@ -1495,7 +1495,7 @@ export const deleteAdminVoucher = async (req: Request, res: Response) => {
   try {
     const result = await (await getCollection<any>('VOUCHER')).updateOne(
       { VOUCHER_ID: req.params.voucherId },
-      { $set: { KICH_HOAT: false, TRANG_THAI: 'Tạm dừng', NGAY_CAP_NHAT: new Date() } },
+      { $set: { DA_XOA: true, KICH_HOAT: false, TRANG_THAI: 'Đã xóa', NGAY_CAP_NHAT: new Date() } },
     );
     if (!result.matchedCount) return res.status(404).json({ message: 'Không tìm thấy voucher.' });
     return res.status(200).json({ message: 'Đã tạm dừng voucher; lịch sử sử dụng được bảo toàn.' });
