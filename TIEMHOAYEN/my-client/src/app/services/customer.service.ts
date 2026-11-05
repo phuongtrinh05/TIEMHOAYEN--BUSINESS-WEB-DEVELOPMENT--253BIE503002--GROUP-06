@@ -60,6 +60,8 @@ export interface CustomerVoucher {
   NGAY_BAT_DAU?: string | null;
   NGAY_KET_THUC?: string | null;
   DA_DUNG?: boolean | number;
+  GIAM_TOI_DA?: number | string | null;
+  DON_TOI_THIEU?: number | string | null;
 }
 
 export interface CustomerWishlistItem {

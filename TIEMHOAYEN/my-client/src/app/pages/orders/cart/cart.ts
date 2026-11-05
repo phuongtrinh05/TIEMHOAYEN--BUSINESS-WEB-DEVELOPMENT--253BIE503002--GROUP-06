@@ -86,6 +86,8 @@ interface SuggestedProductResponse {
   SO_LUONG_TON?: number | string | null;
 }
 
+type ShippingMethod = 'express' | 'standard';
+
 interface CartVoucher {
   id: string;
   code: string;
@@ -94,6 +96,8 @@ interface CartVoucher {
   startDate?: string | null;
   endDate?: string | null;
   used?: boolean | number;
+  maxDiscount?: number;
+  minOrder?: number;
 }
 
 @Component({
@@ -115,14 +119,19 @@ export class CartComponent implements OnInit {
   private readonly checkoutItemsStorageKey = 'tiemHoaYenCheckoutItems';
 
   private readonly defaultImage = 'assets/images/hoa.jpg';
-  private readonly estimatedShippingFee = 30000;
+  private readonly shippingMethodStorageKey = 'tiemHoaYenShippingMethod';
   private readonly cartCacheTtlMs = 10 * 60 * 1000;
+
+  /** Nội thành TP.HCM: phí ship theo hình thức giao và giá trị đơn (tạm tính). */
+  readonly shippingMethods: { id: ShippingMethod; label: string; eta: string }[] = [
+    { id: 'standard', label: 'Giao tiêu chuẩn', eta: 'Trong ngày làm việc' },
+    { id: 'express', label: 'Giao nhanh hỏa tốc', eta: '2-4 giờ, trong giờ làm việc' },
+  ];
+  shippingMethod: ShippingMethod = 'standard';
 
   cartItems: CartItem[] = [];
   suggestedProducts: SuggestedProduct[] = [];
   availableVouchers: CartVoucher[] = [];
-  selectedProductVoucher: CartVoucher | null = null;
-  selectedShippingVoucher: CartVoucher | null = null;
   serverQuote: ServerQuote | null = null;
   quoteError = '';
   cartError = '';
@@ -144,6 +153,7 @@ export class CartComponent implements OnInit {
 
   ngOnInit(): void {
     this.cachedCustomerId = this.resolveCustomerId();
+    this.restoreShippingMethod();
     this.restoreCustomerCartCache();
     this.loadCartByLoginState();
 
@@ -449,8 +459,6 @@ export class CartComponent implements OnInit {
 
     if (!customerId) {
       this.availableVouchers = [];
-      this.selectedProductVoucher = null;
-      this.selectedShippingVoucher = null;
       return;
     }
 
@@ -463,14 +471,11 @@ export class CartComponent implements OnInit {
           .filter((item: CustomerVoucher) => this.isVoucherValidDate(item))
           .map((item: CustomerVoucher) => this.mapCustomerVoucher(item));
 
-        this.pickBestVouchersForSummary();
         this.cdr.detectChanges();
       },
       error: (err: unknown) => {
         console.error('Lỗi load voucher của khách hàng:', err);
         this.availableVouchers = [];
-        this.selectedProductVoucher = null;
-        this.selectedShippingVoucher = null;
         this.cdr.detectChanges();
       },
     });
@@ -514,25 +519,75 @@ export class CartComponent implements OnInit {
       startDate: item.NGAY_BAT_DAU || null,
       endDate: item.NGAY_KET_THUC || null,
       used: item.DA_DUNG,
+      maxDiscount: Number(item.GIAM_TOI_DA || 0),
+      minOrder: Number(item.DON_TOI_THIEU || 0),
     };
   }
 
-  private pickBestVouchersForSummary(): void {
-    const productVouchers = this.availableVouchers
-      .filter((voucher: CartVoucher) => !this.isShippingVoucher(voucher))
-      .sort((a: CartVoucher, b: CartVoucher) => this.estimatedProductSaving(b) - this.estimatedProductSaving(a));
+  /**
+   * Chỉ chọn MỘT voucher (sản phẩm hoặc ship) có mức giảm thực tế cao nhất
+   * theo tạm tính và phí ship hiện tại.
+   */
+  private get bestVoucher(): { voucher: CartVoucher; discount: number; shipping: boolean } | null {
+    const subtotal = this.getSubtotal();
+    const shippingFee = this.getShippingFee();
+    let best: { voucher: CartVoucher; discount: number; shipping: boolean } | null = null;
 
-    const shippingVouchers = this.availableVouchers
-      .filter((voucher: CartVoucher) => this.isShippingVoucher(voucher))
-      .sort((a: CartVoucher, b: CartVoucher) => b.value - a.value);
+    for (const voucher of this.availableVouchers) {
+      const shipping = this.isShippingVoucher(voucher);
+      const discount = shipping
+        ? this.calculateShippingVoucherDiscount(voucher, subtotal, shippingFee)
+        : this.calculateProductVoucherDiscount(voucher, subtotal);
 
-    const productVoucher = productVouchers[0] || null;
-    const shippingVoucher = shippingVouchers[0] || null;
-    const productSaving = productVoucher ? this.estimatedProductSaving(productVoucher) : 0;
-    const shippingSaving = shippingVoucher ? Math.min(this.getShippingFee(), shippingVoucher.value) : 0;
-    this.selectedProductVoucher = productSaving >= shippingSaving ? productVoucher : null;
-    this.selectedShippingVoucher = shippingSaving > productSaving ? shippingVoucher : null;
-    this.recalculateServerQuote();
+      if (discount > (best?.discount ?? 0)) {
+        best = { voucher, discount, shipping };
+      }
+    }
+
+    return best;
+  }
+
+  get selectedProductVoucher(): CartVoucher | null {
+    const best = this.bestVoucher;
+    return best && !best.shipping ? best.voucher : null;
+  }
+
+  get selectedShippingVoucher(): CartVoucher | null {
+    const best = this.bestVoucher;
+    return best && best.shipping ? best.voucher : null;
+  }
+
+  private calculateShippingVoucherDiscount(voucher: CartVoucher, subtotal: number, shippingFee: number): number {
+    if (shippingFee <= 0 || voucher.value <= 0) return 0;
+    if ((voucher.minOrder || 0) > 0 && subtotal < (voucher.minOrder || 0)) return 0;
+
+    let discount = this.isPercentVoucher(voucher)
+      ? Math.round((shippingFee * voucher.value) / 100)
+      : voucher.value;
+
+    if (this.isPercentVoucher(voucher) && (voucher.maxDiscount || 0) > 0) {
+      discount = Math.min(discount, voucher.maxDiscount as number);
+    }
+
+    return Math.min(shippingFee, Math.max(0, Math.round(discount)));
+  }
+
+  private calculateProductVoucherDiscount(voucher: CartVoucher, subtotal: number): number {
+    if (subtotal <= 0 || voucher.value <= 0) return 0;
+    if ((voucher.minOrder || 0) > 0 && subtotal < (voucher.minOrder || 0)) return 0;
+
+    let discount: number;
+
+    if (this.isPercentVoucher(voucher)) {
+      discount = Math.round((subtotal * voucher.value) / 100);
+      if ((voucher.maxDiscount || 0) > 0) {
+        discount = Math.min(discount, voucher.maxDiscount as number);
+      }
+    } else {
+      discount = voucher.value;
+    }
+
+    return Math.min(subtotal, Math.max(0, Math.round(discount)));
   }
 
   private isPercentVoucher(voucher: CartVoucher): boolean {
@@ -544,21 +599,33 @@ export class CartComponent implements OnInit {
     return type === this.normalizeText('Phí vận chuyển') || type.includes('ship');
   }
 
-  private estimatedProductSaving(voucher: CartVoucher): number {
-    const subtotal = this.cartItems
-      .filter(item => item.selected && this.isProductItem(item))
-      .reduce((sum, item) => sum + item.price * item.quantity, 0);
-    return this.isPercentVoucher(voucher)
-      ? Math.min(subtotal, subtotal * voucher.value / 100)
-      : Math.min(subtotal, Math.max(0, voucher.value));
-  }
-
+  /** Báo giá sản phẩm (không ship, không voucher) để cập nhật giá hiện tại. Báo giá chính thức thực hiện ở checkout. */
   private recalculateServerQuote(): void {
-    const items = this.cartItems.filter(item => item.selected && this.isProductItem(item)).map(item => ({ id: item.id, quantity: item.quantity, lineKey: item.lineKey, variantId: item.variantId, designId: item.designId, configuration: item.configuration, displayedUnitPrice: item.price }));
+    const items = this.cartItems
+      .filter(item => item.selected && this.isProductItem(item))
+      .map(item => ({
+        id: item.id,
+        quantity: item.quantity,
+        lineKey: item.lineKey,
+        variantId: item.variantId,
+        designId: item.designId,
+        configuration: item.configuration,
+        displayedUnitPrice: item.price,
+      }));
     const requestVersion = ++this.quoteRequestVersion;
-    if (!items.length) { this.serverQuote = null; this.quoteError = ''; return; }
-    const selected = this.selectedProductVoucher || this.selectedShippingVoucher;
-    this.pricingService.quote({ items, shippingFee: this.getShippingFee(), voucher: selected ? { id: selected.id, code: selected.code } : null, customerId: this.getCustomerId() || null }).subscribe({
+
+    if (!items.length) {
+      this.serverQuote = null;
+      this.quoteError = '';
+      return;
+    }
+
+    this.pricingService.quote({
+      items,
+      shippingFee: 0,
+      voucher: null,
+      customerId: this.getCustomerId() || null,
+    }).subscribe({
       next: quote => {
         if (requestVersion !== this.quoteRequestVersion) return;
         quote.items.forEach(serverItem => {
@@ -573,18 +640,16 @@ export class CartComponent implements OnInit {
           item.availabilityDecision = String(serverItem.availability?.decision || '');
           item.maxQuantity = undefined;
         });
-        this.serverQuote = quote; this.quoteError = ''; this.cdr.detectChanges();
+        this.serverQuote = quote;
+        this.quoteError = '';
+        this.cdr.detectChanges();
       },
       error: error => {
         if (requestVersion !== this.quoteRequestVersion) return;
-        if (selected) {
-          this.selectedProductVoucher = null;
-          this.selectedShippingVoucher = null;
-          this.recalculateServerQuote();
-          return;
-        }
-        this.serverQuote = null; this.quoteError = error?.error?.message || 'Không thể kiểm tra voucher.'; this.cdr.detectChanges();
-      }
+        this.serverQuote = null;
+        this.quoteError = error?.error?.message || 'Không thể kiểm tra giá sản phẩm.';
+        this.cdr.detectChanges();
+      },
     });
   }
 
@@ -637,15 +702,42 @@ export class CartComponent implements OnInit {
   }
 
   increaseQty(item: CartItem): void {
+    this.setQuantity(item, item.quantity + 1);
+  }
+
+  decreaseQty(item: CartItem): void {
+    this.setQuantity(item, item.quantity - 1);
+  }
+
+  /** Nhập số lượng trực tiếp trong ô số lượng của giỏ hàng. */
+  onQuantityInput(item: CartItem, event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const parsed = Math.floor(Number(input.value));
+    const next = Number.isFinite(parsed) && parsed >= 1 ? parsed : item.quantity;
+
+    this.setQuantity(item, next);
+    input.value = String(item.quantity);
+  }
+
+  private setQuantity(item: CartItem, requested: number): void {
     if (!item.purchasable) return;
-    if (item.maxQuantity && item.quantity >= item.maxQuantity) {
-      console.warn(`Số lượng "${item.name}" đã đạt tối đa`);
-      return;
+
+    let next = Math.max(1, Math.floor(requested));
+    if (item.maxQuantity && next > item.maxQuantity) {
+      next = item.maxQuantity;
+      this.cartError = `"${item.name}" chỉ còn tối đa ${item.maxQuantity} sản phẩm.`;
+    } else {
+      this.cartError = '';
     }
 
     const previousQuantity = item.quantity;
-    item.quantity++;
-    if(item.id.startsWith('SP3D_'))this.hydrateDesignItems();
+    if (next === previousQuantity) {
+      this.cdr.detectChanges();
+      return;
+    }
+
+    item.quantity = next;
+    if (item.id.startsWith('SP3D_')) this.hydrateDesignItems();
     this.saveCustomerCartCache();
     this.cdr.detectChanges();
     this.recalculateServerQuote();
@@ -658,25 +750,25 @@ export class CartComponent implements OnInit {
     this.saveGuestCartToStorage();
   }
 
-  decreaseQty(item: CartItem): void {
-    if (!item.purchasable) return;
-    if (item.quantity <= 1) {
-      return;
-    }
+  /** Bấm vào ảnh/tên sản phẩm trong giỏ để mở trang chi tiết. */
+  canOpenProductDetail(item: CartItem): boolean {
+    return !!item.id && item.id.startsWith('SP') && !item.id.startsWith('SP3D_');
+  }
 
-    const previousQuantity = item.quantity;
-    item.quantity--;
-    if(item.id.startsWith('SP3D_'))this.hydrateDesignItems();
-    this.saveCustomerCartCache();
-    this.cdr.detectChanges();
-    this.recalculateServerQuote();
+  goToProductDetail(item: CartItem): void {
+    if (!this.canOpenProductDetail(item)) return;
 
-    if (this.isLoggedIn && this.isProductItem(item)) {
-      this.updateDatabaseQuantity(item, previousQuantity);
-      return;
-    }
-
-    this.saveGuestCartToStorage();
+    this.router.navigate(['/product-detail', item.id], {
+      state: {
+        productPreview: {
+          id: item.id,
+          name: item.name,
+          image: item.image,
+          price: item.price,
+          originalPrice: item.originalPrice ?? null,
+        },
+      },
+    });
   }
 
   private updateDatabaseQuantity(item: CartItem, previousQuantity: number): void {
@@ -693,6 +785,8 @@ export class CartComponent implements OnInit {
       error: (err: unknown) => {
         console.error('Lỗi cập nhật số lượng database:', err);
         item.quantity = previousQuantity;
+        this.saveCustomerCartCache();
+        this.recalculateServerQuote();
         this.cartError = (err as any)?.error?.message || 'Không thể cập nhật số lượng sản phẩm.';
         this.cdr.detectChanges();
       },
@@ -794,33 +888,63 @@ export class CartComponent implements OnInit {
       .reduce((sum: number, item: CartItem) => sum + item.price * item.quantity, 0);
   }
 
+  /**
+   * Phí ship nội thành TP.HCM theo bảng quy định (tính theo tạm tính):
+   *  - Hỏa tốc: < 300.000đ: 60.000đ | 300.000-500.000đ: 30.000đ | > 500.000đ: miễn phí
+   *  - Tiêu chuẩn: < 300.000đ: 30.000đ | từ 300.000đ trở lên: miễn phí
+   */
   getShippingFee(): number {
-    return this.getSelectedCount() > 0 ? this.estimatedShippingFee : 0;
+    if (this.getSelectedCount() === 0) return 0;
+
+    const subtotal = this.getSubtotal();
+
+    if (this.shippingMethod === 'express') {
+      if (subtotal < 300000) return 60000;
+      if (subtotal <= 500000) return 30000;
+      return 0;
+    }
+
+    return subtotal < 300000 ? 30000 : 0;
+  }
+
+  setShippingMethod(method: ShippingMethod): void {
+    this.shippingMethod = method;
+
+    if (this.isBrowser) {
+      try {
+        localStorage.setItem(this.shippingMethodStorageKey, method);
+      } catch {
+      }
+    }
+
+    this.cdr.detectChanges();
+  }
+
+  private restoreShippingMethod(): void {
+    if (!this.isBrowser) return;
+
+    try {
+      const saved = localStorage.getItem(this.shippingMethodStorageKey);
+      if (saved === 'express' || saved === 'standard') {
+        this.shippingMethod = saved;
+      }
+    } catch {
+    }
   }
 
   getProductVoucherDiscount(): number {
-    if (this.serverQuote) return this.serverQuote.productDiscount;
-    if (!this.selectedProductVoucher || this.getSubtotal() <= 0) {
-      return 0;
-    }
-
-    return Math.min(
-      this.getSubtotal(),
-      Math.round((this.getSubtotal() * this.selectedProductVoucher.value) / 100)
-    );
+    const voucher = this.selectedProductVoucher;
+    return voucher ? this.calculateProductVoucherDiscount(voucher, this.getSubtotal()) : 0;
   }
 
   getShippingVoucherDiscount(): number {
-    if (this.serverQuote) return this.serverQuote.shippingDiscount;
-    if (!this.selectedShippingVoucher || this.getShippingFee() <= 0) {
-      return 0;
-    }
-
-    return Math.min(this.getShippingFee(), Math.max(0, this.selectedShippingVoucher.value));
+    const voucher = this.selectedShippingVoucher;
+    return voucher
+      ? this.calculateShippingVoucherDiscount(voucher, this.getSubtotal(), this.getShippingFee())
+      : 0;
   }
 
   getTotal(): number {
-    if (this.serverQuote) return this.serverQuote.total;
     return Math.max(
       0,
       this.getSubtotal() +

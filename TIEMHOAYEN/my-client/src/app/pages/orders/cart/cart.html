@@ -51,10 +51,21 @@
           </div>
 
           <div class="col-product">
-            <img [src]="item.image" [alt]="item.name" class="item-image">
+            <img
+              [src]="item.image"
+              [alt]="item.name"
+              class="item-image"
+              [class.clickable]="canOpenProductDetail(item)"
+              [attr.role]="canOpenProductDetail(item) ? 'link' : null"
+              (click)="goToProductDetail(item)">
 
             <div class="item-info">
-              <p class="item-name">{{ item.name }}</p><p *ngIf="item.designId" class="item-meta">{{item.requiresReview ? 'Cần shop duyệt · Giá tạm tính' : 'Mẫu đã được duyệt'}}</p>
+              <p class="item-name"
+                 [class.clickable]="canOpenProductDetail(item)"
+                 [attr.role]="canOpenProductDetail(item) ? 'link' : null"
+                 [attr.tabindex]="canOpenProductDetail(item) ? 0 : null"
+                 (click)="goToProductDetail(item)"
+                 (keydown.enter)="goToProductDetail(item)">{{ item.name }}</p><p *ngIf="item.designId" class="item-meta">{{item.requiresReview ? 'Cần shop duyệt · Giá tạm tính' : 'Mẫu đã được duyệt'}}</p>
               <p class="item-meta">Kiểu dáng: {{ item.style }}</p>
               <p class="item-meta item-topic">
                 Chủ đề: <span>{{ getCartTopicLabel(item) }}</span>
@@ -75,7 +86,15 @@
           <div class="col-qty">
             <div class="qty-control">
               <button type="button" (click)="decreaseQty(item)" [disabled]="!item.purchasable">-</button>
-              <span>{{ item.quantity }}</span>
+              <input
+                type="number"
+                class="qty-input"
+                min="1"
+                inputmode="numeric"
+                aria-label="Số lượng"
+                [value]="item.quantity"
+                [disabled]="!item.purchasable"
+                (change)="onQuantityInput(item, $event)">
               <button type="button" (click)="increaseQty(item)" [disabled]="!item.purchasable">+</button>
             </div>
           </div>
@@ -113,16 +132,17 @@
 
       <div class="summary-row">
         <span>Phí ship:</span>
-        <span>{{ formatPrice(getShippingFee()) }}</span>
+        <span>{{ getSelectedCount() > 0 && getShippingFee() === 0 ? 'Miễn phí' : formatPrice(getShippingFee()) }}</span>
       </div>
 
       <div class="summary-row voucher-row" *ngIf="getProductVoucherDiscount() > 0">
-        <span class="voucher-tag">Voucher giảm</span>
+        <span class="voucher-tag">Voucher {{ selectedProductVoucher?.code }}</span>
         <span class="discount-value">-{{ formatPrice(getProductVoucherDiscount()) }}</span>
       </div>
 
+
       <div class="summary-row voucher-row" *ngIf="getShippingVoucherDiscount() > 0">
-        <span class="voucher-tag">Voucher ship</span>
+        <span class="voucher-tag">Voucher {{ selectedShippingVoucher?.code }}</span>
         <span class="discount-value">-{{ formatPrice(getShippingVoucherDiscount()) }}</span>
       </div>
 

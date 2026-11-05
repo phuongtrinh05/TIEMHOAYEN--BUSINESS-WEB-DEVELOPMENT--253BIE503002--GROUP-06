@@ -1280,3 +1280,50 @@
     font-size: 0.98rem;
   }
 }
+/* Thêm vào cuối cart.css */
+.item-image.clickable,
+.item-name.clickable {
+  cursor: pointer;
+}
+
+.item-name.clickable:hover {
+  text-decoration: underline;
+}
+
+.qty-control .qty-input {
+  width: 48px;
+  text-align: center;
+  border: none;
+  background: transparent;
+  font: inherit;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.qty-control .qty-input::-webkit-outer-spin-button,
+.qty-control .qty-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.shipping-methods {
+  margin: 8px 0 12px;
+}
+
+.shipping-methods-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+
+.shipping-method {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  cursor: pointer;
+}
+
+.shipping-method small {
+  display: block;
+  color: #777;
+}
