@@ -1,15 +1,14 @@
 import { before, after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import axios from 'axios';
 const uri = process.env.TEST_MONGO_URI;
 if (!uri) test('marketing requires isolated local MongoDB', { skip: true }, () => {});
 else {
   if (!/^mongodb:\/\/127\.0\.0\.1:/.test(uri)) throw new Error('Local test database required');
   process.env.MONGO_URI = uri;
   process.env.MONGO_DATABASE = 'TIEM_HOA_YEN_MARKETING_TEST_' + randomUUID().replaceAll('-', '');
-  delete process.env.RESEND_API_KEY;
-  delete process.env.MARKETING_EMAIL_FROM;
+  delete process.env.APPS_SCRIPT_MARKETING_URL;
+  delete process.env.APPS_SCRIPT_MARKETING_SECRET;
   let mongo: typeof import('../mongo.js'), m: typeof import('../services/marketing.service.js'), server: any, base: string;
   const staff = { 'x-admin-id': 'NV_MKT' };
   let memberToken = '';
@@ -135,17 +134,30 @@ else {
     const own = await request('/notifications?customerId=C1', 'GET', undefined, { 'x-order-access': memberToken }); assert.ok(own.data.notifications.length > 0);
     const other = await request('/notifications?customerId=C3', 'GET', undefined, { 'x-order-access': memberToken }); assert.equal(other.data.notifications.length, 0);
   });
-  test('email retries reuse exact text and provider idempotency key, report accepted rather than delivered', async () => {
+  test('email retries reuse exact text and Apps Script request id, report accepted rather than delivered', async () => {
     const t = template('TE', { KENH_GUI: 'email' }), c = config('CE', 'TE');
     await (await col('MAU_TIN_NHAN')).insertOne(t); await (await col('CAU_HINH_GUI_TU_DONG')).insertOne(c); await m.enqueue(c, t, customer('C1'), 'email');
-    process.env.RESEND_API_KEY = 'local-fake'; process.env.MARKETING_EMAIL_FROM = 'Hoa Yến <test@example.com>'; process.env.MARKETING_PUBLIC_URL = 'https://example.com';
-    const original = axios.post; const calls: any[] = [];
-    (axios as any).post = async (_url: string, body: any, options: any) => { calls.push({ body, options }); if (calls.length === 1) throw new Error('Temporary'); return { data: { id: 'provider-test-id' } }; };
+    process.env.APPS_SCRIPT_MARKETING_URL = 'https://script.google.com/macros/s/test-deployment/exec';
+    process.env.APPS_SCRIPT_MARKETING_SECRET = 'test-marketing-secret-at-least-32-characters';
+    process.env.MARKETING_PUBLIC_URL = 'https://example.com';
+    const original = globalThis.fetch; const calls: any[] = [];
+    globalThis.fetch = (async (_url: any, options: any) => {
+      calls.push(JSON.parse(options.body));
+      if (calls.length === 1) throw new Error('Temporary');
+      return new Response(JSON.stringify({ ok: true, code: 'SENT' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
     try {
       await m.deliverMarketing(); const row = await (await col('LICH_SU_GUI')).findOne({ CAU_HINH_ID: 'CE' }); assert.equal(row.TRANG_THAI, 'Chờ gửi');
       await (await col('LICH_SU_GUI')).updateOne({ GUI_ID: row.GUI_ID }, { $set: { LAN_THU_TIEP_THEO: new Date(0) } });
-      await m.deliverMarketing(); assert.equal(calls.length, 2); assert.deepEqual(calls[0].body, calls[1].body); assert.equal(calls[0].options.headers['Idempotency-Key'], calls[1].options.headers['Idempotency-Key']);
-      assert.match(calls[1].body.text, /unsubscribe\?token=/); assert.equal((await (await col('LICH_SU_GUI')).findOne({ GUI_ID: row.GUI_ID }))?.MA_GUI_NHA_CUNG_CAP, 'provider-test-id');
-    } finally { axios.post = original; delete process.env.RESEND_API_KEY; }
+      await m.deliverMarketing(); assert.equal(calls.length, 2);
+      const first = JSON.parse(calls[0].payload), second = JSON.parse(calls[1].payload);
+      assert.equal(first.body, second.body); assert.equal(first.requestId, second.requestId);
+      assert.match(second.body, /unsubscribe\?token=/);
+      assert.equal((await (await col('LICH_SU_GUI')).findOne({ GUI_ID: row.GUI_ID }))?.MA_GUI_NHA_CUNG_CAP, `apps-script:${row.KHOA_CHONG_TRUNG}:SENT`);
+    } finally {
+      globalThis.fetch = original;
+      delete process.env.APPS_SCRIPT_MARKETING_URL;
+      delete process.env.APPS_SCRIPT_MARKETING_SECRET;
+    }
   });
 }

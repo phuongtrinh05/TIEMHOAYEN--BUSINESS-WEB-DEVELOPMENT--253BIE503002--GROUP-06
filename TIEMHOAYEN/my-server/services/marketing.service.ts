@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
-import axios from 'axios';
 import { getCollection } from '../mongo.js';
 import { InventoryError, withTransaction } from './inventory/helpers.js';
+import { appsScriptMarketingReady, sendAppsScriptMarketingEmail } from './apps-script-marketing.service.js';
 
 export const purposes = ['Quảng cáo', 'Voucher', 'Sản phẩm mới', 'Nhắc đánh giá', 'Dịp đặc biệt'];
 export const channels = ['website', 'email'];
@@ -16,7 +16,7 @@ const active = (c: any) => c && !c.DA_XOA && !/khóa|ngừng|inactive/i.test(c.T
 export const emailReady = () => {
   try {
     const url = new URL(process.env.MARKETING_PUBLIC_URL || '');
-    return Boolean(process.env.RESEND_API_KEY && process.env.MARKETING_EMAIL_FROM && ['http:', 'https:'].includes(url.protocol)
+    return Boolean(appsScriptMarketingReady() && ['http:', 'https:'].includes(url.protocol)
       && (process.env.NODE_ENV !== 'production' || url.protocol === 'https:'));
   } catch { return false; }
 };
@@ -138,11 +138,7 @@ export async function unsubscribe(token: string) {
 }
 export async function sendEmail(to: string, subject: string, text: string, key: string) {
   if (!emailReady()) bad('Email chưa được cấu hình.', 503);
-  const r = await axios.post('https://api.resend.com/emails', { from: process.env.MARKETING_EMAIL_FROM, to: [to], subject, text }, {
-    headers: { Authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'Idempotency-Key': key }, timeout: 15000,
-  });
-  if (!r.data?.id) throw new Error('Nhà cung cấp chưa xác nhận tiếp nhận email.');
-  return String(r.data.id);
+  return sendAppsScriptMarketingEmail({ to, subject, body: text, requestId: key });
 }
 export async function deliverMarketing(now = new Date()) {
   const logs = await col('LICH_SU_GUI');
