@@ -1,5 +1,5 @@
 <main>
-  <div class="summary-grid"><div class="summary-card"><span>Tất cả</span><strong>{{allCount}}</strong></div><div class="summary-card new"><span>Chờ tiếp nhận</span><strong>{{waitingCount}}</strong></div><div class="summary-card urgent-card"><span>Cần xử lý sớm</span><strong>{{urgentCount}}</strong></div></div>
+  <div class="summary-grid"><div class="summary-card"><span>Tất cả</span><strong>{{allCount}}</strong></div><div class="summary-card new"><span>Chờ xử lý</span><strong>{{waitingCount}}</strong></div><div class="summary-card urgent-card"><span>Cần xử lý sớm</span><strong>{{urgentCount}}</strong></div></div>
   <div class="filter-bar"><div class="request-search"><div><i class="bi bi-search"></i><input id="request-search" aria-label="Tìm yêu cầu" [(ngModel)]="queueSearch" (keyup.enter)="applySearch()" placeholder="Mã yêu cầu, sản phẩm, người đặt"><button (click)="applySearch()" [disabled]="loading">Tìm</button>@if(appliedQueueSearch){<button class="clear-search" (click)="clearSearch()" aria-label="Xóa tìm kiếm"><i class="bi bi-x-lg"></i></button>}</div></div><div class="status-filter"><select id="request-status" aria-label="Lọc trạng thái" [(ngModel)]="status" (ngModelChange)="page=1;active=null;load()"><option value="">Tất cả trạng thái</option>@for (s of statuses; track s) { <option [value]="s">{{s}}</option> }</select></div></div>
   @if (error) { <p class="error" role="alert">{{error}}</p> }
   @if (!loading && !requests.length) { <p>Chưa có yêu cầu trong nhóm này.</p> }
@@ -19,13 +19,39 @@
         @if(canShowConfirmOriginal){<button class="confirm" (click)="confirmOriginal()" [disabled]="busy||!canConfirmOriginal" [title]="editing ? 'Đóng hoặc hủy chỉnh sửa trước khi xác nhận yêu cầu' : ''"><i class="bi bi-check2-circle"></i> Xác nhận yêu cầu</button>}
         @if(['Sales đang xử lý','Chờ khách xác nhận'].includes(r.status)){<button class="reject-outline" (click)="showDecision=!showDecision"><i class="bi bi-x-circle"></i> Không thể đáp ứng</button>}
       </div>
-      @if(showOriginalConfirm && canConfirmOriginal){<div class="confirm-box"><div><strong>Gửi yêu cầu gốc để khách xác nhận</strong><p>Hệ thống gửi đúng mẫu, số lượng, giá và lịch giao hiện tại. Chỉ sau khi khách đồng ý, hệ thống mới kiểm tra tồn, giữ hàng, tạo đơn và mở thanh toán.</p></div><div class="confirm-summary">@for(item of r.items;track item.productId){<span>{{item.name}} × {{item.quantity}}</span>}<span>Giao {{r.delivery?.date}} · {{r.delivery?.time}}</span><span>Tổng dự kiến {{r.originalSummary?.total||0|number:'1.0-0'}}đ</span></div><div class="confirm-actions"><button class="confirm" (click)="confirmOriginal()" [disabled]="busy">Gửi khách xác nhận</button><button class="secondary" (click)="showOriginalConfirm=false">Quay lại</button></div></div>}
+      @if(showOriginalConfirm && canConfirmOriginal){<div class="confirm-box"><div><strong>Xác nhận yêu cầu và tạo đơn hàng</strong><p>Hệ thống kiểm tra tồn, giữ NVL (kể cả NVL thay thế đã chọn) và tạo đơn ở trạng thái <b>Đã xác nhận đơn hàng</b>. Khách thanh toán trong 24 giờ (không muộn hơn mốc chuẩn bị); quá hạn đơn tự hủy. Muốn đổi mẫu, số lượng, giá hoặc lịch giao thì sửa yêu cầu để gửi bản thảo cho khách xác nhận.</p></div><div class="confirm-summary">@for(item of r.items;track item.productId){<span>{{item.name}} × {{item.quantity}}</span>}<span>Giao {{r.delivery?.date}} · {{r.delivery?.time}}</span><span>Tổng dự kiến {{r.originalSummary?.total||0|number:'1.0-0'}}đ</span></div><div class="confirm-actions"><button class="confirm" (click)="confirmOriginal()" [disabled]="busy">Xác nhận &amp; tạo đơn</button><button class="secondary" (click)="showOriginalConfirm=false">Quay lại</button></div></div>}
       @if(showDecision){<div class="decision-box"><strong>Xác nhận không thể đáp ứng yêu cầu?</strong><p>Nhập lý do rõ ràng để khách biết kết quả xử lý.</p><textarea [(ngModel)]="note" maxlength="2000" rows="2" placeholder="Lý do từ chối yêu cầu"></textarea><div><button class="reject" (click)="update(r,'reject')" [disabled]="busy||!note.trim()">Xác nhận từ chối</button><button class="secondary" (click)="showDecision=false">Quay lại</button></div></div>}
       <div class="work-switcher merged"><button [class.active]="workTab==='stock'" (click)="workTab='stock'"><i class="bi bi-receipt"></i> Yêu cầu</button><button class="secondary" [class.active]="workTab==='history'" (click)="workTab='history';editing=false"><i class="bi bi-clock-history"></i> Lịch sử xử lý</button></div>
       @if(workTab==='stock') {
       <section class="request-people">
         <div><span>NGƯỜI ĐẶT</span><strong>{{r.sender?.name || 'Khách đặt hoa'}}</strong><a [href]="'tel:'+r.sender?.phone">{{r.sender?.phone || 'Chưa có số điện thoại'}}</a></div>
         <div><span>NGƯỜI NHẬN</span><strong>{{r.receiver?.name || 'Chưa có thông tin'}}</strong><p>{{r.receiver?.phone || 'Chưa có số điện thoại'}}</p><small>{{r.receiver?.address || 'Chưa có địa chỉ giao'}}</small></div>
+      </section>
+      <section class="routing-reason-card">
+        <div class="routing-reason-head"><span>VÌ SAO YÊU CẦU ĐẾN SALES</span>@for(label of reasonLabels(r);track label){<b class="reason-chip">{{label}}</b>}</div>
+        <div class="routing-reason-grid">
+          <div><small>Khách muốn giao</small><strong>{{r.delivery?.date}} · {{r.delivery?.time}}</strong>@if(hoursUntil(r)){<small>Còn {{hoursUntil(r)}} lúc khách gửi</small>}</div>
+          <div><small>Giá khách xem lúc đặt</small><strong>{{(r.originalSummary?.total || 0) | number:'1.0-0'}}đ</strong></div>
+          <div><small>Phương án hiện tại</small><strong>@if(r.quote){Bản {{r.quote.revision}} · {{(r.quote.summary?.total || 0) | number:'1.0-0'}}đ}@else{Chưa có phương án}</strong></div>
+        </div>
+        @if(r.materialCheck?.shortages?.length){
+          <p class="routing-reason-title">NVL thiếu cho phần phải cắm (đã trừ thành phẩm có sẵn, cộng dồn giữa các dòng)</p>
+          <div class="table-scroll"><table><thead><tr><th>Nguyên liệu</th><th>Cần</th><th>Khả dụng</th><th>Thiếu</th><th>Dùng cho</th></tr></thead><tbody>
+            @for(m of r.materialCheck.shortages;track m.materialId){<tr><td><b>{{m.name}}</b><small>{{m.materialId}}</small></td><td>{{m.required}} {{m.unit}}</td><td>{{m.available}} {{m.unit}}</td><td class="shortage">{{m.missing}} {{m.unit}}</td><td>{{m.usedBy?.join(', ')}}</td></tr>}
+          </tbody></table></div>
+        }
+        @if(r.materialCheck?.lines?.length){
+          <p class="routing-reason-title">Số lượng yêu cầu, thành phẩm có sẵn và BOM lúc khách gửi</p>
+          <div class="table-scroll"><table><thead><tr><th>Sản phẩm</th><th>Khách đặt</th><th>Thành phẩm sẵn</th><th>Phải cắm</th><th>BOM</th></tr></thead><tbody>
+            @for(line of r.materialCheck.lines;track line.productId){<tr><td><b>{{line.name}}</b><small>{{line.productId}}</small></td><td>{{line.quantity}}</td><td>{{line.finishedAvailable}}</td><td>{{line.toMake}}</td><td>@if(line.bom){<span>{{line.bom.bomId}} · v{{line.bom.version}}</span>}@else{<span>Chưa có BOM</span>}@for(m of line.materials;track m.materialId){<small>{{m.materialId}}: {{m.perUnit}}/bó → {{m.required}} {{m.unit}}</small>}</td></tr>}
+          </tbody></table></div>
+        }
+        @for(d of r.customDesigns || [];track d.productId){
+          <div class="custom-design-snapshot">@if(d.image){<img [src]="image(d.image)" [alt]="d.name">}<div><b>Thiết kế riêng: {{d.name}} × {{d.quantity}}</b><small>Bố cục: {{d.arrangement}} · Giá dự kiến {{(d.price || 0) | number:'1.0-0'}}đ/bó</small>
+            @for(m of d.materials;track m.materialId){<small>{{m.name}}: {{m.perUnit}} {{m.unit}}/bó → cần {{m.required}}, khả dụng {{m.available}}@for(c of m.colors || [];track c.color){<span> · {{c.color}} {{c.quantity}}</span>}</small>}
+            @for(n of d.notes || [];track n){<small class="shortage">{{n}}</small>}</div></div>
+        }
+        @for(issue of r.dataIssues || [];track issue){<p class="reason">{{issue}}</p>}
       </section>
       @if(!options){
       <section class="stock-card current-request-card loading-request-card">
@@ -67,7 +93,7 @@
       </section>}
       }
       @if(workTab==='stock' && r.quote) {
-      @if (['Chờ thanh toán','Chờ khách thanh toán'].includes(r.status)) { <p class="payment-notice"><b>Đang chờ khách thanh toán.</b> Khi khoản trả trước được xác nhận thành công, yêu cầu sẽ chuyển sang luồng đơn chờ giao hàng.</p> }
+      @if (['Chờ thanh toán','Chờ khách thanh toán'].includes(r.status)) { <p class="payment-notice"><b>Đơn đã tạo ở trạng thái Đã xác nhận đơn hàng, đang chờ khách thanh toán@if(r.paymentDeadlineAt){ trước {{r.paymentDeadlineAt | date:'HH:mm dd/MM'}}}.</b> Khi khoản trả trước được xác nhận thành công, yêu cầu sẽ chuyển sang luồng đơn chờ giao hàng.</p> }
       @if (r.orderResult) { <a [routerLink]="['/orders/order-detail', r.orderResult.orderId]">Xem đơn {{r.orderResult.orderId}}</a> }
       @if (false) {
         <div class="editor">

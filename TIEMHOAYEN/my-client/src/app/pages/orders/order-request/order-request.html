@@ -11,12 +11,13 @@
     <section class="request-overview">
       <div class="request-heading"><div><span class="eyebrow">MÃ YÊU CẦU</span><h2>{{request.requestId}}</h2></div><div class="request-heading-actions"><span class="status-pill">{{request.status === 'Khách đã hủy' ? 'Đã hủy yêu cầu' : (request.workflow?.customerStatus || request.status)}}</span>@if(canCancel){<button class="danger-outline cancel-top" (click)="confirmCancel()" [disabled]="busy">Hủy yêu cầu</button>}</div></div>
       @if(request.requestUpdatedByProposal){<p class="not-an-order"><strong>Yêu cầu đơn hàng đã được sửa.</strong> Vui lòng kiểm tra lại và xác nhận.</p>}
-      @if(['Chờ thanh toán','Chờ khách thanh toán'].includes(request.status)){<p class="not-an-order payment-ready"><strong>Đang chờ bạn thanh toán.</strong> Thời gian còn lại: <b>{{paymentRemainingLabel}}</b>.</p>}@else if(request.status!=='Đã lên đơn'){<p class="not-an-order"><strong>Đây chưa phải đơn hàng.</strong> Shop chưa giữ hàng và bạn chưa cần thanh toán.</p>}
+      @if(['Chờ thanh toán','Chờ khách thanh toán'].includes(request.status)){<p class="not-an-order payment-ready"><strong>Shop đã xác nhận và tạo đơn (Đã xác nhận đơn hàng).</strong> Vui lòng thanh toán@if(request.paymentDeadlineAt){ trước <b>{{request.paymentDeadlineAt | date:'HH:mm dd/MM/yyyy'}}</b>} — còn <b>{{paymentRemainingLabel}}</b>. Quá hạn, đơn sẽ tự hủy.</p>}@else if(request.status!=='Đã lên đơn'){<p class="not-an-order"><strong>Đây chưa phải đơn hàng.</strong> Shop chưa giữ hàng và bạn chưa cần thanh toán.</p>}
       @if (privateLink) { <p>Giữ liên kết riêng để mở lại yêu cầu này. Người có liên kết có thể xem và phản hồi yêu cầu.</p><button class="secondary" (click)="copyPrivateLink()">Sao chép liên kết riêng</button> }
       @if (!request.orderResult && request.status !== 'Đã từ chối' && request.status !== 'Đã tư vấn' && request.status !== 'Khách đã hủy') {
       <div class="review-notice" role="status">
-        <strong>{{request.requestReason === 'future_delivery' ? 'Lịch giao tương lai — Sales sẽ kiểm tra kế hoạch chuẩn bị' : (request.workflow?.urgency === 'urgent' ? 'Cần giao sớm — chưa xác nhận giao kịp' : 'Đang kiểm tra khả năng đáp ứng')}}</strong>
-        <p>{{request.reviewReason}}</p><p>{{request.workflow?.instruction}}</p>
+        <strong>Vì sao đơn cần shop xác nhận</strong>
+        @if (request.reasons?.length) { <ul class="request-reasons">@for (reason of request.reasons; track reason) { <li>{{reason}}</li> }</ul> } @else { <p>{{request.reviewReason}}</p> }
+        <p>{{request.workflow?.instruction}}</p>
         @if (request.workflow?.urgency === 'urgent') { <a routerLink="/contact">Liên hệ shop nếu bạn cần ngay</a> }
       </div>
       }
@@ -34,7 +35,7 @@
       @if (canChange) {
         <details><summary>Đổi lịch hoặc dừng yêu cầu</summary>
           <button class="secondary" (click)="editSchedule()">Đề nghị đổi lịch giao</button>
-          @if (showSchedule) { <label>Ngày giao<input type="date" [(ngModel)]="requestedDate"></label><label>Giờ giao<input type="time" [(ngModel)]="requestedTime"></label><p>Shop sẽ kiểm tra lại. Phương án và xác nhận trước đó không còn áp dụng cho lịch mới.</p><button (click)="change('reschedule')" [disabled]="busy || !requestedDate || !requestedTime">Gửi lịch mới</button> }
+          @if (showSchedule) { <label>Ngày giao<input type="date" [(ngModel)]="requestedDate"></label><label>Giờ giao<input type="time" min="08:00" max="22:00" step="900" [(ngModel)]="requestedTime"></label><p>Shop giao từ 08:00 đến 22:00 và cần ít nhất 4 giờ để chuẩn bị. Shop sẽ kiểm tra lại. Phương án và xác nhận trước đó không còn áp dụng cho lịch mới.</p><button (click)="change('reschedule')" [disabled]="busy || !requestedDate || !requestedTime">Gửi lịch mới</button> }
         </details>
       }
     </section>
@@ -59,7 +60,7 @@
         @if (request.status === 'Chờ khách xác nhận' && !readOnly) {
           <button (click)="respond('accept')" [disabled]="busy || request.workflow?.scheduleExpired">Xác nhận phương án</button>
           <button class="secondary" (click)="respond('decline')" [disabled]="busy">Tôi muốn tư vấn lại</button>
-          <p><small>Sau khi bạn đồng ý, hệ thống kiểm tra lại tồn và mở phiên thanh toán trong 24 giờ. Chỉ khi khoản cần trả trước được xác nhận, yêu cầu mới trở thành đơn chính thức.</small></p>
+          <p><small>Sau khi bạn đồng ý, hệ thống kiểm tra lại tồn và tạo đơn ở trạng thái Đã xác nhận đơn hàng. Bạn thanh toán trong 24 giờ để đơn được đặt thành công; quá hạn đơn tự hủy.</small></p>
         }
         @if (request.status === 'Khách đã đồng ý') { <p>Bạn đã đồng ý. Hệ thống đang kiểm tra tồn và chuẩn bị phiên thanh toán.</p> }
         @if (request.orderResult) { @if(['Chờ thanh toán','Chờ khách thanh toán'].includes(request.status)){<p>Đơn <strong>{{request.orderResult.orderId}}</strong> đang chờ thanh toán.</p>@if(!readOnly){<button (click)="checkout()">Thanh toán đơn hàng</button>}}@else{<p>Đã lên đơn <strong>{{request.orderResult.orderId}}</strong>.</p><a [routerLink]="['/order-detail',request.orderResult.orderId]">Theo dõi đơn hàng</a>}

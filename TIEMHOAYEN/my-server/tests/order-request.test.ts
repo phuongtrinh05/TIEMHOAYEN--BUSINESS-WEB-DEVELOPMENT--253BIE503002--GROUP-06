@@ -2,6 +2,14 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 
+// Lịch giao hợp lệ theo quy tắc mới: trong 08:00–22:00, từ 5 giờ tới dưới 24 giờ kể từ lúc chạy test.
+const soonDelivery = (() => {
+  let at = new Date(Math.ceil((Date.now() + 5 * 3600_000) / 1800_000) * 1800_000);
+  const vn = (d: Date) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d).map(p => [p.type, p.value]));
+  while (Number(vn(at).hour) < 8 || Number(vn(at).hour) > 21) at = new Date(at.getTime() + 1800_000);
+  const p = vn(at);
+  return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}`, deliveryAt: at.toISOString(), deliveryStartAt: at.toISOString() };
+})();
 const uri = process.env.TEST_MONGO_URI;
 if (!uri) {
   // Pure contract tests use injected catalog rows and never open a database connection.
@@ -15,7 +23,7 @@ if (!uri) {
   let mongo: typeof import('../mongo.js');
   let service: typeof import('../services/order-request.service.js');
   let stock: typeof import('../services/inventory/stock.service.js');
-  const payload = { sender: { name: 'Người đặt', phone: '0901234567' }, receiver: { name: 'Người nhận', phone: '0912345678', address: '1 Đường A, Quận 1, Thành phố Hồ Chí Minh', districtName: 'Quận 1', provinceName: 'Thành phố Hồ Chí Minh' }, delivery: { date: '2026-11-01', time: '10:00' } };
+  const payload = { sender: { name: 'Người đặt', phone: '0901234567' }, receiver: { name: 'Người nhận', phone: '0912345678', address: '1 Đường A, Quận 1, Thành phố Hồ Chí Minh', districtName: 'Quận 1', provinceName: 'Thành phố Hồ Chí Minh' }, delivery: soonDelivery };
   const verifiedToken = async (phone = payload.sender.phone) => {
     const token = 'oa_' + randomBytes(32).toString('hex');
     await (await mongo.getCollection<any>('XAC_THUC_TRA_CUU_DON')).insertOne({ _id: createHash('sha256').update(token).digest('hex'), kind: 'lookup', phone, expiresAt: new Date(Date.now()+1800000) });
@@ -106,7 +114,7 @@ if (!uri) {
   };
   const submit = async (productId: string) => {
     const controller = await import('../controllers/order.js');
-    return invoke(controller.createOrder, { ...payload, delivery: { date: new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()), time: '23:59' }, checkoutSessionId: randomUUID(), items: [{ id: productId, qty: 1, price: 100000 }],
+    return invoke(controller.createOrder, { ...payload, delivery: { date: soonDelivery.date, time: soonDelivery.time }, checkoutSessionId: randomUUID(), items: [{ id: productId, qty: 1, price: 100000 }],
       payment: { method: 'bank', methodName: 'Chuyển khoản' }, summary: { subtotal: 100000, total: 100000 }, flags: {} });
   };
   test('real createOrder controller: only A receives payment, B receives persisted Sales request', async () => {
@@ -443,6 +451,179 @@ if (!uri) {
     assert.equal((await invoke(updateAdminTransaction,{status:'Đã thanh toán',amount:row.amount},{transactionId:row.code})).code,200);
     assert.equal((await (await mongo.getCollection<any>('SAN_PHAM')).findOne({SAN_PHAM_ID:'SP_TX_CONTRACT'})).TP_DANG_GIU,1);
   });
+
+  // ===== Quy tắc Yêu cầu đặt hàng theo thời gian giao, tồn kho và thiết kế riêng =====
+  const seedRule = async () => {
+    if (await (await mongo.getCollection<any>('NGUYEN_VAT_LIEU')).findOne({ NGUYEN_VAT_LIEU_ID: 'TULIP_T' })) return;
+    await (await mongo.getCollection<any>('NGUYEN_VAT_LIEU')).insertMany([
+      { NGUYEN_VAT_LIEU_ID: 'TULIP_T', TEN_NGUYEN_VAT_LIEU: 'Tulip test', TON_THUC: 6, TON_DANG_GIU: 0, TON_KHONG_DAT: 0, NHOM_NVL: 'IT_HU', DON_VI_TINH: 'cành', TRANG_THAI: 'Đang sử dụng', DUNG_CHO_3D: true, GIA_BAN: 10000 },
+      { NGUYEN_VAT_LIEU_ID: 'GONE_T', TEN_NGUYEN_VAT_LIEU: 'Hết hàng test', TON_THUC: 0, TON_DANG_GIU: 0, TON_KHONG_DAT: 0, NHOM_NVL: 'IT_HU', DON_VI_TINH: 'cành', TRANG_THAI: 'Đang sử dụng' },
+    ]);
+    await (await mongo.getCollection<any>('SAN_PHAM')).insertMany([
+      { SAN_PHAM_ID: 'SP_RULE_A', TEN_SAN_PHAM: 'Rule A', GIA: 100000, TON_THANH_PHAM: 0, TP_DANG_GIU: 0, TRANG_THAI: 'Đang bán' },
+      { SAN_PHAM_ID: 'SP_RULE_B', TEN_SAN_PHAM: 'Rule B', GIA: 100000, TON_THANH_PHAM: 0, TP_DANG_GIU: 0, TRANG_THAI: 'Đang bán' },
+      { SAN_PHAM_ID: 'SP_RULE_READY', TEN_SAN_PHAM: 'Rule ready', GIA: 100000, TON_THANH_PHAM: 2, TP_DANG_GIU: 0, TRANG_THAI: 'Đang bán' },
+    ]);
+    await (await mongo.getCollection<any>('BOM_SAN_PHAM')).insertMany([
+      { BOM_ID: 'BOM_RULE_A', SAN_PHAM_ID: 'SP_RULE_A', TRANG_THAI: 'Hiệu lực', PHIEN_BAN: 1 },
+      { BOM_ID: 'BOM_RULE_B', SAN_PHAM_ID: 'SP_RULE_B', TRANG_THAI: 'Hiệu lực', PHIEN_BAN: 1 },
+      { BOM_ID: 'BOM_RULE_READY', SAN_PHAM_ID: 'SP_RULE_READY', TRANG_THAI: 'Hiệu lực', PHIEN_BAN: 1 },
+    ]);
+    await (await mongo.getCollection<any>('CHI_TIET_BOM')).insertMany([
+      { BOM_ID: 'BOM_RULE_A', NGUYEN_VAT_LIEU_ID: 'TULIP_T', DINH_LUONG: 4, DON_VI_TINH: 'cành' },
+      { BOM_ID: 'BOM_RULE_B', NGUYEN_VAT_LIEU_ID: 'TULIP_T', DINH_LUONG: 3, DON_VI_TINH: 'cành' },
+      { BOM_ID: 'BOM_RULE_READY', NGUYEN_VAT_LIEU_ID: 'GONE_T', DINH_LUONG: 5, DON_VI_TINH: 'cành' },
+    ]);
+  };
+  const farDelivery = { date: '2099-11-02', time: '10:00', deliveryAt: '2099-11-02T03:00:00.000Z', deliveryStartAt: '2099-11-02T03:00:00.000Z' };
+
+  test('under 24h: shared material is summed across lines; one request stores every cause and the BOM snapshot', async () => {
+    await seedRule();
+    const alone = await service.evaluateCheckoutFulfillment([{ productId: 'SP_RULE_A', quantity: 1 }], soonDelivery);
+    assert.equal(alone.mode, 'direct');
+    const both = await service.evaluateCheckoutFulfillment([{ productId: 'SP_RULE_A', quantity: 1 }, { productId: 'SP_RULE_B', quantity: 1 }], soonDelivery);
+    assert.equal(both.mode, 'request');
+    assert.deepEqual(both.reasonCodes, ['MATERIAL_SHORTAGE_UNDER_24H']);
+    assert.deepEqual(both.materialCheck.shortages.map((s: any) => [s.materialId, s.required, s.available, s.missing]), [['TULIP_T', 7, 6, 1]]);
+    const before = await (await mongo.getCollection<any>(service.REQUESTS)).countDocuments();
+    const result = await checkout([{ productId: 'SP_RULE_A', quantity: 1 }, { productId: 'SP_RULE_B', quantity: 1 }]);
+    assert.equal(result.kind, 'sales_request');
+    assert.equal(await (await mongo.getCollection<any>(service.REQUESTS)).countDocuments(), before + 1);
+    const row = await (await mongo.getCollection<any>(service.REQUESTS)).findOne({ _id: result.requestId });
+    assert.equal(row.status, 'Chờ xử lý');
+    assert.deepEqual(row.reasonCodes, ['MATERIAL_SHORTAGE_UNDER_24H']);
+    assert.equal(row.materialCheck.lines.find((l: any) => l.productId === 'SP_RULE_A').bom.bomId, 'BOM_RULE_A');
+    assert.equal(await (await mongo.getCollection<any>('GIU_TON')).countDocuments({ DON_HANG_ID: result.requestId }), 0);
+    assert.equal((await (await mongo.getCollection<any>('NGUYEN_VAT_LIEU')).findOne({ NGUYEN_VAT_LIEU_ID: 'TULIP_T' })).TON_DANG_GIU, 0);
+  });
+
+  test('enough ready-made bouquets are not sent to Sales because their BOM lacks material', async () => {
+    await seedRule();
+    const result = await service.evaluateCheckoutFulfillment([{ productId: 'SP_RULE_READY', quantity: 2 }], soonDelivery);
+    assert.equal(result.mode, 'direct');
+    assert.equal(result.materialCheck.lines[0].toMake, 0);
+    const short = await service.evaluateCheckoutFulfillment([{ productId: 'SP_RULE_READY', quantity: 3 }], soonDelivery);
+    assert.equal(short.mode, 'request');
+  });
+
+  test('24 hours or more pays directly without any hold, even when current material is short', async () => {
+    await seedRule();
+    const evaluation = await service.evaluateCheckoutFulfillment([{ productId: 'SP_RULE_A', quantity: 1 }, { productId: 'SP_RULE_B', quantity: 1 }], farDelivery);
+    assert.equal(evaluation.mode, 'direct');
+    assert.equal(evaluation.inventoryMode, 'FUTURE_DEMAND');
+    let prepared: any;
+    const result = await service.routeCheckout(randomUUID(), { ...payload, delivery: farDelivery }, [{ productId: 'SP_RULE_A', quantity: 1 }, { productId: 'SP_RULE_B', quantity: 1 }], async (_session, orderId, p) => { prepared = p; return { orderId }; });
+    assert.equal(result.kind, 'order');
+    assert.equal(prepared.inventoryMode, 'FUTURE_DEMAND');
+    assert.equal(await (await mongo.getCollection<any>('GIU_TON')).countDocuments({ DON_HANG_ID: result.orderId }), 0);
+  });
+
+  test('custom 3D design always becomes a request even when material is enough', async () => {
+    await seedRule();
+    const id = 'TK3D' + 'a'.repeat(32);
+    await (await mongo.getCollection<any>('THIET_KE_3D')).insertOne({ _id: id, THIET_KE_3D_ID: id, name: 'Bó tự thiết kế', image: '', materials: [{ materialId: 'TULIP_T', quantity: 1 }], arrangement: 'auto', fingerprint: 'fp-test' });
+    const result = await service.evaluateCheckoutFulfillment([{ productId: `SP3D_${id}`, quantity: 1 }], farDelivery);
+    assert.equal(result.mode, 'request');
+    assert.deepEqual(result.reasonCodes, ['CUSTOM_DESIGN']);
+    assert.equal(result.customItems[0].materials[0].materialId, 'TULIP_T');
+  });
+
+  test('delivery under 4 hours or outside 08:00–22:00 is refused, never turned into a request', async () => {
+    await seedRule();
+    const soon = new Date(Date.now() + 2 * 3600_000).toISOString();
+    await assert.rejects(service.evaluateCheckoutFulfillment([{ productId: 'SP_RULE_A', quantity: 1 }], { deliveryAt: soon }), (e: any) => ['URGENT_DELIVERY', 'OUTSIDE_SHOP_HOURS'].includes(e.details?.code));
+    await assert.rejects(service.evaluateCheckoutFulfillment([{ productId: 'SP_RULE_A', quantity: 1 }], { deliveryAt: '2099-11-02T16:00:00.000Z' }), (e: any) => e.details?.code === 'OUTSIDE_SHOP_HOURS');
+  });
+
+  test('T must be before delivery, keeps who/when/history, and is locked after cancel or export', async () => {
+    const orders = await mongo.getCollection<any>('DON_HANG');
+    await orders.insertMany([
+      { DON_HANG_ID: 'PREP_OK', TRANG_THAI: 'Đã đặt hàng thành công', NGAY_MUON_GIAO: new Date('2099-11-02T00:00:00Z'), KHUNG_GIO_MUON_GIAO: '10:00', KIEM_TRA_TON_KHO: true },
+      { DON_HANG_ID: 'PREP_CANCEL', TRANG_THAI: 'Đã hủy', NGAY_MUON_GIAO: new Date('2099-11-02T00:00:00Z'), KHUNG_GIO_MUON_GIAO: '10:00' },
+      { DON_HANG_ID: 'PREP_DONE', TRANG_THAI: 'Đang chuẩn bị hàng', NGAY_MUON_GIAO: new Date('2099-11-02T00:00:00Z'), KHUNG_GIO_MUON_GIAO: '10:00' },
+    ]);
+    await (await mongo.getCollection<any>('NHU_CAU_NVL_DU_KIEN')).insertOne({ DON_HANG_ID: 'PREP_DONE', NGUYEN_VAT_LIEU_ID: 'TULIP_T', SO_LUONG: 1, TRANG_THAI: 'Đã xuất' });
+    const actor = { id: 'NV_KHO', role: 'Nhân viên kho' } as any;
+    await assert.rejects(stock.setOrderPrepTime('PREP_OK', '2099-11-02T04:00:00.000Z', actor), /trước giờ giao/);
+    await stock.setOrderPrepTime('PREP_OK', '2099-11-02T01:00:00.000Z', actor);
+    await stock.setOrderPrepTime('PREP_OK', '2099-11-02T00:30:00.000Z', actor, 'Đổi ca');
+    const saved = await orders.findOne({ DON_HANG_ID: 'PREP_OK' });
+    assert.equal(saved.NGUOI_NHAP_T, 'NV_KHO');
+    assert.ok(saved.THOI_DIEM_NHAP_T instanceof Date);
+    assert.equal(saved.LICH_SU_T.length, 2);
+    assert.equal(saved.LICH_SU_T[1].reason, 'Đổi ca');
+    await assert.rejects(stock.setOrderPrepTime('PREP_CANCEL', '2099-11-02T01:00:00.000Z', actor), /hủy/);
+    await assert.rejects(stock.setOrderPrepTime('PREP_DONE', '2099-11-02T01:00:00.000Z', actor), /xuất NVL/);
+  });
+
+  test('held same-day order gets demand "Đã giữ" linked to holds once, without holding again', async () => {
+    await seedRule();
+    await (await mongo.getCollection<any>('DON_HANG')).insertOne({ DON_HANG_ID: 'HELD_1', TRANG_THAI: 'Đã đặt hàng thành công', KIEM_TRA_TON_KHO: true, NGAY_MUON_GIAO: new Date('2099-11-02T00:00:00Z'), KHUNG_GIO_MUON_GIAO: '10:00' });
+    await (await mongo.getCollection<any>('GIU_TON')).insertMany([
+      { MA_GIU_TON: 'GT_H1', DON_HANG_ID: 'HELD_1', LOAI_DOI_TUONG: 'NVL', NGUYEN_VAT_LIEU_ID: 'TULIP_T', SO_LUONG: 2, TRANG_THAI: 'CHINH_THUC' },
+      { MA_GIU_TON: 'GT_H2', DON_HANG_ID: 'HELD_1', LOAI_DOI_TUONG: 'NVL', NGUYEN_VAT_LIEU_ID: 'TULIP_T', SO_LUONG: 1, TRANG_THAI: 'CHINH_THUC' },
+    ]);
+    const heldBefore = (await (await mongo.getCollection<any>('NGUYEN_VAT_LIEU')).findOne({ NGUYEN_VAT_LIEU_ID: 'TULIP_T' })).TON_DANG_GIU;
+    const client = await mongo.getMongoClient();
+    for (let i = 0; i < 2; i++) { const s = client.startSession(); try { await s.withTransaction(() => stock.recordHeldDemand('HELD_1', { id: 'PAYMENT', role: 'system' } as any, s)); } finally { await s.endSession(); } }
+    const demands = await (await mongo.getCollection<any>('NHU_CAU_NVL_DU_KIEN')).find({ DON_HANG_ID: 'HELD_1' }).toArray();
+    assert.equal(demands.length, 1);
+    assert.equal(demands[0].TRANG_THAI, 'Đã giữ');
+    assert.equal(demands[0].SO_LUONG, 3);
+    assert.deepEqual(demands[0].GIU_TON_IDS, ['GT_H1', 'GT_H2']);
+    assert.equal((await (await mongo.getCollection<any>('NGUYEN_VAT_LIEU')).findOne({ NGUYEN_VAT_LIEU_ID: 'TULIP_T' })).TON_DANG_GIU, heldBefore);
+    const row = (await stock.listPreparationOrders()).find((r: any) => r.orderId === 'HELD_1')!;
+    assert.equal(row.state, 'NO_T');
+    assert.deepEqual(row.actions, ['SET_T']);
+  });
+
+  test('preparation list: waiting demand with T offers hold; overdue T is flagged', async () => {
+    await (await mongo.getCollection<any>('DON_HANG')).insertOne({ DON_HANG_ID: 'WAIT_1', TRANG_THAI: 'Đã đặt hàng thành công', KIEM_TRA_TON_KHO: true, NGAY_MUON_GIAO: new Date('2099-11-02T00:00:00Z'), KHUNG_GIO_MUON_GIAO: '10:00', THOI_DIEM_CHUAN_BI_DU_KIEN: new Date(Date.now() - 3600_000) });
+    await (await mongo.getCollection<any>('NHU_CAU_NVL_DU_KIEN')).insertOne({ DON_HANG_ID: 'WAIT_1', NGUYEN_VAT_LIEU_ID: 'TULIP_T', SO_LUONG: 2, TRANG_THAI: 'Chờ giữ' });
+    const row = (await stock.listPreparationOrders()).find((r: any) => r.orderId === 'WAIT_1')!;
+    assert.equal(row.state, 'WAITING_HOLD');
+    assert.deepEqual(row.actions, ['CHANGE_T', 'RESERVE']);
+    assert.equal(row.holdDueSoon, true);
+    assert.equal(row.overdueExport, true);
+  });
+
+  test('Sales "Xác nhận ngay" turns the request into an order "Đã xác nhận đơn hàng" with a payment deadline', async () => {
+    await seedRule();
+    const flow = await import('../services/sales-proposal.service.js');
+    await (await mongo.getCollection<any>('NGUYEN_VAT_LIEU')).updateOne({ NGUYEN_VAT_LIEU_ID: 'TULIP_T' }, { $set: { TON_THUC: 20 } });
+    const evaluation = await service.evaluateCheckoutFulfillment([{ productId: 'SP_RULE_A', quantity: 1 }], soonDelivery);
+    assert.equal(evaluation.mode, 'direct');
+    // Mô phỏng một yêu cầu đã tạo (vd. trước đó thiếu NVL), nay Sales đã nhập thêm hàng.
+    const requestId = 'YC_CONFIRM_NOW';
+    await (await mongo.getCollection<any>(service.REQUESTS)).insertOne({ _id: requestId, requestId, status: 'Chờ xử lý', version: 0,
+      sender: payload.sender, receiver: payload.receiver, delivery: { date: soonDelivery.date, time: soonDelivery.time }, flags: {},
+      items: [{ productId: 'SP_RULE_A', quantity: 1, name: 'Rule A', price: 100000 }], originalSummary: { subtotal: 100000, shippingFee: 0, total: 100000 }, history: [] });
+    await service.updateSalesRequest(requestId, { action: 'claim', version: 0 }, sales);
+    const result: any = await flow.confirmOriginalRequest(requestId, { version: 1, items: [{ id: 'SP_RULE_A', qty: 1 }], date: soonDelivery.date, time: soonDelivery.time,
+      shippingFee: 0, paymentMethod: 'bank', substitutions: [] }, sales);
+    const row = await requestRow(requestId);
+    assert.equal(row.status, 'Chờ khách thanh toán');
+    assert.ok(row.paymentDeadlineAt && new Date(row.paymentDeadlineAt).getTime() <= Date.now() + 24 * 3600_000 + 5000);
+    const order = await (await mongo.getCollection<any>('DON_HANG')).findOne({ DON_HANG_ID: row.orderId });
+    assert.equal(order.TRANG_THAI, 'Đã xác nhận đơn hàng');
+    assert.equal(order.YEU_CAU_DAT_HANG_ID, requestId);
+    assert.equal(result.status, 'Chờ khách thanh toán');
+    const holds = await (await mongo.getCollection<any>('GIU_TON')).find({ DON_HANG_ID: row.orderId }).toArray();
+    assert.equal(holds.reduce((n: number, h: any) => n + Number(h.SO_LUONG), 0), 4);
+  });
+
+  test('request whose wanted delivery time has passed is rejected automatically', async () => {
+    const { rejectRequestsPastDelivery } = await import('../services/sales-request-expiry.service.js');
+    const requests = await mongo.getCollection<any>(service.REQUESTS);
+    await requests.insertMany([
+      { _id: 'YC_PAST', requestId: 'YC_PAST', status: 'Chờ xử lý', version: 0, delivery: { date: '2020-01-01', time: '10:00', deliveryAt: '2020-01-01T03:00:00.000Z' }, items: [], history: [] },
+      { _id: 'YC_FUTURE', requestId: 'YC_FUTURE', status: 'Sales đang xử lý', version: 0, delivery: { date: '2099-01-01', time: '10:00', deliveryAt: '2099-01-01T03:00:00.000Z' }, items: [], history: [] },
+    ]);
+    await rejectRequestsPastDelivery(new Date());
+    assert.equal((await requests.findOne({ _id: 'YC_PAST' })).status, 'Đã từ chối');
+    assert.equal((await requests.findOne({ _id: 'YC_FUTURE' })).status, 'Sales đang xử lý');
+  });
+
 }
 
 test('verified balance excludes pending/failed and deduplicates receipt references', async () => {
@@ -567,7 +748,8 @@ test('same-day stock is not diverted to Sales only because checkout is after the
   const source = await import('../services/inventory/availability.service.js');
   const file = await import('node:fs/promises').then(async fs => fs.readFile((await import('node:path')).resolve(process.cwd(), 'services/inventory/availability.service.ts'), 'utf8'));
   assert.doesNotMatch(file, /vnTimeKey\(now\)\s*>=\s*INVENTORY_CONFIG\.sameDayCutoff/);
-  assert.match(file, /if \(sameDay\)[\s\S]*if \(sellable < qty\)/);
+  // Quy tắc mới: dưới 24 giờ (checkNow) dùng tồn hiện tại; đủ tồn thì không chuyển Sales.
+  assert.match(file, /if \(checkNow\)[\s\S]*if \(sellable < qty\)/);
   assert.equal(typeof source.checkProductAvailability, 'function');
 });
 

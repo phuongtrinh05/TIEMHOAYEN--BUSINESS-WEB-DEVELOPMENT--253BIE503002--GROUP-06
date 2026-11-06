@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { getCollection } from '../mongo.js';
 import { InventoryError } from '../services/inventory/helpers.js';
-import { getPublicRequest, REQUESTS, REQUEST_STATUS, updateSalesRequest } from '../services/order-request.service.js';
+import { getPublicRequest, LEGACY_WAITING_STATUS, REQUESTS, REQUEST_STATUS, updateSalesRequest, WAITING_STATUSES } from '../services/order-request.service.js';
 import { resolveRoleName } from '../services/role-permission.service.js';
 import { requestWorkflow } from '../services/request-workflow.js';
 import { accessToken } from './order-access.js';
@@ -9,7 +9,8 @@ import { consultationOptions, confirmOriginalRequest, convertProposal, messages,
 import { authenticatedEmployee } from '../middleware/rolePermission.js';
 
 const failure = (res: Response, error: any) => res.status(error instanceof InventoryError ? error.status : 500)
-  .json({ message: error instanceof InventoryError ? error.message : 'Không thể xử lý yêu cầu đặt hàng.' });
+  .json({ message: error instanceof InventoryError ? error.message : 'Không thể xử lý yêu cầu đặt hàng.',
+    ...(error instanceof InventoryError && (error.details as any)?.code ? { code: (error.details as any).code } : {}) });
 
 // Use the persisted employee role, never a claimed x-admin-role for this queue.
 export async function requireSales(req: Request, res: Response, next: NextFunction) {
@@ -44,6 +45,7 @@ export async function listRequests(req: Request, res: Response) {
       ? { $in: [REQUEST_STATUS.pendingPayment, 'Chờ thanh toán'] }
       : status === REQUEST_STATUS.processing
         ? { $in: [REQUEST_STATUS.processing, REQUEST_STATUS.accepted] }
+        : status === REQUEST_STATUS.waiting ? { $in: WAITING_STATUSES }
         : status } : {};
     const query = { ...statusQuery, ...searchQuery };
     // The queue used to download every complete request (quote history, checkout
@@ -65,6 +67,7 @@ export async function listRequests(req: Request, res: Response) {
     const excludedFromUrgentCount = new Set([...closed, REQUEST_STATUS.pendingPayment]);
     const normalizeQueueStatus = (row: any) => row.status === 'Chờ thanh toán'
       ? { ...row, status: REQUEST_STATUS.pendingPayment }
+      : row.status === LEGACY_WAITING_STATUS ? { ...row, status: REQUEST_STATUS.waiting }
       // `Khách đã đồng ý` was an old short-lived technical state between
       // acceptance and atomic order creation. It is no longer an Admin-facing
       // workflow state; a stranded legacy row returns to Sales processing.

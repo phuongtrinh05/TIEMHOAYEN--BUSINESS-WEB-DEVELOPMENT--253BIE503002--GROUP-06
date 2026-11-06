@@ -10,3 +10,17 @@
 .stock-card td, .stock-card td b { font-size: 15px; }
 .stock-card td small { font-size: 13px; }
 .work-switcher button, .request-actions button, .proposal-submit button { font-size: 15px; }
+
+.routing-reason-card{margin:12px 0;padding:14px 16px;border:1px solid #f1d5c9;border-radius:12px;background:#fffaf7}
+.routing-reason-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px}
+.routing-reason-head>span{font-size:11px;letter-spacing:.06em;color:#8a6d62;font-weight:700}
+.reason-chip{padding:3px 10px;border-radius:999px;background:#fde7dd;color:#a2412a;font-size:12px}
+.routing-reason-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:8px}
+.routing-reason-grid>div{display:flex;flex-direction:column;gap:2px}
+.routing-reason-grid small{color:#7b6a64}
+.routing-reason-title{margin:10px 0 6px;font-weight:600;font-size:13px}
+.routing-reason-card td small{display:block;color:#7b6a64}
+.routing-reason-card .shortage{color:#b42318;font-weight:600}
+.custom-design-snapshot{display:flex;gap:12px;margin-top:10px;padding:10px;border-radius:10px;background:#fff;border:1px dashed #e6c3b4}
+.custom-design-snapshot img{width:88px;height:88px;object-fit:cover;border-radius:8px}
+.custom-design-snapshot small{display:block}

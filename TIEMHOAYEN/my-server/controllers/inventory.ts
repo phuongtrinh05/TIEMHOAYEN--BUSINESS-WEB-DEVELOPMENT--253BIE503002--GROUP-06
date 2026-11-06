@@ -152,7 +152,14 @@ export const releaseReservations = handle((req) => stock.releaseReservations({ o
 export const sweepReservations = handle(() => stock.sweepExpiredReservations());
 export const listDemands = handle((req) => master.listDemands(req.query));
 export const recordOrderDemand = handle((req) => stock.recordOrderDemand(p(req, 'orderId'), req.body || {}, actorFromRequest(req)), 201);
-export const setOrderPrepTime = handle((req) => stock.setOrderPrepTime(p(req, 'orderId'), req.body.neededAt ?? req.body.prepStartAt, actorFromRequest(req)));
+export const setOrderPrepTime = handle((req) => stock.setOrderPrepTime(p(req, 'orderId'), req.body.neededAt ?? req.body.prepStartAt, actorFromRequest(req), req.body.reason));
+/** "Đơn cần chuẩn bị": kèm dự báo thiếu NVL trước T cho đơn đang chờ giữ. */
+export const listPreparationOrders = handle(async () => {
+  const [rows, alerts] = await Promise.all([stock.listPreparationOrders(), getInventoryAlerts()]);
+  const forecast = new Map<string, any[]>();
+  for (const f of alerts.forecastShortages) forecast.set(f.orderId, [...(forecast.get(f.orderId) || []), f]);
+  return { holdReminderHours: stock.HOLD_REMINDER_HOURS, orders: rows.map((row) => ({ ...row, forecastShortages: row.materialState === 'WAITING' ? forecast.get(row.orderId) || [] : [] })) };
+});
 export const reserveOrderDemand = handle((req) => stock.reserveOrderDemand(p(req, 'orderId'), actorFromRequest(req)));
 export const cancelOrderInventory = handle((req) => stock.cancelOrderInventory(p(req, 'orderId'), actorFromRequest(req)));
 export const shipFinishedGoods = handle((req) => stock.shipFinishedGoodsForOrder(p(req, 'orderId'), actorFromRequest(req)));

@@ -97,7 +97,7 @@ export const syncAdminNotifications = async (force = false) => {
     const { getReconciliation, warmAnalyticsCaches } = await import('./reports.service.js');
     const [ds, requests, tickets, reviews, alerts, lateOrders, rec] = await Promise.all([
       getDataset({ allowStale: false, fresh: force }),
-      getCollection<any>('YEU_CAU_DAT_HANG').then((c) => c.find({ status: { $in: ['Chờ Sales tiếp nhận', 'Khách đã đồng ý'] } }).project({ requestId: 1, status: 1, createdAt: 1, contact: 1, delivery: 1, quote: 1, items: 1, requestReason: 1, reason: 1, reviewReason: 1, routing: 1 }).limit(200).toArray()).catch(() => [] as any[]),
+      getCollection<any>('YEU_CAU_DAT_HANG').then((c) => c.find({ status: { $in: ['Chờ xử lý', 'Chờ Sales tiếp nhận', 'Khách đã đồng ý'] } }).project({ requestId: 1, status: 1, createdAt: 1, contact: 1, delivery: 1, quote: 1, items: 1, requestReason: 1, reason: 1, reviewReason: 1, routing: 1 }).limit(200).toArray()).catch(() => [] as any[]),
       getCollection<any>('YEU_CAU_HO_TRO').then((c) => c.find({ status: 'Chưa xử lý', $or: [{ mode: 'WAITING' }, { priority: 'urgent' }] }).project({ _id: 1, name: 1, source: 1, priority: 1, reason: 1 }).limit(200).toArray()).catch(() => [] as any[]),
       getCollection<any>('DANH_GIA').then((c) => c.find({ SO_SAO: { $lte: 2 }, NGAY_DANH_GIA: { $gte: lookback } }).limit(100).toArray()).catch(() => [] as any[]),
       getCachedInventoryAlerts({ allowStale: false, fresh: force }),

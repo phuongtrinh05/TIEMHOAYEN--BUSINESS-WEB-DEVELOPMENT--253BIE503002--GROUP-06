@@ -3,6 +3,7 @@ import type { ClientSession } from 'mongodb';
 import { InventoryError, withTransaction } from './inventory/helpers.js';
 import { receiveReturnedFinishedGoods } from './inventory/stock.service.js';
 import { emitAdminNotification } from './analytics/notifications.service.js';
+import { assertWithinShopHours } from './delivery-policy.service.js';
 
 const statusKey = (v: unknown) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').trim().toLowerCase();
 export const paymentSucceeded = (v: unknown) => ['thanh cong', 'thanh toan thanh cong', 'da thanh toan', 'da coc', 'success', 'paid'].includes(statusKey(v));
@@ -56,6 +57,8 @@ export function assertOrderTransition(order: any, next: string, paid: number) {
   if (current === next) return;
   const allowed: Record<string, string[]> = {
     'Chờ thanh toán': ['Đã hủy'], 'Thanh toán thất bại': ['Đã hủy'],
+    // Đơn tạo từ Yêu cầu đặt hàng sau khi Sales xác nhận; thanh toán hợp lệ sẽ tự chuyển sang Đã đặt hàng thành công.
+    'Đã xác nhận đơn hàng': ['Đã hủy'],
     'Đã đặt hàng thành công': ['Đang chuẩn bị hàng', 'Đã hủy'],
     'Chờ xử lý': ['Đang chuẩn bị hàng', 'Đã hủy'],
     'Đang chuẩn bị': ['Chờ vận chuyển'], 'Đang chuẩn bị hàng': ['Chờ vận chuyển'],
@@ -101,9 +104,12 @@ export function validateCheckoutDelivery(delivery: any) {
   });
   if (values.length === 2 && values[0] >= values[1]) throw new InventoryError(400, 'Khung giờ giao không hợp lệ.');
   const at = new Date(`${date}T${values[values.length - 1]}:00+07:00`);
+  const startAt = new Date(`${date}T${values[0]}:00+07:00`);
   const day = new Date(`${date}T00:00:00Z`);
-  if (!Number.isFinite(at.getTime()) || !Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== date || at.getTime() <= Date.now()) throw new InventoryError(400, 'Ngày giao không tồn tại hoặc lịch giao đã qua.');
-  return { ...delivery, date, time: slot, deliveryAt: at.toISOString() };
+  if (!Number.isFinite(at.getTime()) || !Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== date || startAt.getTime() <= Date.now()) throw new InventoryError(400, 'Ngày giao không tồn tại hoặc lịch giao đã qua.', { code: 'DELIVERY_IN_PAST' });
+  // Cả khung giờ phải nằm trong 08:00–22:00; không tự chuyển lịch ngoài giờ thành yêu cầu Sales.
+  assertWithinShopHours(startAt, at);
+  return { ...delivery, date, time: slot, deliveryAt: at.toISOString(), deliveryStartAt: startAt.toISOString() };
 }
 
 /** Mirrors the existing storefront tariff; no new deposit/cutoff policy is introduced. */

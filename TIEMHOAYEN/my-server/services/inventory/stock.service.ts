@@ -905,17 +905,165 @@ export const recordOrderDemand = async (orderId: string, body: { items?: { produ
   return outerSession?work(outerSession):withTransaction(work);
 };
 
-/** Admin nhập/đổi T dự kiến — chỉ cập nhật lịch cần NVL, không xuất kho. */
-export const setOrderPrepTime = async (orderId: string, neededAtRaw: unknown, actor: Actor) => {
+/**
+ * Đơn đã giữ NVL ngay (giao dưới 24 giờ hoặc Sales xác nhận) cũng có nhu cầu theo đơn, tạo thẳng ở "Đã giữ"
+ * và liên kết các dòng giữ chính thức sẵn có. KHÔNG giữ thêm lần nữa: chỉ để đơn hiện trong "Đơn cần chuẩn bị".
+ */
+export const recordHeldDemand = async (orderId: string, actor: Actor, session: ClientSession) => {
+  const demandCol = await col(COLLECTIONS.demand);
+  if (await demandCol.countDocuments({ DON_HANG_ID: orderId, TRANG_THAI: { $ne: DEMAND_STATUS.cancelled } }, { session })) return { created: 0 };
+  const holds = await (await col(COLLECTIONS.reservation)).find({
+    DON_HANG_ID: orderId, LOAI_DOI_TUONG: ITEM_KIND.material, TRANG_THAI: RESERVATION_STATUS.official,
+  }, { session }).toArray();
+  if (!holds.length) return { created: 0 };
+  const order = await (await col(COLLECTIONS.order)).findOne({ DON_HANG_ID: orderId }, { session });
+  const grouped = new Map<string, any>();
+  for (const hold of holds) {
+    const row = grouped.get(hold.NGUYEN_VAT_LIEU_ID) || { quantity: 0, holdIds: [] as string[], unit: hold.DON_VI_TINH || null };
+    row.quantity = roundQty(row.quantity + Number(hold.SO_LUONG || 0));
+    row.holdIds.push(String(hold.MA_GIU_TON || hold._id));
+    grouped.set(hold.NGUYEN_VAT_LIEU_ID, row);
+  }
+  const now = new Date();
+  const rows = [...grouped.entries()].map(([materialId, row]) => ({
+    _id: new ObjectId(), DON_HANG_ID: orderId, SAN_PHAM_ID: null, BOM_ID: null, BOM_PHIEN_BAN: null,
+    NGUYEN_VAT_LIEU_ID: materialId, SO_LUONG: row.quantity, DON_VI_TINH: row.unit,
+    THOI_DIEM_CAN_DUNG: order?.THOI_DIEM_CHUAN_BI_DU_KIEN || null, TRANG_THAI: DEMAND_STATUS.reserved,
+    NGUON_NHU_CAU: 'GIU_NGAY', GIU_TON_IDS: row.holdIds, GIU_LUC: now, TAO_LUC: now, NGUOI_TAO: actor.id,
+  }));
+  await demandCol.insertMany(rows, { session });
+  return { created: rows.length };
+};
+
+const CANCELLED_ORDER_STATUSES = ['Đã hủy', 'Hủy đơn hàng', 'Đã từ chối', 'Đã hoàn tiền'];
+const PREP_T_EDITABLE_STATUSES = ['Đã xác nhận đơn hàng', 'Đã đặt hàng thành công', 'Chờ xử lý', 'Đang chuẩn bị hàng', 'Đang chuẩn bị'];
+
+/** Giờ giao đã chốt của đơn (đầu khung giờ), theo giờ Việt Nam. */
+export const orderDeliveryAt = (order: any): Date | null => {
+  if (!order?.NGAY_MUON_GIAO) return null;
+  const date = new Date(order.NGAY_MUON_GIAO).toISOString().slice(0, 10);
+  const time = String(order.KHUNG_GIO_MUON_GIAO || '').match(/([01]?\d|2[0-3]):[0-5]\d/)?.[0] || '23:59';
+  const at = new Date(`${date}T${time.padStart(5, '0')}:00+07:00`);
+  return Number.isFinite(at.getTime()) ? at : null;
+};
+
+const orderMaterialsExported = async (orderId: string, session?: ClientSession) => {
+  const [issued, slip] = await Promise.all([
+    (await col(COLLECTIONS.demand)).countDocuments({ DON_HANG_ID: orderId, TRANG_THAI: DEMAND_STATUS.issued }, { session }),
+    (await col(COLLECTIONS.exportSlip)).countDocuments({ DON_HANG_ID: orderId, LOAI_XUAT: EXPORT_TYPES.order, TRANG_THAI: DOC_STATUS.posted }, { session }),
+  ]);
+  return issued + slip > 0;
+};
+
+/** Điều kiện nhập/đổi T dùng chung cho trang Kho và chi tiết đơn. */
+export const assertPrepTimeChangeAllowed = async (order: any, neededAt: Date, session?: ClientSession) => {
+  if (!order) throw new InventoryError(404, 'Không tìm thấy đơn hàng.');
+  if (!Number.isFinite(neededAt.getTime())) throw new InventoryError(400, 'Thời điểm chuẩn bị T không hợp lệ.');
+  if (CANCELLED_ORDER_STATUSES.includes(String(order.TRANG_THAI))) throw new InventoryError(409, 'Đơn đã hủy, không nhập hoặc đổi T được.');
+  if (!PREP_T_EDITABLE_STATUSES.includes(String(order.TRANG_THAI))) throw new InventoryError(409, 'Đơn đã qua bước chuẩn bị, không đổi T được.');
+  if (await orderMaterialsExported(String(order.DON_HANG_ID), session)) throw new InventoryError(409, 'Đơn đã xuất NVL, không đổi T được.');
+  const deliveryAt = orderDeliveryAt(order);
+  if (!deliveryAt) throw new InventoryError(409, 'Đơn chưa có ngày giờ giao hợp lệ để đặt T.');
+  if (neededAt.getTime() >= deliveryAt.getTime()) throw new InventoryError(400, 'T phải trước giờ giao đã chốt của đơn.');
+};
+
+/** Đồng bộ T sang nhu cầu và dòng giữ của đơn (không xuất kho, không đổi cách tính tồn). */
+export const syncOrderPrepTime = async (orderId: string, neededAt: Date, session?: ClientSession) => {
+  await (await col(COLLECTIONS.demand)).updateMany({ DON_HANG_ID: orderId, TRANG_THAI: { $in: [DEMAND_STATUS.waiting, DEMAND_STATUS.reserved] } }, { $set: { THOI_DIEM_CAN_DUNG: neededAt } }, { session });
+  await (await col(COLLECTIONS.reservation)).updateMany({ DON_HANG_ID: orderId, TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES } }, { $set: { THOI_DIEM_CAN_DUNG: neededAt } }, { session });
+};
+
+/** Admin/nhân viên kho nhập hoặc đổi T — kiểm tra hợp lệ, lưu người nhập, thời điểm nhập và lịch sử đổi. */
+export const setOrderPrepTime = async (orderId: string, neededAtRaw: unknown, actor: Actor, reasonRaw?: unknown) => withTransaction(async (session) => {
   const neededAt = parseDate(neededAtRaw);
   if (!neededAt) throw new InventoryError(400, 'Thời điểm chuẩn bị T không hợp lệ.');
-  await (await col(COLLECTIONS.demand)).updateMany({ DON_HANG_ID: orderId, TRANG_THAI: DEMAND_STATUS.waiting }, { $set: { THOI_DIEM_CAN_DUNG: neededAt } });
-  await (await col(COLLECTIONS.reservation)).updateMany({ DON_HANG_ID: orderId, TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES } }, { $set: { THOI_DIEM_CAN_DUNG: neededAt } });
-  await (await col(COLLECTIONS.order)).updateOne(
-    { DON_HANG_ID: orderId },
-    { $set: { THOI_DIEM_CHUAN_BI_DU_KIEN: neededAt, NGUOI_NHAP_T: actor.id, NGAY_CAP_NHAT: new Date() } },
-  );
-  return { orderId, neededAt };
+  const orders = await col(COLLECTIONS.order);
+  const order = await orders.findOne({ DON_HANG_ID: orderId }, { session });
+  await assertPrepTimeChangeAllowed(order, neededAt, session);
+  const oldAt = order!.THOI_DIEM_CHUAN_BI_DU_KIEN || null;
+  const reason = String(reasonRaw || '').trim().slice(0, 500) || (oldAt ? 'Đổi T' : 'Nhập T');
+  await syncOrderPrepTime(orderId, neededAt, session);
+  const now = new Date();
+  await orders.updateOne({ _id: order!._id }, {
+    $set: { THOI_DIEM_CHUAN_BI_DU_KIEN: neededAt, NGUOI_NHAP_T: actor.id, THOI_DIEM_NHAP_T: now, NGAY_CAP_NHAT: now },
+    $push: { LICH_SU_T: { oldAt, newAt: neededAt, reason, actor: actor.id, at: now } },
+  } as any, { session });
+  return { orderId, neededAt, previous: oldAt, setBy: actor.id, setAt: now };
+});
+
+const PREPARATION_ORDER_STATUSES = ['Đã đặt hàng thành công', 'Chờ xử lý', 'Đang chuẩn bị hàng', 'Đang chuẩn bị'];
+export const PREP_STATE_LABEL: Record<string, string> = {
+  NO_T: 'Chưa có T', WAITING_HOLD: 'Chờ giữ', HELD: 'Đã giữ', EXPORTED: 'Đã xuất', READY_MADE: 'Bó cắm sẵn', NO_MATERIAL_DATA: 'Chưa có nhu cầu NVL',
+};
+/** Số giờ trước T để nhắc giữ chính thức (nhóm chốt 24 giờ; chỉ nhắc, người dùng tự bấm Giữ). */
+export const HOLD_REMINDER_HOURS = 24;
+
+/** "Đơn cần chuẩn bị": mọi đơn đã thanh toán/cọc hợp lệ cần cắm, một trạng thái NVL và nút phù hợp cho từng đơn. */
+export const listPreparationOrders = async (now = new Date()) => {
+  const orders = await (await col(COLLECTIONS.order)).find({ TRANG_THAI: { $in: PREPARATION_ORDER_STATUSES }, KIEM_TRA_TON_KHO: true })
+    .project({ _id: 0, DON_HANG_ID: 1, TRANG_THAI: 1, TEN_NGUOI_DAT: 1, TEN_NGUOI_NHAN: 1, NGAY_MUON_GIAO: 1, KHUNG_GIO_MUON_GIAO: 1,
+      THOI_DIEM_CHUAN_BI_DU_KIEN: 1, NGUOI_NHAP_T: 1, THOI_DIEM_NHAP_T: 1, LICH_SU_T: 1, YEU_CAU_DAT_HANG_ID: 1 })
+    .sort({ NGAY_MUON_GIAO: 1 }).limit(500).toArray();
+  const ids = orders.map((order: any) => order.DON_HANG_ID);
+  if (!ids.length) return [];
+  const [demands, reservations, exports, details] = await Promise.all([
+    col(COLLECTIONS.demand).then(c => c.find({ DON_HANG_ID: { $in: ids }, TRANG_THAI: { $ne: DEMAND_STATUS.cancelled } }).toArray()),
+    col(COLLECTIONS.reservation).then(c => c.find({ DON_HANG_ID: { $in: ids }, TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES } }).toArray()),
+    col(COLLECTIONS.exportSlip).then(c => c.find({ DON_HANG_ID: { $in: ids }, LOAI_XUAT: EXPORT_TYPES.order, TRANG_THAI: DOC_STATUS.posted }).project({ DON_HANG_ID: 1, PHIEU_XUAT_ID: 1 }).toArray()),
+    col(COLLECTIONS.orderDetail).then(c => c.find({ DON_HANG_ID: { $in: ids } }).project({ DON_HANG_ID: 1, SAN_PHAM_ID: 1, SO_LUONG: 1, TEN_SAN_PHAM_SNAPSHOT: 1 }).toArray()),
+  ]);
+  const materialIds = [...new Set(demands.map((d: any) => d.NGUYEN_VAT_LIEU_ID))];
+  const materials = materialIds.length ? await (await col(COLLECTIONS.material)).find({ NGUYEN_VAT_LIEU_ID: { $in: materialIds } }).project({ NGUYEN_VAT_LIEU_ID: 1, TEN_NGUYEN_VAT_LIEU: 1, DON_VI_TINH: 1 }).toArray() : [];
+  const materialById = new Map(materials.map((m: any) => [m.NGUYEN_VAT_LIEU_ID, m]));
+  const by = <T extends Record<string, any>>(rows: T[]) => { const map = new Map<string, T[]>(); rows.forEach(r => map.set(r.DON_HANG_ID, [...(map.get(r.DON_HANG_ID) || []), r])); return map; };
+  const demandsBy = by(demands as any[]), holdsBy = by(reservations as any[]), exportsBy = by(exports as any[]), detailsBy = by(details as any[]);
+  return orders.map((order: any) => {
+    const orderDemands = demandsBy.get(order.DON_HANG_ID) || [];
+    const holds = holdsBy.get(order.DON_HANG_ID) || [];
+    const finishedHolds = holds.filter((h: any) => h.LOAI_DOI_TUONG === ITEM_KIND.finishedGood);
+    const materialHolds = holds.filter((h: any) => h.LOAI_DOI_TUONG !== ITEM_KIND.finishedGood);
+    const exportSlips = exportsBy.get(order.DON_HANG_ID) || [];
+    const exported = exportSlips.length > 0 || orderDemands.some((d: any) => d.TRANG_THAI === DEMAND_STATUS.issued);
+    const waiting = orderDemands.some((d: any) => d.TRANG_THAI === DEMAND_STATUS.waiting);
+    const held = !waiting && (orderDemands.some((d: any) => d.TRANG_THAI === DEMAND_STATUS.reserved) || materialHolds.length > 0);
+    const materialState = exported ? 'EXPORTED' : waiting ? 'WAITING' : held ? 'HELD' : 'NONE';
+    const prepAt = order.THOI_DIEM_CHUAN_BI_DU_KIEN ? new Date(order.THOI_DIEM_CHUAN_BI_DU_KIEN) : null;
+    const readyMade = materialState === 'NONE' && finishedHolds.length > 0;
+    let state = 'NO_MATERIAL_DATA';
+    if (exported) state = 'EXPORTED';
+    else if (readyMade) state = 'READY_MADE';
+    else if (!prepAt) state = 'NO_T';
+    else if (materialState === 'WAITING') state = 'WAITING_HOLD';
+    else if (materialState === 'HELD') state = 'HELD';
+    const actions: string[] = [];
+    if (!exported) actions.push(prepAt ? 'CHANGE_T' : 'SET_T');
+    if (prepAt && materialState === 'WAITING') actions.push('RESERVE');
+    // Xuất NVL chỉ khi đã có T (đơn phải có T trước khi sang Đang chuẩn bị).
+    if (materialState === 'HELD' && prepAt) actions.push('EXPORT');
+    const hoursToT = prepAt ? (prepAt.getTime() - now.getTime()) / 3_600_000 : null;
+    const deliveryAt = orderDeliveryAt(order);
+    const demandLines = new Map<string, any>();
+    for (const d of orderDemands) {
+      const key = `${d.NGUYEN_VAT_LIEU_ID}|${d.TRANG_THAI}`;
+      const m: any = materialById.get(d.NGUYEN_VAT_LIEU_ID);
+      const line = demandLines.get(key) || { materialId: d.NGUYEN_VAT_LIEU_ID, name: m?.TEN_NGUYEN_VAT_LIEU || d.NGUYEN_VAT_LIEU_ID, unit: m?.DON_VI_TINH || d.DON_VI_TINH || '', quantity: 0, status: d.TRANG_THAI };
+      line.quantity = roundQty(line.quantity + Number(d.SO_LUONG || 0));
+      demandLines.set(key, line);
+    }
+    return {
+      orderId: order.DON_HANG_ID, orderStatus: order.TRANG_THAI, requestId: order.YEU_CAU_DAT_HANG_ID || null,
+      customerName: order.TEN_NGUOI_DAT || '', receiverName: order.TEN_NGUOI_NHAN || '',
+      deliveryAt, deliverySlot: order.KHUNG_GIO_MUON_GIAO || '',
+      prepAt, prepSetBy: order.NGUOI_NHAP_T || null, prepSetAt: order.THOI_DIEM_NHAP_T || null, prepHistory: order.LICH_SU_T || [],
+      state, stateLabel: PREP_STATE_LABEL[state], materialState, actions, hoursToT: hoursToT === null ? null : Math.round(hoursToT * 10) / 10,
+      holdDueSoon: materialState === 'WAITING' && hoursToT !== null && hoursToT <= HOLD_REMINDER_HOURS,
+      overdueExport: !exported && (materialState === 'WAITING' || materialState === 'HELD') && hoursToT !== null && hoursToT < 0,
+      exportSlipIds: exportSlips.map((s: any) => s.PHIEU_XUAT_ID),
+      products: (detailsBy.get(order.DON_HANG_ID) || []).map((d: any) => ({ productId: d.SAN_PHAM_ID, name: d.TEN_SAN_PHAM_SNAPSHOT || d.SAN_PHAM_ID, quantity: Number(d.SO_LUONG || 0),
+        readyMade: finishedHolds.filter((h: any) => h.SAN_PHAM_ID === d.SAN_PHAM_ID).reduce((n: number, h: any) => n + Number(h.SO_LUONG || 0), 0) })),
+      materials: [...demandLines.values()],
+    };
+  });
 };
 
 /** Sự kiện 6: đến lịch trước T → giữ chính thức phần nhu cầu dự kiến. */

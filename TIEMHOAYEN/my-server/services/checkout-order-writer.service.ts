@@ -2,7 +2,7 @@ import {orderEvent} from './admin-order.service.js';
 import type { ClientSession } from 'mongodb';
 import { getCollection } from '../mongo.js';
 import { INVENTORY_CONFIG } from './inventory/constants.js';
-import { confirmReservations,recordOrderDemand } from './inventory/stock.service.js';
+import { confirmReservations,recordHeldDemand,recordOrderDemand } from './inventory/stock.service.js';
 import { createCheckoutAccess } from './order-access.service.js';
 import { InventoryError } from './inventory/helpers.js';
 import { consumeCheckoutBenefits } from './checkout-payment.service.js';
@@ -40,7 +40,7 @@ export async function claimCheckoutBenefits(session: ClientSession, orderId: str
 }
 
 /** Shared persistence for regular checkout and accepted Sales proposals. Caller validates prices and holds stock in this transaction. */
-export async function writeCheckoutOrder(session: ClientSession, orderId: string, payload: any, options: { voucher?: any; loyaltyPoints?: number; loyaltyExpiresAt?: any; requestId?: string; quote?: any } = {}) {
+export async function writeCheckoutOrder(session: ClientSession, orderId: string, payload: any, options: { voucher?: any; loyaltyPoints?: number; loyaltyExpiresAt?: any; requestId?: string; quote?: any; pendingOrderStatus?: string } = {}) {
   const { sender, receiver, delivery, summary, payment, flags } = payload;
   if (String(delivery?.message || '').length > 2000 || String(delivery?.noteShop || '').length > 2000) throw new InventoryError(400, 'Nội dung thiệp và ghi chú tối đa 2.000 ký tự.');
   for (const item of payload.items) {
@@ -64,7 +64,8 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
   const paymentAmount = payment?.method === 'cod' ? depositAmount : total;
   const requiresPayment = paymentAmount > 0;
   const paymentStatus = requiresPayment ? 'Chờ thanh toán' : total > 0 ? 'Chưa thanh toán' : 'Không phát sinh thu tiền';
-  const orderStatus = paymentAmount <= 0 ? 'Đã đặt hàng thành công' : 'Chờ thanh toán';
+  // Đơn từ Yêu cầu đặt hàng do Sales xác nhận mang trạng thái riêng trong lúc chờ khách thanh toán.
+  const orderStatus = paymentAmount <= 0 ? 'Đã đặt hàng thành công' : options.pendingOrderStatus || 'Chờ thanh toán';
   const paymentMethodName = String(payment?.methodName || payment?.method || '');
   const order = {
     _id: orderId, DON_HANG_ID: orderId, KIEM_TRA_TON_KHO: true, KHONG_GIU_TAM_NVL: payload.inventoryMode === 'FUTURE_DEMAND',
@@ -107,7 +108,11 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
     MA_GIAO_DICH: transactionCode, SO_TIEN: paymentAmount, TRANG_THAI_THANH_TOAN: paymentStatus, NGAY_THANH_TOAN: new Date(), HET_HAN_LUC: new Date(paymentDeadline),
   }, { session });
   if (paymentAmount <= 0) {
-    await confirmReservations({ paymentSessionId: payload.checkoutSessionId }, orderId, { id: 'PAYMENT', role: 'system' }, session);
+    if (order.KHONG_GIU_TAM_NVL) await recordOrderDemand(orderId, {}, { id: 'PAYMENT', role: 'system' }, { paymentConfirmed: true }, session);
+    else {
+      await confirmReservations({ paymentSessionId: payload.checkoutSessionId }, orderId, { id: 'PAYMENT', role: 'system' }, session);
+      await recordHeldDemand(orderId, { id: 'PAYMENT', role: 'system' }, session);
+    }
     await consumeCheckoutBenefits(session, order);
   }
   await orderEvent(session,orderId+':created',payload.customerId||null,orderId,'Đã tạo đơn hàng',requiresPayment?'Đơn đã được tạo, đang chờ khoản thanh toán trước.':'Đã tiếp nhận đơn không yêu cầu trả trước; chưa ghi nhận đã thu tiền.');

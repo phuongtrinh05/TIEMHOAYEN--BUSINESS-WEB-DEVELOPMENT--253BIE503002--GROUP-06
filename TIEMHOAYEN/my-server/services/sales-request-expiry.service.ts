@@ -5,6 +5,7 @@ import { releaseReservations } from './inventory/stock.service.js';
 import { paymentSucceeded } from './admin-order.service.js';
 import { orderEvent } from './admin-order.service.js';
 import { emitAdminNotification } from './analytics/notifications.service.js';
+import { requestWorkflow } from './request-workflow.js';
 
 const OPEN_PAYMENT = ['Chờ khách thanh toán', 'Chờ thanh toán'];
 let timer: NodeJS.Timeout | null = null;
@@ -35,7 +36,7 @@ export async function sweepExpiredSalesRequests(now = new Date()) {
       if (paymentRows.some(payment => paymentSucceeded(payment.TRANG_THAI_THANH_TOAN))) return false;
       if (orderId) {
         await releaseReservations({ orderId }, { id: 'PAYMENT_EXPIRY', role: 'system' }, 'Hết hạn thanh toán yêu cầu Sales', session);
-        await (await getCollection<any>('DON_HANG')).updateOne({ DON_HANG_ID: orderId, TRANG_THAI: { $in: ['Chờ thanh toán', 'Chờ xử lý'] } }, {
+        await (await getCollection<any>('DON_HANG')).updateOne({ DON_HANG_ID: orderId, TRANG_THAI: { $in: ['Chờ thanh toán', 'Đã xác nhận đơn hàng', 'Chờ xử lý'] } }, {
           $set: { TRANG_THAI: 'Đã hủy', LY_DO_HUY: 'Hết hạn thanh toán', NGAY_HUY: now, NGAY_CAP_NHAT: now },
           $push: { LICH_SU_TRANG_THAI: { from: row.orderResult?.orderStatus || 'Chờ thanh toán', to: 'Đã hủy', at: now, actor: 'PAYMENT_EXPIRY', reason: 'Hết hạn thanh toán' } },
         } as any, { session });
@@ -56,7 +57,39 @@ export async function sweepExpiredSalesRequests(now = new Date()) {
     });
     if (changed) expired++;
   }
+  await rejectRequestsPastDelivery(now);
   return expired;
+}
+
+/** Trạng thái trước khi tạo đơn: quá thời gian giao mong muốn thì tự chuyển "Đã từ chối". */
+const OPEN_BEFORE_ORDER = ['Chờ xử lý', 'Chờ Sales tiếp nhận', 'Sales đang xử lý', 'Chờ khách xác nhận', 'Khách đã đồng ý'];
+export async function rejectRequestsPastDelivery(now = new Date()) {
+  const requests = await getCollection<any>('YEU_CAU_DAT_HANG');
+  const open = await requests.find({ status: { $in: OPEN_BEFORE_ORDER } }, { projection: { _id: 1, status: 1, version: 1, delivery: 1, quote: 1, items: 1, routing: 1 } }).limit(500).toArray();
+  const deliveryOf = (row: any) => {
+    const at = row.quote?.deliveryAt || row.delivery?.deliveryStartAt || row.delivery?.deliveryAt || row.routing?.deliveryAt || requestWorkflow(row).deliveryAt;
+    const value = at ? new Date(at) : null;
+    return value && Number.isFinite(value.getTime()) ? value : null;
+  };
+  let rejected = 0;
+  for (const row of open) {
+    const at = deliveryOf(row);
+    if (!at || at > now) continue;
+    const message = 'Yêu cầu đã tự động bị từ chối vì đã quá thời gian giao mong muốn mà chưa được xác nhận thành đơn hàng.';
+    const versionFilter = Number.isInteger(row.version) ? { version: row.version } : { $or: [{ version: { $exists: false } }, { version: null }] };
+    const result = await requests.updateOne({ _id: row._id, status: row.status, ...versionFilter }, {
+      $set: { status: 'Đã từ chối', customerMessage: message, rejectedReason: 'DELIVERY_TIME_PASSED', acceptedQuoteId: null, updatedAt: now },
+      $inc: { version: 1 },
+      $push: { history: { id: randomUUID(), at: now, actor: 'SYSTEM', action: 'Tự động từ chối: quá thời gian giao', note: message } },
+    } as any);
+    if (result.modifiedCount !== 1) continue;
+    rejected++;
+    const full = await requests.findOne({ _id: row._id }, { projection: { requestId: 1, customerId: 1 } });
+    await orderEvent(undefined, `${row._id}:auto-rejected`, full?.customerId || null, null, 'Yêu cầu đặt hoa đã bị từ chối', message, `/order-request/${row._id}`);
+    await emitAdminNotification({ key: `SALES_REQUEST_AUTO_REJECTED:${row._id}`, type: 'SALES_REQUEST_AUTO_REJECTED', group: 'Đơn hàng', priority: 'Trung bình', module: 'orders', stateful: false,
+      entityId: String(row._id), title: `Tự động từ chối — ${row._id}`, message: 'Yêu cầu đã quá thời gian giao mong muốn.', link: '/orders/requests', queryParams: { requestId: row._id } });
+  }
+  return rejected;
 }
 
 export function startSalesRequestExpiryJob() {

@@ -2,12 +2,12 @@ import { InventoryDialogComponent } from '../inventory-dialog';
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
 import { exportInventoryCsv } from '../inventory-csv';
-import { InvAlerts, InventoryApiService, inventoryErrorMessage } from '../../../services/inventory-api.service';
+import { InvAlerts, InvPrepOrder, InventoryApiService, inventoryErrorMessage } from '../../../services/inventory-api.service';
 
-type Tab = 'alerts' | 'reservations' | 'demands' | 'finished' | 'ledger' | 'reconcile';
+type Tab = 'alerts' | 'reservations' | 'prep' | 'finished' | 'ledger' | 'reconcile';
 
 const MOVEMENT_LABEL: Record<string, string> = {
   NHAP: 'Nhập kho', DAO_NHAP: 'Đảo nhập kho', KHOI_PHUC_GIU: 'Khôi phục giữ sau đảo', DAO_CAM_SAN: 'Đảo cắm bó sẵn', DAO_XUAT: 'Đảo xuất kho', DIEU_CHINH_NHAP: 'Điều chỉnh tồn theo PN', XUAT: 'Xuất kho', GIU: 'Giữ tồn', NHA_GIU: 'Nhả giữ', KET_THUC_GIU: 'Kết thúc giữ (xuất)',
@@ -16,12 +16,12 @@ const MOVEMENT_LABEL: Record<string, string> = {
 };
 
 /**
- * Tổng quan kho (AD08): 3 tầng cảnh báo, giữ tồn, nhu cầu theo lịch T, thành phẩm cắm sẵn, sổ biến động, đối soát.
+ * Tổng quan kho (AD08): cảnh báo, giữ tồn, đơn cần chuẩn bị (theo T), thành phẩm cắm sẵn, sổ biến động, đối soát.
  */
 @Component({
   selector: 'app-stock-overview',
   standalone: true,
-  imports: [InventoryDialogComponent, CommonModule, FormsModule, InventoryTabsComponent],
+  imports: [InventoryDialogComponent, CommonModule, FormsModule, InventoryTabsComponent, RouterLink],
   templateUrl: './stock-overview.html',
   styleUrls: ['../inventory.css'],
 })
@@ -39,18 +39,30 @@ export class StockOverviewComponent implements OnInit {
       ]);
       return;
     }
-    const rows: Record<string, any>[] = tab === 'reservations' ? this.reservations() : tab === 'demands' ? this.demands()
+    if (tab === 'prep') {
+      exportInventoryCsv('don-can-chuan-bi', ['Đơn', 'Người nhận', 'Giờ giao', 'T', 'Trạng thái NVL', 'Sản phẩm', 'NVL'], this.prep().map(o => [
+        o.orderId, o.receiverName, o.deliveryAt || '', o.prepAt || '', o.stateLabel,
+        o.products.map(p => `${p.name} x${p.quantity}`).join('; '), o.materials.map(m => `${m.name} ${m.quantity} ${m.unit} (${m.status})`).join('; ')]));
+      return;
+    }
+    const rows: Record<string, any>[] = tab === 'reservations' ? this.reservations()
       : tab === 'finished' ? this.finished() : tab === 'ledger' ? this.ledger() : this.reconcileResult()?.diffs || [];
     const keys = [...new Set(rows.flatMap(row => Object.keys(row)))].filter(key => key !== '_id');
     exportInventoryCsv('kho-' + tab, keys.length ? keys : ['Kết quả'], rows.map(row => keys.map(key => typeof row[key] === 'object' ? JSON.stringify(row[key]) : row[key])));
   }
   private readonly api = inject(InventoryApiService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
 
   readonly tab = signal<Tab>('alerts');
   readonly alerts = signal<InvAlerts | null>(null);
   readonly reservations = signal<any[]>([]);
-  readonly demands = signal<any[]>([]);
+  readonly prep = signal<InvPrepOrder[]>([]);
+  readonly prepLoading = signal(false);
+  readonly holdReminderHours = signal(24);
+  readonly highlight = signal('');
+  /** Form nhập/đổi T đang mở (một đơn tại một thời điểm). */
+  readonly tForm = signal<{ orderId: string; change: boolean; value: string; reason: string; error: string; saving: boolean } | null>(null);
   readonly finished = signal<any[]>([]);
   readonly ledger = signal<any[]>([]);
   readonly reconcileResult = signal<{ ok: boolean; checkedMaterials: number; diffs: any[] } | null>(null);
@@ -60,25 +72,18 @@ export class StockOverviewComponent implements OnInit {
   readonly movementLabel = MOVEMENT_LABEL;
 
   ledgerFilter = { materialId: '', type: '', orderId: '', from: '', to: '' };
-  demandStatus = 'Chờ giữ';
-
-  readonly demandGroups = computed(() => {
-    const map = new Map<string, { orderId: string; neededAt: string | null; status: string; lines: any[] }>();
-    this.demands().forEach((d) => {
-      const g = map.get(d.DON_HANG_ID) || { orderId: d.DON_HANG_ID, neededAt: d.THOI_DIEM_CAN_DUNG, status: d.TRANG_THAI, lines: [] as any[] };
-      g.lines.push(d);
-      map.set(d.DON_HANG_ID, g);
-    });
-    return [...map.values()].sort((a, b) => String(a.neededAt || '9').localeCompare(String(b.neededAt || '9')));
-  });
-
-  ngOnInit(): void { this.loadAlerts(); }
+  ngOnInit(): void {
+    const q = this.route.snapshot.queryParamMap;
+    const orderId = q.get('orderId');
+    if (orderId || q.get('tab') === 'prep') { this.loadAlerts(); this.openPrep(orderId || ''); return; }
+    this.loadAlerts();
+  }
 
   setTab(t: Tab): void {
     this.tab.set(t);
     if (t === 'alerts') this.loadAlerts();
     if (t === 'reservations') this.loadReservations();
-    if (t === 'demands') this.loadDemands();
+    if (t === 'prep') this.loadPrep();
     if (t === 'finished') this.loadFinished();
     if (t === 'ledger') this.loadLedger();
   }
@@ -91,7 +96,23 @@ export class StockOverviewComponent implements OnInit {
     });
   }
   loadReservations(): void { this.api.reservations().subscribe({ next: (r) => this.reservations.set(r.items), error: (e) => this.notify(inventoryErrorMessage(e), true) }); }
-  loadDemands(): void { this.api.demands({ status: this.demandStatus }).subscribe({ next: (r) => this.demands.set(r.items), error: (e) => this.notify(inventoryErrorMessage(e), true) }); }
+  loadPrep(): void {
+    this.prepLoading.set(true);
+    this.api.preparation().subscribe({
+      next: (r) => { this.prep.set(r.orders); this.holdReminderHours.set(r.holdReminderHours); this.prepLoading.set(false); this.scrollToHighlight(); },
+      error: (e) => { this.prepLoading.set(false); this.notify(inventoryErrorMessage(e), true); },
+    });
+  }
+  /** Mở tab "Đơn cần chuẩn bị" và làm nổi bật một đơn (từ tab Đang giữ / Cảnh báo / link ?orderId=). */
+  openPrep(orderId: string): void {
+    this.highlight.set(orderId);
+    this.setTab('prep');
+  }
+  private scrollToHighlight(): void {
+    const id = this.highlight();
+    if (!id) return;
+    setTimeout(() => document.getElementById('prep-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+  }
   loadFinished(): void { this.api.finishedGoods().subscribe({ next: (r) => this.finished.set(r.items), error: (e) => this.notify(inventoryErrorMessage(e), true) }); }
   loadLedger(): void {
     const f = this.ledgerFilter;
@@ -115,22 +136,47 @@ export class StockOverviewComponent implements OnInit {
     });
   }
 
-  async setPrep(g: { orderId: string; neededAt: string | null }): Promise<void> {
-    const current = g.neededAt ? new Date(g.neededAt) : new Date(Date.now() + 86_400_000);
+  private toLocalInput(value: Date): string {
     const p = (n: number) => String(n).padStart(2, '0');
-    const def = `${current.getFullYear()}-${p(current.getMonth() + 1)}-${p(current.getDate())} ${p(current.getHours())}:${p(current.getMinutes())}`;
-    const v = await this.dialog.prompt(`Thời điểm bắt đầu chuẩn bị T cho đơn ${g.orderId} `, def.replace(' ', 'T'), {title: 'Lịch chuẩn bị đơn', type: 'datetime-local'});
-    if (!v) return;
-    this.api.setPrepTime(g.orderId, new Date(v.replace(' ', 'T')).toISOString()).subscribe({
-      next: () => { this.notify('Đã cập nhật T. Dự báo thiếu NVL được tính lại.'); this.loadDemands(); },
-      error: (e) => this.notify(inventoryErrorMessage(e), true),
+    return `${value.getFullYear()}-${p(value.getMonth() + 1)}-${p(value.getDate())}T${p(value.getHours())}:${p(value.getMinutes())}`;
+  }
+  openTForm(o: InvPrepOrder): void {
+    const base = o.prepAt ? new Date(o.prepAt)
+      : o.deliveryAt ? new Date(new Date(o.deliveryAt).getTime() - 3 * 3_600_000) : new Date(Date.now() + 3_600_000);
+    this.tForm.set({ orderId: o.orderId, change: !!o.prepAt, value: this.toLocalInput(base), reason: '', error: '', saving: false });
+  }
+  patchTForm(change: Partial<{ value: string; reason: string }>): void {
+    const f = this.tForm();
+    if (f) this.tForm.set({ ...f, ...change });
+  }
+  prepTitle(o: InvPrepOrder): string {
+    const at = o.prepSetAt ? new Date(o.prepSetAt).toLocaleString('vi-VN') : '';
+    const changes = o.prepHistory.length > 1 ? ` · đã đổi ${o.prepHistory.length - 1} lần` : '';
+    return `Nhập bởi ${o.prepSetBy || '—'}${at ? ' lúc ' + at : ''}${changes}`;
+  }
+  prepAlertBlocks(pa: NonNullable<InvAlerts['preparationAlerts']>) {
+    return [
+      { list: pa.paidWithoutT, title: 'Đơn đã thanh toán chưa có T', cls: 'warn', hint: 'Nhập T để kho xếp lịch giữ và xuất NVL.' },
+      { list: pa.holdDueSoon, title: `Còn ≤ ${pa.holdReminderHours} giờ đến T mà chưa giữ`, cls: 'warn', hint: 'Kiểm tra dự báo và bấm Giữ chính thức.' },
+      { list: pa.overdueExport, title: 'Đã quá T mà chưa xuất NVL', cls: 'error', hint: 'Lập phiếu xuất NVL khi cắm hoặc đổi T.' },
+    ];
+  }
+  saveT(): void {
+    const f = this.tForm();
+    if (!f) return;
+    const at = new Date(f.value);
+    if (!f.value || !Number.isFinite(at.getTime())) { this.tForm.set({ ...f, error: 'Chọn thời điểm T hợp lệ.' }); return; }
+    this.tForm.set({ ...f, saving: true, error: '' });
+    this.api.setPrepTime(f.orderId, at.toISOString(), f.reason.trim()).subscribe({
+      next: () => { this.tForm.set(null); this.notify(f.change ? 'Đã đổi T. Dự báo NVL được tính lại.' : 'Đã nhập T.'); this.loadPrep(); },
+      error: (e) => this.tForm.set({ ...f, saving: false, error: inventoryErrorMessage(e) }),
     });
   }
-
-  async reserveNow(orderId: string): Promise<void> {
-    if (!(await this.dialog.confirm(`Giữ chính thức NVL cho đơn ${orderId} ngay bây giờ (đến lịch trước T)?`))) return;
-    this.api.reserveDemand(orderId).subscribe({
-      next: () => { this.notify('Đã giữ chính thức NVL cho đơn.'); this.loadDemands(); },
+  async reserveNow(o: InvPrepOrder): Promise<void> {
+    const short = o.forecastShortages.length ? ` Dự báo đang thiếu ${o.forecastShortages.map(x => x.name).join(', ')}; nếu không đủ hàng hệ thống sẽ báo và không giữ phần nào.` : '';
+    if (!(await this.dialog.confirm(`Giữ chính thức NVL cho đơn ${o.orderId}?${short}`))) return;
+    this.api.reserveDemand(o.orderId).subscribe({
+      next: () => { this.notify('Đã giữ chính thức NVL cho đơn.'); this.loadPrep(); },
       error: (e) => this.notify(inventoryErrorMessage(e), true),
     });
   }

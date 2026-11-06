@@ -215,41 +215,24 @@
 
             <div class="form-group">
               <div class="time-input-wrap">
-                <input
-                  type="text"
+                <select
                   name="deliveryTime"
-                  class="form-input"
+                  class="form-input delivery-time-select"
                   [(ngModel)]="formData.deliveryTime"
-                  (ngModelChange)="validateDeliverySchedule()"
-                  placeholder="HH:MM"
-                  pattern="^$|^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                  (ngModelChange)="onDeliveryTimeChange()"
                   required
                   #deliveryTime="ngModel"
                   [class.is-invalid]="(deliveryTime.invalid && (deliveryTime.touched || orForm.submitted)) || deliveryScheduleError">
-
-                <button
-                  type="button"
-                  class="time-picker-btn"
-                  (click)="deliveryTimePicker.showPicker()">
-                  <i class="bi bi-clock"></i>
-                </button>
-
-                <input
-                  #deliveryTimePicker
-                  type="time"
-                  class="time-picker-hidden"
-                  [value]="formData.deliveryTime"
-                  (change)="onDeliveryTimePicked($event)">
+                  <option value="" disabled>Chọn giờ giao (08:00–22:00)</option>
+                  <option *ngFor="let slot of deliveryTimeOptions" [value]="slot">{{ slot }}</option>
+                </select>
               </div>
 
               <span class="error-msg" *ngIf="deliveryTime.invalid && (deliveryTime.touched || orForm.submitted)">
-                <ng-container *ngIf="deliveryTime.errors?.['required']">
-                  Vui lòng nhập giờ giao hàng.
-                </ng-container>
-
-                <ng-container *ngIf="deliveryTime.errors?.['pattern']">
-                  Giờ giao không hợp lệ.
-                </ng-container>
+                Vui lòng chọn giờ giao hàng.
+              </span>
+              <span class="error-msg" *ngIf="formData.deliveryDate && !deliveryTimeOptions.length">
+                Ngày này đã hết giờ nhận giao. Vui lòng chọn ngày khác.
               </span>
             </div>
           </div>
@@ -567,17 +550,36 @@
           {{ submitOrderError }}
         </p>
 
+        <div class="request-notice" *ngIf="quoteNeedsRequest && !salesRequestId">
+          <p class="request-notice__title"><i class="bi bi-info-circle"></i> Đơn này cần shop xác nhận trước</p>
+          <ul class="request-notice__reasons">
+            <li *ngFor="let reason of quoteRequestReasons">{{ reason }}</li>
+          </ul>
+          <p class="request-notice__note">Bạn chưa cần thanh toán. Shop sẽ liên hệ và gửi phương án.</p>
+        </div>
+
         <button
           type="button"
           class="btn-order"
           [disabled]="!!salesRequestId || isSubmittingOrder"
           [class.is-ready]="!salesRequestId && orForm.valid && !isSubmittingOrder && formData.paymentMethod !== 'card' && !isPaymentMethodDisabled(formData.paymentMethod)"
           (click)="onSubmit(orForm)">
-          {{ salesRequestId ? 'Đã gửi yêu cầu' : (isSubmittingOrder ? 'Đang kiểm tra đơn...' : 'Thanh toán') }}
+          {{ salesRequestId ? 'Đã gửi yêu cầu' : (isSubmittingOrder ? 'Đang kiểm tra đơn...' : (quoteNeedsRequest ? 'Yêu cầu đặt hàng' : 'Thanh toán')) }}
         </button>
       </div>
     </div>
 
+  </div>
+</div>
+
+<div class="urgent-popup-backdrop" *ngIf="urgentDeliveryPopup" (click)="closeUrgentDeliveryPopup()">
+  <div class="urgent-popup" role="alertdialog" aria-modal="true" (click)="$event.stopPropagation()">
+    <i class="bi bi-telephone-forward urgent-popup__icon"></i>
+    <p class="urgent-popup__text">
+      Đơn hàng của bạn giao gấp. Vui lòng liên hệ với số điện thoại
+      <a class="urgent-popup__phone" [href]="'tel:' + shopPhone">{{ shopPhone }}</a>
+    </p>
+    <button type="button" class="urgent-popup__btn" (click)="closeUrgentDeliveryPopup()">Đã hiểu</button>
   </div>
 </div>
 

@@ -219,11 +219,23 @@ export interface InvBomProduct {
   bottleneck: { materialId: string; name: string } | null;
 }
 
+export interface InvPrepAlert { orderId: string; deliveryAt: string | null; prepAt: string | null; stateLabel: string; hoursToT: number | null }
+export interface InvPrepOrder {
+  orderId: string; orderStatus: string; requestId: string | null; customerName: string; receiverName: string;
+  deliveryAt: string | null; deliverySlot: string; prepAt: string | null; prepSetBy: string | null; prepSetAt: string | null;
+  prepHistory: Array<{ oldAt: string | null; newAt: string; reason: string; actor: string; at: string }>;
+  state: 'NO_T' | 'WAITING_HOLD' | 'HELD' | 'EXPORTED' | 'READY_MADE' | 'NO_MATERIAL_DATA'; stateLabel: string; materialState: string;
+  actions: Array<'SET_T' | 'CHANGE_T' | 'RESERVE' | 'EXPORT'>; hoursToT: number | null; holdDueSoon: boolean; overdueExport: boolean;
+  exportSlipIds: string[]; products: Array<{ productId: string; name: string; quantity: number; readyMade: number }>;
+  materials: Array<{ materialId: string; name: string; unit: string; quantity: number; status: string }>;
+  forecastShortages: Array<{ materialId: string; name: string; unit: string; required: number; missing: number; neededAt: string }>;
+}
 export interface InvAlerts {
   summary: Record<string, number>;
   materialAlerts: Array<{ materialId: string; name: string; unit: string; status: string; label: string; available: number; threshold: number; maxLevel: number; suggestedOrder: number }>;
   forecastShortages: Array<{ orderId: string; materialId: string; name: string; unit: string; neededAt: string; required: number; missing: number; available: number; incoming: number }>;
   ordersWithoutSchedule: string[];
+  preparationAlerts?: { holdReminderHours: number; paidWithoutT: InvPrepAlert[]; holdDueSoon: InvPrepAlert[]; overdueExport: InvPrepAlert[] };
   productAlerts: Array<{ productId: string; name: string; sellable: number; status: string; label: string; bottleneck: { name: string } | null; noBom: boolean }>;
   qualityChecks: Array<{ materialId: string; name: string; sourceId: string; receivedAt: string; ageDays: number; shelfDays: number; quantity: number; reserved: number }>;
 }
@@ -416,8 +428,12 @@ export class InventoryApiService {
   demands(query: Record<string, unknown> = {}): Observable<{ total: number; items: any[] }> {
     return this.http.get<any>(`${this.base}/inventory/demands`, { params: this.params(query) });
   }
-  setPrepTime(orderId: string, neededAt: string): Observable<unknown> {
-    return this.http.patch(`${this.base}/inventory/orders/${encodeURIComponent(orderId)}/prep-start`, { neededAt });
+  setPrepTime(orderId: string, neededAt: string, reason = ''): Observable<unknown> {
+    return this.http.patch(`${this.base}/inventory/orders/${encodeURIComponent(orderId)}/prep-start`, { neededAt, reason });
+  }
+  /** "Đơn cần chuẩn bị": mỗi đơn một trạng thái NVL và các nút phù hợp. */
+  preparation(): Observable<{ holdReminderHours: number; orders: InvPrepOrder[] }> {
+    return this.http.get<{ holdReminderHours: number; orders: InvPrepOrder[] }>(`${this.base}/inventory/preparation`);
   }
   reserveDemand(orderId: string): Observable<unknown> {
     return this.http.post(`${this.base}/inventory/orders/${encodeURIComponent(orderId)}/reserve`, {});

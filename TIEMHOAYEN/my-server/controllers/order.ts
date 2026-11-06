@@ -2,7 +2,7 @@ import { afterSalesRead, afterSalesCreate, afterSalesSupplement, orderEvent } fr
 import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
 import { writeCheckoutOrder, claimCheckoutBenefits } from '../services/checkout-order-writer.service.js';
-import { routeCheckout, assertReservedStockUsable } from '../services/order-request.service.js';
+import { routeCheckout, assertReservedStockUsable, evaluateCheckoutFulfillment } from '../services/order-request.service.js';
 import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
 import { INVENTORY_CONFIG, RESERVATION_STATUS } from '../services/inventory/constants.js';
 import { syncCheckoutInventory, changeCheckoutPayment } from '../services/checkout-payment.service.js';
@@ -12,7 +12,6 @@ import { reserveOrderLines } from '../services/order-stock.service.js';
 import { lookupAccess } from '../services/order-access.service.js';
 import { priceCheckout, sumVerifiedPayments, validateCheckoutDelivery } from '../services/admin-order.service.js';
 import { getActiveBom } from '../services/inventory/bom.service.js';
-import { checkProductAvailability } from '../services/inventory/availability.service.js';
 import { synchronizeLuckyOrder, syncLuckyOrder } from '../services/lucky-wheel.service.js';
 import { getDesign, isDesignProduct } from '../services/design3d.service.js';
 import { derivePromotionStatus } from '../services/pricing-voucher.service.js';
@@ -287,17 +286,27 @@ export const quoteOrder = async (req: Request, res: Response) => {
       if (access.authType !== 'member' || access.customerId !== customerId) throw new InventoryError(403, 'Bạn chỉ được báo giá cho tài khoản đang đăng nhập.');
     }
     const priced = await priceCheckout({ ...req.body, customerId, adminNote: '' });
-    const availability = await Promise.all(priced.items.map((item: any) =>
-      checkProductAvailability(item.id, item.qty, priced.delivery.deliveryAt)));
-    const requiresSales = availability.some((item: any) => item.decision !== 'available');
+    // Xem trước cùng quy tắc với lúc đặt: thanh toán thẳng, Yêu cầu đặt hàng, hoặc giao gấp phải gọi shop.
+    let fulfillment: any;
+    let routing: any = null;
+    try {
+      const evaluation = await evaluateCheckoutFulfillment(priced.items.map((item: any) => ({ productId: item.id, quantity: item.qty })), priced.delivery);
+      routing = evaluation.routing;
+      fulfillment = { mode: evaluation.mode, reasons: evaluation.customerReasons, scheduleClass: evaluation.routing.scheduleClass };
+    } catch (error: any) {
+      const code = error instanceof InventoryError ? (error.details as any)?.code : null;
+      if (!code) throw error;
+      fulfillment = { mode: 'blocked', code, message: error.message, phone: (error.details as any)?.phone || null };
+    }
+    const requiresSales = fulfillment.mode === 'request';
     return res.json({ items: priced.items, summary: priced.summary, payment: priced.payment,
-      availability, requiresSales,
-      routing: availability.find((item: any) => item.routing?.requiresSales)?.routing || availability[0]?.routing || null,
-      message: requiresSales
-        ? 'Shop cần kiểm tra khả năng đáp ứng trước khi xác nhận. Bạn chưa cần thanh toán.'
+      fulfillment, requiresSales, routing,
+      message: fulfillment.mode === 'blocked' ? fulfillment.message : requiresSales
+        ? `${fulfillment.reasons.join(' ')} Bạn có thể gửi Yêu cầu đặt hàng; bạn chưa cần thanh toán.`
         : 'Báo giá chưa giữ hàng. Hệ thống kiểm tra và giữ tồn khi bạn đặt hàng.' });
   } catch (error: any) {
-    return res.status(error instanceof InventoryError ? error.status : 500).json({ message: error instanceof InventoryError ? error.message : 'Không thể báo giá lúc này.' });
+    return res.status(error instanceof InventoryError ? error.status : 500).json({ message: error instanceof InventoryError ? error.message : 'Không thể báo giá lúc này.',
+      ...(error instanceof InventoryError && (error.details as any)?.code ? { code: (error.details as any).code } : {}) });
   }
 };
 
@@ -373,7 +382,8 @@ export const createOrder = async (req: Request, res: Response) => {
     return res.status(201).json(outcome);
   } catch (error: any) {
     console.error('Lỗi tạo đơn hàng:', error);
-    if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message });
+    if (error instanceof InventoryError) return res.status(error.status).json({ message: error.message,
+      ...((error.details as any)?.code ? { code: (error.details as any).code, phone: (error.details as any).phone || undefined } : {}) });
     return res.status(500).json({ message: 'Không thể tạo đơn hàng: ' + error.message });
   }
 };

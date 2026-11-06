@@ -1,5 +1,8 @@
 import {getActiveBom,makeBomSnapshot} from './inventory/bom.service.js';
 import {getDesign,isDesignProduct,designFutureDay} from './design3d.service.js';
+import { classifyDeliverySchedule } from './delivery-policy.service.js';
+import { availableOf, ceilQty, finishedAvailableOf, roundQty } from './inventory/helpers.js';
+import { MATERIAL_STATUS } from './inventory/constants.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { ClientSession } from 'mongodb';
 import { getCollection } from '../mongo.js';
@@ -8,7 +11,6 @@ import { INVENTORY_CONFIG, RESERVATION_STATUS } from './inventory/constants.js';
 import { reserveProducts, reserveMaterialNeeds, sweepExpiredReservations } from './inventory/stock.service.js';
 import { requestWorkflow } from './request-workflow.js';
 import { requestByVerifiedPhone, createRequestAccess, lookupAccess } from './order-access.service.js';
-import { checkProductAvailability } from './inventory/availability.service.js';
 import { emitAdminNotification } from './analytics/notifications.service.js';
 
 /** Checkout boundary check on the actual allocated stock; does not change the inventory schema. */
@@ -54,8 +56,113 @@ export async function assertReservedStockUsable(session: ClientSession, orderId:
 
 export const REQUESTS = 'YEU_CAU_DAT_HANG';
 const CHECKOUTS = 'PHIEN_DAT_HANG';
-export const REQUEST_STATUS = { waiting: 'Chờ Sales tiếp nhận', processing: 'Sales đang xử lý', quoted: 'Chờ khách xác nhận', accepted: 'Khách đã đồng ý',
+export const REQUEST_STATUS = { waiting: 'Chờ xử lý', processing: 'Sales đang xử lý', quoted: 'Chờ khách xác nhận', accepted: 'Khách đã đồng ý',
   pendingPayment: 'Chờ khách thanh toán', converted: 'Đã lên đơn', rejected: 'Đã từ chối', closed: 'Đã tư vấn', cancelled: 'Khách đã hủy', expired: 'Hết hạn thanh toán' } as const;
+/** Bản ghi cũ trên Atlas còn dùng tên trạng thái trước đây; đọc như "Chờ xử lý", không migrate dữ liệu. */
+export const LEGACY_WAITING_STATUS = 'Chờ Sales tiếp nhận';
+export const WAITING_STATUSES: string[] = [REQUEST_STATUS.waiting, LEGACY_WAITING_STATUS];
+export const normalizeRequestStatus = (status: unknown) => status === LEGACY_WAITING_STATUS ? REQUEST_STATUS.waiting : String(status || '');
+/** Đơn tạo từ yêu cầu sau khi Sales xác nhận, chờ khách thanh toán trong hạn. */
+export const SALES_CONFIRMED_ORDER_STATUS = 'Đã xác nhận đơn hàng';
+
+export const REQUEST_REASON = {
+  custom: 'CUSTOM_DESIGN',
+  materialShortage: 'MATERIAL_SHORTAGE_UNDER_24H',
+  dataIncomplete: 'INVENTORY_DATA_INCOMPLETE',
+} as const;
+const REASON_TEXT: Record<string, string> = {
+  [REQUEST_REASON.custom]: 'Bó hoa thiết kế riêng cần nhân viên xác nhận khả năng thực hiện, nguyên liệu, giá và lịch giao.',
+  [REQUEST_REASON.materialShortage]: 'Lịch giao trong vòng 24 giờ nhưng shop chưa đủ hoa và nguyên liệu cho số lượng bạn chọn.',
+  [REQUEST_REASON.dataIncomplete]: 'Shop cần kiểm tra lại công thức hoặc nguồn hoa của mẫu trước khi xác nhận.',
+};
+export const customerReasonText = (codes: string[]) => codes.map(code => REASON_TEXT[code]).filter(Boolean);
+
+type CheckoutLine = { productId: string; quantity: number };
+
+/**
+ * Quyết định một lần Checkout đi thẳng thanh toán hay thành Yêu cầu đặt hàng.
+ * Chỉ ĐỌC dữ liệu, không giữ tồn. Thời gian giao không hợp lệ/dưới 4 giờ sẽ ném lỗi 400.
+ *  A. Còn dưới 24 giờ và NVL khả dụng không đủ cho phần phải cắm (sau khi dùng thành phẩm có sẵn).
+ *  B. Có sản phẩm thiết kế riêng.
+ *  C. Còn lại: thanh toán thẳng. Từ 24 giờ: không giữ tạm, lập nhu cầu NVL theo T sau khi thanh toán.
+ * Một đơn thỏa nhiều điều kiện vẫn chỉ tạo MỘT yêu cầu, lưu đủ mọi nguyên nhân.
+ */
+export async function evaluateCheckoutFulfillment(lines: CheckoutLine[], delivery: { deliveryAt: string; deliveryStartAt?: string }, now = new Date(), session?: ClientSession) {
+  const routing = classifyDeliverySchedule(delivery.deliveryAt, now, delivery.deliveryStartAt);
+  const under24h = routing.scheduleClass === 'UNDER_24H';
+  const merged = new Map<string, number>();
+  for (const line of lines) merged.set(line.productId, (merged.get(line.productId) || 0) + Number(line.quantity || 0));
+  const reasonCodes = new Set<string>();
+  const dataIssues: string[] = [];
+  const customItems: any[] = [];
+  for (const [productId, quantity] of merged) {
+    if (!isDesignProduct(productId)) continue;
+    const design = await getDesign(productId, session);
+    reasonCodes.add(REQUEST_REASON.custom);
+    customItems.push({ productId, designId: design.designId, name: design.name, image: design.image || '', quantity,
+      arrangement: design.arrangement, price: design.price, designFee: design.designFee, extraFee: design.extraFee,
+      notes: design.badges, materials: design.materials.map((m: any) => ({ materialId: m.materialId, name: m.name, unit: m.unit,
+        perUnit: m.quantity, required: roundQty(m.quantity * quantity), available: m.available, colors: m.colors || null })) });
+  }
+  const catalogIds = [...merged.keys()].filter(id => !isDesignProduct(id));
+  const products = catalogIds.length ? await (await getCollection<any>('SAN_PHAM')).find({ SAN_PHAM_ID: { $in: catalogIds } }, { session }).toArray() : [];
+  const productById = new Map(products.map(product => [String(product.SAN_PHAM_ID), product]));
+  const needs = new Map<string, { required: number; usedBy: string[]; unit: string }>();
+  const checkedLines: any[] = [];
+  for (const productId of catalogIds) {
+    const quantity = merged.get(productId)!;
+    const product = productById.get(productId);
+    if (!product) throw new InventoryError(404, 'Có sản phẩm không còn tồn tại. Vui lòng tải lại giỏ hàng.');
+    const finishedAvailable = Math.max(0, Math.floor(finishedAvailableOf(product)));
+    const toMake = Math.max(0, quantity - finishedAvailable);
+    const { bom, lines: bomLines } = await getActiveBom(productId, session);
+    const line: any = { productId, name: product.TEN_SAN_PHAM || productId, quantity, finishedAvailable, toMake,
+      bom: bom ? { bomId: bom.BOM_ID, version: bom.PHIEN_BAN } : null,
+      materials: bomLines.map(l => ({ materialId: l.NGUYEN_VAT_LIEU_ID, perUnit: Number(l.DINH_LUONG || 0), unit: l.DON_VI_TINH || '', required: ceilQty(Number(l.DINH_LUONG || 0) * toMake) })) };
+    checkedLines.push(line);
+    // Đủ thành phẩm để giao thì không cần xét BOM của sản phẩm đó.
+    if (!toMake) continue;
+    if (!bomLines.length) {
+      reasonCodes.add(REQUEST_REASON.dataIncomplete);
+      dataIssues.push(`${line.name}: chưa có BOM hiệu lực để tính NVL cho ${toMake} bó phải cắm.`);
+      continue;
+    }
+    for (const material of line.materials) {
+      if (!material.required) continue;
+      const need = needs.get(material.materialId) || { required: 0, usedBy: [] as string[], unit: material.unit };
+      need.required = roundQty(need.required + material.required);
+      need.usedBy.push(productId);
+      needs.set(material.materialId, need);
+    }
+  }
+  const materialRows = needs.size ? await (await getCollection<any>('NGUYEN_VAT_LIEU')).find({ NGUYEN_VAT_LIEU_ID: { $in: [...needs.keys()] } }, { session }).toArray() : [];
+  const materialById = new Map(materialRows.map(row => [String(row.NGUYEN_VAT_LIEU_ID), row]));
+  const materialNeeds = [...needs.entries()].map(([materialId, need]) => {
+    const material = materialById.get(materialId);
+    const available = availableOf(material);
+    return { materialId, name: material?.TEN_NGUYEN_VAT_LIEU || materialId, unit: material?.DON_VI_TINH || need.unit,
+      required: need.required, available, missing: Math.max(0, roundQty(need.required - available)), usedBy: need.usedBy,
+      inactive: !material || material.TRANG_THAI === MATERIAL_STATUS.hidden };
+  });
+  for (const need of materialNeeds) if (need.inactive) {
+    reasonCodes.add(REQUEST_REASON.dataIncomplete);
+    dataIssues.push(`${need.name}: NVL trong BOM không còn sử dụng.`);
+  }
+  // Điều kiện A chỉ áp dụng cho lịch giao dưới 24 giờ. Nhu cầu NVL dùng chung đã cộng dồn giữa các dòng.
+  const shortages = under24h ? materialNeeds.filter(need => need.missing > 0) : [];
+  if (shortages.length) reasonCodes.add(REQUEST_REASON.materialShortage);
+  const codes = [...reasonCodes];
+  return {
+    mode: codes.length ? 'request' as const : 'direct' as const,
+    inventoryMode: under24h ? 'HOLD_NOW' as const : 'FUTURE_DEMAND' as const,
+    routing: { ...routing, requiresSales: codes.length > 0, reasonCodes: codes, reasons: customerReasonText(codes) },
+    reasonCodes: codes,
+    customerReasons: customerReasonText(codes),
+    materialCheck: { evaluatedAt: now.toISOString(), under24h, lines: checkedLines, materials: materialNeeds, shortages },
+    customItems,
+    dataIssues,
+  };
+}
 
 /** The browser keeps this key through retries. A persisted outcome never reserves twice. */
 export async function routeCheckout(
@@ -83,22 +190,29 @@ export async function routeCheckout(
   // Unique order ID: scanning max(existing)+1 races between different buyers.
   const orderId = `YEN${randomBytes(8).toString('hex').toUpperCase()}`;
   let shortage: InventoryError | undefined;
+  let evaluation: Awaited<ReturnType<typeof evaluateCheckoutFulfillment>> | undefined;
   let prepared = payload;
   try {
     return await withTransaction(async session => {
       await sessions.insertOne({ _id: key, fingerprint, createdAt: new Date() }, { session });
       if (prepare) prepared = await prepare(session);
+      const delivery = prepared.delivery || {};
+      if (!delivery.deliveryAt) throw new InventoryError(400, 'Cần ngày và giờ giao hợp lệ.');
+      // Thời gian giao ngoài 08:00–22:00, đã qua hoặc dưới 4 giờ: lỗi 400, không tạo yêu cầu.
+      evaluation = await evaluateCheckoutFulfillment(items, delivery, new Date(), session);
       try {
-        if (prepared.delivery?.deliveryAt) {
-          const checks = await Promise.all(items.map(item => checkProductAvailability(item.productId, item.quantity, prepared.delivery.deliveryAt)));
-          const review = checks.filter(check => check.decision !== 'available');
-          if (review.length) throw new InventoryError(409, 'Shop cần kiểm tra khả năng đáp ứng lịch giao và nguyên liệu.', { availability: review });
+        if (evaluation.mode === 'request') throw new InventoryError(409, evaluation.customerReasons.join(' '), { evaluation });
+        if (evaluation.inventoryMode === 'HOLD_NOW') {
+          // Dưới 24 giờ: giữ tạm thành phẩm + NVL ngay khi tạo QR. Thiếu do tranh chấp → vẫn chuyển thành yêu cầu.
+          await reserveProducts(items, {
+            orderId, paymentSessionId: key, status: RESERVATION_STATUS.temporary,
+            actor: { id: payload.customerId || null, role: 'customer' },
+          }, session);
+          await assertReservedStockUsable(session, orderId, delivery.deliveryAt);
+        } else {
+          // Từ 24 giờ: không giữ tạm. Thanh toán hợp lệ mới lập nhu cầu NVL theo T.
+          prepared = { ...prepared, inventoryMode: 'FUTURE_DEMAND' };
         }
-        await reserveProducts(items, {
-          orderId, paymentSessionId: key, status: RESERVATION_STATUS.temporary,
-          actor: { id: payload.customerId || null, role: 'customer' },
-        }, session);
-        if (prepared.delivery?.deliveryAt) await assertReservedStockUsable(session, orderId, prepared.delivery.deliveryAt);
       } catch (error) {
         if (error instanceof InventoryError && error.status === 409) shortage = error;
         throw error;
@@ -115,21 +229,18 @@ export async function routeCheckout(
     }
     if (error !== shortage) throw error;
   }
-  // Reservation transaction has rolled back ALL lines. A request creates no payment.
+  // Reservation transaction has rolled back ALL lines. A request creates no order, payment or stock movement.
   const requestId = `YC${randomBytes(8).toString('hex').toUpperCase()}`;
-  const shortageDetails: any = shortage?.details || {};
-  const availability = Array.isArray(shortageDetails.availability) ? shortageDetails.availability : [];
-  const futureDelivery = availability.some((check: any) => check.sameDay === false);
-  const routing = availability.find((check: any) => check.routing?.requiresSales)?.routing || {
-    scheduleClass: futureDelivery ? 'FUTURE_UNCERTAIN' : 'INSUFFICIENT_STOCK',
-    priority: 'NORMAL', reasonCodes: [futureDelivery ? 'FUTURE_SUPPLY_UNVERIFIED' : 'INSUFFICIENT_STOCK'],
-    deliveryAt: prepared.delivery?.deliveryAt, evaluatedAt: new Date().toISOString(), timezone: 'Asia/Ho_Chi_Minh',
-  };
-  const reviewReason = availability.flatMap((check: any) => check.reasons || []).filter(Boolean).join(' ') || (futureDelivery
-    ? 'Bạn chọn lịch giao ở ngày tương lai. Shop cần xác minh nguồn hoa, lịch chuẩn bị và khả năng giao trước khi xác nhận đơn.'
-    : 'Tồn thành phẩm hiện không đủ; phần còn lại cũng chưa đủ nguyên vật liệu trong BOM để đáp ứng toàn bộ yêu cầu.');
-  const result: any = { kind: 'sales_request', requestId, status: REQUEST_STATUS.waiting,
-    message: `${reviewReason} Shop đã tiếp nhận yêu cầu để tư vấn. Đây chưa phải đơn đã xác nhận; bạn chưa cần thanh toán.` };
+  const details: any = shortage?.details || {};
+  const checked = details.evaluation || evaluation;
+  const reasonCodes: string[] = [...(checked?.reasonCodes || [])];
+  // Giữ tồn thất bại dù kiểm tra trước đó đủ (đơn khác vừa giữ, hoặc nguồn hoa cần xác minh hạn dùng).
+  if (!details.evaluation) reasonCodes.push(/xác minh/i.test(String(shortage?.message)) ? REQUEST_REASON.dataIncomplete : REQUEST_REASON.materialShortage);
+  const codes = [...new Set(reasonCodes)];
+  const reviewReason = customerReasonText(codes).join(' ');
+  const routing = { ...(checked?.routing || {}), requiresSales: true, reasonCodes: codes, reasons: customerReasonText(codes) };
+  const result: any = { kind: 'sales_request', requestId, status: REQUEST_STATUS.waiting, reasonCodes: codes, reasons: customerReasonText(codes),
+    message: `${reviewReason} Shop đã tiếp nhận Yêu cầu đặt hàng ${requestId}. Đây chưa phải đơn đã xác nhận; bạn chưa cần thanh toán.` };
   try {
     return await withTransaction(async session => {
       if (!payload.customerId) {
@@ -143,27 +254,32 @@ export async function routeCheckout(
       // made a Sales request increasingly slow for a cart with many flowers.
       const productRows = await products.find({ SAN_PHAM_ID: { $in: items.map(item => item.productId) } }, { session }).toArray();
       const productById = new Map(productRows.map(product => [String(product.SAN_PHAM_ID), product]));
+      const customById = new Map((checked?.customItems || []).map((item: any) => [String(item.productId), item]));
       const snapshot = items.map(item => {
         const product = productById.get(item.productId);
+        const custom: any = customById.get(item.productId);
         const priced = prepared.items?.find((line: any) => line.id === item.productId);
-        return { ...item, name: priced?.name || product?.TEN_SAN_PHAM || item.productId,
-          price: Number(priced?.price ?? product?.GIA ?? 0), image: priced?.image || '' };
+        return { ...item, name: priced?.name || custom?.name || product?.TEN_SAN_PHAM || item.productId,
+          price: Number(priced?.price ?? custom?.price ?? product?.GIA ?? 0), image: priced?.image || custom?.image || '',
+          ...(custom ? { custom: true, designId: custom.designId } : {}) };
       });
       const requestDocument = {
         _id: requestId, requestId,
         status: REQUEST_STATUS.waiting, assignedTo: null, assignedName: null,
-        sender: payload.sender, receiver: payload.receiver, delivery: payload.delivery,
+        sender: payload.sender, receiver: payload.receiver, delivery: { ...payload.delivery, deliveryAt: prepared.delivery?.deliveryAt, deliveryStartAt: prepared.delivery?.deliveryStartAt },
         flags: payload.flags || {}, giftCard: prepared.giftCard || null, originalSummary: prepared.summary || {},
         customerId: payload.customerId || null, items: snapshot,
-        reason: shortage!.message, shortages: shortage!.details || null,
-        requestReason: futureDelivery ? 'future_delivery' : 'inventory_shortage', reviewReason, routing,
+        reason: shortage!.message, shortages: details.evaluation ? null : details,
+        requestReason: codes[0] || REQUEST_REASON.materialShortage, reasonCodes: codes, reviewReason, routing,
+        // Căn cứ cho Sales: tồn thành phẩm, BOM, nhu cầu NVL gộp, phần thiếu, thiết kế riêng.
+        materialCheck: checked?.materialCheck || null, customDesigns: checked?.customItems || [], dataIssues: [...(checked?.dataIssues || []), ...(details.evaluation ? [] : [String(shortage!.message)])],
         createdAt: new Date(), updatedAt: new Date(), version: 0,
-        history: [{ id: randomUUID(), at: new Date(), action: futureDelivery ? 'Tạo yêu cầu do lịch giao tương lai' : 'Tạo yêu cầu do thiếu tồn khả dụng' }],
+        history: [{ id: randomUUID(), at: new Date(), action: `Tạo yêu cầu: ${customerReasonText(codes).join(' ') || 'cần Sales xem xét'}` }],
       };
       await (await getCollection<any>(REQUESTS)).insertOne(requestDocument, { session });
       if (requestDocument.customerId) {
         const { orderEvent } = await import('./admin-order.service.js');
-        await orderEvent(session, `${requestId}:created`, requestDocument.customerId, null, 'Shop đã nhận yêu cầu đặt hoa', `Yêu cầu ${requestId} đang chờ nhân viên tiếp nhận.`, `/order-request/${requestId}`);
+        await orderEvent(session, `${requestId}:created`, requestDocument.customerId, null, 'Shop đã nhận yêu cầu đặt hoa', `Yêu cầu ${requestId} đang chờ nhân viên xử lý.`, `/order-request/${requestId}`);
       }
       const workflow = requestWorkflow(requestDocument);
       await emitAdminNotification({
@@ -191,11 +307,12 @@ export function publicRequest(row: any) {
     productId: item.id, name: item.name, quantity: item.qty, price: item.price, image: item.image,
     custom: !!item.custom, bom: item.bom || null, description: item.description || '',
   })) : row.items;
-  return { requestId: row.requestId, status: row.status, items: displayedItems, delivery: hasProposal ? row.quote.delivery : row.delivery,
+  return { requestId: row.requestId, status: normalizeRequestStatus(row.status), items: displayedItems, delivery: hasProposal ? row.quote.delivery : row.delivery,
     giftCard: hasProposal ? row.quote.giftCard ?? row.giftCard ?? null : row.giftCard ?? null,
     originalItems: hasProposal ? row.items : null, originalDelivery: hasProposal ? row.delivery : null,
     requestUpdatedByProposal,
-    requestReason: row.requestReason || null, routing: row.routing || null,
+    requestReason: row.requestReason || null, routing: row.routing ? { scheduleClass: row.routing.scheduleClass, deliveryAt: row.routing.deliveryAt, minutesUntilDelivery: row.routing.minutesUntilDelivery } : null,
+    reasons: customerReasonText(row.reasonCodes || []),
     reviewReason: row.reviewReason || (row.requestReason === 'future_delivery'
       ? 'Bạn chọn lịch giao ở ngày tương lai. Shop cần xác minh nguồn hoa, lịch chuẩn bị và khả năng giao trước khi xác nhận đơn.'
       : 'Tồn thành phẩm hiện không đủ; phần còn lại cũng chưa đủ nguyên vật liệu trong BOM để đáp ứng toàn bộ yêu cầu.'),
@@ -232,7 +349,7 @@ export async function updateSalesRequest(id: string, body: any, employee: any) {
   if (rowVersion !== body.version) throw new InventoryError(409, 'Yêu cầu vừa thay đổi. Vui lòng tải lại.');
   const claim = body.action === 'claim';
   const editable = [REQUEST_STATUS.processing, REQUEST_STATUS.quoted, REQUEST_STATUS.accepted];
-  if (claim ? row.status !== REQUEST_STATUS.waiting : !editable.includes(row.status) || row.assignedTo !== employee.NHAN_VIEN_ID) {
+  if (claim ? !WAITING_STATUSES.includes(row.status) : !editable.includes(row.status) || row.assignedTo !== employee.NHAN_VIEN_ID) {
     throw new InventoryError(409, 'Yêu cầu đã được tiếp nhận hoặc không thuộc phần xử lý của bạn.');
   }
   if (!['claim', 'note', 'reject', 'close'].includes(body.action)) throw new InventoryError(400, 'Thao tác không hợp lệ.');

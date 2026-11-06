@@ -7,6 +7,7 @@ import { combineLatest, interval, Subscription } from 'rxjs';
 
 // ===== TYPES =====
 export type OrderStatus =
+  | 'Đã xác nhận đơn hàng'
   | 'Đã đặt hàng thành công'
   | 'Chờ xử lý'
   | 'Đang chuẩn bị hàng'
@@ -117,6 +118,7 @@ interface RoutedOrder {
 type ToastType = 'success' | 'error';
 
 const ALL_STATUSES: OrderStatus[] = [
+  'Đã xác nhận đơn hàng',
   'Đã đặt hàng thành công',
   'Chờ xử lý',
   'Đang chuẩn bị hàng',
@@ -143,6 +145,7 @@ const REFUND_STATUS_OPTIONS: OrderStatus[] = [
 
 
 const STEP_CONFIG: Record<OrderStatus, { icon: string }> = {
+  'Đã xác nhận đơn hàng': { icon: 'bi-patch-check' },
   'Đã đặt hàng thành công': { icon: 'bi-check-circle-fill' },
   'Chờ xử lý': { icon: 'bi-gift-fill' },
   'Đang chuẩn bị hàng': { icon: 'bi-box-seam' },
@@ -757,7 +760,7 @@ export class OrderDetail implements OnInit, OnDestroy {
   preparationReason = '';
   preparationBusy = false;
   handoverMediaInput = '';
-  get canSetPreparation(): boolean { return this.adminApi.can('orders', 'update') && ['Đã đặt hàng thành công', 'Chờ xử lý'].includes(this.order.orderStatus); }
+  get canSetPreparation(): boolean { return this.adminApi.can('orders', 'update') && ['Đã xác nhận đơn hàng', 'Đã đặt hàng thành công', 'Chờ xử lý'].includes(this.order.orderStatus); }
   savePreparation(): void {
     if (this.preparationBusy) return;
     const at = new Date(this.preparationInput);

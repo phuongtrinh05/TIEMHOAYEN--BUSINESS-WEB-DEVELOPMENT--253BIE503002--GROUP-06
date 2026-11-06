@@ -577,6 +577,7 @@ export class OrderDetail implements OnInit, OnDestroy {
 
     if (
       value.includes('chờ thanh toán') ||
+      value.includes('đã xác nhận đơn hàng') ||
       value.includes('đơn hàng đã tạo')
     ) {
       return 'payment';
@@ -1020,6 +1021,8 @@ export class OrderDetail implements OnInit, OnDestroy {
     if (status === 'created') return 'Đã đặt hàng thành công';
     if (status === 'delivery_failed') return 'Giao không thành công';
     if (status === 'cancelled') return 'Đơn đã hủy';
+    // Đơn tạo từ Yêu cầu đặt hàng sau khi shop xác nhận, đang chờ khách thanh toán.
+    if (status === 'payment' && /đã xác nhận đơn hàng/i.test(String(this.order?.status || ''))) return 'Đã xác nhận đơn hàng · Chờ thanh toán';
     if (status === 'payment' || status === 'payment_failed') return 'Chờ thanh toán';
 
     return 'Đang cập nhật';
