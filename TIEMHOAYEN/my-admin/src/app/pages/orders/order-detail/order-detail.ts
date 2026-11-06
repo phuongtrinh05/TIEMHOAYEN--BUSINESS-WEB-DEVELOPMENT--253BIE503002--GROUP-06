@@ -1,7 +1,7 @@
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AdminApiService, AdminOrderDetail } from '../../../services/admin-api.service';
 import { combineLatest, interval, Subscription } from 'rxjs';
 
@@ -44,7 +44,7 @@ export interface Shipper {
 
 export interface IOrderDetail {
   snapshotAvailable?: boolean;
-  allowedStatuses?: string[]; history?: any[]; preparationHistory?: any[]; preparationAt?: string | null; preparationStartedAt?: string | null; preparationStartedBy?: string | null; materialIssued?: boolean; materialExportId?: string | null; preparationPriority?: { level: string; label: string; minutesToT: number | null };
+  allowedStatuses?: string[]; nextStep?: { nextStatus: string | null; blocked: boolean; reason: string; action: string }; history?: any[]; preparationHistory?: any[]; preparationAt?: string | null; preparationStartedAt?: string | null; preparationStartedBy?: string | null; materialIssued?: boolean; materialExportId?: string | null; preparationPriority?: { level: string; label: string; minutesToT: number | null };
   id: string;
   requestId?: string | null;
   orderVersion?: string | null;
@@ -125,6 +125,7 @@ const ALL_STATUSES: OrderStatus[] = [
   'Chờ vận chuyển',
   'Đang giao',
   'Giao thành công',
+  'Giao không thành công',
   'Yêu cầu hoàn tiền/trả hàng',
   'Chấp nhận hoàn tiền',
   'Đang hoàn tiền',
@@ -169,7 +170,7 @@ const STEP_CONFIG: Record<OrderStatus, { icon: string }> = {
   standalone: true,
   imports: [
     CommonModule, 
-    FormsModule],
+    FormsModule, RouterLink],
   templateUrl: './order-detail.html',
   styleUrls: ['./order-detail.css', './order-detail-refinement.css'],
 })
@@ -649,7 +650,9 @@ export class OrderDetail implements OnInit, OnDestroy {
   // ===== STATUS UPDATE =====
   toggleStatusDropdown(): void {
     this.showStatusDropdown = !this.showStatusDropdown;
-    this.selectedNextStatus = this.showStatusDropdown ? this.nextAllowedStatus : '';
+    // Chỉ chọn sẵn bước tiếp theo chính; không bao giờ chọn sẵn "Đã hủy".
+    const main = this.statusOptions.find(status => status !== 'Đã hủy' && !this.isStatusOptionDisabled(status)) || '';
+    this.selectedNextStatus = this.showStatusDropdown ? main : '';
   }
 
   closeStatusDropdown(): void {

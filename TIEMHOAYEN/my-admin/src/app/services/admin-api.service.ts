@@ -134,7 +134,7 @@ export interface AdminOrderProduct {
 
 export interface AdminOrderDetail {
   snapshotAvailable?: boolean;
-  allowedStatuses?: string[]; history?: any[]; preparationAt?: string | null; preparationStartedAt?: string | null; preparationStartedBy?: string | null; materialIssued?: boolean; materialExportId?: string | null; preparationPriority?: { level: string; label: string; minutesToT: number | null };
+  allowedStatuses?: string[]; nextStep?: { nextStatus: string | null; blocked: boolean; reason: string; action: string }; history?: any[]; preparationAt?: string | null; preparationStartedAt?: string | null; preparationStartedBy?: string | null; materialIssued?: boolean; materialExportId?: string | null; preparationPriority?: { level: string; label: string; minutesToT: number | null };
   id: string;
   requestId?: string | null;
   orderVersion?: string | null;

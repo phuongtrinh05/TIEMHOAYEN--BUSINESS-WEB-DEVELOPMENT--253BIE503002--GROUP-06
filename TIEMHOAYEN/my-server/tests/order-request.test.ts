@@ -855,3 +855,18 @@ test('KH34 validates an optional order code before creating an OTP challenge', a
   const { requestOrderOtp } = await import('../services/order-access.service.js');
   await assert.rejects(requestOrderOtp('0901234567', 'unit-ip', 'INVALID'), /Mã đơn hàng không đúng định dạng/);
 });
+
+test('Admin sees why an order cannot move to the next status', async () => {
+  const { orderNextStep } = await import('../services/admin-order.service.js');
+  const cod = { PHUONG_THUC_THANH_TOAN: 'COD', TIEN_COC: 100000, TONG_TIEN: 300000 };
+  assert.match(orderNextStep({ ...cod, TRANG_THAI: 'Đã xác nhận đơn hàng' }, 0).reason, /trang Thanh toán/);
+  const noT = orderNextStep({ ...cod, TRANG_THAI: 'Đã đặt hàng thành công' }, 100000);
+  assert.equal(noT.blocked, true); assert.equal(noT.action, 'preparation');
+  const ready = orderNextStep({ ...cod, TRANG_THAI: 'Chờ xử lý', THOI_DIEM_CHUAN_BI_DU_KIEN: new Date() }, 100000);
+  assert.equal(ready.blocked, false); assert.equal(ready.action, 'start-preparation');
+  const unpaid = orderNextStep({ ...cod, TRANG_THAI: 'Đang giao' }, 0);
+  assert.equal(unpaid.action, 'payment'); assert.match(unpaid.reason, /100\.000đ/);
+  const balance = orderNextStep({ ...cod, TRANG_THAI: 'Đã giao' }, 100000);
+  assert.equal(balance.blocked, true); assert.match(balance.reason, /200\.000đ/);
+  assert.equal(orderNextStep({ ...cod, TRANG_THAI: 'Chờ vận chuyển' }, 100000).blocked, false);
+});

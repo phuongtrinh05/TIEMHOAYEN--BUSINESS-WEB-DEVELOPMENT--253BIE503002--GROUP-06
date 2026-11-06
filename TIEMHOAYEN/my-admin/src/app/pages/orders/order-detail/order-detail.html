@@ -341,9 +341,9 @@
               </div>
             </div>
 
-            <!-- Cột bản đồ + nút cập nhật trạng thái -->
-            <div class="map-column" *ngIf="false">
-              <div class="map-wrap" *ngIf="!isCancelled">
+            <!-- Cột nút cập nhật trạng thái (bản đồ minh họa đang tắt, nút vẫn phải hiện) -->
+            <div class="map-column">
+              <div class="map-wrap" *ngIf="false">
                 <div class="map-grid"></div>
                 <div class="map-street map-street-1"></div>
                 <div class="map-street map-street-2"></div>
@@ -387,6 +387,15 @@
 
                   <div class="status-update-panel" *ngIf="showStatusDropdown">
                     <div class="status-update-panel__title">Chọn trạng thái đơn hàng</div>
+                    <div class="status-next-step" *ngIf="order.nextStep?.reason"
+                      [class.status-next-step--blocked]="order.nextStep?.blocked">
+                      <i class="bi" [ngClass]="order.nextStep?.blocked ? 'bi-exclamation-triangle' : 'bi-info-circle'"></i>
+                      <div>
+                        <strong *ngIf="order.nextStep?.nextStatus">Bước tiếp theo: {{ order.nextStep?.nextStatus }}{{ order.nextStep?.blocked ? ' — chưa thể chuyển' : '' }}</strong>
+                        <p>{{ order.nextStep?.reason }}</p>
+                        <a *ngIf="order.nextStep?.action === 'payment'" routerLink="/transactions">Mở trang Thanh toán (tìm mã {{ order.id }})</a>
+                      </div>
+                    </div>
                     <div class="status-update-panel__body">
                       <select class="status-update-select" [(ngModel)]="selectedNextStatus">
                         <option value="" disabled>Chọn trạng thái</option>
