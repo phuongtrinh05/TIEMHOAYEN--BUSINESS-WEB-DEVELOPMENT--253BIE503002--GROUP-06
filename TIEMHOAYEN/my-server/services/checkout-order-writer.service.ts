@@ -34,8 +34,23 @@ export async function claimCheckoutBenefits(session: ClientSession, orderId: str
   if (options.voucher) {
     const vouchers = await getCollection<any>('VOUCHER');
     const locked = await vouchers.findOneAndUpdate({ VOUCHER_ID: options.voucher.VOUCHER_ID, DA_DUNG: { $nin: [true, 1] } }, { $inc: { PHIEN_BAN_DAT_HANG: 1 } }, { session, returnDocument: 'after' });
-    const prior = await (await getCollection<any>('DON_HANG_VOUCHER')).findOne({ VOUCHER_ID: options.voucher.VOUCHER_ID, DON_HANG_ID: { $in: activeIds } }, { session });
-    if (!locked || prior) throw new InventoryError(409, 'Voucher đã dùng hoặc đang được giữ cho đơn khác.');
+    if (!locked) throw new InventoryError(409, 'Voucher đã dùng hoặc không còn hiệu lực.');
+    const totalLimit = Number(locked.GIOI_HAN_TONG || (locked.KHACH_HANG_ID ? 1 : 0));
+    if (totalLimit > 0) {
+      const activeUses = await (await getCollection<any>('DON_HANG_VOUCHER')).countDocuments({ VOUCHER_ID: locked.VOUCHER_ID, DON_HANG_ID: { $in: activeIds } }, { session });
+      if (Number(locked.LUOT_DA_DUNG || 0) + activeUses >= totalLimit) throw new InventoryError(409, 'Voucher đã hết lượt hoặc đang được giữ cho đơn khác.');
+    }
+    const perUserLimit = Number(locked.GIOI_HAN_MOI_NGUOI || (locked.KHACH_HANG_ID ? 1 : 0));
+    if (perUserLimit > 0 && payload.customerId) {
+      const activeCustomerOrders = await (await getCollection<any>('DON_HANG')).find({
+        DON_HANG_ID: { $in: activeIds }, KHACH_HANG_ID: payload.customerId,
+      }, { session, projection: { DON_HANG_ID: 1 } }).toArray();
+      const activeCustomerUses = activeCustomerOrders.length
+        ? await (await getCollection<any>('DON_HANG_VOUCHER')).countDocuments({ VOUCHER_ID: locked.VOUCHER_ID, DON_HANG_ID: { $in: activeCustomerOrders.map(row => row.DON_HANG_ID) } }, { session })
+        : 0;
+      const usedByCustomer = await (await getCollection<any>('VOUCHER_GIOI_HAN_NGUOI_DUNG')).findOne({ _id: `${locked.VOUCHER_ID}:member:${payload.customerId}` }, { session });
+      if (Number(usedByCustomer?.LUOT_DA_DUNG || 0) + activeCustomerUses >= perUserLimit) throw new InventoryError(409, 'Bạn đã hết lượt sử dụng voucher này.');
+    }
   }
 }
 

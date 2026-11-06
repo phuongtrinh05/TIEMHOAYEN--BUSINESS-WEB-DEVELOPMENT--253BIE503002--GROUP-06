@@ -68,6 +68,31 @@ else {
     assert.equal((await (await col('VOUCHER')).findOne({ VOUCHER_ID: 'V1' }))?.DA_DUNG, false);
     await (await col('VOUCHER')).updateOne({ VOUCHER_ID: 'V1' }, { $set: { DA_DUNG: true } }); await assert.rejects(m.context(c, t, customer('C1')));
   });
+  test('personal voucher batches resolve the correct voucher and audit code for each customer', async () => {
+    await (await col('VOUCHER')).insertMany([
+      { VOUCHER_ID: 'VB1', MA_VOUCHER: 'TRIAN-001', MA_VOUCHER_GOC: 'TRIAN', NHOM_PHAT_HANH_ID: 'GRP1', KHACH_HANG_ID: 'C1', DA_DUNG: false },
+      { VOUCHER_ID: 'VB2', MA_VOUCHER: 'TRIAN-002', MA_VOUCHER_GOC: 'TRIAN', NHOM_PHAT_HANH_ID: 'GRP1', KHACH_HANG_ID: 'C3', DA_DUNG: false },
+    ]);
+    const t = template('TVB', { MUC_DICH: 'Voucher', NOI_DUNG: 'Mã {{ma_voucher}}' });
+    const c = config('CVB', 'TVB', { VOUCHER_ID: 'VB1' });
+    assert.equal((await m.context(c, t, customer('C1'))).text, 'Mã TRIAN-001');
+    assert.equal((await m.context(c, t, customer('C3'))).text, 'Mã TRIAN-002');
+    await m.enqueue(c, t, customer('C3'), 'batch');
+    const row = await (await col('LICH_SU_GUI')).findOne({ CAU_HINH_ID: 'CVB', KHACH_HANG_ID: 'C3' });
+    assert.equal(row?.VOUCHER_ID_THUC_TE, 'VB2');
+    assert.equal(row?.MA_VOUCHER_THUC_TE, 'TRIAN-002');
+  });
+  test('shared voucher usage is counted instead of globally disabled after the first order', async () => {
+    const pricing = await import('../services/pricing-voucher.service.js');
+    const voucher = { VOUCHER_ID: 'VSHARED', MA_VOUCHER: 'SHARED', GIOI_HAN_TONG: 2, GIOI_HAN_MOI_NGUOI: 1, LUOT_DA_DUNG: 0, DA_DUNG: false };
+    await (await col('VOUCHER')).insertOne(voucher);
+    await pricing.claimVoucherUsage(undefined as any, { voucher, identityKey: 'member:C1', perUserLimit: 1 }, 'ORDER-S1');
+    await pricing.claimVoucherUsage(undefined as any, { voucher: { ...voucher, LUOT_DA_DUNG: 1 }, identityKey: 'member:C3', perUserLimit: 1 }, 'ORDER-S2');
+    const stored = await (await col('VOUCHER')).findOne({ VOUCHER_ID: 'VSHARED' });
+    assert.equal(stored?.LUOT_DA_DUNG, 2);
+    assert.equal(stored?.DA_DUNG, false);
+    await assert.rejects(pricing.claimVoucherUsage(undefined as any, { voucher: { ...voucher, LUOT_DA_DUNG: 2 }, identityKey: 'member:C2', perUserLimit: 1 }, 'ORDER-S3'));
+  });
   test('reminders follow one-review-per-order, ignore estimated/old/refunded dates, recheck new reviews', async () => {
     const t = template('TR', { MUC_DICH: 'Nhắc đánh giá', NOI_DUNG: 'Đánh giá {{ma_don}}' }), c = config('CR', 'TR', { SU_KIEN_KICH_HOAT: 'order', BAT_DAU_AP_DUNG: new Date(Date.now() - 3600000) });
     await (await col('MAU_TIN_NHAN')).insertOne(t); await (await col('CAU_HINH_GUI_TU_DONG')).insertOne(c);

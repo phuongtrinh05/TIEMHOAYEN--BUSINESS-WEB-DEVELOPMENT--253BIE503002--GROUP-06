@@ -7,6 +7,7 @@ import { recordHeldDemand, recordOrderDemand } from './inventory/stock.service.j
 import { INVENTORY_CONFIG } from './inventory/constants.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { paymentSucceeded, sumVerifiedPayments } from './admin-order.service.js';
+import { claimVoucherUsage } from './pricing-voucher.service.js';
 
 /** All money-changing entry points share this transaction-scoped command. */
 export async function changeCheckoutPayment(session: ClientSession, paymentId: string, body: any, actor: string, collections: typeof getCollection = getCollection) {
@@ -80,7 +81,20 @@ export async function consumeCheckoutBenefits(session: ClientSession, order: any
       await orders.updateOne({ DON_HANG_ID: order.DON_HANG_ID }, { $set: { DA_TRU_DIEM_THUONG: true } }, { session });
     }
     const links = await (await getCollection<any>('DON_HANG_VOUCHER')).find({ DON_HANG_ID: order.DON_HANG_ID }, { session }).toArray();
-    if (links.length) await (await getCollection<any>('VOUCHER')).updateMany({ VOUCHER_ID: { $in: links.map(v => v.VOUCHER_ID) } }, { $set: { DA_DUNG: true } }, { session });
+    for (const link of links) {
+      const usageId = `${link.VOUCHER_ID}:${order.DON_HANG_ID}`;
+      if (await (await getCollection<any>('VOUCHER_SU_DUNG')).findOne({ _id: usageId }, { session })) continue;
+      const voucher = await (await getCollection<any>('VOUCHER')).findOne({ VOUCHER_ID: link.VOUCHER_ID }, { session });
+      if (!voucher) throw new InventoryError(409, 'Voucher của đơn không còn tồn tại.');
+      const identityKey = order.KHACH_HANG_ID
+        ? `member:${order.KHACH_HANG_ID}`
+        : `guest:${createHash('sha256').update(String(order.SDT_NGUOI_DAT || '').replace(/\D/g, '')).digest('hex')}`;
+      await claimVoucherUsage(session, {
+        voucher,
+        identityKey,
+        perUserLimit: Number(voucher.GIOI_HAN_MOI_NGUOI || (voucher.KHACH_HANG_ID ? 1 : 0)),
+      }, order.DON_HANG_ID);
+    }
 
 }
 

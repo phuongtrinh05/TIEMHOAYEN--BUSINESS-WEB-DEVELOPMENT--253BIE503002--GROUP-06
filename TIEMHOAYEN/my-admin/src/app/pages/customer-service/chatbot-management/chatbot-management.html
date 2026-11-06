@@ -21,7 +21,7 @@
             </button>
           </div>
 
-          <div class="toolbar-right"><button routerLink="/customer-service/customer-chat" [queryParams]="{test:1}">Test chatbot</button>
+          <div class="toolbar-right"><button type="button" class="chatbot-test-btn" (click)="openTestModal()"><i class="bi bi-stars"></i> Test chatbot</button>
           <div class="search-box">
             <i class="bi bi-search"></i>
             <input
@@ -321,6 +321,42 @@
           </button>
         </div>
       </div>
+    </div>
+
+    <div class="test-chatbot-overlay" *ngIf="isTestModalOpen" (click)="closeTestModal()">
+      <section class="test-chatbot-dialog" (click)="$event.stopPropagation()" aria-modal="true" role="dialog">
+        <header class="test-chatbot-header">
+          <div>
+            <span class="test-chatbot-kicker"><i class="bi bi-stars"></i> Chế độ kiểm thử</span>
+            <h2>Test chatbot</h2>
+            <p>Kiểm tra câu trả lời trước khi khách hàng sử dụng.</p>
+          </div>
+          <button type="button" class="test-chatbot-close" (click)="closeTestModal()" aria-label="Đóng"><i class="bi bi-x-lg"></i></button>
+        </header>
+
+        <div class="test-chatbot-body">
+          <label for="test-question">Câu hỏi của khách</label>
+          <textarea id="test-question" [(ngModel)]="testText" placeholder="Ví dụ: Shop có giao hoa trong ngày không?" maxlength="1000"></textarea>
+
+          <label for="test-product">Mã sản phẩm <span>(không bắt buộc)</span></label>
+          <input id="test-product" [(ngModel)]="testProduct" placeholder="Ví dụ: SP1436">
+
+          <p class="test-chatbot-error" *ngIf="testError">{{ testError }}</p>
+
+          <div class="test-chatbot-result" *ngIf="testResult">
+            <div class="result-heading"><i class="bi bi-chat-heart"></i> Phản hồi chatbot</div>
+            <p>{{ testResult.reply || testResult.message || 'Chatbot chưa tạo được câu trả lời.' }}</p>
+            <small *ngIf="testResult.intent">Ý định nhận diện: {{ testResult.intent }}</small>
+          </div>
+        </div>
+
+        <footer class="test-chatbot-actions">
+          <button type="button" class="secondary" (click)="closeTestModal()">Đóng</button>
+          <button type="button" class="primary" [disabled]="testBusy || !testText.trim()" (click)="testChatbot()">
+            <span class="test-spinner" *ngIf="testBusy"></span>{{ testBusy ? 'Đang kiểm tra...' : 'Gửi thử' }}
+          </button>
+        </footer>
+      </section>
     </div>
 
 </div>
