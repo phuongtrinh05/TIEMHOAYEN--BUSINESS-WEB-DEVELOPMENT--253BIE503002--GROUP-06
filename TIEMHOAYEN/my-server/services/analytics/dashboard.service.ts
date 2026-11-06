@@ -52,7 +52,7 @@ export const getCachedInventoryAlerts = (opts: { fresh?: boolean; allowStale?: b
 
 export const getSalesRequestCount = (fresh = false) =>
   swr('salesRequestCount', { ttlMs: CACHE_TTL.datasetMs, maxStaleMs: CACHE_TTL.datasetMaxStaleMs, fresh }, async () =>
-    (await getCollection<any>('YEU_CAU_DAT_HANG')).countDocuments({ status: { $in: ['Chờ Sales tiếp nhận', 'Sales đang xử lý', 'Khách đã đồng ý'] } }).catch(() => 0));
+    (await getCollection<any>('YEU_CAU_DAT_HANG')).countDocuments({ status: { $in: ['Chờ xử lý', 'Chờ Sales tiếp nhận', 'Sales đang xử lý', 'Khách đã đồng ý'] } }).catch(() => 0));
 
 /** Ảnh chính của mọi sản phẩm (ít thay đổi) → không phải query lại mỗi lần xem top sản phẩm. */
 export const getProductImages = () =>

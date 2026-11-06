@@ -45,3 +45,23 @@ export const requireAdminPermission = (moduleKey: string, forcedAction?: Permiss
     }
   };
 };
+
+/** Cho qua khi nhân viên có MỘT trong các quyền (vd. Admin quyền đơn hàng hoặc nhân viên kho). */
+export const requireAnyAdminPermission = (rules: [string, PermissionAction][]) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const employee = await authenticatedEmployee(req);
+      res.locals.adminEmployee = employee;
+      req.identity ||= { id: employee.NHAN_VIEN_ID, type: 'NHAN_VIEN', account: employee, sessionId: '' };
+      const role = String(employee.VAI_TRO || '');
+      if (!role || !rules.some(([moduleKey, action]) => hasPermission(role, moduleKey, action))) {
+        return res.status(403).json({ message: 'Bạn không có quyền thực hiện chức năng này.', required: rules.map(([module, action]) => ({ module, action })) });
+      }
+      return next();
+    } catch (error: any) {
+      return res.status(error instanceof InventoryError ? error.status : 500).json({
+        message: error instanceof InventoryError ? error.message : 'Không thể kiểm tra phân quyền.',
+      });
+    }
+  };
+};

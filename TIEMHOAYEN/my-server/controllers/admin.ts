@@ -8,7 +8,7 @@ import { finishedAvailableOf, InventoryError, nextCode, withTransaction } from '
 import { computeBuildable } from '../services/inventory/availability.service.js';
 import { getActiveBomMap } from '../services/inventory/bom.service.js';
 import { syncCheckoutInventory, changeCheckoutPayment } from '../services/checkout-payment.service.js';
-import { createExport, releaseReservations, shipFinishedGoodsForOrder, suggestExportLines } from '../services/inventory/stock.service.js';
+import { assertPrepTimeChangeAllowed, createExport, releaseReservations, shipFinishedGoodsForOrder, suggestExportLines, syncOrderPrepTime } from '../services/inventory/stock.service.js';
 import { invalidateAnalyticsCache } from '../services/analytics/cache.js';
 import { audit } from '../services/auth.service.js';
 import { derivePromotionStatus, ensureVoucherStorage, normalizeVoucherCode } from '../services/pricing-voucher.service.js';
@@ -1091,15 +1091,14 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
         changes.GHI_CHU_NOI_BO = req.body.adminNote.trim();
       } else if (req.body.action === 'preparation') {
         const at = toDate(req.body.preparationAt);
-        if (!['Đã đặt hàng thành công', 'Chờ xử lý'].includes(String(current.TRANG_THAI)) || !at || current.THOI_DIEM_BAT_DAU_THUC_TE) throw new InventoryError(409, 'Chỉ nhập hoặc đổi T trước khi thực tế bắt đầu chuẩn bị.');
-        const date = current.NGAY_MUON_GIAO ? new Date(current.NGAY_MUON_GIAO).toISOString().slice(0, 10) : '';
-        const time = String(current.KHUNG_GIO_MUON_GIAO || '').match(/([01]?\d|2[0-3]):[0-5]\d/)?.[0] || '23:59';
-        const deliveryAt = date ? new Date(`${date}T${time}:00+07:00`) : null;
-        if (!deliveryAt || !Number.isFinite(deliveryAt.getTime()) || at.getTime() >= deliveryAt.getTime()) throw new InventoryError(400, 'T phải trước thời điểm giao đã chốt.');
+        if (!at || current.THOI_DIEM_BAT_DAU_THUC_TE) throw new InventoryError(409, 'Chỉ nhập hoặc đổi T trước khi thực tế bắt đầu chuẩn bị.');
+        // Cùng điều kiện với trang Kho: T hợp lệ, trước giờ giao, đơn chưa hủy/chưa xuất NVL.
+        await assertPrepTimeChangeAllowed(current, at, session);
         const oldAt = current.THOI_DIEM_CHUAN_BI_DU_KIEN || null;
         const reason = String(req.body.reason || '').trim();
         if (!reason || reason.length > 500) throw new InventoryError(400, 'Cần lý do nhập hoặc điều chỉnh T, tối đa 500 ký tự.');
-        changes.THOI_DIEM_CHUAN_BI_DU_KIEN = at; changes.NGUOI_NHAP_T = actor;
+        await syncOrderPrepTime(String(current.DON_HANG_ID), at, session);
+        changes.THOI_DIEM_CHUAN_BI_DU_KIEN = at; changes.NGUOI_NHAP_T = actor; changes.THOI_DIEM_NHAP_T = new Date();
         changes.LICH_SU_T = [...(Array.isArray(current.LICH_SU_T) ? current.LICH_SU_T : []), { oldAt, newAt: at, reason, actor, at: new Date() }];
       } else if (req.body.action === 'handover-media') {
         const urls = Array.isArray(req.body.media) ? req.body.media.map((value: unknown) => String(value || '').trim()).filter(Boolean) : [];
@@ -1116,7 +1115,7 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
         changes.NHAN_VIEN_GIAO_HANG = { id:employeeId, name:String(employee.HO_TEN || employee.TEN || employeeId), phone:String(employee.SDT || ''), avatar:String(employee.AVATAR || '') };
         changes.PHAN_CONG_GIAO_LUC = new Date(); changes.NGUOI_PHAN_CONG_GIAO = actor;
       } else {
-        if (!['Chờ thanh toán', 'Chờ xử lý', 'Đã đặt hàng thành công'].includes(String(current.TRANG_THAI)) || current.THOI_DIEM_BAT_DAU_THUC_TE) {
+        if (!['Chờ thanh toán', 'Đã xác nhận đơn hàng', 'Chờ xử lý', 'Đã đặt hàng thành công'].includes(String(current.TRANG_THAI)) || current.THOI_DIEM_BAT_DAU_THUC_TE) {
           throw new InventoryError(409, 'Chỉ được sửa thông tin giao trước khi bắt đầu chuẩn bị đơn.');
         }
         const receiverName = String(req.body.receiverName || '').trim();
@@ -1230,7 +1229,7 @@ export const getAdminDashboard = async (_req: Request, res: Response) => {
     return res.status(200).json({
       summary: {
         totalOrders: orders.length,
-        newOrders: orders.filter((order) => ['Đã đặt hàng thành công', 'Chờ xử lý', 'Chờ thanh toán'].includes(String(order.TRANG_THAI))).length,
+        newOrders: orders.filter((order) => ['Đã đặt hàng thành công', 'Chờ xử lý', 'Chờ thanh toán', 'Đã xác nhận đơn hàng'].includes(String(order.TRANG_THAI))).length,
         completedOrders: orders.filter((order) => normalizeText(order.TRANG_THAI).includes('hoan thanh')).length,
         cancelledOrders: orders.filter((order) => normalizeText(order.TRANG_THAI).includes('huy')).length,
         revenue: orders.reduce((sum, order) => sum + Number(order.TONG_TIEN || 0), 0),

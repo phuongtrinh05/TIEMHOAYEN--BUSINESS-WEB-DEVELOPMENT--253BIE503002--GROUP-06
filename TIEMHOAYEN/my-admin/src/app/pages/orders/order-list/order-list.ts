@@ -16,6 +16,7 @@ export type PaymentStatus =
   | 'Thanh toán thất bại';
 
 export type OrderStatus =
+  | 'Đã xác nhận đơn hàng'
   | 'Đã đặt hàng thành công'
   | 'Đã giao'
   | 'Đang giao'
@@ -110,6 +111,7 @@ export class OrderList implements OnInit, OnDestroy {
 
   orderStatusFilters: OrderStatusFilter[] = [
     'Tất cả trạng thái',
+    'Đã xác nhận đơn hàng',
     'Đã đặt hàng thành công',
     'Đã giao',
     'Đang giao',
@@ -239,7 +241,7 @@ export class OrderList implements OnInit, OnDestroy {
     const raw = this.repairMojibakeText(value).trim();
     const lower = raw.toLowerCase();
 
-    if (raw === 'Thanh toán thất bại') return raw as OrderStatus;
+    if (raw === 'Thanh toán thất bại' || raw === 'Đã xác nhận đơn hàng') return raw as OrderStatus;
     if (!raw) return 'Ch\u1edd x\u1eed l\u00fd';
     if (lower.includes('thanh to') || lower.includes('thanh toán') || lower.includes('thanh toan')) return 'Ch\u1edd thanh to\u00e1n';
     if (lower.includes('h\u1ee7y') || lower.includes('huy')) return '\u0110\u00e3 h\u1ee7y';
@@ -735,6 +737,7 @@ export class OrderList implements OnInit, OnDestroy {
       'Hoàn thành': 'status--completed',
       'Chờ xử lý': 'status--pending',
       'Đã đặt hàng thành công': 'status--pending',
+      'Đã xác nhận đơn hàng': 'status--pending',
       'Chờ thanh toán': 'status--pending',
       'Đang chuẩn bị hàng': 'status--preparing',
       'Chờ vận chuyển': 'status--waiting',

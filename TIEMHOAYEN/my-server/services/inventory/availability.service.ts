@@ -13,6 +13,7 @@ import {
 import { availableOf, ceilQty, col, finishedAvailableOf, InventoryError, isSameVnDay, parseDate, roundQty, vnTimeKey } from './helpers.js';
 import { getActiveBom, getActiveBomMap, type BomLine } from './bom.service.js';
 import { classifyDeliverySchedule } from '../delivery-policy.service.js';
+import { HOLD_REMINDER_HOURS, listPreparationOrders } from './stock.service.js';
 
 /* ---------------------------------------------------------------------
  * D01.4 — công thức tồn
@@ -156,7 +157,9 @@ export const checkProductAvailability = async (productId: string, qtyRaw: unknow
   });
 
   let forecast: any[] = [];
-  if (sameDay) {
+  // Lịch dưới 24 giờ (hoặc không có lịch): tồn hiện tại quyết định. Từ 24 giờ: thanh toán thẳng, dự báo chỉ để kho tham khảo.
+  const checkNow = !routing || routing.scheduleClass === 'UNDER_24H';
+  if (checkNow) {
     // Cùng ngày: tồn hiện tại là nguồn quyết định. Nếu đủ thành phẩm/BOM thì
     // checkout giữ tồn ngay; giờ cutoff không được tự biến đơn đủ hàng thành
     // yêu cầu Sales. Việc giữ tồn nguyên tử vẫn là bước quyết định cuối cùng.
@@ -165,10 +168,7 @@ export const checkProductAvailability = async (productId: string, qtyRaw: unknow
       reasons.push(`Chỉ đáp ứng được ${sellable}/${qty} bó với tồn hiện tại${bottleneck ? ` (NVL chốt chặn: ${bottleneck.name})` : ''}.`);
     }
   } else {
-    // Lịch tương lai luôn qua Sales: tồn hiện tại không được dùng để cam kết cho
-    // một ngày khác. Dự báo dưới đây chỉ là dữ liệu tham khảo để Sales tư vấn.
-    decision = 'need_review';
-    reasons.push('Lịch giao ở ngày tương lai cần Sales xác minh nguồn hoa và lịch chuẩn bị trước khi nhận đơn.');
+    // Từ 24 giờ: không chuyển Sales vì tồn hiện tại; kho lập nhu cầu theo T sau khi thanh toán.
     const incoming = await incomingByMaterial(deliveryAt);
     const demand = await pendingDemandByMaterial(deliveryAt);
     forecast = requirement.map((r) => {
@@ -177,12 +177,12 @@ export const checkProductAvailability = async (productId: string, qtyRaw: unknow
     });
     const short = forecast.filter((f) => f.short);
     if (short.length) {
-      reasons.push(`Dự báo thiếu NVL trước ngày giao: ${short.map((s) => `${s.name} (cần ${s.required}, dự kiến ${s.projected} ${s.unit})`).join('; ')}.`);
+      reasons.push(`Kho tham khảo — dự báo thiếu NVL trước ngày giao: ${short.map((s) => `${s.name} (cần ${s.required}, dự kiến ${s.projected} ${s.unit})`).join('; ')}.`);
     }
   }
 
   // Phương án nguồn cung cho NVL thiếu (để Sales tham khảo khi duyệt)
-  const shortIds = (sameDay ? requirement.filter((r) => r.available < r.required) : forecast.filter((f) => f.short)).map((r: any) => r.materialId);
+  const shortIds = (checkNow ? requirement.filter((r) => r.available < r.required) : forecast.filter((f) => f.short)).map((r: any) => r.materialId);
   const supplierOptions = shortIds.length ? await supplierOptionsFor(shortIds, deliveryAt) : [];
 
   return {
@@ -325,8 +325,22 @@ export const getInventoryAlerts = async () => {
     })
     .filter(Boolean);
 
+  // Nhắc việc theo đơn: chưa có T, sắp tới T mà chưa giữ, đã quá T mà chưa xuất NVL.
+  const preparation = await listPreparationOrders();
+  const brief = (r: any) => ({ orderId: r.orderId, deliveryAt: r.deliveryAt, prepAt: r.prepAt, stateLabel: r.stateLabel, hoursToT: r.hoursToT });
+  const preparationAlerts = {
+    holdReminderHours: HOLD_REMINDER_HOURS,
+    paidWithoutT: preparation.filter((r) => r.state === 'NO_T').map(brief),
+    holdDueSoon: preparation.filter((r) => r.holdDueSoon).map(brief),
+    overdueExport: preparation.filter((r) => r.overdueExport).map(brief),
+  };
+
   return {
+    preparationAlerts,
     summary: {
+      paidWithoutT: preparationAlerts.paidWithoutT.length,
+      holdDueSoon: preparationAlerts.holdDueSoon.length,
+      overdueExport: preparationAlerts.overdueExport.length,
       materialsOut: materialAlerts.filter((a) => a.status === 'out').length,
       materialsLow: materialAlerts.filter((a) => a.status === 'low').length,
       forecastShortages: forecastShortages.length,

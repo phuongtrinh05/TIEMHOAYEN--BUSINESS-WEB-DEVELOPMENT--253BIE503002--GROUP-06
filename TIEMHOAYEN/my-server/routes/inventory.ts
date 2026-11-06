@@ -1,6 +1,6 @@
 import express from 'express';
 import * as c from '../controllers/inventory.js';
-import { requireAdminPermission } from '../middleware/rolePermission.js';
+import { requireAdminPermission, requireAnyAdminPermission } from '../middleware/rolePermission.js';
 
 /**
  * API KHO — mount tại /api/admin (xem server.ts).
@@ -9,6 +9,8 @@ import { requireAdminPermission } from '../middleware/rolePermission.js';
 const router = express.Router();
 const kho = (action?: 'view' | 'create' | 'update' | 'delete') => requireAdminPermission('materials', action);
 const don = (action?: 'view' | 'create' | 'update' | 'delete') => requireAdminPermission('orders', action);
+// Admin (quyền đơn hàng) và nhân viên kho (quyền kho) đều được xem/nhập T và chuẩn bị NVL cho đơn.
+const donHoacKho = (action: 'view' | 'update') => requireAnyAdminPermission([['orders', action], ['materials', action]]);
 
 router.get('/inventory/meta', kho('view'), c.getInventoryMeta);
 
@@ -84,8 +86,9 @@ router.post('/inventory/reservations/sweep', don('update'), c.sweepReservations)
 router.get('/inventory/demands', don('view'), c.listDemands);
 router.get('/inventory/orders/:orderId', don('view'), c.getOrderInventoryInfo);
 router.post('/inventory/orders/:orderId/demand', don('create'), c.recordOrderDemand);
-router.patch('/inventory/orders/:orderId/prep-start', don('update'), c.setOrderPrepTime);
-router.post('/inventory/orders/:orderId/reserve', don('update'), c.reserveOrderDemand);
+router.get('/inventory/preparation', donHoacKho('view'), c.listPreparationOrders);
+router.patch('/inventory/orders/:orderId/prep-start', donHoacKho('update'), c.setOrderPrepTime);
+router.post('/inventory/orders/:orderId/reserve', donHoacKho('update'), c.reserveOrderDemand);
 router.post('/inventory/orders/:orderId/cancel', don('update'), c.cancelOrderInventory);
 router.post('/inventory/orders/:orderId/ship-finished', don('update'), c.shipFinishedGoods);
 

@@ -15,7 +15,7 @@ import { formatDate, normalizeOrderStatus, normalizeText, toDate } from './admin
  * Các số liệu này luôn tính từ đơn/thanh toán, không cho sửa tay.
  */
 const COMPLETED = new Set(['Đã giao', 'Hoàn thành']);
-const NOT_RECEIVABLE = new Set(['Đã hủy', 'Chờ thanh toán', 'Thanh toán thất bại']);
+const NOT_RECEIVABLE = new Set(['Đã hủy', 'Chờ thanh toán', 'Đã xác nhận đơn hàng', 'Thanh toán thất bại']);
 const GENDERS = ['Nam', 'Nữ', 'Khác'];
 const LOCKED_STATUS = 'Bị khóa';
 const PHONE = /^0\d{9}$/;

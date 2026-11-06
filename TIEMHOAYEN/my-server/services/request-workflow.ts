@@ -40,14 +40,14 @@ export function requestWorkflow(row: any, now = new Date()) {
 
   const urgent = isEmergency || isLargeOrder && !expired;
   let nextAction = urgent ? 'Liên hệ người đặt và kiểm tra khả năng đáp ứng' : 'Kiểm tra nguồn hoa và liên hệ người đặt';
-  let customerStatus = status === 'Chờ Sales tiếp nhận' ? 'Chờ Sales tiếp nhận' : 'Chờ shop kiểm tra';
+  let customerStatus = ['Chờ xử lý', 'Chờ Sales tiếp nhận'].includes(status) ? 'Chờ xử lý' : 'Chờ shop kiểm tra';
   let instruction = urgent ? 'Yêu cầu cần được shop kiểm tra sớm. Shop chưa xác nhận giao kịp; bạn chưa cần thanh toán.'
     : 'Shop đang kiểm tra nguồn hoa và lịch giao. Đây là yêu cầu tư vấn, chưa phải đơn đã xác nhận; bạn chưa cần thanh toán.';
   if (status === 'Sales đang xử lý') { customerStatus = 'Sales đang xử lý'; nextAction = urgent ? 'Kiểm tra kho, lịch chuẩn bị và liên hệ khách' : 'Kiểm tra hàng và chuẩn bị phương án'; }
   if (row.contactStatus === 'unreachable') { customerStatus = 'Shop chưa liên lạc được'; nextAction = 'Gọi lại người đặt'; instruction = 'Shop đã gọi nhưng chưa liên lạc được. Bạn có thể nhắn thời gian tiện nghe máy trong cuộc tư vấn.'; }
   if (status === 'Chờ khách xác nhận') { customerStatus = 'Chờ xác nhận'; nextAction = urgent ? 'Liên hệ khách để chốt phương án sớm' : 'Theo dõi phản hồi phương án'; instruction = 'Bạn hãy kiểm tra mẫu, ảnh, giá và lịch giao trước khi đồng ý hoặc yêu cầu tư vấn lại.'; }
   if (status === 'Khách đã đồng ý') { customerStatus = 'Đã thống nhất phương án'; nextAction = 'Kiểm tra tồn và tạo đơn'; instruction = 'Shop sẽ kiểm tra lại hàng trước khi tạo đơn. Bạn chỉ thanh toán sau khi nhận được đơn và hướng dẫn thanh toán.'; }
-  if (['Chờ thanh toán','Chờ khách thanh toán'].includes(status)) { customerStatus = 'Chờ khách thanh toán'; nextAction = 'Theo dõi thanh toán'; instruction = 'Shop đã xác nhận yêu cầu và tạo đơn. Bạn hãy thanh toán khoản cần trả trước để shop chính thức tiếp nhận đơn.'; }
+  if (['Chờ thanh toán','Chờ khách thanh toán'].includes(status)) { customerStatus = 'Chờ khách thanh toán'; nextAction = 'Theo dõi thanh toán'; instruction = 'Shop đã xác nhận yêu cầu và tạo đơn (Đã xác nhận đơn hàng). Bạn hãy thanh toán trong thời hạn để đơn được đặt thành công.'; }
   if (status === 'Hết hạn thanh toán') { customerStatus = 'Đã hủy yêu cầu'; nextAction = 'Yêu cầu đã kết thúc'; instruction = 'Yêu cầu đã hết thời hạn thanh toán. Bạn có thể chọn hoa và gửi yêu cầu mới khi cần.'; }
   if (expired && !['Chờ thanh toán','Chờ khách thanh toán','Đã lên đơn','Đã từ chối','Đã tư vấn','Khách đã hủy'].includes(status)) { customerStatus = 'Cần thống nhất lại lịch giao'; nextAction = 'Liên hệ khách để đổi lịch hoặc dừng yêu cầu'; instruction = 'Lịch giao đang trao đổi đã qua. Hãy chọn lịch mới hoặc nhắn nhân viên; shop chưa nhận đơn cho lịch cũ.'; }
   if (status === 'Đã lên đơn') { customerStatus = 'Đã tạo đơn hàng'; nextAction = 'Theo dõi đơn hàng'; instruction = 'Phương án đã được chuyển thành đơn. Xem đơn để kiểm tra thanh toán và tiến độ.'; }

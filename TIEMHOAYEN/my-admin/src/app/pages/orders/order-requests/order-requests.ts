@@ -9,7 +9,7 @@ import { apiBaseUrl } from '../../../services/api-config';
   templateUrl: './order-requests.html', styleUrls: ['./order-requests.css', './order-requests-refinement.css'] })
 export class OrderRequests implements OnInit, OnDestroy {
   private http = inject(HttpClient); private cdr = inject(ChangeDetectorRef); private route = inject(ActivatedRoute);
-  statuses = ['Chờ Sales tiếp nhận', 'Sales đang xử lý', 'Chờ khách xác nhận', 'Chờ khách thanh toán', 'Đã lên đơn', 'Đã từ chối', 'Khách đã hủy', 'Hết hạn thanh toán'];
+  statuses = ['Chờ xử lý', 'Sales đang xử lý', 'Chờ khách xác nhận', 'Chờ khách thanh toán', 'Đã lên đơn', 'Đã từ chối', 'Khách đã hủy', 'Hết hạn thanh toán'];
   employeeId = typeof localStorage !== 'undefined' ? localStorage.getItem('adminEmployeeId') : '';
   requests: any[] = []; active: any; options: any; draft: any; messages: any[] = [];
   private draftBaseline = '';
@@ -46,7 +46,22 @@ export class OrderRequests implements OnInit, OnDestroy {
     if (value === 'Đã lên đơn') return 'success';
     if (value === 'Chờ khách xác nhận' || value === 'Chờ khách thanh toán' || value === 'Chờ thanh toán') return 'waiting';
     if (value === 'Đã từ chối' || value === 'Khách đã hủy') return 'danger';
-    return value === 'Chờ Sales tiếp nhận' ? 'new' : 'processing';
+    return value === 'Chờ xử lý' || value === 'Chờ Sales tiếp nhận' ? 'new' : 'processing';
+  }
+  /** Lý do yêu cầu được chuyển đến Sales (mã do backend lưu khi tạo yêu cầu). */
+  reasonLabels(r: any): string[] {
+    const labels: Record<string, string> = {
+      MATERIAL_SHORTAGE_UNDER_24H: 'Giao dưới 24 giờ, thiếu NVL',
+      CUSTOM_DESIGN: 'Thiết kế riêng',
+      INVENTORY_DATA_INCOMPLETE: 'Thiếu dữ liệu BOM/tồn kho',
+    };
+    const codes: string[] = r?.reasonCodes?.length ? r.reasonCodes : r?.requestReason ? [r.requestReason] : [];
+    return codes.map(code => labels[code] || (code === 'future_delivery' ? 'Lịch giao tương lai (quy tắc cũ)' : code === 'inventory_shortage' ? 'Thiếu tồn (quy tắc cũ)' : code));
+  }
+  hoursUntil(r: any): string {
+    const minutes = Number(r?.routing?.minutesUntilDelivery);
+    if (!Number.isFinite(minutes)) return '';
+    return minutes >= 60 ? `${Math.floor(minutes / 60)} giờ ${minutes % 60 ? (minutes % 60) + ' phút' : ''}`.trim() : `${minutes} phút`;
   }
   get originals(): any[] { return this.options?.products?.filter((p: any) => p.original) || []; }
   get alternatives(): any[] { return (this.options?.products || []).filter((p: any) => !p.original && p.active !== false && p.finished + p.buildable > 0).slice(0, 6); }

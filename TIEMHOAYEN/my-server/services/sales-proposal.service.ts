@@ -6,7 +6,8 @@ import { availableOf, finishedAvailableOf, InventoryError, withTransaction } fro
 import { COLLECTIONS, MATERIAL_STATUS, PO_STATUS, RESERVATION_STATUS } from './inventory/constants.js';
 import { computeBuildable, supplierOptionsFor } from './inventory/availability.service.js';
 import { getActiveBom, getActiveBomMap } from './inventory/bom.service.js';
-import { REQUESTS, REQUEST_STATUS, publicRequest, assertReservedStockUsable } from './order-request.service.js';
+import { REQUESTS, REQUEST_STATUS, publicRequest, assertReservedStockUsable, SALES_CONFIRMED_ORDER_STATUS } from './order-request.service.js';
+import { assertWithinShopHours, classifyDeliverySchedule } from './delivery-policy.service.js';
 import { requestByVerifiedPhone } from './order-access.service.js';
 import { reserveOrderLines } from './order-stock.service.js';
 import { releaseReservations, sweepExpiredReservations } from './inventory/stock.service.js';
@@ -64,6 +65,8 @@ function deliveryAt(date: unknown, time: unknown) {
   if (!Number.isFinite(parsed.getTime()) || parsed.getTime() <= Date.now()) throw new InventoryError(400, 'Thời gian giao phải ở tương lai.');
   const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(parsed);
   if (key !== String(date)) throw new InventoryError(400, 'Ngày giao không tồn tại.');
+  // Sales cũng chỉ được chốt lịch trong 08:00–22:00.
+  assertWithinShopHours(parsed);
   return parsed;
 }
 const SALES_PAYMENT_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -223,17 +226,43 @@ export async function propose(id: string, body: any, employee: any) {
       $inc: { version: 1 }, $push: { quoteHistory: quote, history: { id: randomUUID(), at: new Date(), actor: employee.NHAN_VIEN_ID,
         action: confirmOriginal ? (quote.items.some((item: any) => item.bom?.substitutions?.length) ? 'Sales gửi yêu cầu gốc với NVL thay thế theo BOM để khách xác nhận' : 'Sales gửi yêu cầu gốc để khách xác nhận') : `Gửi phương án phiên bản ${quote.revision}`, quoteId: quote.id } },
     } as any, { session });
-    await orderEvent(session,quote.id+':sent',row.customerId||null,null,
-      confirmOriginal ? 'Shop đã xác nhận khả năng đáp ứng' : 'Phương án đặt hoa mới',
+    // Xác nhận ngay sẽ tạo đơn ở bước kế tiếp (thông báo tạo đơn gửi riêng); chỉ bản thảo mới cần khách xác nhận.
+    if (!confirmOriginal) await orderEvent(session,quote.id+':sent',row.customerId||null,null,'Phương án đặt hoa mới',
       'Vui lòng xem và xác nhận đúng mẫu, giá và lịch giao trước khi thanh toán.','/order-request/'+id);
     return quote;
   });
 }
 
+/**
+ * Sales "Xác nhận ngay": yêu cầu gốc (cho phép NVL thay thế theo BOM) được chuyển thành đơn hàng ngay,
+ * trạng thái "Đã xác nhận đơn hàng", khách thanh toán trong hạn. Đổi mẫu/số lượng/giá/lịch thì phải gửi bản thảo.
+ */
 export async function confirmOriginalRequest(id: string, body: any, employee: any) {
-  await propose(id, { ...body, confirmOriginal: true }, employee);
-  const row = await (await getCollection<any>(REQUESTS)).findOne({ _id: id });
-  if (!row) throw new InventoryError(404, 'Không tìm thấy yêu cầu.');
+  const quote = await propose(id, { ...body, confirmOriginal: true }, employee);
+  const requests = await getCollection<any>(REQUESTS);
+  const proposed = await requests.findOne({ _id: id });
+  if (!proposed) throw new InventoryError(404, 'Không tìm thấy yêu cầu.');
+  const acceptedAt = new Date();
+  const accepted = await requests.findOneAndUpdate({ _id: id, version: proposed.version, status: REQUEST_STATUS.quoted, 'quote.id': quote.id }, {
+    $set: { status: REQUEST_STATUS.accepted, acceptedQuoteId: quote.id, acceptedAt, customerAcceptedAt: null,
+      acceptance: { via: 'sales_direct_confirmation', quoteId: quote.id, actor: employee.NHAN_VIEN_ID, at: acceptedAt }, updatedAt: acceptedAt },
+    $inc: { version: 1 },
+    $push: { history: { id: randomUUID(), at: acceptedAt, actor: employee.NHAN_VIEN_ID, action: 'Sales xác nhận yêu cầu', quoteId: quote.id } },
+  } as any, { returnDocument: 'after', includeResultMetadata: false });
+  if (!accepted) throw new InventoryError(409, 'Yêu cầu vừa thay đổi. Vui lòng tải lại.');
+  try {
+    await convertProposal(id, { quoteId: quote.id, version: accepted.version }, employee);
+  } catch (error: any) {
+    // Không tạo được đơn (vd. thiếu NVL): trả yêu cầu về đúng trạng thái trước khi bấm để Sales xử lý tiếp.
+    await requests.updateOne({ _id: id, version: accepted.version, status: REQUEST_STATUS.accepted, 'quote.id': quote.id }, {
+      $set: { status: REQUEST_STATUS.processing, quote: null, acceptedQuoteId: null, acceptedAt: null, acceptance: null, updatedAt: new Date() },
+      $pull: { quoteHistory: { id: quote.id } },
+      $inc: { version: 1 },
+      $push: { history: { id: randomUUID(), at: new Date(), actor: employee.NHAN_VIEN_ID, action: 'Xác nhận yêu cầu không thành công', note: String(error?.message || '') } },
+    } as any);
+    throw error;
+  }
+  const row = await requests.findOne({ _id: id });
   return publicRequest(row);
 }
 
@@ -313,16 +342,23 @@ export async function convertProposal(id: string, body: any, employee: any) {
     }
     await reserveOrderLines(session, items, ctx);
     await assertReservedStockUsable(session, orderId, new Date(row.quote.deliveryAt).toISOString(), true);
+    // Khách có tối đa 24 giờ (và không muộn hơn mốc chuẩn bị) để thanh toán đơn đã xác nhận.
+    const paymentDeadlineAt = row.paymentDeadlineAt && new Date(row.paymentDeadlineAt).getTime() > Date.now()
+      ? row.paymentDeadlineAt : salesPaymentDeadline(row.quote.delivery, new Date());
     const checkoutData = { customerId: row.customerId, sender: row.sender, receiver: row.receiver, flags: row.flags, giftCard: row.quote.giftCard || row.giftCard || null,
       delivery: row.quote.delivery, summary: row.quote.summary, payment: row.quote.payment, items,
-      checkoutSessionId: paymentSessionId, paymentDeadlineAt: row.paymentDeadlineAt };
-    const result = { kind: 'order', ...await writeCheckoutOrder(session, orderId, checkoutData, { requestId: id, quote: row.quote }) };
+      checkoutSessionId: paymentSessionId, paymentDeadlineAt };
+    const result = { kind: 'order', ...await writeCheckoutOrder(session, orderId, checkoutData, { requestId: id, quote: row.quote, pendingOrderStatus: SALES_CONFIRMED_ORDER_STATUS }) };
+    // Đơn đã xác nhận giữ NVL tới hạn thanh toán của khách, không phải hạn 5 phút của mã QR thường.
+    if (result.requiresPayment) await (await getCollection<any>('GIU_TON')).updateMany(
+      { DON_HANG_ID: orderId, TRANG_THAI: RESERVATION_STATUS.temporary },
+      { $set: { HET_HAN_LUC: new Date(paymentDeadlineAt) } }, { session });
     await (await getCollection<any>(MESSAGES)).updateMany({ YEU_CAU_ID: id, LOAI_TIN_NHAN: { $in: SALES_CHAT_TYPES } }, { $set: { DON_HANG_ID: orderId } }, { session });
     const requestStatus = result.requiresPayment ? REQUEST_STATUS.pendingPayment : REQUEST_STATUS.converted;
     await (await getCollection<any>(REQUESTS)).updateOne({ _id: id, version: row.version }, {
-      $set: { orderId, orderResult: result, checkoutData, status: requestStatus, updatedAt: new Date() }, $inc: { version: 1 },
+      $set: { orderId, orderResult: result, checkoutData, status: requestStatus, paymentDeadlineAt: result.requiresPayment ? paymentDeadlineAt : null, updatedAt: new Date() }, $inc: { version: 1 },
       $push: { history: { id: randomUUID(), at: new Date(), actor: employee.NHAN_VIEN_ID,
-        action: result.requiresPayment ? 'Xác nhận yêu cầu, tạo đơn chờ thanh toán' : 'Xác nhận yêu cầu và lên đơn', quoteId: row.quote.id, orderId } },
+        action: result.requiresPayment ? 'Xác nhận yêu cầu, tạo đơn "Đã xác nhận đơn hàng" chờ khách thanh toán' : 'Xác nhận yêu cầu và lên đơn', quoteId: row.quote.id, orderId } },
     } as any, { session });
     return result;
   });
@@ -557,9 +593,9 @@ export async function customerChangeRequest(id: string, token: string, body: any
         if (paid) throw new InventoryError(409, 'Đơn đã ghi nhận thanh toán. Vui lòng thực hiện hủy/hoàn tại đơn hàng.');
         if (orderId) {
           await releaseReservations({ orderId }, { id: row.customerId || 'CUSTOMER', role: 'customer' }, 'Khách hủy trước khi thanh toán', session);
-          await (await getCollection<any>('DON_HANG')).updateOne({ DON_HANG_ID: orderId, TRANG_THAI: { $in: ['Chờ thanh toán', 'Chờ xử lý'] } }, {
+          await (await getCollection<any>('DON_HANG')).updateOne({ DON_HANG_ID: orderId, TRANG_THAI: { $in: ['Chờ thanh toán', SALES_CONFIRMED_ORDER_STATUS, 'Chờ xử lý'] } }, {
             $set: { TRANG_THAI: 'Đã hủy', LY_DO_HUY: 'Khách hủy trước khi thanh toán', NGAY_CAP_NHAT: new Date() },
-            $push: { LICH_SU_TRANG_THAI: { from: 'Chờ thanh toán', to: 'Đã hủy', at: new Date(), actor: row.customerId || 'CUSTOMER', reason: 'Khách hủy trước khi thanh toán' } },
+            $push: { LICH_SU_TRANG_THAI: { from: SALES_CONFIRMED_ORDER_STATUS, to: 'Đã hủy', at: new Date(), actor: row.customerId || 'CUSTOMER', reason: 'Khách hủy trước khi thanh toán' } },
           } as any, { session });
           await (await getCollection<any>('THANH_TOAN')).updateMany({ DON_HANG_ID: orderId, TRANG_THAI_THANH_TOAN: 'Chờ thanh toán' }, {
             $set: { TRANG_THAI_THANH_TOAN: 'Thất bại', XAC_NHAN_LUC: new Date(), NGUOI_XAC_NHAN: 'CUSTOMER_CANCEL' },
@@ -570,7 +606,8 @@ export async function customerChangeRequest(id: string, token: string, body: any
       updates = { status: REQUEST_STATUS.cancelled, acceptedQuoteId: null, acceptance: null, updatedAt: new Date() };
     }
     else if (body.action === 'reschedule') {
-      deliveryAt(body.date, body.time);
+      // Khách đổi lịch: cùng quy tắc như Checkout (08:00–22:00, không dưới 4 giờ).
+      classifyDeliverySchedule(deliveryAt(body.date, body.time));
       updates = { delivery: { ...row.delivery, date: body.date, time: body.time }, quote: null, acceptedQuoteId: null, acceptedAt: null, acceptance: null,
         status: row.assignedTo ? REQUEST_STATUS.processing : REQUEST_STATUS.waiting, updatedAt: new Date() };
     } else throw new InventoryError(400, 'Thao tác không hợp lệ.');

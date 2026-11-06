@@ -1,6 +1,6 @@
 import { memberAccessToken } from '../../../services/session-auth';
 import {LuckyRewardPicker} from '../../../components/lucky-reward-picker/lucky-reward-picker';
-import { PricingService, ServerQuote } from '../../../services/pricing.service';
+import { PricingService, ServerQuote, SHOP_PHONE, deliveryTimeSlots, isUrgentDelivery } from '../../../services/pricing.service';
 import { Component, OnInit, ViewChild, inject, PLATFORM_ID, HostListener, ChangeDetectorRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule, NgForm } from '@angular/forms';
@@ -1234,6 +1234,7 @@ export class OrderRegistrantComponent implements OnInit {
     this.formData.fullName = addr.name;
     this.formData.phone = this.formatPhoneInput(addr.phone);
     this.formData.address = addr.fullAddress;
+    this.refreshServerQuote();
   }
 
   editAddress(addr: SavedAddress, event: Event): void {
@@ -1309,15 +1310,37 @@ export class OrderRegistrantComponent implements OnInit {
   private quoteVersion = 0;
   private refreshServerQuote(): void {
     if (!this.orderItems.length) return;
+    // Báo giá cần lịch giao hợp lệ; chưa chọn đủ thì dùng tạm tính phía trình duyệt.
+    const delivery = this.quoteDelivery();
+    // Máy chủ cần quận/huyện của địa chỉ nhận để tính phí giao.
+    const receiver = this.selectedAddress?.districtName
+      ? { address: this.selectedAddress.fullAddress, districtName: this.selectedAddress.districtName, provinceName: this.selectedAddress.provinceName }
+      : null;
+    if (!delivery || !receiver) { this.serverQuote = null; ++this.quoteVersion; return; }
     const version = ++this.quoteVersion;
     this.pricingService.quote({
       items: this.orderItems.map(item => ({ id: item.id, quantity: item.qty, lineKey: item.lineKey, variantId: item.variantId, designId: item.designId, configuration: item.configuration, displayedUnitPrice: item.price })),
       shippingFee: this.baseShippingFee,
       voucher: this.selectedVoucher ? { id: this.selectedVoucher.id, code: this.selectedVoucher.code } : null,
       customerId: this.getCustomerId() || null,
+      delivery,
+      receiver,
+      // Xem trước: chưa chọn được phương thức hợp lệ thì tạm tính như chuyển khoản.
+      payment: { method: ['cod', 'bank', 'momo', 'vnpay'].includes(this.formData.paymentMethod) ? this.formData.paymentMethod : 'bank' },
     }).subscribe({
-      next: quote => { if (version === this.quoteVersion) { this.serverQuote = quote; this.cdr.detectChanges(); } },
-      error: error => { if (version === this.quoteVersion) { this.serverQuote = null; this.voucherError = error?.error?.message; this.cdr.detectChanges(); } },
+      next: quote => {
+        if (version !== this.quoteVersion) return;
+        this.serverQuote = quote;
+        if (quote.fulfillment?.mode === 'blocked') this.handleDeliveryErrorCode(quote.fulfillment);
+        this.cdr.detectChanges();
+      },
+      error: error => {
+        if (version !== this.quoteVersion) return;
+        this.serverQuote = null;
+        // Lỗi lịch giao không phải lỗi voucher.
+        if (!this.handleDeliveryErrorCode(error?.error)) this.voucherError = error?.error?.message;
+        this.cdr.detectChanges();
+      },
     });
   }
 
@@ -1675,41 +1698,36 @@ export class OrderRegistrantComponent implements OnInit {
     return `${year}-${month}-${day}`;
   }
 
-  private parseDeliveryDateTime(): Date | null {
+  // ===== GIỜ GIAO: 08:00–22:00, khung 30 phút; dưới 4 giờ phải gọi shop =====
+  urgentDeliveryPopup = false;
+  readonly shopPhone = SHOP_PHONE;
+
+  get deliveryTimeOptions(): string[] {
     const isoDate = this.toIsoDate(this.formData.deliveryDate);
-    const time = String(this.formData.deliveryTime || '').trim();
+    return deliveryTimeSlots(/^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? isoDate : '');
+  }
 
-    if (!isoDate || !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
-      return null;
-    }
+  get quoteNeedsRequest(): boolean {
+    return this.serverQuote?.fulfillment?.mode === 'request';
+  }
 
-    const [year, month, day] = isoDate.split('-').map(Number);
-    const [hour, minute] = time.split(':').map(Number);
-    const deliveryDateTime = new Date(year, month - 1, day, hour, minute, 0, 0);
-
-    return Number.isNaN(deliveryDateTime.getTime()) ? null : deliveryDateTime;
+  get quoteRequestReasons(): string[] {
+    return this.serverQuote?.fulfillment?.reasons || [];
   }
 
   validateDeliverySchedule(): boolean {
     this.deliveryScheduleError = '';
-
-    if (!this.formData.deliveryDate || !this.formData.deliveryTime) {
-      return true;
-    }
-
-    const deliveryDateTime = this.parseDeliveryDateTime();
-
-    if (!deliveryDateTime) {
-      return true;
-    }
-
-    const minimumDeliveryTime = new Date(Date.now() + 60 * 60 * 1000);
-
-    if (deliveryDateTime.getTime() < minimumDeliveryTime.getTime()) {
-      this.deliveryScheduleError = 'Đơn giao gấp cần chọn thời gian sau hiện tại ít nhất 1 giờ. Lịch dưới 3 giờ sẽ được chuyển Sales kiểm tra.';
+    if (!this.formData.deliveryDate || !this.formData.deliveryTime) return true;
+    const isoDate = this.toIsoDate(this.formData.deliveryDate);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return true;
+    if (!this.deliveryTimeOptions.includes(this.formData.deliveryTime)) {
+      this.deliveryScheduleError = 'Vui lòng chọn giờ giao trong khung 08:00–22:00 và chưa qua.';
       return false;
     }
-
+    if (isUrgentDelivery(isoDate, this.formData.deliveryTime)) {
+      this.urgentDeliveryPopup = true;
+      return false;
+    }
     return true;
   }
 
@@ -1720,14 +1738,48 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   onDeliveryDateChange(): void {
-    this.validateDeliverySchedule();
+    // Giờ đã chọn không còn trong danh sách của ngày mới (đã qua) thì bỏ chọn.
+    const isoDate = this.toIsoDate(this.formData.deliveryDate);
+    if (this.formData.deliveryTime && /^\d{4}-\d{2}-\d{2}$/.test(isoDate) && !this.deliveryTimeOptions.includes(this.formData.deliveryTime)) {
+      this.formData.deliveryTime = '';
+    }
+    this.onDeliveryScheduleChanged();
     this.onShippingMethodChange();
   }
 
-  onDeliveryTimePicked(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    this.formData.deliveryTime = input.value;
-    this.validateDeliverySchedule();
+  onDeliveryTimeChange(): void {
+    this.onDeliveryScheduleChanged();
+  }
+
+  private onDeliveryScheduleChanged(): void {
+    // Giao gấp dưới 4 giờ: hiện popup và bỏ giờ đã chọn để không đặt được.
+    if (!this.validateDeliverySchedule() && this.urgentDeliveryPopup) this.formData.deliveryTime = '';
+    this.refreshServerQuote();
+  }
+
+  closeUrgentDeliveryPopup(): void {
+    this.urgentDeliveryPopup = false;
+  }
+
+  /** Lỗi lịch giao từ backend: giao gấp → popup; ngoài giờ/đã qua → báo ngay dưới ô giờ. */
+  private handleDeliveryErrorCode(body: any): boolean {
+    const code = body?.code;
+    if (code === 'URGENT_DELIVERY') {
+      this.urgentDeliveryPopup = true;
+      this.formData.deliveryTime = '';
+      return true;
+    }
+    if (code === 'OUTSIDE_SHOP_HOURS' || code === 'DELIVERY_IN_PAST') {
+      this.deliveryScheduleError = String(body?.message || 'Vui lòng chọn lại giờ giao.');
+      return true;
+    }
+    return false;
+  }
+
+  private quoteDelivery(): { date: string; time: string } | null {
+    const isoDate = this.toIsoDate(this.formData.deliveryDate);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate) || !this.formData.deliveryTime || this.deliveryScheduleError) return null;
+    return { date: this.formData.deliveryDate, time: this.formData.deliveryTime };
   }
 
   // ===== PHONE HELPERS =====
@@ -2007,8 +2059,9 @@ export class OrderRegistrantComponent implements OnInit {
       },
       error: (err: any) => {
         console.error('Lỗi tạo đơn hàng:', err);
-        this.submitOrderError = err?.error?.message;
+        this.submitOrderError = this.handleDeliveryErrorCode(err?.error) ? '' : err?.error?.message;
         this.isSubmittingOrder = false;
+        this.cdr.detectChanges();
       },
     });
   }

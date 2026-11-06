@@ -3,7 +3,7 @@ import type { ClientSession } from 'mongodb';
 import { getCollection } from '../mongo.js';
 import { InventoryError } from './inventory/helpers.js';
 import { confirmReservations, releaseReservations } from './inventory/stock.service.js';
-import { recordOrderDemand } from './inventory/stock.service.js';
+import { recordHeldDemand, recordOrderDemand } from './inventory/stock.service.js';
 import { INVENTORY_CONFIG } from './inventory/constants.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { paymentSucceeded, sumVerifiedPayments } from './admin-order.service.js';
@@ -96,7 +96,7 @@ export async function syncCheckoutInventory(session: ClientSession, orderId: str
     // Verified receipts themselves are immutable in changeCheckoutPayment.
     return;
   }
-  if (!['Chờ thanh toán', 'Chờ xử lý', 'Thanh toán thất bại'].includes(order.TRANG_THAI)) {
+  if (!['Chờ thanh toán', 'Đã xác nhận đơn hàng', 'Chờ xử lý', 'Thanh toán thất bại'].includes(order.TRANG_THAI)) {
     throw new InventoryError(409, 'Trạng thái đơn không cho phép xác nhận thanh toán.');
   }
   const filter = order.MA_PHIEN_THANH_TOAN ? { paymentSessionId: order.MA_PHIEN_THANH_TOAN } : { orderId };
@@ -105,12 +105,16 @@ export async function syncCheckoutInventory(session: ClientSession, orderId: str
       const latest=await (await getCollection<any>('THANH_TOAN')).find({DON_HANG_ID:orderId},{session}).sort({NGAY_THANH_TOAN:-1}).limit(1).next();
       if(!latest || latest.TRANG_THAI_THANH_TOAN==='Thất bại' || Date.now()>new Date(latest.NGAY_THANH_TOAN).getTime()+INVENTORY_CONFIG.holdMinutes*60000)throw new InventoryError(410,'Phiên thanh toán đã hết hạn; cần tạo QR mới.');
       await recordOrderDemand(orderId,{}, {id:'PAYMENT',role:'system'}, {paymentConfirmed:true}, session);
-      await orders.updateOne({DON_HANG_ID:orderId},{$set:{TRANG_THAI:'Chờ xử lý'}},{session});
+      // Thanh toán hợp lệ → đơn chính thức, NVL được lập nhu cầu "Chờ giữ" theo T.
+      await orders.updateOne({DON_HANG_ID:orderId},{$set:{TRANG_THAI:'Đã đặt hàng thành công',NGAY_CAP_NHAT:new Date()},
+        $push:{LICH_SU_TRANG_THAI:{from:order.TRANG_THAI,to:'Đã đặt hàng thành công',at:new Date(),actor:'PAYMENT',reason:'Đã xác nhận nghĩa vụ thanh toán/cọc'}}} as any,{session});
     }
     return;
   }
   if (success) {
     await confirmReservations(filter, orderId, { id: 'PAYMENT', role: 'system' }, session);
+    // Đơn đã giữ NVL ngay (dưới 24 giờ / Sales xác nhận): ghi nhu cầu "Đã giữ" liên kết các dòng giữ, không giữ thêm lần nữa.
+    await recordHeldDemand(orderId, { id: 'PAYMENT', role: 'system' }, session);
     await orders.updateOne({ DON_HANG_ID: orderId }, { $set: { TRANG_THAI: 'Đã đặt hàng thành công', NGAY_CAP_NHAT: new Date() },
       $push: { LICH_SU_TRANG_THAI: { from: order.TRANG_THAI, to: 'Đã đặt hàng thành công', at: new Date(), actor: 'PAYMENT', reason: 'Đã xác nhận nghĩa vụ thanh toán/cọc' } } } as any, { session });
   } else {

@@ -12,7 +12,7 @@ import { Router } from '@angular/router';
 import { CreateOrderPayload, CreateOrderResponse, OrderService } from '../../../services/order.service';
 import { apiBaseUrl } from '../../../services/api-config';
 import { SalesRequestResultComponent } from '../sales-request-result/sales-request-result';
-import { PricingService, ServerQuote } from '../../../services/pricing.service';
+import { PricingService, ServerQuote, SHOP_PHONE, deliveryTimeSlots, isUrgentDelivery } from '../../../services/pricing.service';
 
 export interface OrderItem {
   requiresReview?: boolean;
@@ -505,6 +505,8 @@ export class OrderHauntComponent implements OnInit {
     }
 
     this.availableWards = selectedDistrict.wards;
+    // Phí giao và khả năng đáp ứng phụ thuộc quận/huyện: báo giá lại.
+    this.refreshServerQuote();
   }
 
   toggleAddrDropdown(type: 'province' | 'district' | 'ward', disabled: boolean): void {
@@ -577,41 +579,36 @@ export class OrderHauntComponent implements OnInit {
     return `${year}-${month}-${day}`;
   }
 
-  private parseDeliveryDateTime(): Date | null {
+  // ===== GIỜ GIAO: 08:00–22:00, khung 30 phút; dưới 4 giờ phải gọi shop =====
+  urgentDeliveryPopup = false;
+  readonly shopPhone = SHOP_PHONE;
+
+  get deliveryTimeOptions(): string[] {
     const isoDate = this.toIsoDate(this.formData.deliveryDate);
-    const time = String(this.formData.deliveryTime || '').trim();
+    return deliveryTimeSlots(/^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? isoDate : '');
+  }
 
-    if (!isoDate || !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
-      return null;
-    }
+  get quoteNeedsRequest(): boolean {
+    return this.serverQuote?.fulfillment?.mode === 'request';
+  }
 
-    const [year, month, day] = isoDate.split('-').map(Number);
-    const [hour, minute] = time.split(':').map(Number);
-    const deliveryDateTime = new Date(year, month - 1, day, hour, minute, 0, 0);
-
-    return Number.isNaN(deliveryDateTime.getTime()) ? null : deliveryDateTime;
+  get quoteRequestReasons(): string[] {
+    return this.serverQuote?.fulfillment?.reasons || [];
   }
 
   validateDeliverySchedule(): boolean {
     this.deliveryScheduleError = '';
-
-    if (!this.formData.deliveryDate || !this.formData.deliveryTime) {
-      return true;
-    }
-
-    const deliveryDateTime = this.parseDeliveryDateTime();
-
-    if (!deliveryDateTime) {
-      return true;
-    }
-
-    const minimumDeliveryTime = new Date(Date.now() + 60 * 60 * 1000);
-
-    if (deliveryDateTime.getTime() < minimumDeliveryTime.getTime()) {
-      this.deliveryScheduleError = 'Đơn giao gấp cần chọn thời gian sau hiện tại ít nhất 1 giờ. Lịch dưới 3 giờ sẽ được chuyển Sales kiểm tra.';
+    if (!this.formData.deliveryDate || !this.formData.deliveryTime) return true;
+    const isoDate = this.toIsoDate(this.formData.deliveryDate);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return true;
+    if (!this.deliveryTimeOptions.includes(this.formData.deliveryTime)) {
+      this.deliveryScheduleError = 'Vui lòng chọn giờ giao trong khung 08:00–22:00 và chưa qua.';
       return false;
     }
-
+    if (isUrgentDelivery(isoDate, this.formData.deliveryTime)) {
+      this.urgentDeliveryPopup = true;
+      return false;
+    }
     return true;
   }
 
@@ -622,14 +619,48 @@ export class OrderHauntComponent implements OnInit {
   }
 
   onDeliveryDateChange(): void {
-    this.validateDeliverySchedule();
+    // Giờ đã chọn không còn trong danh sách của ngày mới (đã qua) thì bỏ chọn.
+    const isoDate = this.toIsoDate(this.formData.deliveryDate);
+    if (this.formData.deliveryTime && /^\d{4}-\d{2}-\d{2}$/.test(isoDate) && !this.deliveryTimeOptions.includes(this.formData.deliveryTime)) {
+      this.formData.deliveryTime = '';
+    }
+    this.onDeliveryScheduleChanged();
     this.onShippingMethodChange();
   }
 
-  onDeliveryTimePicked(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    this.formData.deliveryTime = input.value;
-    this.validateDeliverySchedule();
+  onDeliveryTimeChange(): void {
+    this.onDeliveryScheduleChanged();
+  }
+
+  private onDeliveryScheduleChanged(): void {
+    // Giao gấp dưới 4 giờ: hiện popup và bỏ giờ đã chọn để không đặt được.
+    if (!this.validateDeliverySchedule() && this.urgentDeliveryPopup) this.formData.deliveryTime = '';
+    this.refreshServerQuote();
+  }
+
+  closeUrgentDeliveryPopup(): void {
+    this.urgentDeliveryPopup = false;
+  }
+
+  /** Lỗi lịch giao từ backend: giao gấp → popup; ngoài giờ/đã qua → báo ngay dưới ô giờ. */
+  private handleDeliveryErrorCode(body: any): boolean {
+    const code = body?.code;
+    if (code === 'URGENT_DELIVERY') {
+      this.urgentDeliveryPopup = true;
+      this.formData.deliveryTime = '';
+      return true;
+    }
+    if (code === 'OUTSIDE_SHOP_HOURS' || code === 'DELIVERY_IN_PAST') {
+      this.deliveryScheduleError = String(body?.message || 'Vui lòng chọn lại giờ giao.');
+      return true;
+    }
+    return false;
+  }
+
+  private quoteDelivery(): { date: string; time: string } | null {
+    const isoDate = this.toIsoDate(this.formData.deliveryDate);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate) || !this.formData.deliveryTime || this.deliveryScheduleError) return null;
+    return { date: this.formData.deliveryDate, time: this.formData.deliveryTime };
   }
 
   formatPhoneInput(value: string): string {
@@ -737,19 +768,48 @@ export class OrderHauntComponent implements OnInit {
     this.refreshServerQuote();
   }
 
+  private quoteReceiver(): { address: string; districtName?: string; provinceName?: string } | null {
+    const districtName = this.availableDistricts.find(d => d.code === this.formData.districtCode)?.name;
+    if (!districtName) return null;
+    return { address: this.fullReceiverAddress, districtName, provinceName: this.provinces.find(p => p.code === this.formData.provinceCode)?.name };
+  }
+
+  /** Gọi khi người dùng rời ô địa chỉ cụ thể. */
+  onReceiverAddressChanged(): void { this.refreshServerQuote(); }
+
   serverQuote: ServerQuote | null = null;
   private quoteVersion = 0;
   private refreshServerQuote(): void {
     if (!this.orderItems.length) return;
+    // Báo giá cần lịch giao hợp lệ; chưa chọn đủ thì dùng tạm tính phía trình duyệt.
+    const delivery = this.quoteDelivery();
+    const receiver = this.quoteReceiver();
+    // Máy chủ cần lịch giao và quận/huyện để tính phí giao; thiếu thì dùng tạm tính phía trình duyệt.
+    if (!delivery || !receiver) { this.serverQuote = null; ++this.quoteVersion; return; }
     const version = ++this.quoteVersion;
     this.pricingService.quote({
       items: this.orderItems.map(item => ({ id: item.id, quantity: item.qty, lineKey: item.lineKey, variantId: item.variantId, designId: item.designId, configuration: item.configuration, displayedUnitPrice: item.price })),
       shippingFee: this.shippingFee,
       voucher: this.selectedVoucher ? { id: this.selectedVoucher.id, code: this.selectedVoucher.code } : null,
       customerId: null,
+      delivery,
+      receiver,
+      // Xem trước: chưa chọn được phương thức hợp lệ thì tạm tính như chuyển khoản.
+      payment: { method: ['cod', 'bank', 'momo', 'vnpay'].includes(this.formData.paymentMethod) ? this.formData.paymentMethod : 'bank' },
     }).subscribe({
-      next: quote => { if (version === this.quoteVersion) this.serverQuote = quote; },
-      error: error => { if (version === this.quoteVersion) { this.serverQuote = null; this.voucherError = error?.error?.message; } },
+      next: quote => {
+        if (version !== this.quoteVersion) return;
+        this.serverQuote = quote;
+        if (quote.fulfillment?.mode === 'blocked') this.handleDeliveryErrorCode(quote.fulfillment);
+        this.cdr.detectChanges();
+      },
+      error: error => {
+        if (version !== this.quoteVersion) return;
+        this.serverQuote = null;
+        // Lỗi lịch giao không phải lỗi voucher.
+        if (!this.handleDeliveryErrorCode(error?.error)) this.voucherError = error?.error?.message;
+        this.cdr.detectChanges();
+      },
     });
   }
 
@@ -1223,7 +1283,8 @@ export class OrderHauntComponent implements OnInit {
       error: (err: any) => {
         console.error('Lỗi tạo đơn khách vãng lai:', err);
         this.isSubmitting = false;
-        this.submitOrderError = err?.error?.message ;
+        this.submitOrderError = this.handleDeliveryErrorCode(err?.error) ? '' : err?.error?.message ;
+        this.cdr.detectChanges();
       },
     });
   }
