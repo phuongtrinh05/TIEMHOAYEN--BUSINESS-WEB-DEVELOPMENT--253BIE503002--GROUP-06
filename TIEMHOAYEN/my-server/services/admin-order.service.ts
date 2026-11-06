@@ -79,6 +79,50 @@ export function assertOrderTransition(order: any, next: string, paid: number) {
   if (next === 'Hoàn thành' && paid < Number(order.TONG_TIEN || 0)) throw new InventoryError(409, 'Cần xác minh đủ số dư trước khi hoàn thành đơn.');
 }
 
+const vnd = (value: number) => `${Math.max(0, Math.round(value)).toLocaleString('vi-VN')}đ`;
+const MAIN_NEXT_STATUS: Record<string, string> = {
+  'Chờ thanh toán': 'Đã đặt hàng thành công', 'Thanh toán thất bại': 'Đã đặt hàng thành công', 'Đã xác nhận đơn hàng': 'Đã đặt hàng thành công',
+  'Đã đặt hàng thành công': 'Đang chuẩn bị hàng', 'Chờ xử lý': 'Đang chuẩn bị hàng',
+  'Đang chuẩn bị': 'Chờ vận chuyển', 'Đang chuẩn bị hàng': 'Chờ vận chuyển', 'Chờ vận chuyển': 'Đang giao',
+  'Đang giao': 'Đã giao', 'Giao không thành công': 'Chờ vận chuyển', 'Đã giao': 'Hoàn thành', 'Giao hàng thành công': 'Hoàn thành',
+};
+export type OrderNextStep = { nextStatus: string | null; blocked: boolean; reason: string; action: 'payment' | 'preparation' | 'start-preparation' | 'status' | 'after-sales' | 'none' };
+
+/**
+ * Giải thích bước tiếp theo của đơn cho Admin: đi tiếp được không, nếu không thì vì sao và cần làm gì.
+ * Dùng đúng điều kiện của assertOrderTransition, không nới quy tắc.
+ */
+export function orderNextStep(order: any, paid: number): OrderNextStep {
+  const current = String(order?.TRANG_THAI || '');
+  const nextStatus = MAIN_NEXT_STATUS[current] || null;
+  const total = Number(order?.TONG_TIEN || 0);
+  const due = /cod/i.test(String(order?.PHUONG_THUC_THANH_TOAN)) ? Number(order?.TIEN_COC || 0) : total;
+  if (['Hoàn thành', 'Đã hủy'].includes(current)) return { nextStatus: null, blocked: false, reason: 'Đơn đã kết thúc, không còn bước tiếp theo.', action: 'none' };
+  if (!nextStatus) return { nextStatus: null, blocked: true, reason: 'Đơn đang trong quy trình hoàn tiền/trả hàng. Xử lý tại mục Chăm sóc khách hàng (hậu mãi).', action: 'after-sales' };
+  if (nextStatus === 'Đã đặt hàng thành công') {
+    return { nextStatus, blocked: true, action: 'payment',
+      reason: `Đơn chưa ghi nhận thanh toán (cần ${vnd(due)}, đã thu ${vnd(paid)}). Ghi nhận giao dịch "Đã thanh toán" ở trang Thanh toán, đơn sẽ tự chuyển sang "Đã đặt hàng thành công".` };
+  }
+  const needsPayment = nextStatus !== 'Hoàn thành' && paid < due;
+  if (needsPayment) {
+    return { nextStatus, blocked: true, action: 'payment',
+      reason: `Chưa ghi nhận đủ ${/cod/i.test(String(order?.PHUONG_THUC_THANH_TOAN)) ? 'tiền cọc' : 'tiền thanh toán'}: cần ${vnd(due)}, đã thu ${vnd(paid)} (còn thiếu ${vnd(due - paid)}). Ghi nhận giao dịch ở trang Thanh toán trước.` };
+  }
+  if (nextStatus === 'Hoàn thành' && paid < total) {
+    return { nextStatus, blocked: true, action: 'payment',
+      reason: `Chưa thu đủ tiền đơn: tổng ${vnd(total)}, đã thu ${vnd(paid)} (còn ${vnd(total - paid)}). Ghi nhận khoản còn lại ở trang Thanh toán trước khi hoàn thành.` };
+  }
+  if (nextStatus === 'Đang chuẩn bị hàng') {
+    if (!order?.THOI_DIEM_CHUAN_BI_DU_KIEN) return { nextStatus, blocked: true, action: 'preparation',
+      reason: 'Chưa có thời điểm chuẩn bị T. Nhập T ở khối "Thời điểm chuẩn bị đặt trước", bấm "Lưu T dự kiến" rồi bấm "Bắt đầu chuẩn bị".' };
+    return { nextStatus, blocked: false, action: 'start-preparation',
+      reason: 'Đã đủ điều kiện. Bấm "Bắt đầu chuẩn bị" ở khối "Thời điểm chuẩn bị đặt trước" (bước này kiểm tra và xuất NVL nên không chọn trong danh sách).' };
+  }
+  try { assertOrderTransition(order, nextStatus, paid); }
+  catch (error: any) { return { nextStatus, blocked: true, action: 'status', reason: String(error?.message || 'Chưa đủ điều kiện chuyển bước.') }; }
+  return { nextStatus, blocked: false, action: 'status', reason: `Có thể chuyển sang "${nextStatus}".` };
+}
+
 export function allowedOrderStatuses(order: any, paid: number): string[] {
   return ['Đang chuẩn bị hàng', 'Chờ vận chuyển', 'Đang giao', 'Đã giao', 'Hoàn thành', 'Giao không thành công', 'Đã hủy', 'Từ chối hoàn tiền/trả hàng'].filter(next => {
     if (next === 'Đang chuẩn bị hàng') return false; // command Bắt đầu chuẩn bị kiểm tra/xuất kho riêng
@@ -239,6 +283,7 @@ export interface AdminOrderProductDto {
 export interface AdminOrderDetailDto {
   snapshotAvailable: boolean;
   allowedStatuses: string[];
+  nextStep: OrderNextStep;
   history: any[];
   preparationAt: string | null;
   preparationStartedAt: string | null;
@@ -509,6 +554,7 @@ export const getAdminOrderDetailById = async (orderId: string): Promise<AdminOrd
             : { level: 'normal', label: 'Bình thường', minutesToT };
   return {
     allowedStatuses: allowedOrderStatuses(order, paid),
+    nextStep: orderNextStep(order, paid),
     snapshotAvailable: !!order.TINH_TIEN_SNAPSHOT && items.every(item => !!item.TEN_SAN_PHAM_SNAPSHOT),
     history: order.LICH_SU_TRANG_THAI || [],
     preparationHistory: order.LICH_SU_T || [],
