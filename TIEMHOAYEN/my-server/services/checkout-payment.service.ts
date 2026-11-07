@@ -79,6 +79,9 @@ export async function consumeCheckoutBenefits(session: ClientSession, order: any
       const debit = await (await getCollection<any>('KHACH_HANG')).updateOne({ KHACH_HANG_ID: order.KHACH_HANG_ID, DIEM_TICH_LUY: { $gte: points } }, { $inc: { DIEM_TICH_LUY: -points } }, { session });
       if (!debit.matchedCount) throw new InventoryError(409, 'Không đủ điểm để chốt đơn. Cần đối soát trước khi xác nhận.');
       await orders.updateOne({ DON_HANG_ID: order.DON_HANG_ID }, { $set: { DA_TRU_DIEM_THUONG: true } }, { session });
+      const after = await (await getCollection<any>('KHACH_HANG')).findOne({ KHACH_HANG_ID: order.KHACH_HANG_ID }, { session, projection: { DIEM_TICH_LUY: 1 } });
+      await (await getCollection<any>('LICH_SU_DIEM')).insertOne({ NGUON_LOAI: 'DON_HANG', NGUON_ID: order.DON_HANG_ID, LOAI_BUT_TOAN: 'SU_DUNG', KHACH_HANG_ID: order.KHACH_HANG_ID,
+        SO_DIEM: -points, SO_DU_SAU: Number(after?.DIEM_TICH_LUY || 0), NGAY_TAO: new Date() }, { session });
     }
     const links = await (await getCollection<any>('DON_HANG_VOUCHER')).find({ DON_HANG_ID: order.DON_HANG_ID }, { session }).toArray();
     for (const link of links) {
@@ -94,6 +97,8 @@ export async function consumeCheckoutBenefits(session: ClientSession, order: any
         identityKey,
         perUserLimit: Number(voucher.GIOI_HAN_MOI_NGUOI || (voucher.KHACH_HANG_ID ? 1 : 0)),
       }, order.DON_HANG_ID);
+      // Voucher cá nhân dùng một lần: đánh dấu đã dùng. Voucher công khai chỉ tăng lượt (claimVoucherUsage), không khóa với mọi người.
+      if (voucher.KHACH_HANG_ID) await (await getCollection<any>('VOUCHER')).updateOne({ VOUCHER_ID: voucher.VOUCHER_ID }, { $set: { DA_DUNG: true } }, { session });
     }
 
 }

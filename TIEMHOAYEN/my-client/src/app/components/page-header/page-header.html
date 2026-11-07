@@ -39,7 +39,7 @@
                   } @else if(notificationError && notifications.length === 0){
                     <div class="notification-state notification-state-error"><span>{{notificationError}}</span><button type="button" (click)="reloadNotifications()">Thử lại</button></div>
                   } @else if(notifications.length === 0){
-                    <div class="notification-empty">Chưa có thông báo nào</div>
+                    <div class="notification-empty">Không có thông báo mới</div>
                   } @else {
                     @for(item of notifications; track item.id){
                       <button
@@ -298,6 +298,13 @@
         </div>
 
         <div class="mobile-item">
+          <h3 routerLink="/lucky-wheel">
+            Vòng quay may mắn
+            <i class="bi bi-stars"></i>
+          </h3>
+        </div>
+
+        <div class="mobile-item">
           <h3 (click)="logout()">
             Đăng xuất
             <i class="bi bi-box-arrow-right"></i>
@@ -455,7 +462,7 @@
               } @else if(notificationError && notifications.length === 0){
                 <div class="notification-state notification-state-error"><span>{{notificationError}}</span><button type="button" (click)="reloadNotifications()">Thử lại</button></div>
               } @else if(notifications.length === 0){
-                <div class="notification-empty">Chưa có thông báo nào</div>
+                <div class="notification-empty">Không có thông báo mới</div>
               } @else {
                 @for(item of notifications; track item.id){
                   <button
@@ -608,6 +615,14 @@
             >
               Tài khoản
               <i class="bi bi-person"></i>
+            </a>
+
+            <a
+              routerLink="/lucky-wheel"
+              (click)="showAccountMenu = false"
+            >
+              Vòng quay may mắn
+              <i class="bi bi-stars"></i>
             </a>
           }
 

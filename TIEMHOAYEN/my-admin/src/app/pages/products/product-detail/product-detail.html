@@ -157,10 +157,10 @@
       </div>
 
       <div class="form-group">
-        <label>Số lượng khả dụng</label>
+        <label>Thành phẩm có sẵn (bó)</label>
         <input type="number" [(ngModel)]="product.quantity" disabled>
         <small class="stock-help">
-          {{ product.finishedAvailable || 0 }} bó sẵn + {{ product.buildable || 0 }} bó có thể làm từ BOM
+          Bó đã cắm sẵn, còn khả dụng. NVL hiện đủ làm thêm {{ product.buildable || 0 }} bó.
         </small>
       </div>
     </div>
@@ -232,25 +232,32 @@
 
     <!-- FORMULA -->
     <div class="formula-header">
-      <h3>CÔNG THỨC HOA</h3>
-      <div class="formula-actions">
-        <div class="search-box">
-            <input
-                placeholder="Tìm kiếm nguyên vật liệu"
-                [(ngModel)]="searchKeyword"
-                (input)="searchMaterial()">
-            <i class="bi bi-search"></i>
+      <div class="formula-title">
+        <h3>CÔNG THỨC HOA</h3>
+        <small>{{ materials.length }} nguyên vật liệu · lưu thành BOM phiên bản mới khi bấm Lưu</small>
+      </div>
+      <div class="formula-actions" *ngIf="isEditing; else formulaViewHint">
+        <div class="material-picker">
+          <i class="bi bi-search"></i>
+          <input
+            placeholder="Tìm NVL theo tên hoặc mã để thêm vào công thức"
+            [(ngModel)]="searchKeyword"
+            (ngModelChange)="onMaterialSearch()"
+            (focus)="pickerOpen = true"
+            (blur)="closePickerSoon()"
+            (keydown.enter)="addFirstSuggestion($event)">
+          <div class="material-suggestions" *ngIf="pickerOpen && searchKeyword.trim()">
+            <button type="button" class="material-suggestion" *ngFor="let m of materialSuggestions" (mousedown)="addMaterialOption(m)">
+              <span class="ms-name">{{ m.name }}</span>
+              <span class="ms-meta">{{ m.code }} · {{ m.unit || '—' }}</span>
+            </button>
+            <div class="material-suggestion-empty" *ngIf="!materialSuggestions.length">Không tìm thấy NVL phù hợp (hoặc đã có trong công thức).</div>
+          </div>
         </div>
-
-        <button
-            class="add-btn"
-            type="button"
-            (click)="addMaterial()">
-            <i class="bi bi-plus-circle"></i>
-            Thêm NVL
-        </button>
-
-    </div>
+      </div>
+      <ng-template #formulaViewHint>
+        <span class="formula-hint"><i class="bi bi-pencil"></i> Bấm <b>Chỉnh sửa</b> để thêm hoặc sửa NVL</span>
+      </ng-template>
     </div>
 
     <table class="material-table">
@@ -259,8 +266,9 @@
 
         <tr>
           <th>NGUYÊN VẬT LIỆU</th>
-          <th>SỐ LƯỢNG CẦN</th>
-          <th>ĐƠN VỊ TÍNH</th>
+          <th>SỐ LƯỢNG</th>
+          <th>ĐƠN VỊ</th>
+          <th>PHƯƠNG ÁN THAY THẾ</th>
           <th>GHI CHÚ</th>
           <th></th>
         </tr>
@@ -268,40 +276,42 @@
       </thead>
 
       <tbody>
+        <tr *ngIf="!materials.length"><td colspan="6" class="material-empty">Chưa có nguyên vật liệu. {{ isEditing ? 'Tìm NVL ở ô phía trên để thêm.' : '' }}</td></tr>
         <tr
-          *ngFor="let item of filteredMaterials;let i=index">
-          <!-- <td>
-            <div class="material-info">
-                <img  *ngIf="item.image" [src]="item.image">
-                <div>
-                    <strong>{{item.name}}</strong>
-                    <span>{{item.code}}</span>
-                </div>
+          *ngFor="let item of materials;let i=index">
+          <td>
+            <div class="material-name">
+              <strong>{{ item.name || '—' }}</strong>
+              <span>{{ item.code }}</span>
             </div>
-          </td> -->
-          <td>
-            <input
-              [(ngModel)]="item.name"
-              [disabled]="!isEditing">
           </td>
           <td>
-              <input
+            <input
+              class="qty-input"
+              type="number"
+              min="0.01"
+              step="any"
               [(ngModel)]="item.quantity"
+              (ngModelChange)="onRecipeChanged()"
               [disabled]="!isEditing">
           </td>
-          <td>
-            <input
-            [(ngModel)]="item.unit"
-            [disabled]="!isEditing">
+          <td class="unit-cell">{{ item.unit || '—' }}</td>
+          <td class="substitute-cell" title="Sửa phương án thay thế ở trang Công thức BOM">
+            <ng-container *ngIf="$any(item).substitutes?.length; else noSubstitute">
+              <span class="substitute-chip" *ngFor="let s of $any(item).substitutes">{{ s }}</span>
+            </ng-container>
+            <ng-template #noSubstitute><span class="substitute-empty">Không có</span></ng-template>
           </td>
           <td>
             <input
+            placeholder="Ghi chú"
             [(ngModel)]="item.note"
             [disabled]="!isEditing">
           </td>
           <td>
             <button
               *ngIf="isEditing"
+              type="button" title="Bỏ NVL này" aria-label="Bỏ NVL này"
               (click)="removeMaterial(i)" class="delete-btn">
               <i class="bi bi-trash"></i>
             </button>
@@ -316,6 +326,7 @@
     </div>
 
     <div class="save-wrap">
+      <p class="save-error" *ngIf="saveError" role="alert">{{ saveError }}</p>
       <button
           *ngIf="isEditing"
           class="save-btn"

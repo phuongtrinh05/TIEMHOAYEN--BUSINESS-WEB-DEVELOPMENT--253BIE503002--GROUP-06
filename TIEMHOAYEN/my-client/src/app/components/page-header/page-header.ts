@@ -1,5 +1,6 @@
 import {apiBaseUrl,orderAccessSession} from '../../services/api-config';
 import { endCustomerOrderSession } from '../../services/api-config';
+import { endSession } from '../../services/session-auth';
 import {
   Component,
   HostListener,
@@ -687,7 +688,8 @@ export class PageHeader implements OnInit, OnDestroy {
               ? res
               : [];
 
-        this.notifications = items.map((item: any) => this.mapNotification(item));
+        // Bấm vào thông báo = đã đọc và xoá khỏi danh sách: chỉ hiện thông báo chưa đọc.
+        this.notifications = items.map((item: any) => this.mapNotification(item)).filter((item: HeaderNotification) => !item.isRead);
         this.isLoadingNotifications = false;
         this.cdr.detectChanges();
       },
@@ -1598,13 +1600,15 @@ export class PageHeader implements OnInit, OnDestroy {
         this.loadNotifications();
       },
       error: (err) => {
-        item.isRead=false; this.cdr.markForCheck(); console.warn('Không thể đánh dấu thông báo đã đọc:', err);
+        item.isRead=false; if (!this.notifications.some(row => row.id === item.id)) this.notifications = [item, ...this.notifications]; this.cdr.markForCheck(); console.warn('Không thể đánh dấu thông báo đã đọc:', err);
       }
     });
   }
 
   goToNotification(item: HeaderNotification): void {
     this.markNotificationRead(item);
+    // Xoá khỏi danh sách ngay khi bấm (xem như đã đọc).
+    this.notifications = this.notifications.filter(row => row.id !== item.id);
     this.showNotifications = false;
     this.router.navigateByUrl(item.link);
   }
@@ -1659,13 +1663,9 @@ export class PageHeader implements OnInit, OnDestroy {
 
   logout() {
     if (this.isBrowser()) {
-      endCustomerOrderSession();
-      localStorage.removeItem('khachHang');
-      localStorage.removeItem('token');
-      sessionStorage.removeItem('tiemHoaYenSessionAuth');
-      sessionStorage.removeItem('orderLookupAccess');
-      sessionStorage.removeItem('tiemHoaYenActiveSalesChat');
-      window.dispatchEvent(new Event('auth-changed'));
+      // Thu hồi token trên server và xoá phiên của tài khoản này khỏi trình duyệt.
+      endSession();
+      window.dispatchEvent(new Event('cart-changed'));
     }
 
     this.resetLoggedInCustomer();
@@ -1673,7 +1673,8 @@ export class PageHeader implements OnInit, OnDestroy {
     this.showAccountMenu = false;
     this.showLanguageMenu = false;
 
-    this.router.navigate(['/login']);
+    // Đăng xuất là thoát tài khoản, ở lại trang đang xem như khách; chỉ rời trang dành riêng cho thành viên.
+    if (/^\/account(?:[/?#]|$)/.test(this.router.url)) this.router.navigate(['/']);
   }
 
   toggleMobileMenu() {

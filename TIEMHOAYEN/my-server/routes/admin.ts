@@ -12,6 +12,7 @@ import {
   createAdminCategory,
   createAdminCampaign,
   createAdminOrder,
+  quoteAdminOrder,
   createAdminProduct,
   createAdminTransaction,
   createAdminVoucher,
@@ -103,8 +104,16 @@ router.post('/order-requests/:requestId/image', requireSales, requireRequestOwne
   });
 });
 router.get('/orders/:orderId', requireAdminPermission('orders'), getAdminOrderDetail);
+router.post('/orders/quote', requireAdminPermission('orders'), quoteAdminOrder);
 router.post('/orders', requireAdminPermission('orders'), createAdminOrder);
 router.put('/orders/:orderId/status', requireAdminPermission('orders', 'update'), updateAdminOrderStatus);
+// Ảnh hoa trước khi giao: tải file ảnh lên, trả về URL để lưu vào MEDIA_BAN_GIAO.
+router.post('/orders/:orderId/handover-image', requireAdminPermission('orders', 'update'), (req, res) => {
+  materialImageUpload.single('image')(req, res, error => {
+    if (error) return res.status(400).json({ message: error.message || 'Không tải được ảnh. Tối đa 5MB.' });
+    return uploadedProposalImage(req, res);
+  });
+});
 router.put('/orders/:orderId/payment-status', requireAdminPermission('payments'), updateAdminOrderPaymentStatus);
 router.get('/customers', requireAdminPermission('customers'), getAdminCustomers);
 router.get('/customers/:customerId', requireAdminPermission('customers'), getAdminCustomerDetail);

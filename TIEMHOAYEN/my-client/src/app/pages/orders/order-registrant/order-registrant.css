@@ -826,7 +826,14 @@
 .or-right {
   flex: 0 0 380px;
   position: sticky;
-  top: 20px;
+  /* Chừa chỗ cho header cố định phía trên. */
+  top: 110px;
+}
+
+.or-right > .or-summary {
+  max-height: calc(100vh - 190px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .or-summary {
@@ -835,6 +842,72 @@
   padding: clamp(16px, 2.5vw, 24px) clamp(16px, 2.5vw, 24px);
   box-shadow: 0 2px 12px rgba(115, 25, 25, 0.06);
   font-family: var(--font-body);
+}
+
+.or-item__unit {
+  font-size: 0.76rem;
+  color: #888;
+}
+
+.qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  border: 1px solid #ead8c3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.qty-stepper button {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: rgba(217, 179, 130, 0.18);
+  color: var(--primary-color);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.qty-stepper button:hover:not(:disabled) {
+  background: rgba(217, 179, 130, 0.4);
+}
+
+.qty-stepper button:disabled {
+  color: #c9bcae;
+  cursor: not-allowed;
+}
+
+.qty-stepper span {
+  min-width: 32px;
+  text-align: center;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.qty-hint {
+  font-size: 0.74rem;
+  color: #b0533f;
+}
+
+.delivery-hours-hint {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  color: #7a6a5c;
+  line-height: 1.4;
+}
+
+.applied-voucher-code {
+  font-size: 0.76rem;
+  color: #888;
+  margin-left: 4px;
 }
 
 .or-items {
@@ -1400,6 +1473,11 @@ textarea.address-modal-input.address-detail-textarea {
     position: static;
   }
 
+  .or-right > .or-summary {
+    max-height: none;
+    overflow-y: visible;
+  }
+
   .or-block,
   .or-summary {
     max-width: 100%;
@@ -1654,3 +1732,17 @@ textarea.address-modal-input.address-detail-textarea {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* ===== Voucher: làm mờ voucher chưa đạt điều kiện + nút X ===== */
+.voucher-item.is-disabled { opacity: .5; cursor: not-allowed; filter: grayscale(.6); }
+.voucher-item.is-disabled:hover { background: inherit; }
+.voucher-item__desc--reason { color: #9a3b3b; }
+.voucher-item__badge--lucky { background: #b8860b; }
+.btn-use-voucher:disabled { cursor: not-allowed; }
+.voucher-empty { padding: 12px; font-size: 13px; color: #8c7970; }
+.voucher-select-wrapper { position: relative; }
+.voucher-select-text.has-value { color: #3b2a30; font-weight: 600; }
+.voucher-clear { margin-left: auto; margin-right: 6px; border: 0; background: #f3e6e9; color: #7a2848; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; cursor: pointer; flex: none; }
+.voucher-clear:hover { background: #e9d2d8; }
+.loyalty-hint { display: block; font-weight: 400; font-size: 12px; color: #8c7970; margin-top: 2px; }
+.loyalty-toggle:disabled { opacity: .5; cursor: not-allowed; }

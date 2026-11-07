@@ -137,6 +137,7 @@
 
                         <button type="button" (click)="increaseQuantity()">+</button>
                     </div>
+                    <p class="cart-limit-error" *ngIf="cartLimitError" role="alert">{{ cartLimitError }}</p>
 
                     <button
                         type="button"

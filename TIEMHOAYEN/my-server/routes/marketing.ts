@@ -132,8 +132,8 @@ router.get('/unsubscribe', (req, res) => {
   const token = String(req.query.token || '');
   if (!/^[a-f0-9]{64}$/.test(token)) return res.status(400).send('Liên kết không hợp lệ.');
   res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Cache-Control', 'no-store');
-  res.type('html').send(`<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Ngừng nhận tin · Hoa Yến</title><body style="font-family:Arial;background:#fff8f5;color:#781b20;padding:8vw"><h2>Ngừng nhận quảng cáo từ Hoa Yến?</h2><p>Bạn vẫn nhận thông tin cần thiết về đơn hàng.</p><form method="post"><input type="hidden" name="token" value="${token}"><button style="background:#781b20;color:white;padding:12px 20px;border:0;border-radius:8px">Xác nhận ngừng nhận</button></form></body></html>`);
+  res.type('html').send(`<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Ngừng nhận tin · Hoa Yên</title><body style="font-family:Arial;background:#fff8f5;color:#781b20;padding:8vw"><h2>Ngừng nhận quảng cáo từ Hoa Yên?</h2><p>Bạn vẫn nhận thông tin cần thiết về đơn hàng.</p><form method="post"><input type="hidden" name="token" value="${token}"><button style="background:#781b20;color:white;padding:12px 20px;border:0;border-radius:8px">Xác nhận ngừng nhận</button></form></body></html>`);
 });
 // The server's urlencoded middleware parses this confirmation form.
-router.post('/unsubscribe', handle(async (req, res) => { await m.unsubscribe(String(req.body.token || '')); res.type('html').send('<meta charset="utf-8"><p>Đã ngừng nhận quảng cáo từ Hoa Yến. Bạn có thể bật lại trong tài khoản.</p>'); }));
+router.post('/unsubscribe', handle(async (req, res) => { await m.unsubscribe(String(req.body.token || '')); res.type('html').send('<meta charset="utf-8"><p>Đã ngừng nhận quảng cáo từ Hoa Yên. Bạn có thể bật lại trong tài khoản.</p>'); }));
 export default router;

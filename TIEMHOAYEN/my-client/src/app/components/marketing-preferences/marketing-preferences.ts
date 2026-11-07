@@ -8,7 +8,7 @@ import { apiBaseUrl, orderAccessSession } from '../../services/api-config';
   @if(!prompt){<button class="settings-link" type="button" (click)="openSettings()"><i class="bi bi-envelope-heart"></i> Tùy chọn nhận ưu đãi</button>}
   @if(visible){<div class="consent-overlay"><section class="consent-dialog" role="dialog" aria-modal="true" [attr.aria-labelledby]="prompt?'marketing-welcome-title':'marketing-settings-title'" (keydown)="dialogKey($event)">
     <div class="dialog-top"><span class="flower"><i class="bi bi-envelope-heart"></i></span><button class="close" type="button" [disabled]="busy" aria-label="Đóng" (click)="dismiss()">×</button></div>
-    <span class="eyebrow">TIỆM HOA YẾN</span><h2 [id]="prompt?'marketing-welcome-title':'marketing-settings-title'">{{prompt?'Bạn muốn nhận tin ưu đãi?':'Tùy chọn nhận ưu đãi'}}</h2>
+    <span class="eyebrow">TIỆM HOA YÊN</span><h2 [id]="prompt?'marketing-welcome-title':'marketing-settings-title'">{{prompt?'Bạn muốn nhận tin ưu đãi?':'Tùy chọn nhận ưu đãi'}}</h2>
     <p>Nhận voucher, mẫu hoa mới và lời chúc qua thông báo website hoặc email.</p>
     <small>Bạn có thể đổi lựa chọn trong tài khoản bất cứ lúc nào.</small>
     @if(message){<div class="message" role="status">{{message}}</div>}

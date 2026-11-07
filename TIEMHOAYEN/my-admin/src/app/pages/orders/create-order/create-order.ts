@@ -1,7 +1,55 @@
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AdminApiService, AdminCustomer, AdminProduct, AdminVoucher } from '../../../services/admin-api.service';
+import { AdminApiService, AdminCustomer, AdminOrderQuoteSummary, AdminProduct, AdminVoucher } from '../../../services/admin-api.service';
+
+/* ===== Quy tắc giao hàng dùng chung với trang Khách (backend kiểm tra lại) ===== */
+export const SHOP_PHONE = '0909477488';
+const URGENT_LEAD_MS = 4 * 60 * 60 * 1000;
+/** Nội thành theo bảng phí giao của Khách và backend priceCheckout. */
+export const INNER_DISTRICTS = ['Quận 1', 'Quận 3', 'Quận 4', 'Quận 5', 'Quận 6', 'Quận 7', 'Quận 8', 'Quận 10', 'Quận 11',
+  'Quận Bình Thạnh', 'Quận Phú Nhuận', 'Quận Tân Bình', 'Quận Tân Phú', 'Quận Gò Vấp'];
+
+/** Ngày hiện tại theo giờ Việt Nam, dạng YYYY-MM-DD. */
+export function vnTodayIso(now = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+}
+
+export function vnDeliveryDate(isoDate: string, time: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
+  const value = new Date(`${isoDate}T${time}:00+07:00`);
+  return Number.isNaN(value.getTime()) ? null : value;
+}
+
+/** Giống trang Khách: mốc 30 phút trong 08:00–22:00; hôm nay chỉ còn các giờ chưa qua. */
+export function deliveryTimeSlots(isoDate: string, now = new Date()): string[] {
+  const slots: string[] = [];
+  for (let minutes = 8 * 60; minutes <= 22 * 60; minutes += 30) {
+    slots.push(`${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`);
+  }
+  if (!isoDate) return slots;
+  return slots.filter(slot => (vnDeliveryDate(isoDate, slot)?.getTime() ?? 0) > now.getTime());
+}
+
+/** Lịch giao còn dưới 4 giờ: giống Khách, không nhận online. */
+export function isUrgentDelivery(isoDate: string, time: string, now = new Date()): boolean {
+  const at = vnDeliveryDate(isoDate, time);
+  return !!at && at.getTime() > now.getTime() && at.getTime() - now.getTime() < URGENT_LEAD_MS;
+}
+
+/** Bảng phí giao giống hệt trang Khách / backend (chỉ để hiển thị tức thời, backend tính lại). */
+export function estimateShippingFee(districtName: string, subtotal: number, method: 'standard' | 'fast'): number {
+  if (!districtName) return 0;
+  const fast = method === 'fast';
+  if (INNER_DISTRICTS.includes(districtName)) {
+    return fast ? (subtotal < 300000 ? 60000 : subtotal <= 500000 ? 30000 : 0) : (subtotal < 300000 ? 30000 : 0);
+  }
+  return fast ? (subtotal < 300000 ? 80000 : subtotal <= 500000 ? 40000 : 30000) : (subtotal < 300000 ? 40000 : subtotal <= 500000 ? 20000 : 0);
+}
+
+interface AddressWard { code: string; name: string }
+interface AddressDistrict { code: string; name: string; wards: AddressWard[] }
+interface AddressProvince { code: string; name: string; districts: AddressDistrict[] }
 
 // ===== TYPES =====
 export type OrderStatus =
@@ -58,7 +106,12 @@ export interface CreateOrderForm {
   receiverEmail: string;
   deliveryDate: string;
   deliverySlot: string;
-  deliveryAddress: string;
+  /** Số nhà, tên đường — phần còn lại chọn theo Tỉnh/Quận/Phường như trang Khách. */
+  street: string;
+  provinceCode: string;
+  districtCode: string;
+  wardCode: string;
+  shippingMethod: 'standard' | 'fast';
   products: CreateOrderProduct[];
   customerNote: string;
   cardTemplate: string;
@@ -89,6 +142,121 @@ export class CreateOrder implements OnInit {
     this.loadVouchers();
     this.loadProducts();
     this.loadCardTemplates();
+    this.loadAddressData();
+  }
+
+  // ===== ĐỊA CHỈ (cùng dữ liệu & định dạng với trang Khách) =====
+  provinces: AddressProvince[] = [];
+
+  private loadAddressData(): void {
+    fetch('/assets/address/vietnam-address-old.json')
+      .then(response => response.json())
+      .then((data: AddressProvince[]) => {
+        this.provinces = Array.isArray(data) ? data : [];
+        if (this.provinces.length === 1) this.form.provinceCode = this.provinces[0].code;
+        this.cdr.markForCheck();
+      })
+      .catch(() => { this.provinces = []; this.cdr.markForCheck(); });
+  }
+
+  get availableDistricts(): AddressDistrict[] {
+    return this.provinces.find(p => p.code === this.form.provinceCode)?.districts || [];
+  }
+
+  get availableWards(): AddressWard[] {
+    return this.availableDistricts.find(d => d.code === this.form.districtCode)?.wards || [];
+  }
+
+  get selectedProvinceName(): string { return this.provinces.find(p => p.code === this.form.provinceCode)?.name || ''; }
+  get selectedDistrictName(): string { return this.availableDistricts.find(d => d.code === this.form.districtCode)?.name || ''; }
+  get selectedWardName(): string { return this.availableWards.find(w => w.code === this.form.wardCode)?.name || ''; }
+
+  get isInnerDistrict(): boolean { return INNER_DISTRICTS.includes(this.selectedDistrictName); }
+
+  /** Định dạng thống nhất với Khách: "Số nhà đường, Phường, Quận, Tỉnh/Thành phố". */
+  get fullDeliveryAddress(): string {
+    return [this.form.street, this.selectedWardName, this.selectedDistrictName, this.selectedProvinceName]
+      .map(value => String(value || '').trim()).filter(Boolean).join(', ');
+  }
+
+  onProvinceChange(): void {
+    this.form.districtCode = '';
+    this.form.wardCode = '';
+    this.requestQuote();
+  }
+
+  onDistrictChange(): void {
+    this.form.wardCode = '';
+    delete this.errors.districtCode;
+    this.requestQuote();
+  }
+
+  onShippingMethodChange(): void { this.requestQuote(); }
+
+  // ===== LỊCH GIAO (cùng quy tắc với trang Khách) =====
+  readonly shopPhone = SHOP_PHONE;
+  get minDeliveryDate(): string { return vnTodayIso(); }
+
+  get deliverySlots(): string[] {
+    return deliveryTimeSlots(this.form.deliveryDate);
+  }
+
+  isUrgentSlot(slot: string): boolean {
+    return !!this.form.deliveryDate && isUrgentDelivery(this.form.deliveryDate, slot);
+  }
+
+  get urgentDeliverySelected(): boolean {
+    return !!this.form.deliverySlot && this.isUrgentSlot(this.form.deliverySlot);
+  }
+
+  // ===== BÁO GIÁ BACKEND (nguồn sự thật, dùng chung priceCheckout với Khách) =====
+  quote: AdminOrderQuoteSummary | null = null;
+  quoteLoading = false;
+  quoteError = '';
+  private quoteTimer: ReturnType<typeof setTimeout> | null = null;
+  private quoteSeq = 0;
+
+  private quotePayload(): Record<string, unknown> | null {
+    if (!this.form.products.length || !this.selectedDistrictName) return null;
+    return {
+      senderCustomerId: this.form.senderCustomerId || null,
+      deliveryAddress: this.fullDeliveryAddress,
+      districtName: this.selectedDistrictName,
+      provinceName: this.selectedProvinceName,
+      shippingMethod: this.form.shippingMethod,
+      deliveryDate: this.form.deliveryDate,
+      deliverySlot: this.form.deliverySlot,
+      paymentMethod: this.form.paymentMethod,
+      products: this.form.products.map(p => ({ id: p.id, qty: Number(p.qty || 0) })),
+      voucher: this.form.voucher ? { id: this.selectedVoucherId, code: this.form.voucher } : null,
+      giftCard: this.form.cardTemplate === 'Không có thiệp' ? null : {
+        templateId: this.form.cardTemplate, writingMode: this.form.cardWritingMode,
+        message: this.form.cardWritingMode === 'shop' ? (this.form.cardMessage || '-') : '',
+      },
+    };
+  }
+
+  requestQuote(): void {
+    if (this.quoteTimer) clearTimeout(this.quoteTimer);
+    const payload = this.quotePayload();
+    const seq = ++this.quoteSeq;
+    if (!payload) { this.quote = null; this.quoteError = ''; this.quoteLoading = false; return; }
+    this.quoteLoading = true;
+    this.quoteTimer = setTimeout(() => {
+      this.adminApi.quoteOrder(payload).subscribe({
+        next: ({ summary }) => {
+          if (seq !== this.quoteSeq) return;
+          this.quote = summary; this.quoteError = ''; this.quoteLoading = false;
+          this.cdr.markForCheck();
+        },
+        error: error => {
+          if (seq !== this.quoteSeq) return;
+          this.quote = null; this.quoteLoading = false;
+          this.quoteError = error?.error?.message || 'Chưa báo giá được, backend sẽ tính lại khi tạo đơn.';
+          this.cdr.markForCheck();
+        },
+      });
+    }, 300);
   }
 
   // ===== FORM STATE =====
@@ -102,7 +270,11 @@ export class CreateOrder implements OnInit {
     receiverEmail: '',
     deliveryDate: '',
     deliverySlot: '',
-    deliveryAddress: '',
+    street: '',
+    provinceCode: '',
+    districtCode: '',
+    wardCode: '',
+    shippingMethod: 'standard',
     products: [],
     customerNote: '',
     cardTemplate: 'Không có thiệp',
@@ -202,16 +374,6 @@ export class CreateOrder implements OnInit {
     'Đã hủy',
   ];
 
-  deliverySlots: string[] = [
-    '07:00 AM–09:00 AM',
-    '09:00 AM–11:00 AM',
-    '11:00 AM–01:00 PM',
-    '01:00 PM–03:00 PM',
-    '03:00 PM–05:00 PM',
-    '05:00 PM–07:00 PM',
-    '07:00 PM–09:00 PM',
-  ];
-
   cardTemplates: Array<{ id: string; code: string; name: string; image?: string; fee: number }> = [];
 
   private loadCardTemplates(): void {
@@ -227,11 +389,13 @@ export class CreateOrder implements OnInit {
       this.form.cardWritingMode = 'customer';
       this.form.cardMessage = '';
     }
+    this.requestQuote();
   }
 
   onCardWritingModeChange(): void {
     delete this.errors.cardMessage;
     if (this.form.cardWritingMode === 'customer') this.form.cardMessage = '';
+    this.requestQuote();
   }
 
   paymentMethods: string[] = [
@@ -243,8 +407,10 @@ export class CreateOrder implements OnInit {
   shippers: Shipper[] = [];
 
   // ===== PAYMENT =====
-  shippingFee = 40000;
-  tax = 20000;
+  shippingMethods: Array<{ value: 'standard' | 'fast'; label: string }> = [
+    { value: 'standard', label: 'Giao tiêu chuẩn' },
+    { value: 'fast', label: 'Giao nhanh' },
+  ];
   voucherInput = '';
   voucherError = '';
   voucherDiscount = 0;
@@ -293,18 +459,23 @@ export class CreateOrder implements OnInit {
     return Number(this.cardTemplates.find(card => card.id === this.form.cardTemplate)?.fee || 0);
   }
 
-  get computedTotalBeforeTax(): number {
-    return (
-      this.computedSubtotal +
-      this.shippingFee +
-      this.selectedCardFee -
-      (this.form.voucher ? this.voucherDiscount : 0) -
-      (this.useLoyalty ? this.loyaltyDiscount : 0)
-    );
+  /** Phí giao gốc theo bảng phí của Khách; ưu tiên số backend trả về. */
+  get shippingFee(): number {
+    return this.quote ? this.quote.baseShippingFee
+      : estimateShippingFee(this.selectedDistrictName, this.computedSubtotal, this.form.shippingMethod);
   }
 
+  /** Giảm giá voucher (giảm tiền hàng + giảm phí ship), ưu tiên số backend. */
+  get displayedVoucherDiscount(): number {
+    if (!this.form.voucher) return 0;
+    return this.quote ? this.quote.productDiscount + this.quote.shippingDiscount : this.voucherDiscount;
+  }
+
+  /** Tổng thanh toán, đã bao gồm VAT như trang Khách (không cộng thêm thuế). */
   get computedGrandTotal(): number {
-    return this.computedTotalBeforeTax + this.tax;
+    if (this.quote) return this.quote.total;
+    return Math.max(0, this.computedSubtotal + this.shippingFee + this.selectedCardFee - this.displayedVoucherDiscount
+      - (this.useLoyalty ? this.loyaltyDiscount : 0));
   }
 
   get computedRemaining(): number { return Math.max(this.computedGrandTotal, 0); }
@@ -352,6 +523,7 @@ export class CreateOrder implements OnInit {
     this.voucherError = '';
     this.customerSearchQuery = c.name;
     this.showCustomerSearch = false;
+    this.requestQuote();
   }
 
   // ===== PRODUCT SEARCH =====
@@ -418,6 +590,7 @@ export class CreateOrder implements OnInit {
       this.selectedVoucherId = '';
       this.voucherDiscount = 0;
       this.voucherError = '';
+      this.requestQuote();
       return;
     }
 
@@ -498,14 +671,14 @@ export class CreateOrder implements OnInit {
     this.voucherInput = voucher.code;
     this.voucherDiscount = this.calculateVoucherDiscount(voucher);
     this.voucherError = '';
+    this.requestQuote();
   }
 
   private refreshVoucherDiscount(): void {
-    if (!this.activeVoucher || !this.form.voucher) {
-      return;
+    if (this.activeVoucher && this.form.voucher) {
+      this.voucherDiscount = this.calculateVoucherDiscount(this.activeVoucher);
     }
-
-    this.voucherDiscount = this.calculateVoucherDiscount(this.activeVoucher);
+    this.requestQuote();
   }
 
   private calculateVoucherDiscount(voucher: CustomerVoucher): number {
@@ -546,6 +719,13 @@ export class CreateOrder implements OnInit {
   }
 
   onDatePickerChange(value: string): void {
+    // Chỉ nhận từ hôm nay trở đi (giờ Việt Nam).
+    if (value && value < vnTodayIso()) {
+      this.errors.deliveryDate = 'Ngày giao phải từ hôm nay trở đi';
+      value = '';
+    } else {
+      delete this.errors.deliveryDate;
+    }
     this.form.deliveryDate = value; // yyyy-mm-dd
     if (value) {
       const [yyyy, mm, dd] = value.split('-');
@@ -553,6 +733,7 @@ export class CreateOrder implements OnInit {
     } else {
       this.deliveryDateDisplay = '';
     }
+    if (this.form.deliverySlot && !this.deliverySlots.includes(this.form.deliverySlot)) this.form.deliverySlot = '';
   }
 
   // ===== SHIPPER =====
@@ -688,8 +869,14 @@ export class CreateOrder implements OnInit {
     }
 
     if (!this.form.deliveryDate) this.errors.deliveryDate = 'Vui lòng chọn ngày giao hàng';
-    if (!this.form.deliverySlot) this.errors.deliverySlot = 'Vui lòng chọn khung giờ giao';
-    if (!this.form.deliveryAddress.trim()) this.errors.deliveryAddress = 'Vui lòng nhập địa chỉ giao hàng';
+    else if (this.form.deliveryDate < vnTodayIso()) this.errors.deliveryDate = 'Ngày giao phải từ hôm nay trở đi';
+    if (!this.form.deliverySlot) this.errors.deliverySlot = 'Vui lòng chọn giờ giao';
+    else if (!this.deliverySlots.includes(this.form.deliverySlot)) this.errors.deliverySlot = 'Giờ giao đã qua, vui lòng chọn lại (08:00–22:00)';
+    else if (this.urgentDeliverySelected) this.errors.deliverySlot = `Lịch giao dưới 4 giờ là đơn gấp, vui lòng xử lý qua số ${SHOP_PHONE}`;
+    if (!this.form.provinceCode) this.errors.provinceCode = 'Vui lòng chọn Tỉnh/Thành phố';
+    if (!this.form.districtCode) this.errors.districtCode = 'Vui lòng chọn Quận/Huyện';
+    if (!this.form.wardCode) this.errors.wardCode = 'Vui lòng chọn Phường/Xã';
+    if (!this.form.street.trim()) this.errors.street = 'Vui lòng nhập số nhà, tên đường';
 
     if (this.form.cardTemplate !== 'Không có thiệp' && this.form.cardWritingMode === 'shop') {
       const message = this.form.cardMessage.trim();
@@ -722,7 +909,10 @@ export class CreateOrder implements OnInit {
       receiverEmail: this.form.receiverEmail,
       deliveryDate: this.form.deliveryDate,
       deliverySlot: this.form.deliverySlot,
-      deliveryAddress: this.form.deliveryAddress,
+      deliveryAddress: this.fullDeliveryAddress,
+      districtName: this.selectedDistrictName,
+      provinceName: this.selectedProvinceName,
+      shippingMethod: this.form.shippingMethod,
       products: this.form.products.map((product) => ({
         id: product.id,
         qty: Number(product.qty || 0),
@@ -738,17 +928,13 @@ export class CreateOrder implements OnInit {
       adminNote: this.form.adminNote,
       paymentMethod: this.form.paymentMethod,
       orderStatus: this.form.orderStatus,
-      shippingFee: this.shippingFee,
-      tax: this.tax,
       voucher: this.form.voucher
         ? {
             id: this.selectedVoucherId,
             code: this.form.voucher
           }
         : null,
-      voucherDiscount: this.form.voucher ? this.voucherDiscount : 0,
       loyaltyPoints: this.useLoyalty ? Math.min(Math.floor(this.selectedCustomerLoyalty / 2) * 2, Math.floor(Math.max(0, this.computedSubtotal - (this.form.voucher ? this.voucherDiscount : 0)) / 1000) * 2) : 0,
-      loyaltyDiscount: this.useLoyalty ? this.loyaltyDiscount : 0
     }).subscribe({
       next: (result) => {
         this.isSubmitting = false; this.creationResult = result;
@@ -757,6 +943,8 @@ export class CreateOrder implements OnInit {
           : `Đơn hàng ${result.orderId} đã được tạo, chờ xác minh thanh toán.`);
       },
       error: (error) => {
+        this.isSubmitting = false;
+        this.cdr.markForCheck();
         console.error('Cannot create order', error);
         alert(error?.error?.message || 'Không thể tạo đơn hàng. Vui lòng kiểm tra sản phẩm/khách hàng rồi thử lại.');
       }

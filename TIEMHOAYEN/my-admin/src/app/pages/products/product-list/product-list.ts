@@ -159,7 +159,8 @@ export class ProductList implements OnInit {
           const discountPrice = Number(source.discountPrice ?? source.GIA_KHUYEN_MAI ?? 0);
           const finalPrice = discountPrice > 0 && discountPrice < originalPrice ? discountPrice : originalPrice;
           const status = String(source.status ?? source.TRANG_THAI ?? 'Ngừng bán');
-          const quantity = Number(source.quantity ?? source.TON_THANH_PHAM ?? source.SO_LUONG ?? 0);
+          // Tồn hiển thị = THÀNH PHẨM THỰC TẾ đã cắm sẵn (không cộng số bó có thể làm từ NVL).
+          const quantity = Number(source.finishedAvailable ?? source.TON_THANH_PHAM ?? 0);
           return ({
           ...source,
           name: String(source.name ?? source.TEN_SAN_PHAM ?? ''),

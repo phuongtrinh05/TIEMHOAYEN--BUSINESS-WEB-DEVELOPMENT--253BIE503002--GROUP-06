@@ -1,9 +1,10 @@
+import { formatDateTime24 } from '../../../shared/date-time';
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AdminApiService, AdminOrderDetail } from '../../../services/admin-api.service';
-import { combineLatest, interval, Subscription } from 'rxjs';
+import { combineLatest, firstValueFrom, interval, Subscription } from 'rxjs';
 
 // ===== TYPES =====
 export type OrderStatus =
@@ -71,6 +72,8 @@ export interface IOrderDetail {
   cardTemplate: string;
   giftCard?: any;
   handoverMedia?: string[];
+  supportDeadline?: string | null;
+  supportException?: { until: string; reason: string; actor: string; at: string } | null;
   cardMessage: string;
   subtotal: number;
   shippingFee: number;
@@ -385,7 +388,6 @@ export class OrderDetail implements OnInit, OnDestroy {
       products: source.products ?? [],
       voucher: source.voucher ?? null,
     };
-    this.handoverMediaInput = (source.handoverMedia || []).join('\n');
     if (source.preparationAt) this.preparationInput = this.toLocalDateTimeInput(source.preparationAt);
     this.ensureDefaultShipper();
     this.loadAfterSales();
@@ -499,7 +501,7 @@ export class OrderDetail implements OnInit, OnDestroy {
   // ===== TIMELINE =====
   get timeline(): TimelineStep[] {
     const history = this.order.history || [];
-    return history.length ? history.map(h => ({ status: this.toDetailOrderStatus(h.to), action: h.action === 'note' ? 'Cập nhật ghi chú nội bộ' : h.action === 'preparation' ? 'Nhập thời điểm chuẩn bị T' : h.action === 'delivery' ? 'Cập nhật thông tin giao hàng' : h.action === 'handover-media' ? 'Cập nhật ảnh/video bàn giao' : '', actor: h.actor || '', time: new Date(h.at).toLocaleString('vi-VN'), done: true, icon: STEP_CONFIG[this.toDetailOrderStatus(h.to)]?.icon || 'bi-clock' }))
+    return history.length ? history.map(h => ({ status: this.toDetailOrderStatus(h.to), action: h.action === 'note' ? 'Cập nhật ghi chú nội bộ' : h.action === 'preparation' ? 'Nhập thời điểm chuẩn bị T' : h.action === 'delivery' ? 'Cập nhật thông tin giao hàng' : h.action === 'handover-media' ? 'Cập nhật ảnh/video bàn giao' : '', actor: h.actor || '', time: formatDateTime24(h.at), done: true, icon: STEP_CONFIG[this.toDetailOrderStatus(h.to)]?.icon || 'bi-clock' }))
       : [{ status: this.order.orderStatus, time: this.order.createdAt ? 'Ngày tạo: ' + this.order.createdAt : '', done: true, icon: STEP_CONFIG[this.order.orderStatus]?.icon || 'bi-clock' }];
   }
 
@@ -740,8 +742,33 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   // ===== ADMIN NOTE =====
   afterSales: any[]=[]; afterSalesBusy=false; afterSalesError=''; afterSalesReason=''; afterSalesRejectCode=''; maxRefund=0; refundAmount=0; refundReference=''; transferred=false;
-  loadAfterSales() { if(!this.order.id)return; this.adminApi.getAfterSales(this.order.id).subscribe({next:r=>{this.afterSales=r.requests||[];this.cdr.markForCheck();},error:e=>{this.afterSalesError=e?.error?.message||'Chưa tải được hồ sơ.';this.cdr.markForCheck();}}); }
-  actAfterSales(r:any,action:string) { if(this.afterSalesBusy||!this.canEditNote)return;if(action==='refund'&&!this.transferred){this.afterSalesError='Chỉ xác nhận sau khi chuyển tiền và đối soát chứng từ.';return;}this.afterSalesBusy=true;this.adminApi.changeAfterSales(r.requestId,{version:r.version,action,reason:this.afterSalesReason,reasonCode:this.afterSalesRejectCode||(action==='reject'?'OTHER':''),maxRefund:Number(this.maxRefund),amount:Number(this.refundAmount),reference:this.refundReference,transferred:this.transferred}).subscribe({next:()=>{this.afterSalesBusy=false;this.afterSalesReason='';this.afterSalesRejectCode='';this.transferred=false;this.loadAfterSales();this.lastLoadedOrderId='';this.fetchOrderDetailOnce(this.order.id);},error:e=>{this.afterSalesBusy=false;this.afterSalesError=e?.error?.message||'Chưa xử lý được.';this.cdr.markForCheck();}}); }
+  deviationReason='';
+  supportExceptionReason=''; supportExceptionBusy=false;
+  /** Đơn đã giao/hoàn thành, hết hạn gửi hỗ trợ và không có hồ sơ đang mở: cho phép mở ngoại lệ có lý do. */
+  get canOpenSupportException(): boolean {
+    const deadline = this.order.supportDeadline ? new Date(this.order.supportDeadline).getTime() : NaN;
+    const status = String(this.order.orderStatus || '');
+    return this.canEditNote && Number.isFinite(deadline) && deadline < Date.now()
+      && ['Đã giao', 'Giao thành công', 'Giao hàng thành công', 'Hoàn thành'].includes(status)
+      && !this.afterSales.some((r: any) => r.active);
+  }
+  openSupportException(): void {
+    const reason = this.supportExceptionReason.trim();
+    if (this.supportExceptionBusy || reason.length < 10) return;
+    this.supportExceptionBusy = true;
+    this.adminApi.updateOrderMetadata(this.order.id, { action: 'support-exception', reason }).subscribe({
+      next: r => { this.supportExceptionBusy = false; this.supportExceptionReason = ''; this.applyApiOrderDetail(r.order); this.showToast('Đã mở thêm 1 giờ cho khách gửi yêu cầu hỗ trợ.'); this.cdr.detectChanges(); },
+      error: e => { this.supportExceptionBusy = false; this.showToast(e?.error?.message || 'Chưa mở được ngoại lệ.', 'error'); this.cdr.detectChanges(); },
+    });
+  }
+  get isAdminRole(): boolean { return String(localStorage.getItem('adminRole') || '').trim().toLowerCase() === 'admin'; }
+  /** Khớp server: hoàn trên 2 triệu hoặc trên 50% giá trị đơn cần Admin duyệt lần 2. */
+  needsSecondApproval(amount: number): boolean { const total = Number(this.order.total || 0); return amount > 2_000_000 || (total > 0 && amount > total * 0.5); }
+  loadAfterSales() { if(!this.order.id)return; this.adminApi.getAfterSales(this.order.id).subscribe({next:r=>{this.afterSales=r.requests||[];
+    const reviewing=this.afterSales.find((x:any)=>x.active&&x.status==='Đang xem xét'&&x.suggestion);
+    if(reviewing&&!this.maxRefund)this.maxRefund=Number(reviewing.suggestion.amount||0);
+    this.cdr.markForCheck();},error:e=>{this.afterSalesError=e?.error?.message||'Chưa tải được hồ sơ.';this.cdr.markForCheck();}}); }
+  actAfterSales(r:any,action:string) { if(this.afterSalesBusy||!this.canEditNote)return;if(action==='refund'&&!this.transferred){this.afterSalesError='Chỉ xác nhận sau khi chuyển tiền và đối soát chứng từ.';return;}this.afterSalesBusy=true;this.adminApi.changeAfterSales(r.requestId,{version:r.version,action,reason:this.afterSalesReason,reasonCode:this.afterSalesRejectCode||(action==='reject'?'OTHER':''),maxRefund:Number(this.maxRefund),deviationReason:this.deviationReason,amount:Number(this.refundAmount),reference:this.refundReference,transferred:this.transferred}).subscribe({next:()=>{this.afterSalesBusy=false;this.afterSalesReason='';this.afterSalesRejectCode='';this.transferred=false;this.deviationReason='';this.loadAfterSales();this.lastLoadedOrderId='';this.fetchOrderDetailOnce(this.order.id);},error:e=>{this.afterSalesBusy=false;this.afterSalesError=e?.error?.message||'Chưa xử lý được.';this.cdr.markForCheck();}}); }
   receiveAfterSalesReturn(request: any): void {
     if (this.afterSalesBusy || !this.canEditNote) return;
     const items = (request.items || []).map((item: any) => ({
@@ -762,7 +789,6 @@ export class OrderDetail implements OnInit, OnDestroy {
   preparationInput = '';
   preparationReason = '';
   preparationBusy = false;
-  handoverMediaInput = '';
   get canSetPreparation(): boolean { return this.adminApi.can('orders', 'update') && ['Đã xác nhận đơn hàng', 'Đã đặt hàng thành công', 'Chờ xử lý'].includes(this.order.orderStatus); }
   savePreparation(): void {
     if (this.preparationBusy) return;
@@ -786,16 +812,57 @@ export class OrderDetail implements OnInit, OnDestroy {
     const pad = (part: number) => String(part).padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
   }
-  saveHandoverMedia(): void {
-    const media = this.handoverMediaInput.split('\n').map(value => value.trim()).filter(Boolean);
+  handoverBusy = false;
+  get handoverMediaList(): string[] { return this.order.handoverMedia || []; }
+
+  /** Tải từng ảnh lên server rồi lưu danh sách URL vào đơn (tối đa 10 ảnh). */
+  async onHandoverFilesSelected(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files || []);
+    input.value = '';
+    if (!files.length || this.handoverBusy) return;
+    const room = 10 - this.handoverMediaList.length;
+    if (room <= 0) { this.showToast('Đã đủ 10 ảnh bàn giao.', 'error'); return; }
+    const selected = files.slice(0, room);
+    const tooLarge = selected.find(file => file.size > 5 * 1024 * 1024);
+    if (tooLarge) { this.showToast(`Ảnh "${tooLarge.name}" vượt quá 5MB.`, 'error'); return; }
+    this.handoverBusy = true;
+    this.cdr.detectChanges();
+    try {
+      const uploaded: string[] = [];
+      for (const file of selected) {
+        const result = await firstValueFrom(this.adminApi.uploadHandoverImage(this.order.id, file));
+        if (result?.url) uploaded.push(result.url);
+      }
+      this.saveHandoverMedia([...this.handoverMediaList, ...uploaded], `Đã đính kèm ${uploaded.length} ảnh bàn giao.`);
+      if (files.length > selected.length) this.showToast('Chỉ lưu tối đa 10 ảnh bàn giao.', 'error');
+    } catch (error: any) {
+      this.handoverBusy = false;
+      this.showToast(error?.error?.message || 'Chưa tải được ảnh bàn giao.', 'error');
+      this.cdr.detectChanges();
+    }
+  }
+
+  removeHandoverMedia(index: number): void {
+    if (this.handoverBusy) return;
+    this.handoverBusy = true;
+    this.saveHandoverMedia(this.handoverMediaList.filter((_, i) => i !== index), 'Đã xóa ảnh bàn giao.');
+  }
+
+  private saveHandoverMedia(media: string[], successMessage: string): void {
+    this.handoverBusy = true;
     this.adminApi.updateOrderMetadata(this.order.id, { action: 'handover-media', media }).subscribe({
       next: response => {
+        this.handoverBusy = false;
         this.applyApiOrderDetail(response.order);
-        this.handoverMediaInput = (response.order?.handoverMedia || []).join('\n');
-        this.showToast(media.length ? 'Đã cập nhật hình ảnh/video bàn giao.' : 'Đã gỡ media bàn giao.');
+        this.showToast(successMessage);
         this.cdr.detectChanges();
       },
-      error: error => this.showToast(error?.error?.message || 'Chưa cập nhật được media bàn giao.', 'error'),
+      error: error => {
+        this.handoverBusy = false;
+        this.showToast(error?.error?.message || 'Chưa cập nhật được ảnh bàn giao.', 'error');
+        this.cdr.detectChanges();
+      },
     });
   }
   get canEditNote(): boolean { return this.adminApi.can('orders','update'); }

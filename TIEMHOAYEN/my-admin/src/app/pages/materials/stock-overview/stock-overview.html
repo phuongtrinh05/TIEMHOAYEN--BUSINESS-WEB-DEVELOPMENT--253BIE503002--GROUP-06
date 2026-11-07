@@ -3,24 +3,44 @@
     <app-inventory-tabs />
 
     @if (alerts(); as a) {
-      <div class="inv-kpis">
-        <div class="inv-kpi bad"><div class="label">NVL hết kho</div><div class="value">{{ a.summary['materialsOut'] }}</div></div>
-        <div class="inv-kpi warn"><div class="label">NVL sắp hết</div><div class="value">{{ a.summary['materialsLow'] }}</div></div>
-        <div class="inv-kpi bad"><div class="label">Dự kiến thiếu theo T</div><div class="value">{{ a.summary['forecastShortages'] }}</div></div>
-        <div class="inv-kpi warn"><div class="label">Đơn đã thanh toán chưa có T</div><div class="value">{{ a.summary['paidWithoutT'] ?? a.summary['ordersWithoutSchedule'] }}</div></div>
-        <div class="inv-kpi warn"><div class="label">Sắp tới T chưa giữ</div><div class="value">{{ a.summary['holdDueSoon'] ?? 0 }}</div></div>
-        <div class="inv-kpi bad"><div class="label">Quá T chưa xuất NVL</div><div class="value">{{ a.summary['overdueExport'] ?? 0 }}</div></div>
-        <div class="inv-kpi bad"><div class="label">Bó hoa hết hàng</div><div class="value">{{ a.summary['productsOut'] }}</div></div>
-        <div class="inv-kpi warn"><div class="label">Bó hoa sắp hết (1–3)</div><div class="value">{{ a.summary['productsLow'] }}</div></div>
-        <div class="inv-kpi"><div class="label">Nguồn hoa cần kiểm tra</div><div class="value">{{ a.summary['qualityChecks'] }}</div></div>
+      <div class="ov-kpi-groups">
+        <div class="ov-kpi-group">
+          <div class="ov-kpi-title"><i class="bi bi-flower1"></i> Nguyên vật liệu</div>
+          <div class="inv-kpis">
+            <div class="inv-kpi bad"><div class="label">Hết kho</div><div class="value">{{ a.summary['materialsOut'] }}</div></div>
+            <div class="inv-kpi warn"><div class="label">Sắp hết</div><div class="value">{{ a.summary['materialsLow'] }}</div></div>
+            <div class="inv-kpi"><div class="label">Nguồn hoa cần kiểm tra</div><div class="value">{{ a.summary['qualityChecks'] }}</div></div>
+          </div>
+        </div>
+        <div class="ov-kpi-group">
+          <div class="ov-kpi-title"><i class="bi bi-calendar-check"></i> Đơn hàng &amp; lịch chuẩn bị (T)</div>
+          <div class="inv-kpis">
+            <div class="inv-kpi bad"><div class="label">Dự kiến thiếu theo T</div><div class="value">{{ a.summary['forecastShortages'] }}</div></div>
+            <div class="inv-kpi warn"><div class="label">Đã thanh toán chưa có T</div><div class="value">{{ a.summary['paidWithoutT'] ?? a.summary['ordersWithoutSchedule'] }}</div></div>
+            <div class="inv-kpi warn"><div class="label">Sắp tới T chưa giữ</div><div class="value">{{ a.summary['holdDueSoon'] ?? 0 }}</div></div>
+            <div class="inv-kpi bad"><div class="label">Quá T chưa xuất NVL</div><div class="value">{{ a.summary['overdueExport'] ?? 0 }}</div></div>
+          </div>
+        </div>
+        <div class="ov-kpi-group">
+          <div class="ov-kpi-title"><i class="bi bi-bag-heart"></i> Thành phẩm (bó hoa)</div>
+          <div class="inv-kpis">
+            <div class="inv-kpi bad"><div class="label">Hết hàng</div><div class="value">{{ a.summary['productsOut'] }}</div></div>
+            <div class="inv-kpi warn"><div class="label">Sắp hết (1–3)</div><div class="value">{{ a.summary['productsLow'] }}</div></div>
+          </div>
+        </div>
       </div>
     }
 
     <div class="inv-overview-toolbar">
     <div class="inv-local-tabs">
-      @for (t of [['alerts','Cảnh báo'],['reservations','Đang giữ'],['prep','Đơn cần chuẩn bị'],['finished','Thành phẩm cắm sẵn'],['ledger','Sổ biến động'],['reconcile','Đối soát']]; track t[0]) {
+      @for (t of [['alerts','Cảnh báo'],['finished','Tồn thành phẩm & khả năng làm'],['prep','Đơn cần chuẩn bị'],['reservations','Đang giữ'],['ledger','Sổ biến động'],['reconcile','Đối soát']]; track t[0]) {
         <button class="inv-btn sm" [class.primary]="tab() === t[0]" (click)="setTab($any(t[0]))">{{ t[1] }}</button>
       }
+    </div>
+    <div class="ov-search">
+      <i class="bi bi-search" aria-hidden="true"></i>
+      <input class="inv-input" placeholder="Tìm mã/tên NVL, bó hoa, mã đơn…" aria-label="Tìm trong tổng quan kho" [ngModel]="query()" (ngModelChange)="query.set($event)">
+      @if (query()) { <button class="inv-icon-btn" aria-label="Xóa tìm kiếm" (click)="query.set('')"><i class="bi bi-x-lg"></i></button> }
     </div>
     <button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button>
     </div>
@@ -30,32 +50,32 @@
     @if (tab() === 'alerts') {
       @if (loading()) { <div class="inv-empty">Đang tính…</div> }
       @if (alerts(); as a) {
-        <div class="inv-section-title"><i class="bi bi-exclamation-triangle"></i> Nguyên liệu cần bổ sung</div>
+        <div class="inv-section-title"><i class="bi bi-exclamation-triangle"></i> Nguyên liệu cần bổ sung ({{ fMaterialAlerts().length }})</div>
         <div class="inv-table-wrap">
           <table class="inv-table">
             <thead><tr><th>NVL</th><th>Tình trạng</th><th class="num">Khả dụng</th><th class="num">Ngưỡng</th><th class="num">Gợi ý nhập tới mức tối đa</th><th></th></tr></thead>
             <tbody>
-              @for (m of a.materialAlerts; track m.materialId) {
+              @for (m of fMaterialAlerts(); track m.materialId) {
                 <tr [class.row-out]="m.status === 'out'" [class.row-low]="m.status === 'low'">
                   <td><b>{{ m.materialId }}</b> {{ m.name }}</td><td><span class="badge-s" [class]="m.status">{{ m.label }}</span></td>
                   <td class="num">{{ m.available }} {{ m.unit }}</td><td class="num">{{ m.threshold }}</td><td class="num">{{ m.suggestedOrder }}</td>
-                  <td><button class="inv-btn sm" (click)="createPo(m.materialId, m.suggestedOrder)"><i class="bi bi-truck"></i> Lập PO</button></td>
+                  <td>@if (canEdit) {<button class="inv-btn sm" (click)="createPo(m.materialId, m.suggestedOrder)"><i class="bi bi-truck"></i> Lập PO</button>}</td>
                 </tr>
               } @empty { <tr><td colspan="6" class="inv-empty">Không có NVL dưới ngưỡng.</td></tr> }
             </tbody>
           </table>
         </div>
 
-        <div class="inv-section-title"><i class="bi bi-calendar-x"></i> Dự kiến thiếu theo lịch chuẩn bị</div>
+        <div class="inv-section-title"><i class="bi bi-calendar-x"></i> Dự kiến thiếu theo lịch chuẩn bị ({{ fForecast().length }})</div>
         <div class="inv-table-wrap">
           <table class="inv-table">
             <thead><tr><th>Đơn</th><th>T</th><th>NVL</th><th class="num">Cần</th><th class="num">Khả dụng</th><th class="num">PO đang giao kịp</th><th class="num">Thiếu</th><th></th></tr></thead>
             <tbody>
-              @for (f of a.forecastShortages; track f.orderId + f.materialId) {
+              @for (f of fForecast(); track f.orderId + f.materialId) {
                 <tr class="row-out">
                   <td class="fw-bold">{{ f.orderId }}</td><td>{{ f.neededAt | date: 'dd/MM HH:mm' }}</td><td>{{ f.name }}</td>
                   <td class="num">{{ f.required }}</td><td class="num">{{ f.available }}</td><td class="num">{{ f.incoming }}</td><td class="num fw-bold">{{ f.missing }} {{ f.unit }}</td>
-                  <td><button class="inv-btn sm" (click)="createPo(f.materialId, f.missing)"><i class="bi bi-truck" aria-hidden="true"></i> Lập PO</button></td>
+                  <td>@if (canEdit) {<button class="inv-btn sm" (click)="createPo(f.materialId, f.missing)"><i class="bi bi-truck" aria-hidden="true"></i> Lập PO</button>}</td>
                 </tr>
               } @empty { <tr><td colspan="8" class="inv-empty">Không có đơn tương lai dự kiến thiếu NVL.</td></tr> }
             </tbody>
@@ -68,9 +88,12 @@
               <b>{{ block.title }}</b> ({{ block.list.length }})
               @if (block.list.length) {
                 — {{ block.hint }}
-                <div class="d-flex flex-wrap gap-1 mt-1">
-                  @for (o of block.list; track o.orderId) {
-                    <button type="button" class="inv-btn sm" (click)="openPrep(o.orderId)" [title]="o.prepAt ? 'T: ' + (o.prepAt | date: 'dd/MM HH:mm') : 'Chưa có T'">{{ o.orderId }}</button>
+                <div class="prep-chips">
+                  @for (o of (expandedBlocks().has(block.title) ? block.list : block.list.slice(0, 8)); track o.orderId) {
+                    <button type="button" class="prep-chip" (click)="openPrep(o.orderId)" [title]="o.orderId + ' · ' + (o.prepAt ? 'T: ' + (o.prepAt | date: 'dd/MM HH:mm') : 'Chưa có T')">#{{ o.orderId.slice(-8) }}</button>
+                  }
+                  @if (block.list.length > 8) {
+                    <button type="button" class="prep-chip prep-chip--more" (click)="toggleBlock(block.title)">{{ expandedBlocks().has(block.title) ? 'Thu gọn' : '+' + (block.list.length - 8) + ' đơn' }}</button>
                   }
                 </div>
               } @else { — không có. }
@@ -78,12 +101,12 @@
           }
         }
 
-        <div class="inv-section-title"><i class="bi bi-flower3"></i> Bó hoa hết hoặc sắp hết hàng</div>
+        <div class="inv-section-title"><i class="bi bi-flower3"></i> Bó hoa hết hoặc sắp hết hàng ({{ fProductAlerts().length }})</div>
         <div class="inv-table-wrap" style="max-height:360px;overflow-y:auto">
           <table class="inv-table">
             <thead><tr><th>Sản phẩm</th><th>Nhãn</th><th class="num">Tồn bán được</th><th>NVL chốt chặn</th></tr></thead>
             <tbody>
-              @for (p of a.productAlerts; track p.productId) {
+              @for (p of fProductAlerts(); track p.productId) {
                 <tr><td><b>{{ p.productId }}</b> {{ p.name }}</td><td><span class="badge-s" [class]="p.status">{{ p.label }}</span></td><td class="num">{{ p.sellable }}</td>
                   <td>{{ p.noBom ? 'Chưa có BOM' : (p.bottleneck?.name || '—') }}</td></tr>
               } @empty { <tr><td colspan="4" class="inv-empty">Không có.</td></tr> }
@@ -91,12 +114,12 @@
           </table>
         </div>
 
-        <div class="inv-section-title"><i class="bi bi-thermometer-half"></i> Nguồn hoa cần kiểm tra chất lượng</div>
+        <div class="inv-section-title"><i class="bi bi-thermometer-half"></i> Nguồn hoa cần kiểm tra chất lượng ({{ fQuality().length }})</div>
         <div class="inv-table-wrap">
           <table class="inv-table">
             <thead><tr><th>NVL</th><th>Nguồn nhập</th><th>Nhận lúc</th><th class="num">Tuổi / hạn (ngày)</th><th class="num">SL còn</th><th class="num">Đang giữ</th><th></th></tr></thead>
             <tbody>
-              @for (q of a.qualityChecks; track q.sourceId + q.materialId) {
+              @for (q of fQuality(); track q.sourceId + q.materialId) {
                 <tr><td>{{ q.name }}</td><td>{{ q.sourceId }}</td><td>{{ q.receivedAt | date: 'dd/MM HH:mm' }}</td><td class="num">{{ q.ageDays }} / {{ q.shelfDays }}</td><td class="num">{{ q.quantity }}</td><td class="num">{{ q.reserved }}</td>
                   <td><button class="inv-btn sm" (click)="openMaterial(q.materialId, q.sourceId)"><i class="bi bi-eye" aria-hidden="true"></i> Kiểm tra</button></td></tr>
               } @empty { <tr><td colspan="7" class="inv-empty">Không có.</td></tr> }
@@ -113,7 +136,7 @@
         <table class="inv-table">
           <thead><tr><th>Mã giữ</th><th>Mã đơn / phiên QR</th><th>Loại</th><th>Đối tượng</th><th class="num">SL</th><th>Nguồn PN</th><th>Tạo lúc</th><th>Hết hạn / T</th><th></th></tr></thead>
           <tbody>
-            @for (r of reservations(); track r.MA_GIU_TON) {
+            @for (r of fReservations(); track r.MA_GIU_TON) {
               <tr>
                 <td>{{ r.MA_GIU_TON }}</td>
                 <td class="fw-bold">
@@ -124,7 +147,7 @@
                 <td><span class="badge-s" [class.waiting]="r.TRANG_THAI === 'TAM_CHO_QR'" [class.info]="r.TRANG_THAI === 'CHINH_THUC'">{{ holdLabel(r.TRANG_THAI) }}</span></td>
                 <td>{{ r.LOAI_DOI_TUONG === 'THANH_PHAM' ? 'Bó cắm sẵn ' + r.SAN_PHAM_ID : r.TEN }}</td><td class="num">{{ r.SO_LUONG }}</td><td>{{ r.PHIEU_NHAP_NGUON || '—' }}</td>
                 <td>{{ r.TAO_LUC | date: 'dd/MM HH:mm' }}</td><td>{{ (r.HET_HAN_LUC || r.THOI_DIEM_CAN_DUNG) | date: 'dd/MM HH:mm' }}</td>
-                <td><button class="inv-btn sm danger" (click)="release(r)">Nhả</button></td>
+                <td>@if (canEdit) {<button class="inv-btn sm danger" (click)="release(r)">Nhả</button>}</td>
               </tr>
             } @empty { <tr><td colspan="9" class="inv-empty">Không có lượng đang giữ.</td></tr> }
           </tbody>
@@ -140,7 +163,7 @@
         <table class="inv-table">
           <thead><tr><th>Mã đơn</th><th>Người nhận</th><th>Giờ giao</th><th>T</th><th>Trạng thái NVL</th><th>Sản phẩm</th><th>NVL</th><th></th></tr></thead>
           <tbody>
-            @for (o of prep(); track o.orderId) {
+            @for (o of fPrep(); track o.orderId) {
               <tr [id]="'prep-' + o.orderId" [class.row-out]="o.overdueExport" [class.row-low]="!o.overdueExport && o.holdDueSoon"
                   [style.outline]="highlight() === o.orderId ? '2px solid #c2185b' : null">
                 <td class="fw-bold">
@@ -170,7 +193,7 @@
                   @empty { <span class="muted small">{{ o.state === 'READY_MADE' ? 'Không cần xuất NVL' : '—' }}</span> }
                 </td>
                 <td>
-                  <div class="d-flex flex-wrap gap-1">
+                  <div class="d-flex flex-wrap gap-1" [hidden]="!canEdit">
                     @if (o.state === 'READY_MADE') { <span class="badge-s info">Dùng bó sẵn</span> }
                     @if (o.actions.includes('SET_T')) { <button class="inv-btn sm primary" (click)="openTForm(o)"><i class="bi bi-clock"></i> Nhập T</button> }
                     @if (o.actions.includes('CHANGE_T')) { <button class="inv-btn sm" (click)="openTForm(o)"><i class="bi bi-clock-history"></i> Đổi T</button> }
@@ -206,18 +229,24 @@
       </div>
     }
 
-    <!-- ===== THÀNH PHẨM ===== -->
+    <!-- ===== TỒN THÀNH PHẨM & KHẢ NĂNG LÀM ===== -->
     @if (tab() === 'finished') {
-
-      <div class="inv-table-wrap">
+      <div class="inv-alert info">Tra cứu trước khi nhận đơn: <b>Bó sẵn</b> là bó đã cắm còn khả dụng; <b>Làm thêm</b> là số bó NVL hiện có đủ để cắm theo BOM. Đơn cần nhiều hơn tổng này là thiếu NVL.</div>
+      <div class="inv-table-wrap" style="max-height:65vh;overflow-y:auto">
         <table class="inv-table">
-          <thead><tr><th>Sản phẩm</th><th class="num">Tồn thành phẩm</th><th class="num">Đang giữ</th><th class="num">Khả dụng</th><th class="num">Giá vốn / bó</th><th class="num">Giá bán</th><th></th></tr></thead>
+          <thead><tr><th>Sản phẩm</th><th class="num">Bó sẵn</th><th class="num">Làm thêm từ NVL</th><th class="num">Tổng bán được</th><th>BOM</th><th class="num">Giá bán</th><th></th></tr></thead>
           <tbody>
-            @for (p of finished(); track p.SAN_PHAM_ID) {
-              <tr><td><b>{{ p.SAN_PHAM_ID }}</b> {{ p.TEN_SAN_PHAM }}</td><td class="num">{{ p.TON_THANH_PHAM }}</td><td class="num">{{ p.TP_DANG_GIU || 0 }}</td><td class="num fw-bold">{{ p.KHA_DUNG }}</td>
-                <td class="num">{{ p.GIA_VON_THANH_PHAM | number }}đ</td><td class="num">{{ p.GIA | number }}đ</td>
-                <td><button class="inv-btn sm danger" (click)="dispose(p)">Hủy bó hỏng</button></td></tr>
-            } @empty { <tr><td colspan="7" class="inv-empty">Chưa có bó cắm sẵn.</td></tr> }
+            @for (p of fStockProducts(); track p.SAN_PHAM_ID) {
+              <tr [class.row-out]="!(p.finishedAvailable + p.buildable)" [class.row-low]="(p.finishedAvailable + p.buildable) > 0 && (p.finishedAvailable + p.buildable) <= 3">
+                <td><b>{{ p.SAN_PHAM_ID }}</b> {{ p.TEN_SAN_PHAM }}</td>
+                <td class="num">{{ p.finishedAvailable }}</td>
+                <td class="num">{{ p.lineCount ? p.buildable : '—' }}</td>
+                <td class="num fw-bold">{{ p.finishedAvailable + p.buildable }}</td>
+                <td>{{ p.lineCount ? 'v' + (p.activeVersion ?? '') : 'Chưa có BOM' }}</td>
+                <td class="num">{{ (p.GIA_KHUYEN_MAI || p.GIA) | number }}đ</td>
+                <td>@if (canEdit && finishedOf(p.SAN_PHAM_ID)?.KHA_DUNG > 0) { <button class="inv-btn sm danger" (click)="dispose(finishedOf(p.SAN_PHAM_ID))">Hủy bó hỏng</button> }</td>
+              </tr>
+            } @empty { <tr><td colspan="7" class="inv-empty">{{ query() ? 'Không tìm thấy sản phẩm phù hợp.' : 'Đang tải…' }}</td></tr> }
           </tbody>
         </table>
       </div>
@@ -240,9 +269,9 @@
         <table class="inv-table">
           <thead><tr><th>Thời điểm</th><th>Nghiệp vụ</th><th>Đối tượng</th><th>Nguồn PN</th><th>Chứng từ / đơn</th><th class="num">Δ Tồn thực</th><th class="num">Δ Đang giữ</th><th class="num">Δ Không đạt</th><th class="num">Tồn / giữ / KĐ sau</th><th class="num">Khả dụng sau</th><th>Người</th></tr></thead>
           <tbody>
-            @for (m of ledger(); track m._id) {
+            @for (m of fLedger(); track m._id) {
               <tr>
-                <td>{{ m.THOI_DIEM | date: 'dd/MM/yy HH:mm:ss' }}</td><td>{{ movementLabel[m.LOAI] || m.LOAI }}</td>
+                <td>{{ m.THOI_DIEM | date: 'dd/MM/yyyy HH:mm' }}</td><td>{{ movementLabel[m.LOAI] || m.LOAI }}</td>
                 <td>{{ m.NGUYEN_VAT_LIEU_ID || m.SAN_PHAM_ID }} <span class="muted">{{ m.TEN }}</span></td><td>{{ m.PHIEU_NHAP_NGUON || '—' }}</td>
                 <td>{{ m.CHUNG_TU_ID }} {{ m.DON_HANG_ID ? '· ' + m.DON_HANG_ID : '' }}</td>
                 <td class="num">{{ m.DELTA_TON_THUC || '' }}</td><td class="num">{{ m.DELTA_DANG_GIU || '' }}</td><td class="num">{{ m.DELTA_KHONG_DAT || '' }}</td>
@@ -260,7 +289,7 @@
       <div class="inv-alert info">So bộ đếm tồn (tồn thực / đang giữ / không đạt) của từng NVL, nguồn nhập và thành phẩm với tổng sổ biến động và bản ghi giữ tồn.</div>
       <div class="d-flex gap-2">
         <button class="inv-btn primary" (click)="reconcile(false)"><i class="bi bi-clipboard-check"></i> Chạy đối soát</button>
-        @if (reconcileResult() && !reconcileResult()!.ok) { <button class="inv-btn danger" (click)="reconcile(true)">Sửa bộ đếm theo sổ</button> }
+        @if (canEdit && reconcileResult() && !reconcileResult()!.ok) { <button class="inv-btn danger" (click)="reconcile(true)">Sửa bộ đếm theo sổ</button> }
       </div>
       @if (reconcileResult(); as r) {
         <div class="inv-alert mt-3" [class.success]="r.ok" [class.error]="!r.ok">{{ r.ok ? 'KHỚP — đã kiểm tra ' + r.checkedMaterials + ' NVL.' : 'Có ' + r.diffs.length + ' chênh lệch:' }}</div>

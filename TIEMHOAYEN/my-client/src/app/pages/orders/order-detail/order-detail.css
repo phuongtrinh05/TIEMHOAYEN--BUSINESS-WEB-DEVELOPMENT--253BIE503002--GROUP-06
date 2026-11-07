@@ -1182,3 +1182,56 @@ h3{
 }
 .after-sales-card{margin-bottom:22px}.after-sales-card details{margin-top:14px;padding:16px;border:1px solid #ead5c5;border-radius:14px}.after-sales-card summary{font-weight:700;color:#731919;cursor:pointer}.after-sales-card select,.after-sales-card textarea{width:100%;margin-top:12px;padding:12px;border:1px solid #dec4b2;border-radius:10px;background:#fff}.after-sales-case{margin:10px 0;padding:12px 14px;border-left:4px solid #d9b382;background:#fff8f5;border-radius:8px}.after-sales-items{display:grid;grid-template-columns:1fr 84px 46px;align-items:center;gap:8px;margin-top:10px}.after-sales-items input{width:84px;padding:8px;border:1px solid #dec4b2;border-radius:8px}
 .after-sales-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-bottom:16px;border-bottom:1px solid #edddd3}.after-sales-heading span{color:#a06f5c;font-size:10px;font-weight:900;letter-spacing:.14em}.after-sales-heading h2{margin:4px 0;color:#731919;font-family:'Playfair Display',serif}.after-sales-heading p{margin:0;color:#846d64}.after-sales-heading>i{display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:#f5e8df;color:#731919;font-size:22px}.case-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.case-head small,.case-head strong{display:block}.case-head small{font-size:10px;letter-spacing:.12em;color:#9b7768}.case-head span{padding:5px 10px;border-radius:999px;background:#f1e6dc;color:#754d3e;font-size:12px;font-weight:800}.case-head span[data-status="Đã xử lý xong"],.case-head span[data-status="Đã hoàn tiền"]{background:#e4f3e8;color:#2f6c42}.case-head span[data-status="Bị từ chối"],.case-head span[data-status="Đã từ chối"]{background:#fde5e5;color:#9a2424}.case-items,.case-media{display:flex;flex-wrap:wrap;gap:7px;margin:9px 0}.case-items span,.case-media a{padding:5px 9px;border-radius:999px;background:#fff;color:#731919;font-size:12px;text-decoration:none}.need-info{padding:10px 12px;border-left:3px solid #d39a32;background:#fff4d9}.decision{padding:10px 12px;background:#f2eee9}.refund-success{color:#286a3f}.case-timeline{display:flex;flex-wrap:wrap;gap:8px;padding:0;list-style:none}.case-timeline li{display:flex;flex-direction:column;padding:7px 10px;border:1px solid #ead8cc;border-radius:9px;background:#fff}.case-timeline small{color:#937a70}.support-form{background:#fffdfb}.support-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.support-grid label,.full-field{display:flex;flex-direction:column;color:#613d36;font-weight:700}.support-grid select,.support-grid input{margin-top:6px;padding:11px;border:1px solid #dec4b2;border-radius:10px;background:#fff}.full-field{margin-top:12px}.request-summary{margin:14px 0;padding:14px;border:1px solid #d9b382;border-radius:12px;background:#fff8f1}.secondary-action{margin-right:8px;background:#fff;color:#731919;border:1px solid #d9b382}.after-sales-message{color:#731919;font-weight:700}@media(max-width:700px){.support-grid{grid-template-columns:1fr}.case-head{flex-direction:column}.after-sales-items{grid-template-columns:1fr 70px 38px}}
+
+/* Hạn gửi yêu cầu hỗ trợ sau khi giao thành công */
+.support-window-note {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff7ec;
+  color: #7a4b16;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+.support-window-note--closed {
+  background: #f4efee;
+  color: #6b5a57;
+}
+
+/* Ảnh hoa shop chụp trước khi giao */
+.handover-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+.handover-thumb {
+  display: block;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #ead8c3;
+  background: #faf6f2;
+}
+.handover-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.retry-payment-error {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  color: #b42318;
+}
+
+/* ===== Lượt quay chưa dùng của đơn ===== */
+.order-spin-banner { display: flex; align-items: center; gap: 14px; padding: 14px 18px; margin: 0 0 18px; border: 1px solid #e7cec3; background: #fff6eb; border-radius: 12px; color: #731919; }
+.order-spin-banner > i { font-size: 24px; }
+.order-spin-banner strong { font-size: 14px; }
+.order-spin-banner p { margin: 4px 0 0; font-size: 12px; color: #927567; }
+.order-spin-banner a { margin-left: auto; padding: 9px 14px; border: 1px solid #731919; border-radius: 8px; color: #731919; text-decoration: none; font-size: 13px; white-space: nowrap; }
+.order-spin-banner a:hover { background: #731919; color: #fff; }

@@ -10,6 +10,7 @@ export const LOYALTY_POLICY_STATUS = Object.freeze({
   earningMoment: 'Hoàn thành đơn',
   expiryRule: '12 tháng từ lần cộng điểm hoàn thành gần nhất',
   refundRule: 'Hoàn toàn bộ điểm đã dùng khi đơn bị hủy',
+  afterSalesRule: 'Hoàn tiền hậu mãi (trả hàng/hoàn tiền) không trả lại điểm thưởng và voucher đã dùng; chỉ hoàn tiền mặt đã thanh toán',
   voucherStackingRule: 'Được dùng đồng thời voucher và điểm',
   tierImpact: 'Điểm sử dụng không làm giảm chi tiêu xét hạng',
 });

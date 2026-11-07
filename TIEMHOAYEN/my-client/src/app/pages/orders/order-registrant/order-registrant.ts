@@ -1,6 +1,6 @@
 import { memberAccessToken } from '../../../services/session-auth';
 import {LuckyRewardPicker} from '../../../components/lucky-reward-picker/lucky-reward-picker';
-import { PricingService, ServerQuote, SHOP_PHONE, deliveryTimeSlots, isUrgentDelivery } from '../../../services/pricing.service';
+import { AvailableVoucher, PricingService, ServerQuote, SHOP_PHONE, deliveryTimeSlots, isUrgentDelivery } from '../../../services/pricing.service';
 import { Component, OnInit, ViewChild, inject, PLATFORM_ID, HostListener, ChangeDetectorRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule, NgForm } from '@angular/forms';
@@ -31,9 +31,11 @@ export interface OrderItem {
   image: string;
   qty: number;
   price: number;
+  maxQuantity?: number;
 }
 
 export interface CartStorageItem {
+  maxQuantity?: number;
   requiresReview?: boolean; CAN_SHOP_DUYET?: boolean;
   id?: string;
   SAN_PHAM_ID?: string;
@@ -79,6 +81,12 @@ export interface Voucher {
   startDate?: string | null;
   endDate?: string | null;
   used?: boolean | number;
+  /** 'lucky' = ưu đãi vòng quay (dùng thay voucher, không cộng dồn). */
+  kind?: 'voucher' | 'lucky';
+  eligible?: boolean;
+  reason?: string;
+  estimatedDiscount?: number;
+  minimumOrder?: number;
 }
 
 export interface PaymentMethod {
@@ -157,6 +165,9 @@ export class OrderRegistrantComponent implements OnInit {
   showVoucherDropdown = false;
   selectedAddress: SavedAddress | null = null;
   selectedVoucher: Voucher | null = null;
+  /** Ưu đãi vòng quay đang chọn trong danh sách voucher (xử lý qua LuckyRewardPicker ẩn). */
+  selectedLucky: Voucher | null = null;
+  get selectedBenefit(): Voucher | null { return this.selectedVoucher || this.selectedLucky; }
   paymentCardError = '';
   submitOrderError = '';
   salesRequestId = '';
@@ -437,40 +448,51 @@ export class OrderRegistrantComponent implements OnInit {
     });
   }
 
+  private voucherListVersion = 0;
+  /** "Voucher có sẵn": lấy từ backend cùng bộ luật với lúc đặt hàng; voucher không đạt điều kiện được làm mờ. */
   private loadCustomerVouchers(): void {
     const customerId = this.getCustomerId();
-
-    if (!customerId) {
-      this.availableVouchers = [];
-      this.selectedVoucher = null;
-      this.formData.voucherCode = '';
-      return;
-    }
-
-    this.customerService.getVouchers(customerId).subscribe({
-      next: (vouchers: CustomerVoucher[]) => {
-        const items = Array.isArray(vouchers) ? vouchers : [];
-
-        this.availableVouchers = items
-          .filter((item: CustomerVoucher) => !this.isVoucherUsed(item))
-          .filter((item: CustomerVoucher) => this.isVoucherValidDate(item))
-          .map((item: CustomerVoucher) => this.mapCustomerVoucher(item))
-          .sort((left, right) => this.estimateVoucherDiscount(right) - this.estimateVoucherDiscount(left)
-            || this.voucherExpiry(left) - this.voucherExpiry(right));
-
-        if (
-          this.selectedVoucher &&
-          !this.availableVouchers.some(v => v.id === this.selectedVoucher?.id)
-        ) {
-          this.selectedVoucher = null;
-          this.formData.voucherCode = '';
+    if (!customerId) { this.availableVouchers = []; this.selectedVoucher = null; this.selectedLucky = null; this.formData.voucherCode = ''; return; }
+    const version = ++this.voucherListVersion;
+    this.pricingService.availableVouchers({
+      items: this.orderItems.map(item => ({ id: item.id, quantity: item.qty })),
+      shippingFee: this.baseShippingFee,
+      customerId,
+    }).subscribe({
+      next: ({ vouchers }) => {
+        if (version !== this.voucherListVersion) return;
+        this.availableVouchers = (vouchers || []).map(v => this.mapAvailableVoucher(v));
+        // Voucher đang chọn không còn đạt điều kiện (đổi giỏ hàng) thì bỏ chọn và báo lý do.
+        const picked = this.selectedBenefit;
+        if (picked && picked.id) {
+          const current = this.availableVouchers.find(v => v.id === picked.id && (v.kind || 'voucher') === (picked.kind || 'voucher'));
+          if (!current || !current.eligible) {
+            this.clearVoucher();
+            this.voucherError = current?.reason || 'Voucher không còn áp dụng được cho đơn này.';
+          }
         }
+        this.cdr.detectChanges();
       },
       error: (err: unknown) => {
+        if (version !== this.voucherListVersion) return;
         console.error('Lỗi load voucher của khách hàng:', err);
         this.availableVouchers = [];
+        this.cdr.detectChanges();
       },
     });
+  }
+
+  private mapAvailableVoucher(v: AvailableVoucher): Voucher {
+    const lucky = v.kind === 'lucky';
+    const type = String(v.type || '');
+    const value = Number(v.value || 0);
+    return {
+      id: v.id, code: v.code, kind: v.kind,
+      title: lucky ? `Vòng quay: ${v.title || 'Ưu đãi'}` : this.getVoucherTitle(type, value),
+      desc: lucky ? 'Ưu đãi vòng quay may mắn' : this.getVoucherDescription(type, value),
+      type, value, endDate: v.endDate || null,
+      eligible: v.eligible, reason: v.reason, estimatedDiscount: v.estimatedDiscount, minimumOrder: v.minimumOrder,
+    };
   }
 
   private isVoucherUsed(voucher: CustomerVoucher): boolean {
@@ -521,7 +543,8 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   voucherEstimatedText(voucher: Voucher): string {
-    const value = this.estimateVoucherDiscount(voucher);
+    if (voucher.eligible === false) return voucher.reason || 'Chưa đạt điều kiện';
+    const value = voucher.estimatedDiscount ?? this.estimateVoucherDiscount(voucher);
     return value > 0 ? `Ước giảm ${this.formatMoney(value)}` : voucher.desc;
   }
 
@@ -666,8 +689,45 @@ export class OrderRegistrantComponent implements OnInit {
       image,
       qty,
       price,
+      maxQuantity: Number(item.maxQuantity) > 0 ? Number(item.maxQuantity) : undefined,
       requiresReview: !!(item.requiresReview || item.CAN_SHOP_DUYET),
     };
+  }
+
+  /** Giới hạn tăng: tồn kho từ giỏ (nếu có), tối đa 99. Máy chủ vẫn kiểm tra lại khi báo giá/đặt hàng. */
+  itemMaxQty(item: OrderItem): number {
+    return Math.min(99, item.maxQuantity && item.maxQuantity > 0 ? item.maxQuantity : 99);
+  }
+
+  changeItemQty(item: OrderItem, delta: number): void {
+    if (this.salesRequestId || this.isSubmittingOrder) return;
+    const next = Math.min(this.itemMaxQty(item), Math.max(1, item.qty + delta));
+    if (next === item.qty) return;
+    item.qty = next;
+    this.submitOrderError = '';
+    this.syncQtyToStorage(item);
+    this.refreshServerQuote();
+  }
+
+  /** Giữ số lượng trong giỏ (trình duyệt) và danh sách thanh toán khớp với khung đơn hàng. */
+  private syncQtyToStorage(item: OrderItem): void {
+    for (const key of [this.checkoutItemsStorageKey, this.legacyCartStorageKey]) {
+      let rows: any[];
+      try { rows = JSON.parse(localStorage.getItem(key) || '[]'); } catch { continue; }
+      if (!Array.isArray(rows)) continue;
+      let changed = false;
+      for (const row of rows) {
+        const rowKey = String(row?.lineKey || row?.LINE_KEY || row?.id || row?.SAN_PHAM_ID || '');
+        if (rowKey === item.lineKey) {
+          if ('qty' in row) row.qty = item.qty;
+          row.quantity = item.qty;
+          changed = true;
+        }
+      }
+      if (changed) {
+        try { localStorage.setItem(key, JSON.stringify(rows)); } catch { /* bộ nhớ trình duyệt bị chặn: vẫn đặt theo số lượng trên trang */ }
+      }
+    }
   }
 
   private loadCustomerAddresses(preferredId?: string): void {
@@ -996,8 +1056,9 @@ export class OrderRegistrantComponent implements OnInit {
     return this.productVoucherDiscount;
   }
 
+  /** 2 điểm = 1.000đ; backend chỉ nhận số điểm chẵn. */
   private getMaxRedeemablePointsByBalance(): number {
-    return Math.floor(Math.max(0, this.maxLoyaltyPoints) / this.pointsPerRewardUnit) * this.pointsPerRewardUnit;
+    return Math.floor(Math.max(0, this.maxLoyaltyPoints) / 2) * 2;
   }
 
   private convertPointsToMoney(points: number): number {
@@ -1008,11 +1069,15 @@ export class OrderRegistrantComponent implements OnInit {
     return Math.max(0, this.subtotal - this.productVoucherDiscount - this.luckyRewardDiscount);
   }
 
+  /** Dùng HẾT điểm hiện có; nếu điểm nhiều hơn tiền hàng còn lại thì chỉ dùng đủ số cần (không âm tiền). */
   get loyaltyPointsToUse(): number {
-    if (!this.useLoyaltyPoints) {
-      return 0;
-    }
-    return this.getMaxRedeemablePointsByBalance();
+    if (!this.useLoyaltyPoints) return 0;
+    return this.redeemablePoints;
+  }
+
+  get redeemablePoints(): number {
+    const byOrder = Math.floor(this.getMaxLoyaltyDiscountBase() / 1000) * 2;
+    return Math.max(0, Math.min(this.getMaxRedeemablePointsByBalance(), byOrder));
   }
 
   get loyaltyDiscount(): number {
@@ -1265,12 +1330,38 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   selectVoucher(v: Voucher): void {
-    this.selectedVoucher = this.selectedVoucher?.id === v.id ? null : v;
-
-    this.formData.voucherCode = this.selectedVoucher ? v.code : '';
+    if (v.eligible === false) return; // Không đạt điều kiện: làm mờ, không cho chọn.
+    const picked = this.selectedBenefit;
+    const already = !!picked && picked.id === v.id && (picked.kind || 'voucher') === (v.kind || 'voucher');
     this.voucherError = '';
     this.showVoucherDropdown = false;
-    this.refreshServerQuote();
+    if (already) { this.clearVoucher(); return; }
+    // Mỗi đơn tối đa 01 ưu đãi: chọn voucher thì bỏ ưu đãi vòng quay và ngược lại.
+    if (v.kind === 'lucky') {
+      this.selectedVoucher = null;
+      this.selectedLucky = v;
+      this.formData.voucherCode = v.code;
+      this.cdr.detectChanges();
+      this.luckyPicker?.choose(v.id);
+    } else {
+      this.selectedLucky = null;
+      this.luckyPicker?.choose('');
+      this.selectedVoucher = v;
+      this.formData.voucherCode = v.code;
+    }
+    this.refreshServerQuote(false);
+  }
+
+  /** Nút X: bỏ voucher/ưu đãi đã chọn. */
+  clearVoucher(event?: Event): void {
+    event?.stopPropagation();
+    this.selectedVoucher = null;
+    this.selectedLucky = null;
+    this.formData.voucherCode = '';
+    this.voucherError = '';
+    this.luckyPicker?.choose('');
+    this.showVoucherDropdown = false;
+    this.refreshServerQuote(false);
   }
 
   onVoucherCodeChange(): void {
@@ -1280,36 +1371,30 @@ export class OrderRegistrantComponent implements OnInit {
   applyVoucher(): void {
     const code = this.formData.voucherCode.trim().toUpperCase();
     this.voucherError = '';
-
-    if (!code) {
-      this.selectedVoucher = null;
-      this.luckyPicker?.choose('');
-      this.refreshServerQuote();
+    if (!code) { this.clearVoucher(); return; }
+    const found = this.availableVouchers.find(v => v.code.trim().toUpperCase() === code);
+    if (found) {
+      if (found.eligible === false) { this.voucherError = found.reason || 'Voucher chưa đạt điều kiện.'; return; }
+      this.selectVoucher(found);
       return;
     }
-
-    if(/^YEN-[A-F0-9]{12}$/i.test(code)){
-      this.selectedVoucher=null;this.cdr.detectChanges();
+    if (/^YEN-[A-F0-9]{12}$/i.test(code)) {
+      this.selectedVoucher = null; this.selectedLucky = null; this.cdr.detectChanges();
       this.luckyPicker?.applyCode(code);
       return;
     }
-    const found = this.availableVouchers.find(
-      v => v.code.trim().toUpperCase() === code
-    );
-
-    this.selectedVoucher = found ?? null;
-
-    if (!found) {
-      this.voucherError = 'Voucher không hợp lệ.';
-    } else {
-      this.refreshServerQuote();
-    }
+    // Mã không có trong danh sách: để backend kiểm tra theo đúng quy định.
+    this.selectedLucky = null;
+    this.luckyPicker?.choose('');
+    this.selectedVoucher = { id: '', code, title: code, desc: '', type: '', value: 0, kind: 'voucher' };
+    this.refreshServerQuote(false);
   }
 
   serverQuote: ServerQuote | null = null;
   private quoteVersion = 0;
-  private refreshServerQuote(): void {
+  private refreshServerQuote(reloadVouchers = true): void {
     if (!this.orderItems.length) return;
+    if (reloadVouchers) this.loadCustomerVouchers();
     // Báo giá cần lịch giao hợp lệ; chưa chọn đủ thì dùng tạm tính phía trình duyệt.
     const delivery = this.quoteDelivery();
     // Máy chủ cần quận/huyện của địa chỉ nhận để tính phí giao.
@@ -1321,7 +1406,7 @@ export class OrderRegistrantComponent implements OnInit {
     this.pricingService.quote({
       items: this.orderItems.map(item => ({ id: item.id, quantity: item.qty, lineKey: item.lineKey, variantId: item.variantId, designId: item.designId, configuration: item.configuration, displayedUnitPrice: item.price })),
       shippingFee: this.baseShippingFee,
-      voucher: this.selectedVoucher ? { id: this.selectedVoucher.id, code: this.selectedVoucher.code } : null,
+      voucher: this.selectedVoucher ? { ...(this.selectedVoucher.id ? { id: this.selectedVoucher.id } : {}), code: this.selectedVoucher.code } : null,
       customerId: this.getCustomerId() || null,
       delivery,
       receiver,
@@ -1707,6 +1792,11 @@ export class OrderRegistrantComponent implements OnInit {
     return deliveryTimeSlots(/^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? isoDate : '');
   }
 
+  isUrgentSlot(slot: string): boolean {
+    const isoDate = this.toIsoDate(this.formData.deliveryDate);
+    return /^\d{4}-\d{2}-\d{2}$/.test(isoDate) && isUrgentDelivery(isoDate, slot);
+  }
+
   get quoteNeedsRequest(): boolean {
     return this.serverQuote?.fulfillment?.mode === 'request';
   }
@@ -1802,14 +1892,9 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   toggleLoyaltyPoints(): void {
-    if (this.getMaxRedeemablePointsByBalance() <= 0) {
+    if (this.redeemablePoints <= 0) {
       this.useLoyaltyPoints = false;
       this.formData.loyaltyPoints = 0;
-      return;
-    }
-
-    if (!this.useLoyaltyPoints && this.convertPointsToMoney(this.getMaxRedeemablePointsByBalance()) > this.getMaxLoyaltyDiscountBase()) {
-      this.submitOrderError = 'Giá trị sản phẩm của đơn chưa đủ để sử dụng toàn bộ điểm thưởng hiện có.';
       return;
     }
 

@@ -355,7 +355,7 @@
                   #deliveryTime="ngModel"
                   [class.is-invalid]="(deliveryTime.invalid && (deliveryTime.touched || orderForm.submitted)) || deliveryScheduleError">
                   <option value="" disabled>Chọn giờ giao (08:00–22:00)</option>
-                  <option *ngFor="let slot of deliveryTimeOptions" [value]="slot">{{ slot }}</option>
+                  <option *ngFor="let slot of deliveryTimeOptions" [value]="slot">{{ slot }}{{ isUrgentSlot(slot) ? ' – cần gọi shop' : '' }}</option>
                 </select>
               </div>
 
@@ -371,6 +371,12 @@
           <span class="error-msg delivery-schedule-error" *ngIf="deliveryScheduleError">
             {{ deliveryScheduleError }}
           </span>
+
+          <p class="delivery-hours-hint">
+            <i class="bi bi-clock"></i>
+            <span>Tiệm giao hoa 08:00–22:00 mỗi ngày, khung 30 phút. Giờ đã qua sẽ được ẩn; giờ giao trong vòng 4 giờ tới vui lòng gọi
+              <a [href]="'tel:' + shopPhone">{{ shopPhone }}</a>.</span>
+          </p>
 
           <h3 class="order-block__title order-block__title--spaced">4. Thiệp tặng</h3>
           <div class="gift-card-grid">
@@ -414,7 +420,7 @@
             </textarea>
           </div>
 
-          <!-- 6. Tùy chọn thêm -->
+          <!-- Tùy chọn thêm -->
           <div class="extra-options extra-options--spaced">
             <label class="checkbox-option">
               <input
@@ -441,8 +447,9 @@
             </label>
           </div>
 
-          <!-- 7. Voucher -->
-          <div class="voucher-section voucher-section--spaced" *ngIf="availableVouchers.length > 0">
+          <!-- 6. Voucher & điểm thưởng (luôn hiển thị) -->
+          <h3 class="order-block__title order-block__title--spaced">6. Voucher &amp; điểm thưởng</h3>
+          <div class="voucher-section">
             <div class="voucher-left">
               <p class="voucher-label">Voucher</p>
 
@@ -473,9 +480,13 @@
               <p class="voucher-label">Chọn Voucher có sẵn</p>
 
               <div class="voucher-select-wrapper" (click)="toggleVoucherDropdown()">
-                <span class="voucher-select-text">
+                <span class="voucher-select-text" [class.has-value]="!!selectedVoucher">
                   {{ selectedVoucher ? selectedVoucher.code : 'Chọn voucher' }}
                 </span>
+
+                <button type="button" class="voucher-clear" *ngIf="selectedVoucher" (click)="clearVoucher($event)" aria-label="Bỏ voucher đã chọn" title="Bỏ voucher">
+                  <i class="bi bi-x-lg"></i>
+                </button>
 
                 <i class="bi bi-chevron-down" [class.rotated]="showVoucherDropdown"></i>
 
@@ -484,18 +495,20 @@
                   *ngIf="showVoucherDropdown"
                   (click)="$event.stopPropagation()">
 
-                  <div class="voucher-item" *ngFor="let voucher of availableVouchers">
+                  <div class="voucher-item" *ngFor="let voucher of availableVouchers"
+                    [class.is-disabled]="voucher.eligible === false" [attr.aria-disabled]="voucher.eligible === false">
                     <div class="voucher-item__info">
                       <span class="voucher-item__title">{{ voucher.code }} · {{ voucher.title }}</span>
-                      <span class="voucher-item__desc">{{ voucherEstimatedText(voucher) }}</span>
+                      <span class="voucher-item__desc" [class.voucher-item__desc--reason]="voucher.eligible === false">{{ voucherEstimatedText(voucher) }}</span>
                     </div>
 
                     <button
                       type="button"
                       class="btn-use-voucher"
+                      [disabled]="voucher.eligible === false"
                       [class.is-used]="selectedVoucher?.id === voucher.id"
                       (click)="selectVoucher(voucher)">
-                      {{ selectedVoucher?.id === voucher.id ? 'Bỏ chọn' : 'Sử dụng' }}
+                      {{ voucher.eligible === false ? 'Chưa đủ ĐK' : (selectedVoucher?.id === voucher.id ? 'Bỏ chọn' : 'Sử dụng') }}
                     </button>
                   </div>
                   <div class="voucher-login-box" *ngIf="isLoadingPublicVouchers"><span>Đang tải voucher…</span></div>
@@ -503,6 +516,14 @@
                 </div>
               </div>
             </div>
+          </div>
+
+          <div class="loyalty-box">
+            <div class="loyalty-box__text">
+              <span><i class="bi bi-gift"></i> Điểm thưởng</span>
+              <small>Đăng nhập để tích điểm cho đơn này và dùng điểm thưởng giảm giá. Khách vãng lai chưa dùng được điểm.</small>
+            </div>
+            <button type="button" class="btn-loyalty-login" (click)="goToLogin()">Đăng nhập</button>
           </div>
 
           <!-- 8. Phương thức thanh toán -->
@@ -563,11 +584,17 @@
 
             <div class="order-item__info">
               <span class="order-item__name">{{ item.name }}</span>
-              <span class="order-item__qty">x{{ item.qty }}</span>
+              <span class="order-item__unit">{{ item.price | number:'1.0-0' }}đ / sản phẩm</span>
+              <div class="qty-stepper" role="group" [attr.aria-label]="'Số lượng ' + item.name">
+                <button type="button" aria-label="Giảm số lượng" [disabled]="item.qty <= 1 || !!salesRequestId || isSubmitting" (click)="changeItemQty(item, -1)">−</button>
+                <span aria-live="polite">{{ item.qty }}</span>
+                <button type="button" aria-label="Tăng số lượng" [disabled]="item.qty >= itemMaxQty(item) || !!salesRequestId || isSubmitting" (click)="changeItemQty(item, 1)">+</button>
+              </div>
+              <span class="qty-hint" *ngIf="item.qty >= itemMaxQty(item)">Đã đạt số lượng tối đa</span>
             </div>
 
             <span class="order-item__price">
-              {{ item.price | number:'1.0-0' }}đ
+              {{ item.price * item.qty | number:'1.0-0' }}đ
             </span>
           </div>
         </div>
@@ -596,7 +623,7 @@
           </div>
 
           <div class="pricing-row discount-row" *ngIf="discount > 0">
-            <span>Giảm giá:</span>
+            <span>Voucher<span class="applied-voucher-code" *ngIf="selectedVoucher">({{ selectedVoucher.code }})</span>:</span>
             <span class="discount-value">
               -{{ discount | number:'1.0-0' }}đ
             </span>

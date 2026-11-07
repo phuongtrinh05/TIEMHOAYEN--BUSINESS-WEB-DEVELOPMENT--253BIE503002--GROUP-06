@@ -591,7 +591,8 @@ export class AccountComponent implements OnInit, OnDestroy {
           isDefault: item.LA_MAC_DINH,
           name: item.TEN_NGUOI_NHAN || '',
           phone: item.SDT_NGUOI_NHAN || '',
-          detail: `${item.DIA_CHI_CHI_TIET}, ${item.PHUONG_XA}, ${item.QUAN_HUYEN}, ${item.TINH_THANH}`,
+          detail: [item.DIA_CHI_CHI_TIET, item.PHUONG_XA, item.QUAN_HUYEN, item.TINH_THANH]
+            .map(part => String(part ?? '').trim()).filter(part => part && !/^(null|undefined)$/i.test(part)).join(', '),
           detailLine: item.DIA_CHI_CHI_TIET || '',
           provinceCode: '',
           provinceName: item.TINH_THANH || '',
@@ -1675,14 +1676,14 @@ export class AccountComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Thu hồi token trên server + xoá phiên ở trình duyệt (endSession), rồi về /login. */
+  /** Thu hồi token trên server + xoá phiên ở trình duyệt (endSession), rồi về Trang chủ như khách. */
   logout(): void {
     if (isPlatformBrowser(this.platformId)) {
       endSession();
       window.dispatchEvent(new Event('cart-changed'));
     }
 
-    this.router.navigate(['/login']);
+    this.router.navigate(['/']);
   }
 
   redeemPoints(): void {

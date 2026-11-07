@@ -149,6 +149,15 @@ export const getCartByCustomer = async (req: Request, res: Response) => {
   }
 };
 
+/** Giỏ hàng chứa tối đa 99 sản phẩm (cộng số lượng mọi dòng). */
+export const MAX_CART_ITEMS = 99;
+const cartLimitMessage = (current: number) =>
+  `Giỏ hàng tối đa ${MAX_CART_ITEMS} sản phẩm. Hiện có ${current} sản phẩm, bạn chỉ thêm được ${Math.max(0, MAX_CART_ITEMS - current)} nữa.`;
+async function cartTotalQuantity(cartId: string, excludeFilter?: any): Promise<number> {
+  const rows = await (await getCollection<any>('GIO_HANG_CHI_TIET')).find({ GIO_HANG_ID: cartId }, { projection: { SO_LUONG: 1, LINE_KEY: 1, SAN_PHAM_ID: 1 } }).toArray();
+  return rows.filter(row => !excludeFilter || !excludeFilter(row)).reduce((sum, row) => sum + Math.max(0, Number(row.SO_LUONG || 0)), 0);
+}
+
 export const addCartItem = async (req: Request, res: Response) => {
   try {
     const customerId = String(req.body.customerId || '');
@@ -190,7 +199,8 @@ export const addCartItem = async (req: Request, res: Response) => {
     };
     const existing = await detailCollection.findOne(lineFilter);
     const totalQuantity = Number(existing?.SO_LUONG || 0) + quantity;
-    if (totalQuantity > 1000) return res.status(400).json({ message: 'Tổng số lượng trong giỏ không được vượt quá 1000.' });
+    const cartTotal = await cartTotalQuantity(cartId);
+    if (cartTotal + quantity > MAX_CART_ITEMS) return res.status(400).json({ message: cartLimitMessage(cartTotal), code: 'CART_LIMIT', maxItems: MAX_CART_ITEMS });
     const availability = await checkProductAvailability(productId, totalQuantity, null);
     await detailCollection.updateOne(
       lineFilter,
@@ -236,6 +246,8 @@ export const updateCartItem = async (req: Request, res: Response) => {
 
     const cartId = await getOrCreateCart(customerId);
     const detailCollection = await getCollection<any>('GIO_HANG_CHI_TIET');
+    const otherLines = await cartTotalQuantity(cartId, (row: any) => row.LINE_KEY === lineKey || (!req.body.lineKey && row.SAN_PHAM_ID === productId));
+    if (otherLines + quantity > MAX_CART_ITEMS) return res.status(400).json({ message: cartLimitMessage(otherLines), code: 'CART_LIMIT', maxItems: MAX_CART_ITEMS });
     await detailCollection.updateOne(
       { GIO_HANG_ID: cartId, $or: [{ LINE_KEY: lineKey }, ...(!req.body.lineKey ? [{ SAN_PHAM_ID: productId }] : [])] },
       {

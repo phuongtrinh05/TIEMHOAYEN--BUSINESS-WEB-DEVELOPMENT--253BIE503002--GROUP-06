@@ -30,7 +30,7 @@ export class OrderList implements OnInit, OnDestroy {
   activeTab: LookupTab = 'all';
   readonly tabs: {id:LookupTab;label:string}[] = [
     {id:'all',label:'Tất cả'},{id:'shipping',label:'Chờ giao hàng'},
-    {id:'completed',label:'Đã giao'},{id:'returns',label:'Trả hàng'},{id:'cancelled',label:'Đã hủy'},
+    {id:'completed',label:'Đã giao'},{id:'returns',label:'Đang hỗ trợ'},{id:'cancelled',label:'Đã hủy'},
     {id:'requests',label:'Yêu cầu đặt hàng'},
   ];
   private timer?: ReturnType<typeof setInterval>;

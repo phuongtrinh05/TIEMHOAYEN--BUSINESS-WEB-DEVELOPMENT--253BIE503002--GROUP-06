@@ -359,50 +359,49 @@ export class ProductDetail implements OnInit {
     this.product.images.forEach((image, imageIndex) => image.sortOrder = imageIndex);
   }
 
-  searchMaterial(): void {
-    const key = this.removeVietnameseTones(this.searchKeyword.toLowerCase().trim());
-    if (!key) {
-      this.filteredMaterials = [...this.materials];
-      return;
-    }
+  /* ===== Công thức hoa: ô tìm kiếm dùng để chọn NVL thêm vào BOM (chỉ khi Chỉnh sửa) ===== */
+  pickerOpen = false;
+  materialSuggestions: AdminProductRecipeItem[] = [];
+  saveError = '';
 
-    this.filteredMaterials = this.materials.filter((item) => {
-      const name = this.removeVietnameseTones((item.name || '').toLowerCase());
-      const code = (item.code || '').toLowerCase();
-      return name.includes(key) || code.includes(key);
-    });
+  onMaterialSearch(): void {
+    const key = this.removeVietnameseTones(this.searchKeyword.toLowerCase().trim());
+    const used = new Set(this.materials.map(item => item.code));
+    this.materialSuggestions = !key ? [] : this.materialOptions
+      .filter(item => !used.has(item.code))
+      .filter(item => this.removeVietnameseTones(`${item.name || ''} ${item.code || ''}`.toLowerCase()).includes(key))
+      .slice(0, 8);
+    this.pickerOpen = true;
   }
 
-  addMaterial(): void {
-    const key = this.removeVietnameseTones(this.searchKeyword.toLowerCase().trim());
-    const option = this.materialOptions.find((item) => {
-      const name = this.removeVietnameseTones((item.name || '').toLowerCase());
-      const code = (item.code || '').toLowerCase();
-      return key ? name.includes(key) || code.includes(key) : true;
-    });
+  closePickerSoon(): void {
+    setTimeout(() => { this.pickerOpen = false; this.cdr.detectChanges(); }, 150);
+  }
 
-    const nextId = this.materials.length > 0
-      ? Math.max(...this.materials.map((item) => item.id || 0)) + 1
-      : 1;
+  addFirstSuggestion(event: Event): void {
+    event.preventDefault();
+    if (this.materialSuggestions.length) this.addMaterialOption(this.materialSuggestions[0]);
+  }
 
-    this.materials.push({
-      id: nextId,
-      image: option?.image || '',
-      name: option?.name || '',
-      code: option?.code || '',
-      quantity: 1,
-      unit: option?.unit || '',
-      note: '',
-      importPrice: option?.importPrice || 0
-    });
-    this.searchKeyword = '';
+  addMaterialOption(option: AdminProductRecipeItem): void {
+    if (!this.isEditing || this.materials.some(item => item.code === option.code)) return;
+    const nextId = this.materials.length ? Math.max(...this.materials.map(item => item.id || 0)) + 1 : 1;
+    this.materials = [...this.materials, {
+      id: nextId, image: option.image || '', name: option.name || '', code: option.code || '',
+      quantity: 1, unit: option.unit || '', note: '', importPrice: option.importPrice || 0,
+    }];
     this.filteredMaterials = [...this.materials];
+    this.searchKeyword = '';
+    this.materialSuggestions = [];
+    this.pickerOpen = false;
     this.recalculateImportPrice();
   }
 
+  onRecipeChanged(): void { this.recalculateImportPrice(); }
+
   removeMaterial(index: number): void {
-    const item = this.filteredMaterials[index];
-    this.materials = this.materials.filter((material) => material !== item);
+    if (!this.isEditing) return;
+    this.materials = this.materials.filter((_, i) => i !== index);
     this.filteredMaterials = [...this.materials];
     this.recalculateImportPrice();
   }
@@ -414,8 +413,10 @@ export class ProductDetail implements OnInit {
 
     const validationError = this.validateProduct();
     if (validationError) {
+      this.saveError = validationError;
       return;
     }
+    this.saveError = '';
 
     this.recalculateImportPrice();
     this.product.status = this.product.isPublished
@@ -426,11 +427,15 @@ export class ProductDetail implements OnInit {
       materials: this.materials
     }).subscribe({
       next: () => {
+        this.saveError = '';
         this.isEditing = false;
         this.loadProductDetail(this.product.code);
       },
       error: (error) => {
         console.error('Cannot save product detail', error);
+        const details = Array.isArray(error?.error?.details) ? ' ' + error.error.details.join(' ') : '';
+        this.saveError = (error?.error?.message || 'Chưa lưu được sản phẩm.') + details;
+        this.cdr.detectChanges();
       }
     });
   }

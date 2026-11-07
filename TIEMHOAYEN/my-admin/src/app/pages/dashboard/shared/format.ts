@@ -1,3 +1,4 @@
+import { formatDateTime24 } from '../../../shared/date-time';
 /** Định dạng số liệu dùng chung cho Tổng quan / Bảng phân tích / Danh sách báo cáo. */
 
 const TZ = 'Asia/Ho_Chi_Minh';
@@ -20,14 +21,15 @@ export const compact = (v: number | null | undefined): string => {
 export const percent = (v: number | null | undefined): string =>
   v === null || v === undefined ? '—' : v.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + '%';
 
+// Thống nhất toàn Admin: "dd/MM/yyyy HH:mm" (24h).
 export const dateTime = (v: string | Date | null | undefined): string =>
-  !v ? '—' : new Date(v).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: TZ });
+  !v ? '—' : (formatDateTime24(v) || '—');
 
 export const dateOnly = (v: string | Date | null | undefined): string =>
   !v ? '—' : new Date(v).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: TZ });
 
 export const time = (v: string | Date | null | undefined): string =>
-  !v ? '—' : new Date(v).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
+  !v ? '—' : new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: TZ });
 
 /** yyyy-mm-dd theo giờ VN, lệch offsetDays ngày so với hôm nay. */
 export const isoDate = (offsetDays = 0, base = Date.now()): string =>

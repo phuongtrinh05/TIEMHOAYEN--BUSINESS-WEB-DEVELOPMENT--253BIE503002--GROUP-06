@@ -66,7 +66,7 @@
                             <option value="gt3000">Trên 3.000.000đ</option>
                         </select>
 
-                        <h5>Số lượng</h5>
+                        <h5>Thành phẩm có sẵn</h5>
                         <select [(ngModel)]="selectedQuantity">
                             <option value="">Tất cả</option>
                             <option value="low">≤ 5</option>
@@ -205,7 +205,8 @@
                         <th>Sản phẩm</th>
                         <th>Giá bán</th>
                         <th>Đánh giá</th>
-                        <th>Tồn kho</th>
+                        <th title="Số bó đã cắm sẵn, còn khả dụng">Thành phẩm có sẵn</th>
+                        <th title="Bán được = bó sẵn + số bó NVL hiện đủ để cắm thêm theo BOM">Tồn kho khả dụng</th>
                         <th>Trạng thái</th>
                         <th>Thao tác</th>
 
@@ -216,7 +217,7 @@
                 <tbody>
 
                     <tr *ngIf="pagedProducts.length === 0">
-                        <td colspan="7" class="empty-search">
+                        <td colspan="8" class="empty-search">
                             {{ searchKeyword.trim() ? 'Không tìm thấy sản phẩm phù hợp.' : 'Chưa có sản phẩm trong nhóm này.' }}
                         </td>
                     </tr>
@@ -281,7 +282,12 @@
                         </td>
 
                         <td>
-                            {{product.quantity}} <small title="Tồn được tính từ nghiệp vụ kho">(Kho)</small>
+                            <strong>{{product.quantity}}</strong> bó
+                        </td>
+
+                        <td class="stock-available" [class.stock-available--out]="!(($any(product).finishedAvailable || 0) + ($any(product).buildable || 0))">
+                            <strong>{{ ($any(product).finishedAvailable || 0) + ($any(product).buildable || 0) }}</strong> bó
+                            <div class="stock-breakdown">{{ $any(product).finishedAvailable || 0 }} sẵn + {{ $any(product).buildable || 0 }} làm thêm</div>
                         </td>
 
                         <td>

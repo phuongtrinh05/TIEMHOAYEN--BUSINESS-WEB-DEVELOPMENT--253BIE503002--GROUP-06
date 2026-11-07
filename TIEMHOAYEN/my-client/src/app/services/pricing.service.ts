@@ -15,6 +15,23 @@ export interface ServerQuote {
   fulfillment?: QuoteFulfillment | null;
 }
 
+export interface AvailableVoucher {
+  kind: 'voucher' | 'lucky';
+  id: string;
+  code: string;
+  type?: string;
+  value?: number;
+  title?: string;
+  prizeKind?: string;
+  maxDiscount?: number;
+  minimumOrder: number;
+  personal?: boolean;
+  endDate?: string | null;
+  eligible: boolean;
+  reason: string;
+  estimatedDiscount: number;
+}
+
 export interface QuoteFulfillment {
   mode: 'direct' | 'request' | 'blocked';
   reasons?: string[];
@@ -62,6 +79,10 @@ export function isUrgentDelivery(isoDate: string, time: string, now = new Date()
 @Injectable({ providedIn: 'root' })
 export class PricingService {
   constructor(private http: HttpClient) {}
+  /** "Voucher có sẵn": mọi voucher khách thấy + ưu đãi vòng quay, kèm cờ dùng được và lý do (cùng luật với lúc đặt). */
+  availableVouchers(payload: { items: Array<{ id: string; quantity: number }>; shippingFee: number; customerId?: string | null }): Observable<{ subtotal: number; vouchers: AvailableVoucher[] }> {
+    return this.http.post<{ subtotal: number; vouchers: AvailableVoucher[] }>(`${apiBaseUrl()}/orders/vouchers/available`, payload);
+  }
   quote(payload: { items: Array<{ id: string; quantity: number; lineKey?: string; variantId?: string | null; designId?: string | null; configuration?: Record<string, unknown>; displayedUnitPrice?: number }>; shippingFee: number; voucher?: any; customerId?: string | null; delivery?: { date: string; time: string }; receiver?: { address: string; districtName?: string; provinceName?: string }; payment?: { method: string } }): Observable<ServerQuote> {
     return this.http.post<{ items: ServerQuote['items']; summary: Omit<ServerQuote, 'items' | 'voucherResult' | 'fulfillment'>; voucherResult?: any; fulfillment?: QuoteFulfillment }>(`${apiBaseUrl()}/orders/quote`, payload).pipe(
       map(response => ({

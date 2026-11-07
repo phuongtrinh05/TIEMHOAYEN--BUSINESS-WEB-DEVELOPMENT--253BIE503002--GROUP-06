@@ -28,6 +28,24 @@ export function memberAccessToken(): string {
   return currentOrderAccountKey() && /^oa_[a-f0-9]{64}$/.test(token) ? token : '';
 }
 
+/**
+ * Khách đã đăng nhập (token lưu bền ở localStorage) mở tab mới / mở lại trình duyệt: khôi phục phiên thành viên
+ * cho tab này để mọi trang (vòng quay, thông báo…) nhận ra khách đã đăng nhập. Backend vẫn kiểm tra token.
+ */
+export function restoreMemberTabSession(): void {
+  if (typeof localStorage === 'undefined' || typeof sessionStorage === 'undefined') return;
+  const customerId = currentOrderAccountKey();
+  const token = localStorage.getItem('token') || '';
+  if (!customerId || !/^oa_[a-f0-9]{64}$/.test(token)) return;
+  const current = orderAccessSession();
+  if (current?.authType === 'member' && current.customerId === customerId) return;
+  if (current?.authType === 'guest_lookup') return; // không ghi đè phiên tra cứu đang mở
+  sessionStorage.setItem('orderLookupAccess', JSON.stringify({
+    accessToken: token, authType: 'member', customerId, accountKey: customerId, phone: '',
+    expiresAt: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+  }));
+}
+
 /** Thu hồi phiên hiện tại trên server và xoá dữ liệu phiên cũ ở trình duyệt. */
 export function endSession(): void {
   if (typeof localStorage === 'undefined') return;

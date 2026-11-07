@@ -10,6 +10,9 @@ import { PageFooter1 } from './components/page-footer-1/page-footer-1';
 import { PageFooter2 } from './components/page-footer-2/page-footer-2';
 import { ChatbotWidget } from './components/chatbot-widget/chatbot-widget';
 import { OrderAccessService } from './services/order-access.service';
+import { touchGuestTrace } from './services/guest-trace';
+import { guardGuestLookupTab } from './services/api-config';
+import { restoreMemberTabSession } from './services/session-auth';
 import { GlobalErrorBanner } from './components/global-error-banner/global-error-banner';
 
 
@@ -46,7 +49,13 @@ export class App {
   ]);
 
   constructor(private router: Router, private orderAccess: OrderAccessService) {
+    // Lưu vết khách vãng lai: hết hạn sau 30 ngày kể từ lần truy cập cuối.
+    touchGuestTrace();
+    // Tra cứu đơn của khách vãng lai KHÔNG lưu vết: đóng tab là mất, mở lại tab đã đóng cũng không khôi phục.
+    guardGuestLookupTab();
     this.restoreLoginPersistence();
+    // Đăng nhập lưu bền: tab mới vẫn nhận ra khách đã đăng nhập (vòng quay, thông báo…).
+    restoreMemberTabSession();
     this.currentRoute.set(this.getRoutePath(this.router.url));
 
     this.router.events

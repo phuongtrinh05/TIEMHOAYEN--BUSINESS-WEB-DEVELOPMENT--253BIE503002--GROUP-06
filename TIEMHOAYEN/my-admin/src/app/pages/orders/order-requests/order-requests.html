@@ -77,11 +77,11 @@
             <div class="source-group">
               <div class="source-group-title"><div><i class="bi bi-box-seam"></i><h4>Đơn nguyên vật liệu sắp về</h4></div>@if(options.incomingOrders?.length){<span>{{options.incomingOrders.length}} nguồn</span>}</div>
               @if(options.incomingOrders?.length){<div class="source-card-grid">@for(order of options.incomingOrders;track order.orderId+':'+order.materialId){
-                <article class="source-card incoming-order"><div class="source-card-icon"><i class="bi bi-box2-heart"></i></div><div class="source-card-main"><b>{{order.materialName}}</b><small>{{order.materialId}} · Đơn {{order.orderId}}</small><span>Còn nhận <strong>{{order.quantity|number:'1.0-3'}}</strong></span></div><div class="source-card-meta"><small>Dự kiến nhận</small><b>{{order.expectedAt|date:'dd/MM/yyyy · HH:mm'}}</b><span class="source-status success">{{order.status}}</span></div></article>
+                <article class="source-card incoming-order"><div class="source-card-icon"><i class="bi bi-box2-heart"></i></div><div class="source-card-main"><b>{{order.materialName}}</b><small>{{order.materialId}} · Đơn {{order.orderId}}</small><span>Còn nhận <strong>{{order.quantity|number:'1.0-3'}}</strong></span></div><div class="source-card-meta"><small>Dự kiến nhận</small><b>{{order.expectedAt|date:'dd/MM/yyyy HH:mm'}}</b><span class="source-status success">{{order.status}}</span></div></article>
               }</div>}@else{<div class="supplier-empty compact"><i class="bi bi-box-seam"></i><span>Chưa có đơn nguyên vật liệu sắp về.</span></div>}
             </div>
             @if(options.suppliers?.length){<div class="source-group forecast"><div class="source-group-title"><div><i class="bi bi-shop"></i><h4>Nguồn nhập dự kiến</h4></div><span>{{options.suppliers.length}} nguồn</span></div><div class="source-card-grid">@for(s of options.suppliers; track $index){
-              <article class="source-card"><div class="source-card-icon"><i class="bi bi-flower1"></i></div><div class="source-card-main"><b>{{s.materialName}}</b><small>{{s.supplierName}}</small><span>{{s.materialId}}</span></div><div class="source-card-meta"><small>Dự kiến nhận</small><b>{{s.estimatedArrival|date:'dd/MM/yyyy · HH:mm'}}</b><span class="source-status" [class.success]="s.canArriveInTime">{{s.canArriveInTime?'Có thể kịp lịch giao':'Chưa kịp lịch giao'}}</span></div></article>
+              <article class="source-card"><div class="source-card-icon"><i class="bi bi-flower1"></i></div><div class="source-card-main"><b>{{s.materialName}}</b><small>{{s.supplierName}}</small><span>{{s.materialId}}</span></div><div class="source-card-meta"><small>Dự kiến nhận</small><b>{{s.estimatedArrival|date:'dd/MM/yyyy HH:mm'}}</b><span class="source-status" [class.success]="s.canArriveInTime">{{s.canArriveInTime?'Có thể kịp lịch giao':'Chưa kịp lịch giao'}}</span></div></article>
             }</div></div>}
           }
         </section>
@@ -93,7 +93,7 @@
       </section>}
       }
       @if(workTab==='stock' && r.quote) {
-      @if (['Chờ thanh toán','Chờ khách thanh toán'].includes(r.status)) { <p class="payment-notice"><b>Đơn đã tạo ở trạng thái Đã xác nhận đơn hàng, đang chờ khách thanh toán@if(r.paymentDeadlineAt){ trước {{r.paymentDeadlineAt | date:'HH:mm dd/MM'}}}.</b> Khi khoản trả trước được xác nhận thành công, yêu cầu sẽ chuyển sang luồng đơn chờ giao hàng.</p> }
+      @if (['Chờ thanh toán','Chờ khách thanh toán'].includes(r.status)) { <p class="payment-notice"><b>Đơn đã tạo ở trạng thái Đã xác nhận đơn hàng, đang chờ khách thanh toán@if(r.paymentDeadlineAt){ trước {{r.paymentDeadlineAt | date:'dd/MM HH:mm'}}}.</b> Khi khoản trả trước được xác nhận thành công, yêu cầu sẽ chuyển sang luồng đơn chờ giao hàng.</p> }
       @if (r.orderResult) { <a [routerLink]="['/orders/order-detail', r.orderResult.orderId]">Xem đơn {{r.orderResult.orderId}}</a> }
       @if (false) {
         <div class="editor">
