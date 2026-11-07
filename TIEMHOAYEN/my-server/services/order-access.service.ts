@@ -50,6 +50,15 @@ export async function requestOrderOtp(value: unknown, ip: string, orderId?: stri
     const request = await (await getCollection<any>('YEU_CAU_DAT_HANG')).findOne({ requestId: scopedRequestId, 'sender.phone': phonePattern(phone) }, { projection: { _id: 1 } });
     if (!request) throw new InventoryError(404, 'Mã yêu cầu đặt hàng không hợp lệ.');
   }
+  // Không nhập mã: chỉ gửi OTP khi số này là SĐT người đặt của ít nhất một đơn hoặc yêu cầu đặt hoa.
+  if (!scopedOrderId && !scopedRequestId) {
+    const pattern = phonePattern(phone);
+    const [order, request] = await Promise.all([
+      (await getCollection<any>('DON_HANG')).findOne({ SDT_NGUOI_DAT: pattern }, { projection: { _id: 1 } }),
+      (await getCollection<any>('YEU_CAU_DAT_HANG')).findOne({ 'sender.phone': pattern }, { projection: { _id: 1 } }),
+    ]);
+    if (!order && !request) throw new InventoryError(404, 'Số điện thoại này chưa đặt đơn hàng hoặc yêu cầu đặt hoa nào. Vui lòng nhập đúng số điện thoại người đặt.');
+  }
   // Chưa có dịch vụ SMS: mã OTP được in ra terminal/log của server (kể cả trên Render) để nhân viên hỗ trợ khách.
   const now = new Date();
   const challengeId = `otp_${randomBytes(24).toString('hex')}`;
@@ -108,9 +117,10 @@ export async function verifyOrderOtp(challengeId: unknown, code: unknown) {
     throw new InventoryError(400, 'Mã xác thực không đúng, đã hết hạn hoặc hết lượt thử.');
   }
   const token = `oa_${randomBytes(32).toString('hex')}`;
-  const expiresAt = new Date(Date.now() + 30 * 60000);
-  await col.insertOne({ _id: hash(token), kind: 'lookup', authType: 'guest_lookup', readOnly: true, phone: row.phone, ...(row.orderId?{orderId:row.orderId}:{}), ...(row.requestId?{requestId:row.requestId}:{}), createdAt: new Date(), expiresAt });
-  return { accessToken: token, authType: 'guest_lookup', readOnly: true, phone: row.phone, ...(row.orderId?{orderId:row.orderId}:{}), ...(row.requestId?{requestId:row.requestId}:{}), expiresAt };
+  // Phiên tra cứu giữ tối đa 24 giờ; phía trình duyệt lưu theo tab nên đóng tab là phải xác minh lại.
+  const expiresAt = new Date(Date.now() + 24 * 3600000);
+  await col.insertOne({ _id: hash(token), kind: 'lookup', authType: 'guest_lookup', readOnly: false, phone: row.phone, ...(row.orderId?{orderId:row.orderId}:{}), ...(row.requestId?{requestId:row.requestId}:{}), createdAt: new Date(), expiresAt });
+  return { accessToken: token, authType: 'guest_lookup', readOnly: false, phone: row.phone, ...(row.orderId?{orderId:row.orderId}:{}), ...(row.requestId?{requestId:row.requestId}:{}), expiresAt };
 }
 export async function lookupAccess(token: unknown, session?: ClientSession) {
   if (!/^(?:oa|ra)_[a-f0-9]{64}$/.test(String(token))) throw new InventoryError(401, 'Vui lòng đăng nhập, dùng liên kết riêng hoặc xác minh OTP để xem yêu cầu.');
@@ -124,7 +134,9 @@ export async function lookupAccess(token: unknown, session?: ClientSession) {
 }
 export async function createCustomerOrderAccess(customer: any) {
   const accessToken = `oa_${randomBytes(32).toString('hex')}`;
-  const expiresAt = new Date(Date.now() + 8 * 3600000);
+  // Khách có tài khoản: giữ đăng nhập cho tới khi tự bấm Đăng xuất (token bị thu hồi).
+  // Hạn 365 ngày chỉ là giới hạn an toàn kỹ thuật. Mốc 30 ngày là của khách vãng lai (lưu vết web), không áp dụng ở đây.
+  const expiresAt = new Date(Date.now() + 365 * 24 * 3600000);
   const phone = normalizeOrderPhone(customer.SDT);
   await (await getCollection<any>(ACCESS)).insertOne({ _id: hash(accessToken), kind: 'lookup', authType: 'member', customerId: customer.KHACH_HANG_ID, phone, expiresAt, createdAt: new Date() });
   return { accessToken, expiresAt, phone, authType: 'member', customerId: customer.KHACH_HANG_ID };
@@ -144,6 +156,12 @@ export const ownedRequestQuery = (access: any) => access.authType === 'member' ?
   // account; after OTP verification both belong to the same lookup scope.
   : { 'sender.phone': phonePattern(access.phone) };
 export async function ownedOrderQuery(access: any): Promise<any> {
+  // Đơn thanh toán thất bại đã quá hạn chỉ còn trong Admin, khách không thấy nữa.
+  const { HIDE_EXPIRED_PAYMENT_FROM_CUSTOMER } = await import('./unpaid-order-expiry.service.js');
+  const scope = await ownedOrderScope(access);
+  return ('$nor' in scope || 'HET_HAN_THANH_TOAN' in scope) ? { $and: [scope, HIDE_EXPIRED_PAYMENT_FROM_CUSTOMER] } : { ...scope, ...HIDE_EXPIRED_PAYMENT_FROM_CUSTOMER };
+}
+async function ownedOrderScope(access: any): Promise<any> {
   if (access.kind === 'request') {
     const request = await (await getCollection<any>('YEU_CAU_DAT_HANG')).findOne({ requestId: access.requestId, customerId: { $in: [null, ''] } });
     return { DON_HANG_ID: request?.orderId || '__DENIED__', KHACH_HANG_ID: { $in: [null, ''] } };
@@ -179,6 +197,23 @@ export async function authorizeCheckout(orderId: string, token: unknown) {
   if (!/^co_[a-f0-9]{64}$/.test(String(token))) return false;
   return !!await (await getCollection<any>(ACCESS)).findOne({ _id: hash(String(token)), kind: 'checkout', orderId, expiresAt: { $gt: new Date() } });
 }
+/**
+ * Khách vãng lai vừa thanh toán xong: đổi mã phiên thanh toán (co_) lấy phiên xem đơn (oa_) chỉ cho đúng đơn đó,
+ * để "Xem đơn hàng" mở thẳng chi tiết đơn mà không phải xác minh OTP lại.
+ */
+export async function createCheckoutLookupAccess(orderId: string, checkoutToken: unknown) {
+  if (!await authorizeCheckout(orderId, checkoutToken)) throw new InventoryError(401, 'Phiên thanh toán đã hết hạn. Vui lòng tra cứu đơn bằng số điện thoại người đặt.');
+  const order = await (await getCollection<any>('DON_HANG')).findOne({ DON_HANG_ID: orderId }, { projection: { DON_HANG_ID: 1, SDT_NGUOI_DAT: 1, TRANG_THAI: 1 } });
+  if (!order) throw new InventoryError(404, 'Không tìm thấy đơn hàng.');
+  if (['Chờ thanh toán', 'Thanh toán thất bại', 'Đã hủy'].includes(String(order.TRANG_THAI))) throw new InventoryError(409, 'Đơn chưa được xác nhận thanh toán.');
+  const phone = normalizeOrderPhone(order.SDT_NGUOI_DAT);
+  if (!phone) throw new InventoryError(409, 'Đơn chưa có số điện thoại người đặt hợp lệ.');
+  const token = `oa_${randomBytes(32).toString('hex')}`;
+  const expiresAt = new Date(Date.now() + 24 * 3600000);
+  await (await getCollection<any>(ACCESS)).insertOne({ _id: hash(token), kind: 'lookup', authType: 'guest_lookup', readOnly: false, phone, orderId, source: 'checkout', createdAt: new Date(), expiresAt });
+  return { accessToken: token, authType: 'guest_lookup', readOnly: false, phone, orderId, expiresAt };
+}
+
 export async function revokeOrderAccess(token: string) {
   await (await getCollection<any>(ACCESS)).updateOne({ _id: hash(token), kind: 'lookup' }, { $set: { expiresAt: new Date(0) } });
 }

@@ -1,4 +1,5 @@
 ﻿import {Design3dService} from '../../../services/design3d.service';
+import { MAX_CART_ITEMS, cartLimitMessage } from '../../../services/cart-limit';
 ﻿import { CommonModule, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectorRef,
@@ -351,7 +352,8 @@ export class CartComponent implements OnInit {
       originalPrice: item.GIA_KHUYEN_MAI ? Number(item.GIA || 0) : null,
       quantity: Math.max(1, Number(item.SO_LUONG || 1)),
       image: this.getCartProductImage(item.TEN_SAN_PHAM, item.HINH_ANH),
-      selected: true,
+      // Mở giỏ hàng không tự chọn tất cả; khách tự tick sản phẩm muốn đặt.
+      selected: false,
       purchasable,
       maxQuantity:
         item.TON_KHA_DUNG === null || item.TON_KHA_DUNG === undefined
@@ -388,7 +390,7 @@ export class CartComponent implements OnInit {
           : Number(data.originalPrice),
       quantity: Math.max(1, Number(data.quantity || 1)),
       image: String(data.image || this.defaultImage),
-      selected: data.purchasable !== false && data.selected !== false,
+      selected: false,
       maxQuantity: undefined,
       status: String(data.status || ''),
       purchasable: data.purchasable !== false,
@@ -647,7 +649,15 @@ export class CartComponent implements OnInit {
       error: error => {
         if (requestVersion !== this.quoteRequestVersion) return;
         this.serverQuote = null;
-        this.quoteError = error?.error?.message || 'Không thể kiểm tra giá sản phẩm.';
+        // Giỏ hàng chưa chọn ngày/giờ giao (chọn ở bước đặt hàng) nên lỗi về lịch giao không liên quan ở đây:
+        // giữ giá tạm tính, không hiện dòng báo đỏ. Chỉ báo lỗi thật về sản phẩm/số lượng.
+        const body = error?.error || {};
+        const message = String(body.message || '');
+        const isDeliveryError = ['DELIVERY_IN_PAST', 'OUTSIDE_SHOP_HOURS', 'URGENT_DELIVERY'].includes(String(body.code || ''))
+          || /ngày.*giờ giao|lịch giao|giờ giao|ngày giao|khung giờ/i.test(message);
+        // Lỗi mạng/máy chủ đã có banner chung, không lặp lại trong khung tóm tắt.
+        const isTransient = !error?.status || error.status >= 500;
+        this.quoteError = isDeliveryError || isTransient ? '' : (message || 'Không thể kiểm tra giá sản phẩm.');
         this.cdr.detectChanges();
       },
     });
@@ -723,9 +733,13 @@ export class CartComponent implements OnInit {
     if (!item.purchasable) return;
 
     let next = Math.max(1, Math.floor(requested));
+    const others = this.cartItems.filter(row => row !== item).reduce((sum, row) => sum + row.quantity, 0);
     if (item.maxQuantity && next > item.maxQuantity) {
       next = item.maxQuantity;
       this.cartError = `"${item.name}" chỉ còn tối đa ${item.maxQuantity} sản phẩm.`;
+    } else if (others + next > MAX_CART_ITEMS) {
+      next = Math.max(1, MAX_CART_ITEMS - others);
+      this.cartError = cartLimitMessage(others + item.quantity);
     } else {
       this.cartError = '';
     }
@@ -988,6 +1002,12 @@ export class CartComponent implements OnInit {
       console.warn('Sản phẩm mua kèm phải là sản phẩm trong bảng SAN_PHAM.');
       return;
     }
+    const cartTotal = this.cartItems.reduce((sum, row) => sum + row.quantity, 0);
+    if (cartTotal + 1 > MAX_CART_ITEMS) {
+      this.cartError = cartLimitMessage(cartTotal);
+      this.cdr.detectChanges();
+      return;
+    }
 
     const existingItem = this.cartItems.find(
       (item: CartItem) => item.id === product.id
@@ -1063,7 +1083,13 @@ export class CartComponent implements OnInit {
     const selectedItems = this.cartItems.filter((item: CartItem) => item.selected);
 
     if (selectedItems.length === 0) {
-      console.warn('Vui lòng chọn ít nhất một sản phẩm để đặt hàng.');
+      this.cartError = 'Vui lòng tick chọn ít nhất một sản phẩm để đặt hàng.';
+      this.cdr.detectChanges();
+      return;
+    }
+    if (selectedItems.reduce((sum, item) => sum + item.quantity, 0) > MAX_CART_ITEMS) {
+      this.cartError = `Mỗi đơn tối đa ${MAX_CART_ITEMS} sản phẩm. Vui lòng bớt số lượng.`;
+      this.cdr.detectChanges();
       return;
     }
 

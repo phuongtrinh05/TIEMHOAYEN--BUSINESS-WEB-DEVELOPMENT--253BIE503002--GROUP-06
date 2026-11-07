@@ -5,6 +5,15 @@ import { receiveReturnedFinishedGoods } from './inventory/stock.service.js';
 import { emitAdminNotification } from './analytics/notifications.service.js';
 import { assertWithinShopHours } from './delivery-policy.service.js';
 
+import { slot24h } from './time-format.js';
+import { evaluateVoucher, loadVoucherContext } from './voucher-policy.service.js';
+export { slot24h };
+
+/** Bỏ các phần địa chỉ rỗng hoặc chữ "null"/"undefined" (do ghép chuỗi khi số nhà trống). */
+export function cleanAddress(value: unknown): string {
+  return String(value ?? '').split(',').map(part => part.trim()).filter(part => part && !/^(null|undefined)$/i.test(part)).join(', ');
+}
+
 const statusKey = (v: unknown) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').trim().toLowerCase();
 export const paymentSucceeded = (v: unknown) => ['thanh cong', 'thanh toan thanh cong', 'da thanh toan', 'da coc', 'success', 'paid'].includes(statusKey(v));
 export function depositByPolicy(subtotal: number, total: number, items: Array<{ name?: string; qty?: number }>) {
@@ -123,10 +132,56 @@ export function orderNextStep(order: any, paid: number): OrderNextStep {
   return { nextStatus, blocked: false, action: 'status', reason: `Có thể chuyển sang "${nextStatus}".` };
 }
 
-export function allowedOrderStatuses(order: any, paid: number): string[] {
+/* ===== Phân quyền cập nhật trạng thái theo vai trò =====
+ * - Admin: mọi trạng thái hợp lệ theo luồng.
+ * - Nhân viên kho: chỉ "Chờ vận chuyển" (cùng Admin là hai vai trò duy nhất được chuyển sang bước này).
+ * - Nhân viên giao hàng: chỉ "Đang giao", "Giao thành công" và "Giao không thành công".
+ * - Vai trò khác có quyền đơn hàng: không được chuyển sang "Chờ vận chuyển".
+ */
+export const WAREHOUSE_ORDER_STATUSES = ['Chờ vận chuyển'];
+export const SHIPPER_ORDER_STATUSES = ['Đang giao', 'Đã giao', 'Giao hàng thành công', 'Giao không thành công'];
+const WAREHOUSE_ORDER_ACTIONS = ['note', 'preparation', 'start-preparation', 'handover-media'];
+const SHIPPER_ORDER_ACTIONS = ['handover-media'];
+
+export type OrderStaffKind = 'admin' | 'warehouse' | 'shipper' | 'other';
+export function orderStaffKind(role: unknown): OrderStaffKind {
+  const key = statusKey(role);
+  if (key === 'admin') return 'admin';
+  if (/\bkho\b/.test(key)) return 'warehouse';
+  if (/giao hang|shipper|van chuyen/.test(key)) return 'shipper';
+  return 'other';
+}
+
+export function roleCanSetOrderStatus(role: unknown, next: string): boolean {
+  const kind = orderStaffKind(role);
+  if (kind === 'admin') return true;
+  if (kind === 'warehouse') return WAREHOUSE_ORDER_STATUSES.includes(next);
+  if (kind === 'shipper') return SHIPPER_ORDER_STATUSES.includes(next);
+  return !WAREHOUSE_ORDER_STATUSES.includes(next);
+}
+
+export function assertRoleCanSetOrderStatus(role: unknown, next: string) {
+  if (roleCanSetOrderStatus(role, next)) return;
+  const kind = orderStaffKind(role);
+  const message = WAREHOUSE_ORDER_STATUSES.includes(next)
+    ? 'Chỉ Admin hoặc nhân viên kho được chuyển đơn sang "Chờ vận chuyển".'
+    : kind === 'shipper' ? 'Nhân viên giao hàng chỉ được cập nhật "Đang giao", "Giao thành công" hoặc "Giao không thành công".'
+    : kind === 'warehouse' ? 'Nhân viên kho chỉ được chuyển đơn sang "Chờ vận chuyển".'
+    : 'Vai trò của bạn không được cập nhật trạng thái này.';
+  throw new InventoryError(403, message);
+}
+
+export function assertRoleCanDoOrderAction(role: unknown, action: string) {
+  const kind = orderStaffKind(role);
+  if (kind === 'warehouse' && !WAREHOUSE_ORDER_ACTIONS.includes(action)) throw new InventoryError(403, 'Nhân viên kho không được thực hiện thao tác này trên đơn hàng.');
+  if (kind === 'shipper' && !SHIPPER_ORDER_ACTIONS.includes(action)) throw new InventoryError(403, 'Nhân viên giao hàng không được thực hiện thao tác này trên đơn hàng.');
+}
+
+export function allowedOrderStatuses(order: any, paid: number, role?: unknown): string[] {
   return ['Đang chuẩn bị hàng', 'Chờ vận chuyển', 'Đang giao', 'Đã giao', 'Hoàn thành', 'Giao không thành công', 'Đã hủy', 'Từ chối hoàn tiền/trả hàng'].filter(next => {
     if (next === 'Đang chuẩn bị hàng') return false; // command Bắt đầu chuẩn bị kiểm tra/xuất kho riêng
     if (next === order.TRANG_THAI) return false;
+    if (role !== undefined && !roleCanSetOrderStatus(role, next)) return false;
     try { assertOrderTransition(order, next, paid); return true; } catch { return false; }
   });
 }
@@ -211,33 +266,17 @@ export async function priceCheckout(payload: any, session?: ClientSession, colle
     : (fast ? subtotal < 300000 ? 80000 : subtotal <= 500000 ? 40000 : 30000 : subtotal < 300000 ? 40000 : subtotal <= 500000 ? 20000 : 0);
   let voucher: any = null, productDiscount = 0, shippingDiscount = 0;
   if (payload.voucher?.id || payload.voucher?.code) {
-    const query = payload.voucher.id ? { VOUCHER_ID: String(payload.voucher.id) } : { MA_VOUCHER: String(payload.voucher.code).trim().toUpperCase() };
-    voucher = await (await collections<any>('VOUCHER')).findOne(query, { session });
-    const now = Date.now();
-    if (!voucher || voucher.DA_DUNG === true || voucher.DA_DUNG === 1 || voucher.KHACH_HANG_ID && voucher.KHACH_HANG_ID !== payload.customerId
-      || voucher.NGAY_BAT_DAU && new Date(voucher.NGAY_BAT_DAU).getTime() > now || voucher.NGAY_KET_THUC && new Date(voucher.NGAY_KET_THUC).getTime() < now) throw new InventoryError(400, 'Voucher không hợp lệ hoặc không thuộc khách hàng.');
-    if (/chờ|thu hồi|hủy|khóa|hết hạn|inactive|revoked|pending/i.test(String(voucher.TRANG_THAI || ''))) throw new InventoryError(400, 'Voucher chưa kích hoạt hoặc không còn được sử dụng.');
-    if (/minigame|vòng quay/i.test(String(voucher.NGUON || voucher.SOURCE || ''))) throw new InventoryError(409, 'Voucher minigame chưa có contract xác minh kích hoạt và đơn gốc trong module hiện tại. Cần nhóm voucher xác nhận dữ liệu trước khi áp dụng.');
-    if (voucher.NHOM_KHACH_HANG && !['tat ca', 'all', 'public'].includes(statusKey(voucher.NHOM_KHACH_HANG)) &&
-      (!customer || ![statusKey(customer.LOAI_THANH_VIEN), 'thanh vien', 'member'].includes(statusKey(voucher.NHOM_KHACH_HANG)))) throw new InventoryError(400, 'Voucher không dành cho nhóm khách này.');
-    const minimum = Number(voucher.DON_TOI_THIEU ?? voucher.GIA_TRI_DON_TOI_THIEU ?? voucher.DON_HANG_TOI_THIEU ?? 0);
-    if (!Number.isSafeInteger(minimum) || minimum < 0) throw new InventoryError(409, 'Điều kiện voucher chưa hợp lệ.');
-    if (subtotal < minimum) throw new InventoryError(400, 'Đơn chưa đạt điều kiện voucher.');
-    const value = Number(voucher.GIA_TRI_GIAM), kind = statusKey(voucher.LOAI_GIAM_GIA);
-    if (!Number.isFinite(value) || value < 0) throw new InventoryError(409, 'Voucher chưa có mức giảm hợp lệ.');
-    if (kind.includes('phan tram') || kind.includes('percent') || kind === '%') {
-      if (value > 100) throw new InventoryError(409, 'Tỷ lệ voucher không hợp lệ.');
-      const cap = Number(voucher.GIAM_TOI_DA ?? subtotal);
-      if (!Number.isSafeInteger(cap) || cap < 0) throw new InventoryError(409, 'Giới hạn giảm voucher chưa hợp lệ.');
-      productDiscount = Math.min(subtotal, Math.round(subtotal * value / 100), cap);
-    } else if (kind === 'tien' || ['so tien', 'tien co dinh', 'tien mat', 'cash', 'fixed'].includes(kind)) {
-      if (!Number.isSafeInteger(value)) throw new InventoryError(409, 'Mức giảm tiền phải là số nguyên đồng.');
-      productDiscount = Math.min(subtotal, value);
-    } else if (kind.includes('ship') || kind.includes('van chuyen')) {
-      if (!Number.isSafeInteger(value)) throw new InventoryError(409, 'Mức giảm tiền phải là số nguyên đồng.');
-      shippingDiscount = Math.min(baseShippingFee, value);
-    }
-    else throw new InventoryError(409, 'Loại voucher chưa có quy tắc được hỗ trợ.');
+    // Một bộ luật voucher duy nhất (voucher-policy.service) cho danh sách, báo giá và đặt hàng.
+    const voucherCollection = await collections<any>('VOUCHER');
+    const code = String(payload.voucher.code || '').trim().toUpperCase();
+    voucher = payload.voucher.id
+      ? await voucherCollection.findOne({ VOUCHER_ID: String(payload.voucher.id) }, { session })
+      : await voucherCollection.findOne({ $or: [{ MA_VOUCHER_CHUAN: code }, { MA_VOUCHER: code }] }, { session });
+    const { contextFor } = await loadVoucherContext(payload.customerId || null, items.map(i => ({ id: i.id, qty: i.qty, price: i.price })), baseShippingFee, session, collections);
+    const result = evaluateVoucher(voucher, contextFor(voucher));
+    if (!result.ok) throw new InventoryError(400, result.reason);
+    productDiscount = result.productDiscount;
+    shippingDiscount = result.shippingDiscount;
   }
   const loyaltyPoints = Number(payload.summary?.loyaltyPoints || 0);
   if (!Number.isSafeInteger(loyaltyPoints) || loyaltyPoints < 0 || loyaltyPoints % 2) throw new InventoryError(400, 'Điểm sử dụng phải là số chẵn không âm.');
@@ -335,6 +374,8 @@ export interface AdminOrderDetailDto {
   paymentMethod: string;
   adminNote: string;
   adminNoteTime: string;
+  supportDeadline: string | null;
+  supportException: any;
   reviewId: string;
   rating: number;
   reviewText: string;
@@ -468,7 +509,7 @@ const getPrimaryImages = async (productIds: string[]) => {
   return imageMap;
 };
 
-export const getAdminOrderDetailById = async (orderId: string): Promise<AdminOrderDetailDto | null> => {
+export const getAdminOrderDetailById = async (orderId: string, role?: unknown): Promise<AdminOrderDetailDto | null> => {
   const [
     orderCollection,
     customerCollection,
@@ -553,7 +594,7 @@ export const getAdminOrderDetailById = async (orderId: string): Promise<AdminOrd
           : minutesToT <= 1440 ? { level: 'soon', label: 'Sắp đến lịch', minutesToT }
             : { level: 'normal', label: 'Bình thường', minutesToT };
   return {
-    allowedStatuses: allowedOrderStatuses(order, paid),
+    allowedStatuses: allowedOrderStatuses(order, paid, role),
     nextStep: orderNextStep(order, paid),
     snapshotAvailable: !!order.TINH_TIEN_SNAPSHOT && items.every(item => !!item.TEN_SAN_PHAM_SNAPSHOT),
     history: order.LICH_SU_TRANG_THAI || [],
@@ -581,8 +622,8 @@ export const getAdminOrderDetailById = async (orderId: string): Promise<AdminOrd
     receiverPhone: order.SDT_NGUOI_NHAN || '',
     receiverEmail: '',
     deliveryDate: formatDate(order.NGAY_MUON_GIAO),
-    deliverySlot: order.KHUNG_GIO_MUON_GIAO || '',
-    deliveryAddress: order.DIA_CHI_GIAO_HANG || '',
+    deliverySlot: slot24h(order.KHUNG_GIO_MUON_GIAO),
+    deliveryAddress: cleanAddress(order.DIA_CHI_GIAO_HANG),
     shipperName: order.NHAN_VIEN_GIAO_HANG?.name || order.TEN_NHAN_VIEN_GIAO || '',
     shipperPhone: order.NHAN_VIEN_GIAO_HANG?.phone || '',
     shipperAvatar: order.NHAN_VIEN_GIAO_HANG?.avatar || 'assets/images/logo-main.png',
@@ -607,6 +648,8 @@ export const getAdminOrderDetailById = async (orderId: string): Promise<AdminOrd
     paymentMethod: latestPayment?.CONG_THANH_TOAN || order.PHUONG_THUC_THANH_TOAN || '',
     adminNote,
     adminNoteTime,
+    supportDeadline: supportDeadline(order)?.toISOString() || null,
+    supportException: order.HO_TRO_NGOAI_LE || null,
     reviewId: review?.DANH_GIA_ID || '',
     rating: Number(review?.SO_SAO || 0),
     reviewText: review?.NOI_DUNG || '',
@@ -641,6 +684,91 @@ export async function orderEvent(session: ClientSession | undefined, key: string
   } }, { upsert: true, ...(session ? { session } : {}) });
 }
 export function refundableAmount(receipts: any[]): number { return Math.max(0, sumVerifiedPayments(receipts)); }
+
+/* ===== Hạn gửi hỗ trợ sau giao hàng =====
+ * Khách được gửi yêu cầu hỗ trợ (trả hàng, hoàn tiền, khiếu nại…) trong 1 giờ kể từ lúc giao thành công.
+ * Hết 1 giờ mà không có yêu cầu nào thì đơn tự chuyển "Hoàn thành".
+ */
+export const SUPPORT_WINDOW_MS = 60 * 60 * 1000;
+export const DELIVERED_ORDER_STATUSES = ['Đã giao', 'Giao thành công', 'Giao hàng thành công'];
+
+/** Thời điểm giao thành công: trường đã lưu, nếu không có thì lấy từ lịch sử trạng thái. */
+export function orderDeliveredAt(order: any): Date | null {
+  const direct = order?.NGAY_GIAO_THUC_TE || order?.DA_GIAO_LUC;
+  if (direct) {
+    const value = new Date(direct);
+    if (Number.isFinite(value.getTime())) return value;
+  }
+  const history: any[] = Array.isArray(order?.LICH_SU_TRANG_THAI) ? order.LICH_SU_TRANG_THAI : [];
+  for (let index = history.length - 1; index >= 0; index--) {
+    const row = history[index];
+    if (DELIVERED_ORDER_STATUSES.includes(String(row?.to || '')) && row?.at) {
+      const value = new Date(row.at);
+      if (Number.isFinite(value.getTime())) return value;
+    }
+  }
+  return null;
+}
+
+/** Hạn gửi hỗ trợ = giao thành công + 1 giờ; nếu nhân viên mở ngoại lệ thì lấy mốc ngoại lệ muộn hơn. */
+export function supportDeadline(order: any): Date | null {
+  const deliveredAt = orderDeliveredAt(order);
+  const normal = deliveredAt ? deliveredAt.getTime() + SUPPORT_WINDOW_MS : NaN;
+  const exceptionUntil = order?.HO_TRO_NGOAI_LE?.until ? new Date(order.HO_TRO_NGOAI_LE.until).getTime() : NaN;
+  const latest = Math.max(Number.isFinite(normal) ? normal : -Infinity, Number.isFinite(exceptionUntil) ? exceptionUntil : -Infinity);
+  return Number.isFinite(latest) ? new Date(latest) : null;
+}
+
+/* ===== Quy tắc hậu mãi (THY-AFTER-SALES-2026-11) ===== */
+export const AFTER_SALES_SLA_MS = 60 * 60 * 1000; // tiếp nhận / quyết định / khách bổ sung: mỗi bước 1 giờ
+/** Lỗi về hoa và giao hàng: bắt buộc có ít nhất 1 ảnh/video. */
+export const EVIDENCE_REQUIRED_ISSUES = ['damaged', 'partial_damage', 'wrong_item', 'missing_accessory', 'wrong_address'];
+/** Lỗi do shop: hoàn 100% giá trị sản phẩm lỗi + phí ship. */
+export const SHOP_FAULT_ISSUES = ['damaged', 'wrong_item', 'wrong_address', 'shop_unable'];
+export const PARTIAL_DAMAGE_MIN_RATE = 0.3;
+export const SECOND_APPROVAL_AMOUNT = 2_000_000;
+export const SECOND_APPROVAL_RATE = 0.5;
+export const ADMIN_APPROVAL_STATUS = 'Chờ Admin duyệt';
+
+export type RefundSuggestion = { amount: number; minAmount: number; rate: number; affectedValue: number; shipping: number; basis: string };
+
+/**
+ * Mức hoàn gợi ý (tiền mặt), tính theo giá sau giảm giá. Quy tắc: KHÔNG trả lại điểm thưởng và voucher đã dùng,
+ * và phần giá trị đã trả bằng điểm/voucher cũng không quy ra tiền mặt.
+ * Không vượt quá tiền đã thực thu của đơn.
+ */
+export function suggestRefund(order: any, details: any[], items: Array<{ productId: string; quantity: number }>, issueType: string, paid: number): RefundSuggestion {
+  const snapshot = order?.TINH_TIEN_SNAPSHOT || {};
+  const subtotal = Number(snapshot.subtotal ?? order?.TAM_TINH ?? 0);
+  const productDiscount = Number(snapshot.productDiscount || 0) + Number(snapshot.loyaltyDiscount || 0);
+  const ratio = subtotal > 0 ? Math.max(0, subtotal - productDiscount) / subtotal : 1;
+  const listValue = items.reduce((sum, item) => {
+    const line = details.find(detail => detail.SAN_PHAM_ID === item.productId);
+    return sum + Number(line?.GIA || 0) * Number(item.quantity || 0);
+  }, 0);
+  const affectedValue = Math.round(listValue * ratio);
+  const shipping = Math.max(0, Number(snapshot.shippingFee ?? order?.PHI_VAN_CHUYEN ?? 0) - Number(snapshot.shippingDiscount || 0));
+  const cap = (value: number) => Math.max(0, Math.min(Math.round(value), Math.max(0, paid)));
+  if (SHOP_FAULT_ISSUES.includes(issueType)) {
+    return { amount: cap(affectedValue + shipping), minAmount: 0, rate: 1, affectedValue, shipping, basis: 'Lỗi shop: 100% giá trị sản phẩm lỗi (sau giảm giá) + phí ship. Không trả lại điểm/voucher đã dùng.' };
+  }
+  if (issueType === 'partial_damage') {
+    const minAmount = cap(affectedValue * PARTIAL_DAMAGE_MIN_RATE);
+    return { amount: minAmount, minAmount, rate: PARTIAL_DAMAGE_MIN_RATE, affectedValue, shipping: 0, basis: 'Hoa hỏng một phần: theo tỷ lệ thỏa thuận, tối thiểu 30% giá trị sản phẩm lỗi. Không trả lại điểm/voucher đã dùng.' };
+  }
+  if (issueType === 'missing_accessory') {
+    return { amount: 0, minAmount: 0, rate: 0, affectedValue, shipping: 0, basis: 'Thiếu phụ kiện: giao bù; nếu không giao bù được thì hoàn đúng giá phụ kiện.' };
+  }
+  if (issueType === 'overpayment') {
+    return { amount: cap(paid - Number(order?.TONG_TIEN || 0)), minAmount: 0, rate: 0, affectedValue: 0, shipping: 0, basis: 'Thanh toán dư: hoàn phần thu vượt tổng đơn.' };
+  }
+  return { amount: 0, minAmount: 0, rate: 0, affectedValue, shipping: 0, basis: 'Lỗi do khách, quá hạn hoặc chưa xác định lỗi shop: 0%.' };
+}
+
+/** Hoàn trên 2 triệu hoặc trên 50% giá trị đơn cần Admin duyệt lần 2. */
+export function needsSecondApproval(amount: number, orderTotal: number): boolean {
+  return amount > SECOND_APPROVAL_AMOUNT || (orderTotal > 0 && amount > orderTotal * SECOND_APPROVAL_RATE);
+}
 export function afterSalesInput(body: any, details: any[]) {
   if (!body || !['return','exchange','refund'].includes(body.type)) throw new InventoryError(400, 'Chọn trả hàng, đổi hàng hoặc hoàn tiền.');
   const reason = String(body.reason || '').trim();
@@ -661,6 +789,7 @@ export function afterSalesInput(body: any, details: any[]) {
   const accessory = body.accessory ? String(body.accessory).trim().slice(0, 120) : null;
   const evidence = Array.isArray(body.evidence) ? body.evidence : [];
   if (evidence.length > 10 || evidence.some((v: any) => typeof v !== 'string' || v.length > 2000 || !/^https?:\/\//.test(v) && !/^\/uploads\/[\w./-]+$/.test(v))) throw new InventoryError(400, 'Tối đa 10 liên kết bằng chứng ảnh/video hợp lệ.');
+  if (EVIDENCE_REQUIRED_ISSUES.includes(issueType) && !evidence.length) throw new InventoryError(400, 'Lỗi về hoa hoặc giao hàng cần ít nhất 1 ảnh/video bằng chứng.');
   const media = evidence.map((url: string) => ({ url, type: /\.(mp4|webm|mov)(?:\?|$)/i.test(url) ? 'video' : 'image', uploadedAt: new Date(), uploadedBy: 'CUSTOMER' }));
   return { type:body.type, issueType, reasonCode, reason, description, detectedAt, accessory, items, evidence, media };
 }
@@ -675,7 +804,10 @@ export async function afterSalesCreate(orderId: string, body: any) {
     const order = await orders.findOne({DON_HANG_ID:orderId},{session});
     if (!order) throw new InventoryError(404,'Không tìm thấy đơn.');
     const receipts = await (await getCollection<any>('THANH_TOAN')).find({DON_HANG_ID:orderId},{session}).toArray();
-    if (!['Đã giao','Giao thành công','Giao hàng thành công','Hoàn thành','Đã hủy','Giao không thành công'].includes(order.TRANG_THAI) && refundableAmount(receipts) <= 0) throw new InventoryError(409,'Đơn chưa có căn cứ giao hàng hoặc khoản thu để mở hồ sơ hậu mãi. Hãy liên hệ shop tư vấn.');
+    // Yêu cầu hỗ trợ chỉ mở sau khi đơn giao thành công, trong 1 giờ (hoặc tới hạn ngoại lệ do nhân viên mở).
+    if (![...DELIVERED_ORDER_STATUSES, 'Hoàn thành'].includes(String(order.TRANG_THAI))) throw new InventoryError(409, 'Yêu cầu hỗ trợ chỉ gửi được sau khi đơn giao hàng thành công. Vui lòng liên hệ shop qua chat nếu cần.');
+    const deadline = supportDeadline(order);
+    if (!deadline || Date.now() > deadline.getTime()) throw new InventoryError(409, 'Đã quá 1 giờ kể từ lúc giao hàng thành công nên không thể gửi yêu cầu hỗ trợ cho đơn này. Vui lòng liên hệ shop qua chat nếu cần.');
     const details = await (await getCollection<any>('DON_HANG_CHI_TIET')).find({DON_HANG_ID:orderId},{session}).toArray();
     const input = afterSalesInput(body,details);
     const col = await getCollection<any>(AFTER_SALES);
@@ -693,10 +825,12 @@ export async function afterSalesCreate(orderId: string, body: any) {
     // Order lock also protects installations where the approved partial index is not yet installed.
     await orders.updateOne({DON_HANG_ID:orderId},{$inc:{PHIEN_BAN_THANH_TOAN:1}},{session});
     const id='HM'+randomUUID().replaceAll('-',''); const now=new Date();
+    const suggestion = suggestRefund(order, details, input.items, input.issueType, refundableAmount(receipts));
     const row={_id:id,requestId:id,orderId,customerId:order.KHACH_HANG_ID || null,
       requester:{name:order.TEN_NGUOI_DAT||order.TEN_NGUOI_NHAN||'Khách hàng',phone:order.SDT_NGUOI_DAT||null,email:order.EMAIL_NGUOI_DAT||null},
-      idempotencyKey:idempotencyKey||null,...input,
-      status:AFTER_SALES_STATUS.submitted,active:true,version:0,assignedTo:null,requestedAt:now,deliveredAt:order.NGAY_GIAO_THUC_TE||order.DA_GIAO_LUC||null,
+      idempotencyKey:idempotencyKey||null,...input, suggestion,
+      sla:{ claimBy: new Date(now.getTime() + AFTER_SALES_SLA_MS) },
+      status:AFTER_SALES_STATUS.submitted,active:true,version:0,assignedTo:null,requestedAt:now,deliveredAt:orderDeliveredAt(order),
       createdAt:now,updatedAt:now,history:[{action:'Khách gửi yêu cầu',from:null,to:AFTER_SALES_STATUS.submitted,actor:'CUSTOMER',at:now}]};
     await col.insertOne(row,{session});
     await orderEvent(session,id+':created',row.customerId,orderId,'Đã nhận yêu cầu hậu mãi','Shop đã tiếp nhận yêu cầu; chưa có quyết định hoàn tiền.');
@@ -709,7 +843,7 @@ export async function afterSalesCreate(orderId: string, body: any) {
     return row;
   });
 }
-export async function afterSalesChange(id: string, body: any, actor: string) {
+export async function afterSalesChange(id: string, body: any, actor: string, actorRole: unknown = '') {
   const { withTransaction } = await import('./inventory/helpers.js');
   const { createHash } = await import('node:crypto');
   return withTransaction(async session => {
@@ -723,7 +857,23 @@ export async function afterSalesChange(id: string, body: any, actor: string) {
     let reason=String(body.reason||'').trim();
     if(body.action==='claim') {
       if(![AFTER_SALES_STATUS.submitted,'Chờ tiếp nhận'].includes(row.status)) throw new InventoryError(409,'Hồ sơ đã được tiếp nhận.');
-      Object.assign(updates,{status:AFTER_SALES_STATUS.reviewing,assignedTo:actor,assignedAt:now});
+      Object.assign(updates,{status:AFTER_SALES_STATUS.reviewing,assignedTo:actor,assignedAt:now,sla:{...(row.sla||{}),decideBy:new Date(now.getTime()+AFTER_SALES_SLA_MS)}});
+    } else if (body.action === 'admin-approve' || body.action === 'admin-return') {
+      // Duyệt lần 2: chỉ Admin, áp dụng cho khoản hoàn trên 2 triệu hoặc trên 50% giá trị đơn.
+      if (orderStaffKind(actorRole) !== 'admin') throw new InventoryError(403, 'Chỉ Admin được duyệt lần 2 khoản hoàn này.');
+      if (row.status !== ADMIN_APPROVAL_STATUS) throw new InventoryError(409, 'Hồ sơ không ở bước chờ Admin duyệt.');
+      if (!reason || reason.length > 2000) throw new InventoryError(400, 'Cần ghi nhận định của Admin, tối đa 2.000 ký tự.');
+      const maxRefund = Number(row.decision?.maxRefund || 0);
+      if (body.action === 'admin-approve') {
+        const approvedStatus = ['return','exchange'].includes(row.type) ? AFTER_SALES_STATUS.executing
+          : maxRefund > 0 ? AFTER_SALES_STATUS.refundPending : AFTER_SALES_STATUS.executing;
+        Object.assign(updates, { status: approvedStatus, decision: { ...row.decision, adminApproval: { actor, at: now, reason } } });
+      } else {
+        await (await getCollection<any>(REFUND_LEDGER)).updateOne({ requestId: id, status: 'Pending', refundedAmount: 0 },
+          { $set: { status: 'Cancelled', updatedAt: now }, $push: { history: { action: 'Admin trả về xem xét lại', actor, at: now, reason } } } as any, { session });
+        Object.assign(updates, { status: AFTER_SALES_STATUS.reviewing, decision: { ...row.decision, adminReturned: { actor, at: now, reason } },
+          sla: { ...(row.sla || {}), decideBy: new Date(now.getTime() + AFTER_SALES_SLA_MS) } });
+      }
     } else {
       if(row.assignedTo!==actor) throw new InventoryError(403,'Bạn chưa tiếp nhận hồ sơ này.');
       const rejectReasonLabels: Record<string, string> = {
@@ -738,7 +888,8 @@ export async function afterSalesChange(id: string, body: any, actor: string) {
       if(!reason || reason.length>2000) throw new InventoryError(400,'Cần lý do/kết quả xử lý tối đa 2.000 ký tự.');
       if (body.action === 'request-info') {
         if (![AFTER_SALES_STATUS.reviewing, AFTER_SALES_STATUS.needInfo, 'Cần bổ sung'].includes(row.status)) throw new InventoryError(409, 'Hồ sơ không còn ở bước bổ sung bằng chứng.');
-        Object.assign(updates, { status: AFTER_SALES_STATUS.needInfo, additionalRequest: { reason, actor, at: now } });
+        // Khách có 1 giờ để bổ sung; quá hạn hệ thống tự từ chối.
+        Object.assign(updates, { status: AFTER_SALES_STATUS.needInfo, additionalRequest: { reason, actor, at: now, dueAt: new Date(now.getTime() + AFTER_SALES_SLA_MS) } });
       } else if (body.action === 'receive-return') {
         if (![AFTER_SALES_STATUS.executing, AFTER_SALES_STATUS.approved, 'Đã chấp nhận'].includes(row.status) || !['return', 'exchange'].includes(row.type) || row.returnReceipt) throw new InventoryError(409, 'Hồ sơ chưa được duyệt trả/đổi hoặc đã ghi nhận hàng trả.');
         const receivedItems = Array.isArray(body.items) ? body.items : [];
@@ -768,6 +919,12 @@ export async function afterSalesChange(id: string, body: any, actor: string) {
         ], { session }).toArray() : [];
         const remainingCapacity = Math.max(0, maximum - Number(reserved[0]?.total || 0));
         if(!Number.isSafeInteger(maxRefund)||maxRefund<0||maxRefund>remainingCapacity) throw new InventoryError(409,'Mức hoàn được duyệt vượt tiền thực thu còn lại hoặc đã được giữ cho hồ sơ khác.');
+        // Hoàn khác mức gợi ý (theo chính sách) thì phải ghi lý do; khách xem được lý do này.
+        const suggestion: RefundSuggestion | null = row.suggestion || null;
+        const deviationReason = String(body.deviationReason || '').trim();
+        const deviates = body.action === 'accept' && !!suggestion && maxRefund !== Number(suggestion.amount);
+        if (deviates && (deviationReason.length < 10 || deviationReason.length > 1000)) throw new InventoryError(400, `Mức hoàn khác mức gợi ý (${Number(suggestion!.amount).toLocaleString('vi-VN')}đ): cần ghi lý do cho khách, 10–1.000 ký tự.`);
+        const secondApproval = body.action === 'accept' && needsSecondApproval(maxRefund, Number(order?.TONG_TIEN || 0));
         if (body.action === 'accept' && maxRefund > 0) await ledger.updateOne(
           { requestId: id },
           { $setOnInsert: { _id: `RF:${id}`, requestId: id, orderId: row.orderId, amount: maxRefund, refundedAmount: 0, status: 'Pending', method: null, reference: null, createdAt: now, history: [{ action: 'Duyệt hạn mức hoàn', actor, at: now, reason }] } },
@@ -775,8 +932,9 @@ export async function afterSalesChange(id: string, body: any, actor: string) {
         );
         const approvedStatus = ['return','exchange'].includes(row.type) ? AFTER_SALES_STATUS.executing
           : maxRefund > 0 ? AFTER_SALES_STATUS.refundPending : AFTER_SALES_STATUS.executing;
-        Object.assign(updates,{status:body.action==='reject'?AFTER_SALES_STATUS.rejected:approvedStatus,active:body.action!=='reject',
-          decision:{actor,at:now,reason,reasonCode:body.action==='reject'?reasonCode:null,policyVersion:'THY-AFTER-SALES-2026-11',maxRefund,resolution:String(body.resolution||row.type),approvedItems:body.items||row.items}});
+        Object.assign(updates,{status:body.action==='reject'?AFTER_SALES_STATUS.rejected:secondApproval?ADMIN_APPROVAL_STATUS:approvedStatus,active:body.action!=='reject',
+          decision:{actor,at:now,reason,reasonCode:body.action==='reject'?reasonCode:null,policyVersion:'THY-AFTER-SALES-2026-11',maxRefund,resolution:String(body.resolution||row.type),approvedItems:body.items||row.items,
+            suggestedAmount:suggestion?Number(suggestion.amount):null,deviationReason:deviates?deviationReason:null,needsAdminApproval:secondApproval}});
       } else if(body.action==='refund') {
         if(![AFTER_SALES_STATUS.refundPending,AFTER_SALES_STATUS.refundReview,'Đã chấp nhận'].includes(row.status)||row.refund) throw new InventoryError(409,'Chưa có quyết định hợp lệ hoặc đã hoàn.');
         if (row.type === 'return' && !row.returnReceipt) throw new InventoryError(409, 'Cần xác nhận thực nhận và kiểm tra chất lượng hàng trả trước khi hoàn tiền.');

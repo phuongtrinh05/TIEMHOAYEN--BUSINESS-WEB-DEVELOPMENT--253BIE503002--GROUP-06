@@ -70,6 +70,8 @@ import { ensureNotificationIndexes, startNotificationJobs } from './services/ana
 import { getProductAvailability } from './controllers/inventory.js';
 import { ensureInventoryIndexes, startInventoryJobs } from './services/inventory/setup.js';
 import { startSalesRequestExpiryJob } from './services/sales-request-expiry.service.js';
+import { startUnpaidOrderExpiryJob } from './services/unpaid-order-expiry.service.js';
+import { startOrderAutoCompleteJob } from './services/order-auto-complete.service.js';
 
 const app = express();
 // Render/Vercel đứng sau proxy: lấy đúng IP người dùng cho nhật ký đăng nhập.
@@ -220,7 +222,7 @@ const PORT = Number(process.env.PORT ?? 3000);
         auditLogs.createIndex({ HANH_DONG: 1, THOI_GIAN: -1 }),
       ]);
     }
-    if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') { startInventoryJobs(); startSalesRequestExpiryJob(); }
+    if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') { startInventoryJobs(); startSalesRequestExpiryJob(); startUnpaidOrderExpiryJob(); startOrderAutoCompleteJob(); }
     if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureNotificationIndexes();
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startNotificationJobs();
 

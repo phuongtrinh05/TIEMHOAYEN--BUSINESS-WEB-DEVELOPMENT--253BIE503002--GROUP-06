@@ -9,6 +9,17 @@
         <b>{{ afterSales.length }} hồ sơ</b>
       </div>
       <p *ngIf="!afterSales.length">Chưa có hồ sơ hậu mãi cho đơn này.</p>
+      <p *ngIf="order.supportDeadline" class="after-sales-sla">
+        Hạn khách gửi yêu cầu hỗ trợ: {{ order.supportDeadline | date: 'dd/MM/yyyy HH:mm' }}
+        <span *ngIf="order.supportException"> · đã mở ngoại lệ: {{ order.supportException.reason }}</span>
+      </p>
+      <div class="support-exception" *ngIf="canOpenSupportException">
+        <p><b>Đã quá hạn gửi hỗ trợ.</b> Nếu cần nhận yêu cầu của khách, mở thêm 1 giờ và ghi rõ lý do.</p>
+        <textarea [(ngModel)]="supportExceptionReason" maxlength="1000" rows="2" placeholder="Lý do mở ngoại lệ (tối thiểu 10 ký tự)"></textarea>
+        <button type="button" (click)="openSupportException()" [disabled]="supportExceptionBusy || supportExceptionReason.trim().length < 10">
+          {{ supportExceptionBusy ? 'Đang mở…' : 'Mở hỗ trợ ngoại lệ 1 giờ' }}
+        </button>
+      </div>
       <p role="alert">{{ afterSalesError }}</p>
       <article *ngFor="let r of afterSales" class="admin-after-sales-case">
         <div class="admin-case-head">
@@ -24,11 +35,21 @@
             ><i class="bi bi-paperclip"></i> Xem bằng chứng</a
           >
         </div>
+        <p *ngIf="r.suggestion" class="after-sales-suggestion">
+          <b>Mức hoàn gợi ý:</b> {{ r.suggestion.amount | number: '1.0-0' }}đ
+          <span *ngIf="r.suggestion.minAmount"> (tối thiểu {{ r.suggestion.minAmount | number: '1.0-0' }}đ)</span>
+          · {{ r.suggestion.basis }}
+        </p>
         <p *ngIf="r.decision">
           <b>Quyết định:</b> {{ r.decision.reason }} ·
           {{ r.decision.at | date: 'dd/MM/yyyy HH:mm' }} · Hạn mức hoàn
           {{ r.decision.maxRefund | number: '1.0-0' }}đ
         </p>
+        <p *ngIf="r.decision?.deviationReason"><b>Lý do khác mức gợi ý (khách xem được):</b> {{ r.decision.deviationReason }}</p>
+        <p *ngIf="r.decision?.adminApproval"><b>Admin đã duyệt lần 2:</b> {{ r.decision.adminApproval.reason }} · {{ r.decision.adminApproval.at | date: 'dd/MM/yyyy HH:mm' }}</p>
+        <p *ngIf="r.sla?.claimBy && (r.status === 'Đã gửi yêu cầu' || r.status === 'Chờ tiếp nhận')" class="after-sales-sla">Hạn tiếp nhận: {{ r.sla.claimBy | date: 'dd/MM HH:mm' }}</p>
+        <p *ngIf="r.sla?.decideBy && r.status === 'Đang xem xét'" class="after-sales-sla">Hạn quyết định: {{ r.sla.decideBy | date: 'dd/MM HH:mm' }}</p>
+        <p *ngIf="r.additionalRequest?.dueAt && r.status === 'Cần bổ sung thông tin'" class="after-sales-sla">Khách phải bổ sung trước {{ r.additionalRequest.dueAt | date: 'dd/MM HH:mm' }}, quá hạn hệ thống tự từ chối.</p>
         <p *ngIf="r.refund">
           <b>Đã hoàn thực tế:</b> {{ r.refund.amount | number: '1.0-0' }}đ ·
           {{ r.refund.reference }}
@@ -55,9 +76,17 @@
           <div *ngIf="r.status === 'Đang xem xét'">
             <label
               >Hạn mức hoàn dự kiến <input type="number" min="0" [(ngModel)]="maxRefund" /></label
+            ><button type="button" class="link-like" *ngIf="r.suggestion" (click)="maxRefund = r.suggestion.amount">
+              Dùng mức gợi ý
+            </button>
+            <label *ngIf="r.suggestion && +maxRefund !== +r.suggestion.amount" class="after-sales-deviation">
+              Lý do khác mức gợi ý (khách xem được, tối thiểu 10 ký tự)
+              <textarea [(ngModel)]="deviationReason" maxlength="1000" rows="2"></textarea>
+            </label>
+            <p *ngIf="needsSecondApproval(+maxRefund)" class="after-sales-sla">Khoản hoàn trên 2 triệu hoặc trên 50% giá trị đơn: sau khi duyệt sẽ chờ Admin duyệt lần 2.</p
             ><button
               (click)="actAfterSales(r, 'accept')"
-              [disabled]="afterSalesBusy || !afterSalesReason.trim()"
+              [disabled]="afterSalesBusy || !afterSalesReason.trim() || (r.suggestion && +maxRefund !== +r.suggestion.amount && deviationReason.trim().length < 10)"
             >
               Duyệt phương án</button
             >
@@ -79,6 +108,14 @@
             >
               Xác nhận từ chối
             </button>
+          </div>
+          <div *ngIf="r.status === 'Chờ Admin duyệt'" class="after-sales-admin-approval">
+            <p><b>Chờ Admin duyệt lần 2</b> · hạn mức {{ r.decision?.maxRefund | number: '1.0-0' }}đ</p>
+            <ng-container *ngIf="isAdminRole; else waitAdmin">
+              <button (click)="actAfterSales(r, 'admin-approve')" [disabled]="afterSalesBusy || !afterSalesReason.trim()">Admin duyệt</button>
+              <button class="danger" (click)="actAfterSales(r, 'admin-return')" [disabled]="afterSalesBusy || !afterSalesReason.trim()">Trả về xem xét lại</button>
+            </ng-container>
+            <ng-template #waitAdmin><small>Chỉ tài khoản Admin được duyệt bước này.</small></ng-template>
           </div>
           <div
             *ngIf="
@@ -271,8 +308,8 @@
             <span *ngIf="order.preparationStartedAt" class="preparation-priority" data-level="started"><i class="bi bi-check-circle-fill"></i> Đã bắt đầu</span>
           </div>
           <div class="preparation-summary" *ngIf="order.preparationAt || order.preparationStartedAt">
-            <div><span>T dự kiến</span><strong>{{ order.preparationAt ? (order.preparationAt | date: 'dd/MM/yyyy · HH:mm') : 'Chưa lập lịch' }}</strong></div>
-            <div><span>Bắt đầu thực tế</span><strong>{{ order.preparationStartedAt ? (order.preparationStartedAt | date: 'dd/MM/yyyy · HH:mm') : 'Chưa bắt đầu' }}</strong></div>
+            <div><span>T dự kiến</span><strong>{{ order.preparationAt ? (order.preparationAt | date: 'dd/MM/yyyy HH:mm') : 'Chưa lập lịch' }}</strong></div>
+            <div><span>Xuất kho thực tế</span><strong>{{ order.preparationStartedAt ? (order.preparationStartedAt | date: 'dd/MM/yyyy HH:mm') : 'Chưa xuất kho' }}</strong></div>
             <div><span>Xuất nguyên vật liệu</span><strong [class.is-success]="order.materialIssued">{{ order.materialIssued ? 'Đã xuất · ' + (order.materialExportId || '') : 'Chưa xuất kho' }}</strong></div>
           </div>
           <div *ngIf="canSetPreparation" class="preparation-form">
@@ -341,9 +378,9 @@
               </div>
             </div>
 
-            <!-- Cột nút cập nhật trạng thái (bản đồ minh họa đang tắt, nút vẫn phải hiện) -->
+            <!-- Bản đồ hành trình giả lập + nút cập nhật trạng thái -->
             <div class="map-column">
-              <div class="map-wrap" *ngIf="false">
+              <div class="map-wrap" *ngIf="!isCancelled">
                 <div class="map-grid"></div>
                 <div class="map-street map-street-1"></div>
                 <div class="map-street map-street-2"></div>
@@ -357,11 +394,13 @@
 
                 <div class="map-marker shop-marker">
                   <span><i class="bi bi-shop"></i></span>
-                  <strong>Tiệm Hoa Yến</strong>
+                  <strong>Tiệm Hoa Yên</strong>
                 </div>
 
+                <!-- Shipper chỉ xuất hiện khi đã rời tiệm, tránh đè lên marker Tiệm Hoa Yên. -->
                 <div
                   class="map-marker shipper-marker"
+                  *ngIf="isOrderDelivering() || getDeliveryProgress() >= 100"
                   [class.is-moving]="isOrderDelivering()"
                   [style.left.%]="getShipperPosition()"
                 >
@@ -516,25 +555,39 @@
           <h2 class="card-title">
             <span class="card-title__bar"></span>Hình ảnh hoa trước khi giao
           </h2>
-          <div class="handover-media-list" *ngIf="order.handoverMedia?.length">
-            <a
-              *ngFor="let media of order.handoverMedia"
-              [href]="media"
-              target="_blank"
-              rel="noopener noreferrer"
-              >Xem ảnh/video</a
-            >
+          <div class="handover-gallery" *ngIf="handoverMediaList.length; else noHandoverMedia">
+            <div class="handover-thumb" *ngFor="let media of handoverMediaList; let i = index">
+              <a [href]="media" target="_blank" rel="noopener noreferrer">
+                <img [src]="media" alt="Ảnh hoa trước khi giao" loading="lazy" />
+              </a>
+              <button
+                *ngIf="canEditNote"
+                type="button"
+                class="handover-thumb__remove"
+                (click)="removeHandoverMedia(i)"
+                [disabled]="handoverBusy"
+                aria-label="Xóa ảnh"
+                title="Xóa ảnh"
+              >
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
           </div>
+          <ng-template #noHandoverMedia><p class="handover-empty">Chưa có ảnh bàn giao.</p></ng-template>
           <ng-container *ngIf="canEditNote">
-            <textarea
-              class="edit-textarea"
-              [(ngModel)]="handoverMediaInput"
-              rows="3"
-              placeholder="Liên kết ảnh/video, mỗi dòng một liên kết"
-            ></textarea>
-            <button type="button" class="btn-icon-text" (click)="saveHandoverMedia()">
-              <i class="bi bi-images"></i> Lưu media bàn giao
-            </button>
+            <label class="btn-icon-text handover-upload" [class.is-busy]="handoverBusy">
+              <i class="bi bi-camera"></i>
+              {{ handoverBusy ? 'Đang tải ảnh…' : 'Đính kèm ảnh' }}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
+                hidden
+                [disabled]="handoverBusy || handoverMediaList.length >= 10"
+                (change)="onHandoverFilesSelected($event)"
+              />
+            </label>
+            <small class="handover-hint">Tối đa 10 ảnh, mỗi ảnh tối đa 5MB (JPG, PNG, WEBP, GIF). Ảnh được lưu ngay sau khi tải lên.</small>
           </ng-container>
         </div>
 
@@ -576,20 +629,22 @@
               >
             </div>
 
-            <div class="payment-row">
-              <span>Tổng cộng</span>
-              <span>{{ formatVND(computedTotalBeforeTax) }}</span>
-            </div>
-
-            <div class="payment-row">
-              <span>Phí & Thuế dự kiến</span>
-              <span>{{ formatVND(order.tax) }}</span>
-            </div>
+            <!-- Đơn mới: giá đã gồm VAT như trang Khách. Chỉ đơn cũ có lưu VAT riêng mới hiện dòng thuế. -->
+            <ng-container *ngIf="order.tax > 0">
+              <div class="payment-row">
+                <span>Tổng cộng</span>
+                <span>{{ formatVND(computedTotalBeforeTax) }}</span>
+              </div>
+              <div class="payment-row">
+                <span>Thuế VAT (đơn cũ)</span>
+                <span>{{ formatVND(order.tax) }}</span>
+              </div>
+            </ng-container>
 
             <div class="payment-divider"></div>
 
             <div class="payment-row payment-row--total">
-              <span>Tổng tiền</span>
+              <span>Tổng tiền <small *ngIf="!(order.tax > 0)" style="color:#888;font-weight:400">(đã bao gồm VAT)</small></span>
               <span class="total-val">{{ formatVND(computedGrandTotal) }}</span>
             </div>
 
@@ -764,21 +819,22 @@
             <button
               class="btn-icon-sm"
               type="button"
-              *ngIf="!editingNote && !isEditing && canEditNote"
+              *ngIf="!editingNote && canEditNote"
               (click)="startEditNote()"
             >
               <i class="bi bi-pencil-square"></i>
             </button>
           </div>
 
-          <ng-container *ngIf="!editingNote && !isEditing">
+          <ng-container *ngIf="!editingNote">
             <div class="admin-note">{{ order.adminNote || 'Chưa có ghi chú' }}</div>
             <div class="admin-note-time" *ngIf="order.adminNoteTime">{{ order.adminNoteTime }}</div>
           </ng-container>
 
-          <div *ngIf="editingNote || isEditing" class="note-edit">
-            <textarea class="note-textarea" [(ngModel)]="order.adminNote" rows="3"></textarea>
-            <div class="note-edit-actions" *ngIf="editingNote && !isEditing">
+          <!-- Ô nhập gắn với noteTemp: đúng nội dung mà saveNote() gửi lên server. -->
+          <div *ngIf="editingNote" class="note-edit">
+            <textarea class="note-textarea" [(ngModel)]="noteTemp" rows="3" maxlength="2000" placeholder="Nhập ghi chú nội bộ cho đơn"></textarea>
+            <div class="note-edit-actions">
               <button class="btn-note-cancel" type="button" (click)="cancelEditNote()">Hủy</button>
               <button class="btn-note-save" type="button" (click)="saveNote()">Lưu</button>
             </div>

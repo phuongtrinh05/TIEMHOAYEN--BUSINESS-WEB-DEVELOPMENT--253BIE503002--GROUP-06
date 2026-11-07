@@ -1817,3 +1817,5 @@
         transition: none;
     }
 }
+
+.cart-limit-error { flex-basis: 100%; margin: 6px 0 0; font-size: 13px; color: #b03939; }

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as c from '../controllers/support.js';
 const router = Router();
 router.get('/media/:token', c.media);
+router.get('/product-preview/:productId', c.productPreview);
 router.post('/sessions', c.start);
 router.get('/sessions/:id', c.read);
 router.post('/sessions/:id/messages', c.send);

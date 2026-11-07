@@ -1,3 +1,4 @@
+import { formatDateTime24 } from '../../../shared/date-time';
 import { InventoryDialogComponent } from '../inventory-dialog';
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
@@ -5,7 +6,11 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
 import { exportInventoryCsv } from '../inventory-csv';
-import { InvAlerts, InvPrepOrder, InventoryApiService, inventoryErrorMessage } from '../../../services/inventory-api.service';
+import { InvAlerts, InvBomProduct, InvPrepOrder, InventoryApiService, inventoryErrorMessage } from '../../../services/inventory-api.service';
+import { AdminApiService } from '../../../services/admin-api.service';
+
+/** So khớp không dấu, không phân biệt hoa thường. */
+const norm = (v: unknown) => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase();
 
 type Tab = 'alerts' | 'reservations' | 'prep' | 'finished' | 'ledger' | 'reconcile';
 
@@ -70,8 +75,39 @@ export class StockOverviewComponent implements OnInit {
   readonly error = signal('');
   readonly toast = signal<{ text: string; error?: boolean } | null>(null);
   readonly movementLabel = MOVEMENT_LABEL;
+  /** Nhóm nhắc việc đang mở rộng (mặc định chỉ hiện 8 đơn đầu). */
+  readonly expandedBlocks = signal<Set<string>>(new Set());
+  toggleBlock(title: string): void {
+    const next = new Set(this.expandedBlocks());
+    next.has(title) ? next.delete(title) : next.add(title);
+    this.expandedBlocks.set(next);
+  }
 
   ledgerFilter = { materialId: '', type: '', orderId: '', from: '', to: '' };
+
+  /** Sales chỉ được XEM kho: ẩn các nút thao tác (backend cũng chặn). */
+  readonly canEdit = inject(AdminApiService).can('materials', 'update');
+
+  /* ---------- Tìm kiếm chung cho mọi tab ---------- */
+  readonly query = signal('');
+  private match(...values: unknown[]): boolean {
+    const q = norm(this.query().trim());
+    return !q || values.some(v => norm(v).includes(q));
+  }
+  readonly fMaterialAlerts = computed(() => (this.alerts()?.materialAlerts || []).filter(m => this.match(m.materialId, m.name)));
+  readonly fForecast = computed(() => (this.alerts()?.forecastShortages || []).filter(f => this.match(f.orderId, f.materialId, f.name)));
+  readonly fProductAlerts = computed(() => (this.alerts()?.productAlerts || []).filter(p => this.match(p.productId, p.name)));
+  readonly fQuality = computed(() => (this.alerts()?.qualityChecks || []).filter(q => this.match(q.materialId, q.name, q.sourceId)));
+  readonly fReservations = computed(() => this.reservations().filter(r => this.match(r.MA_GIU_TON, r.DON_HANG_ID, r.MA_PHIEN_THANH_TOAN, r.SAN_PHAM_ID, r.TEN)));
+  readonly fPrep = computed(() => this.prep().filter(o => this.match(o.orderId, o.receiverName, ...o.products.map(p => p.name), ...o.materials.map(m => m.name))));
+  readonly fLedger = computed(() => this.ledger().filter(m => this.match(m.NGUYEN_VAT_LIEU_ID, m.SAN_PHAM_ID, m.TEN, m.CHUNG_TU_ID, m.DON_HANG_ID)));
+
+  /* ---------- Tồn thành phẩm & khả năng làm (Sales tra cứu trước khi nhận đơn) ---------- */
+  readonly stockProducts = signal<InvBomProduct[]>([]);
+  readonly fStockProducts = computed(() => this.stockProducts()
+    .filter(p => this.match(p.SAN_PHAM_ID, p.TEN_SAN_PHAM))
+    .sort((a, b) => (b.finishedAvailable + b.buildable) - (a.finishedAvailable + a.buildable)));
+  finishedOf(productId: string): any { return this.finished().find(f => f.SAN_PHAM_ID === productId); }
   ngOnInit(): void {
     const q = this.route.snapshot.queryParamMap;
     const orderId = q.get('orderId');
@@ -113,7 +149,10 @@ export class StockOverviewComponent implements OnInit {
     if (!id) return;
     setTimeout(() => document.getElementById('prep-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   }
-  loadFinished(): void { this.api.finishedGoods().subscribe({ next: (r) => this.finished.set(r.items), error: (e) => this.notify(inventoryErrorMessage(e), true) }); }
+  loadFinished(): void {
+    this.api.finishedGoods().subscribe({ next: (r) => this.finished.set(r.items), error: (e) => this.notify(inventoryErrorMessage(e), true) });
+    this.api.bomProducts().subscribe({ next: (r) => this.stockProducts.set(r.items), error: (e) => this.notify(inventoryErrorMessage(e), true) });
+  }
   loadLedger(): void {
     const f = this.ledgerFilter;
     this.api.movements({ ...f, from: f.from ? new Date(f.from).toISOString() : '', to: f.to ? new Date(f.to + 'T23:59:59').toISOString() : '', limit: 300 })
@@ -150,7 +189,7 @@ export class StockOverviewComponent implements OnInit {
     if (f) this.tForm.set({ ...f, ...change });
   }
   prepTitle(o: InvPrepOrder): string {
-    const at = o.prepSetAt ? new Date(o.prepSetAt).toLocaleString('vi-VN') : '';
+    const at = o.prepSetAt ? formatDateTime24(o.prepSetAt) : '';
     const changes = o.prepHistory.length > 1 ? ` · đã đổi ${o.prepHistory.length - 1} lần` : '';
     return `Nhập bởi ${o.prepSetBy || '—'}${at ? ' lúc ' + at : ''}${changes}`;
   }

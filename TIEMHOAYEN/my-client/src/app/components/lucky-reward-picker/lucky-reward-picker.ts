@@ -4,7 +4,7 @@ import {RouterLink} from '@angular/router';
 import {LuckyWheelService} from '../../services/lucky-wheel.service';
 import {orderAccessSession} from '../../services/api-config';
 @Component({selector:'app-lucky-reward-picker',standalone:true,imports:[CommonModule,RouterLink],template:`
-  @if(member){<section class="lucky-picker"><div class="heading"><i class="bi bi-ticket-perforated"></i><strong>Ưu đãi vòng quay</strong><button type="button" class="refresh" [disabled]="busy()" (click)="reload()" aria-label="Tải lại phần thưởng"><i class="bi bi-arrow-clockwise"></i></button><a routerLink="/lucky-wheel">Kho thưởng</a></div>
+  @if(member && !headless){<section class="lucky-picker"><div class="heading"><i class="bi bi-ticket-perforated"></i><strong>Ưu đãi vòng quay</strong><button type="button" class="refresh" [disabled]="busy()" (click)="reload()" aria-label="Tải lại phần thưởng"><i class="bi bi-arrow-clockwise"></i></button><a routerLink="/lucky-wheel">Kho thưởng</a></div>
   <select aria-label="Chọn phần thưởng vòng quay" [disabled]="blocked||busy()" [value]="selectedId" (change)="choose($any($event.target).value)"><option value="">Không dùng phần thưởng</option>@for(r of rewards();track r.id){<option [value]="r.id">{{r.prize.name}} · {{r.code}}</option>}</select>
   @if(blocked){<p>Bỏ voucher khác trước khi chọn ưu đãi vòng quay.</p>}@else if(!rewards().length){<p>@if(waiting()>0){Có {{waiting()}} thưởng chờ kích hoạt. Đơn gốc phải Hoàn thành mới dùng được.}@else{Chưa có thưởng có thể dùng. Bạn có thể tải lại sau khi đơn gốc hoàn thành.}</p>}
   @if(error()){<p class="error" role="alert">{{error()}}</p>}@if(discount()>0){<p class="saving">Đã giảm {{discount()|number}}đ</p>}@if(giftName()){<p class="saving">Quà kèm: {{giftName()}}</p>}</section>}
@@ -12,6 +12,8 @@ import {orderAccessSession} from '../../services/api-config';
 export class LuckyRewardPicker implements OnInit,OnChanges{
   @Output() codeError=new EventEmitter<string>();
   @Input() subtotal=0;@Input() shippingFee=0;@Input() blocked=false;
+  /** Ẩn khung riêng: ưu đãi vòng quay được chọn trong danh sách "Voucher có sẵn". */
+  @Input() headless=false;
   @Output() rewardChange=new EventEmitter<{id:string;discount:number}|null>();
   private api=inject(LuckyWheelService);private browser=isPlatformBrowser(inject(PLATFORM_ID));
   waiting=signal(0);rewards=signal<any[]>([]);error=signal('');busy=signal(false);discount=signal(0);giftName=signal('');selectedId='';member=false;private version=0;

@@ -1,6 +1,7 @@
 import { getCollection } from '../../mongo.js';
 import { ORDER_STATUS, PAYMENT_SUCCESS_STATUSES } from './constants.js';
 import { parseDeliveryWindow } from './period.js';
+import { slot24h } from '../time-format.js';
 import { CACHE_TTL, swr } from './cache.js';
 
 /**
@@ -105,7 +106,7 @@ export const mapOrder = (o: any): OrderRow => {
   const status = normalizeOrderStatus(o.TRANG_THAI);
   const created = toDate(o.NGAY_TAO);
   const explicitDone = toDate(o.NGAY_HOAN_THANH);
-  const win = parseDeliveryWindow(o.NGAY_MUON_GIAO, o.KHUNG_GIO_MUON_GIAO);
+  const win = parseDeliveryWindow(o.NGAY_MUON_GIAO, slot24h(o.KHUNG_GIO_MUON_GIAO));
   const fallbackDone = win?.end || toDate(o.NGAY_CAP_NHAT) || created;
   const total = num(o.TONG_TIEN);
   const shipping = num(o.PHI_VAN_CHUYEN);
@@ -131,7 +132,7 @@ export const mapOrder = (o: any): OrderRow => {
     cancelReason: String(o.LY_DO_HUY || '').trim(),
     deliveryStart: win?.start || null,
     deliveryEnd: win?.end || null,
-    deliverySlot: String(o.KHUNG_GIO_MUON_GIAO || ''),
+    deliverySlot: slot24h(o.KHUNG_GIO_MUON_GIAO),
     recipient: String(o.TEN_NGUOI_NHAN || ''),
     address: String(o.DIA_CHI_GIAO_HANG || ''),
     prepStartAt: toDate(o.THOI_DIEM_BAT_DAU_CHUAN_BI),

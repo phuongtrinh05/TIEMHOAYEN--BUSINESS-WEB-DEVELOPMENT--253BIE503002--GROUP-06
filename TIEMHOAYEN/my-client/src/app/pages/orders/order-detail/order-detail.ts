@@ -1,5 +1,6 @@
 import { apiBaseUrl, orderAccessSession } from '../../../services/api-config';
 import { memberAccessToken } from '../../../services/session-auth';
+import { LuckyWheelService } from '../../../services/lucky-wheel.service';
 import { CommonModule, isPlatformBrowser } 
 from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -23,7 +24,7 @@ import {
 
 interface OrderDetailView {
   requestId?: string;
-  paid?: number; refunded?: number; remaining?: number; history?: any[]; senderName?: string; senderPhone?: string; preparationAt?: string; handoverMedia?: string[]; giftCard?: any;
+  paid?: number; refunded?: number; remaining?: number; history?: any[]; senderName?: string; senderPhone?: string; preparationAt?: string; handoverMedia?: string[]; supportDeadline?: string | null; giftCard?: any;
   shipperName?: string; shipperPhone?: string; shipperAvatar?: string;
   id: string;
   customerId: string;
@@ -91,6 +92,16 @@ export class OrderDetail implements OnInit, OnDestroy {
   private readonly orderService = inject(OrderService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly luckyApi = inject(LuckyWheelService);
+  /** Lượt quay chưa dùng của đơn này: khách có thể để sau rồi quay từ trang chi tiết đơn. */
+  orderSpin: { id: string; expiresAt?: string; paused?: boolean } | null = null;
+  private loadOrderSpin(orderId: string): void {
+    if (!isPlatformBrowser(this.platformId) || orderAccessSession()?.authType !== 'member') { this.orderSpin = null; return; }
+    this.luckyApi.wallet().subscribe({
+      next: (d: any) => { this.orderSpin = (d?.spins || []).find((s: any) => s.orderId === orderId && s.status === 'Chưa quay') || null; this.cdr.detectChanges(); },
+      error: () => { this.orderSpin = null; },
+    });
+  }
   private get ordersApiUrl() { return apiBaseUrl()+'/orders'; }
   private get cartApiUrl() { return apiBaseUrl()+'/cart'; }
 
@@ -113,6 +124,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     if(!items.length){this.afterSalesMessage='Vui lòng chọn ít nhất một sản phẩm và số lượng.';return;}
     if(!this.afterSalesReason.trim()){this.afterSalesMessage='Vui lòng mô tả chi tiết vấn đề cần hỗ trợ.';return;}
     if(this.afterSalesIssueType==='missing_accessory'&&!this.afterSalesAccessory.trim()){this.afterSalesMessage='Vui lòng chọn hoặc ghi rõ phụ kiện còn thiếu.';return;}
+    if(this.evidenceRequired&&!this.afterSalesEvidence.split('\n').some(s=>s.trim())){this.afterSalesMessage='Lỗi về hoa hoặc giao hàng cần ít nhất 1 ảnh/video bằng chứng.';return;}
     this.afterSalesMessage='';this.afterSalesConfirming=true;
   }
   sendAfterSales() {
@@ -128,7 +140,9 @@ export class OrderDetail implements OnInit, OnDestroy {
       next:()=>{this.afterSalesBusy=false;this.afterSalesConfirming=false;this.afterSalesIdempotencyKey='';this.afterSalesMessage='Đã gửi yêu cầu hỗ trợ. Shop sẽ kiểm tra và phản hồi trong hồ sơ này.';this.loadAfterSales();this.cdr.markForCheck();},
       error:e=>{this.afterSalesBusy=false;this.afterSalesMessage=e?.error?.message||'Chưa gửi được hồ sơ.';this.cdr.markForCheck();}});
   }
-  afterSalesStatusLabel(status:string){return status==='Chờ tiếp nhận'?'Đã gửi yêu cầu':status==='Cần bổ sung'?'Cần bổ sung thông tin':status==='Đã chấp nhận'?'Đã phê duyệt':status==='Bị từ chối'?'Đã từ chối':status==='Đã xử lý'?'Đã xử lý xong':status==='Đã hoàn tiền'?'Đã xử lý xong':status;}
+  /** Lỗi về hoa và giao hàng bắt buộc có ít nhất 1 ảnh/video (server cũng kiểm tra). */
+  get evidenceRequired(): boolean { return ['damaged','partial_damage','wrong_item','missing_accessory','wrong_address'].includes(this.afterSalesIssueType); }
+  afterSalesStatusLabel(status:string){return status==='Chờ Admin duyệt'?'Đang xem xét':status==='Chờ tiếp nhận'?'Đã gửi yêu cầu':status==='Cần bổ sung'?'Cần bổ sung thông tin':status==='Đã chấp nhận'?'Đã phê duyệt':status==='Bị từ chối'?'Đã từ chối':status==='Đã xử lý'?'Đã xử lý xong':status==='Đã hoàn tiền'?'Đã xử lý xong':status;}
   supplementAfterSales(request: any): void {
     if (this.afterSalesBusy) return;
     const evidence = this.afterSalesEvidence.split('\n').map(value => value.trim()).filter(Boolean);
@@ -169,6 +183,14 @@ export class OrderDetail implements OnInit, OnDestroy {
     }
   }
 
+  /** Định dạng thời gian thống nhất: "dd/MM/yyyy HH:mm" (24h) theo giờ Việt Nam. */
+  private formatDateTime24(value: unknown): string {
+    const date = new Date(value as any);
+    if (!Number.isFinite(date.getTime())) return '';
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', day: '2-digit', month: '2-digit', year: 'numeric' }).formatToParts(date).map(part => [part.type, part.value]));
+    return `${p['day']}/${p['month']}/${p['year']} ${p['hour']}:${p['minute']}`;
+  }
+
   private async loadOrderDetail(showLoading = true): Promise<void> {
     const orderId = this.getOrderIdFromRoute();
 
@@ -200,12 +222,13 @@ export class OrderDetail implements OnInit, OnDestroy {
 
       this.order = this.mapOrder(res);
       this.loadAfterSales();
+      this.loadOrderSpin(this.order.id);
       this.products = this.mapProducts(res.products || []);
       for (const product of this.products) if (!(product.id in this.afterSalesQuantities)) this.afterSalesQuantities[product.id] = 0;
       this.vouchers = this.mapVouchers(res.vouchers || []);
       this.steps = this.buildSteps(this.order.status).map(step => {
         const event = [...(this.order.history || [])].reverse().find(item => this.normalizeStatus(item.to) === step.key);
-        return { ...step, time: event?.at ? new Date(event.at).toLocaleString('vi-VN') : '' };
+        return { ...step, time: event?.at ? this.formatDateTime24(event.at) : '' };
       });
 
       this.errorMessage = '';
@@ -277,6 +300,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     return {
       paid:Number(summary.DA_THU||0), refunded:Number(summary.DA_HOAN||0), remaining:Number(summary.CON_LAI ?? total), history:row.LICH_SU_TRANG_THAI||[], senderName:row.AN_THONG_TIN?'':String(row.TEN_NGUOI_DAT||''), senderPhone:row.AN_THONG_TIN?'':String(row.SDT_NGUOI_DAT||''), preparationAt:row.THOI_DIEM_BAT_DAU_THUC_TE,
       handoverMedia: Array.isArray(row.MEDIA_BAN_GIAO) ? row.MEDIA_BAN_GIAO : [],
+      supportDeadline: row.HAN_GUI_HO_TRO || null,
       giftCard: row.THIEP_TANG || null,
       shipperName: String(row.NHAN_VIEN_GIAO_HANG?.name || ''),
       shipperPhone: this.formatPhone(String(row.NHAN_VIEN_GIAO_HANG?.phone || '')),
@@ -290,7 +314,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       phone: this.formatPhone(String(row.SDT_NGUOI_NHAN || '')),
       deliveryDate: this.formatDate(row.NGAY_MUON_GIAO),
       deliveryTime: String(row.KHUNG_GIO_MUON_GIAO || ''),
-      address: String(row.DIA_CHI_GIAO_HANG || ''),
+      address: String(row.DIA_CHI_GIAO_HANG || '').split(',').map(part => part.trim()).filter(part => part && !/^(null|undefined)$/i.test(part)).join(', '),
       cardMessage: String(row.THIEP_TANG?.message || row.LOI_NHAN_THIEP || ''),
       noteShop: String(row.GHI_CHU || ''),
       paymentMethod: String(row.PHUONG_THUC_THANH_TOAN || payment.CONG_THANH_TOAN || ''),
@@ -424,17 +448,9 @@ export class OrderDetail implements OnInit, OnDestroy {
       ];
     };
 
-    if (key === 'payment') {
-      return [
-        {
-          icon: 'bi-credit-card',
-          text: 'Chờ thanh toán',
-          current: true,
-        },
-      ];
-    }
-
-    if (key === 'payment_failed') {
+    // Đơn chưa thanh toán (kể cả mã QR cũ hết hạn – trạng thái cũ "Thanh toán thất bại"): vẫn đang chờ thanh toán
+    // cho tới hạn của đơn; quá hạn thì đơn chuyển "Đã hủy".
+    if (key === 'payment' || key === 'payment_failed') {
       return [
         {
           icon: 'bi-receipt',
@@ -442,8 +458,8 @@ export class OrderDetail implements OnInit, OnDestroy {
           done: true,
         },
         {
-          icon: 'bi-x-lg',
-          text: 'Thanh toán thất bại',
+          icon: 'bi-credit-card',
+          text: 'Chờ thanh toán',
           current: true,
         },
       ];
@@ -637,9 +653,11 @@ export class OrderDetail implements OnInit, OnDestroy {
       return 'completed';
     }
 
+    // Server lưu bước giao thành công là "Đã giao" (nhân viên chọn "Giao thành công").
     if (
       value.includes('giao hàng thành công') ||
-      value.includes('giao thành công')
+      value.includes('giao thành công') ||
+      value === 'đã giao'
     ) {
       return 'delivered';
     }
@@ -672,23 +690,31 @@ export class OrderDetail implements OnInit, OnDestroy {
     return 'created';
   }
 
+  retryPaymentBusy = false;
+  retryPaymentError = '';
+
+  /** Thanh toán lại: tạo mã thanh toán mới rồi chuyển sang trang Thanh toán, giữ nguyên thông tin đặt hàng của đơn. */
   retryPayment(): void {
-    if (!this.order.id) return;
+    if (!this.order.id || this.retryPaymentBusy) return;
+    this.retryPaymentBusy = true;
+    this.retryPaymentError = '';
+    this.cdr.detectChanges();
 
     this.orderService.retryPayment(this.order.id).subscribe({
       next: (res: CreateOrderResponse) => {
+        this.retryPaymentBusy = false;
         if (isPlatformBrowser(this.platformId)) {
-          localStorage.setItem('tiemHoaYenCreatedOrder', JSON.stringify({...res,customerId:this.order.customerId,source:this.order.customerId?'registrant':'guest'}));
-          localStorage.setItem(
-            'tiemHoaYenRegistrantOrder',
-            JSON.stringify(this.mapCurrentOrderForCheckout())
-          );
+          const source = this.order.customerId ? 'registrant' : 'guest';
+          localStorage.setItem('tiemHoaYenCreatedOrder', JSON.stringify({ ...res, customerId: this.order.customerId, source }));
+          localStorage.setItem('tiemHoaYenRegistrantOrder', JSON.stringify(this.mapCurrentOrderForCheckout()));
+          if (source === 'guest') localStorage.setItem('tiemHoaYenGuestOrder', JSON.stringify(this.mapCurrentOrderForCheckout()));
         }
-
         this.router.navigate(['/checkout']);
       },
       error: (err: any) => {
-        console.error(err?.error?.message || 'Không thể tạo lại mã thanh toán.');
+        this.retryPaymentBusy = false;
+        this.retryPaymentError = err?.error?.message || 'Chưa tạo được mã thanh toán mới. Vui lòng thử lại.';
+        this.cdr.detectChanges();
       },
     });
   }
@@ -706,9 +732,11 @@ export class OrderDetail implements OnInit, OnDestroy {
         phone: this.order.phone,
         address: this.order.address,
       },
+      orderId: this.order.id,
+      orderCode: this.order.id,
       sender: {
-        name: '',
-        phone: '',
+        name: this.order.senderName || '',
+        phone: this.order.senderPhone || '',
         email: '',
       },
       delivery: {
@@ -906,6 +934,7 @@ export class OrderDetail implements OnInit, OnDestroy {
 
     const cartItems = this.products.map(product => ({
       id: product.id,
+      lineKey: product.id,
       name: product.name,
       style: product.style,
       occasion: product.status,
@@ -916,7 +945,17 @@ export class OrderDetail implements OnInit, OnDestroy {
       selected: true,
     }));
 
-    localStorage.setItem('tiemHoaYenCart', JSON.stringify(cartItems));
+    // Gộp vào giỏ hiện có (không xóa sản phẩm khác khách đang để trong giỏ); trùng sản phẩm thì cộng số lượng.
+    let existing: any[] = [];
+    try { existing = JSON.parse(localStorage.getItem('tiemHoaYenCart') || '[]'); } catch { existing = []; }
+    if (!Array.isArray(existing)) existing = [];
+    for (const item of cartItems) {
+      const found = existing.find(row => String(row.lineKey || row.id) === item.lineKey);
+      if (found) { found.quantity = Number(found.quantity || 0) + item.quantity; found.selected = true; }
+      else existing.push(item);
+    }
+    localStorage.setItem('tiemHoaYenCart', JSON.stringify(existing));
+    localStorage.removeItem('tiemHoaYenCheckoutItems');
 
     const customerId = this.order.customerId || this.getLoggedInCustomerId();
 
@@ -1002,13 +1041,35 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   canCancel(): boolean {
-    return this.normalizeStatus(this.order.status) === 'created' && (!this.order.preparationAt || new Date(this.order.preparationAt).getTime()>Date.now());
+    // Khớp server: hủy được mọi trạng thái trước "Đang chuẩn bị hàng" (kể cả đang chờ thanh toán).
+    // Từ lúc "Đang chuẩn bị hàng" (preparationAt = giờ xuất kho thực tế) trở đi khách không tự hủy được.
+    const raw = String(this.order.status || '').trim();
+    return ['Chờ thanh toán', 'Thanh toán thất bại', 'Đã xác nhận đơn hàng', 'Đã đặt hàng thành công', 'Chờ xử lý'].includes(raw) && !this.order.preparationAt;
   }
 
   canRequestReturnRefund(): boolean {
-    return ['delivered','completed','cancelled','delivery_failed'].includes(this.normalizeStatus(this.order.status)) || Number(this.order.paid)>0;
+    const status = this.normalizeStatus(this.order.status);
+    // Yêu cầu hỗ trợ chỉ hiện sau khi giao hàng thành công, trong 1 giờ (hoặc tới hạn ngoại lệ shop mở). Server cũng kiểm tra.
+    return (status === 'delivered' || status === 'completed') && this.supportMinutesLeft() > 0;
   }
 
+  /** Số phút còn lại để gửi yêu cầu hỗ trợ sau khi giao thành công; 0 nếu đã hết hạn hoặc chưa có mốc giao. */
+  supportMinutesLeft(): number {
+    const deadline = this.order.supportDeadline ? new Date(this.order.supportDeadline).getTime() : NaN;
+    if (!Number.isFinite(deadline)) return 0;
+    return Math.max(0, Math.ceil((deadline - Date.now()) / 60000));
+  }
+
+  get supportWindowExpired(): boolean {
+    const status = this.normalizeStatus(this.order.status);
+    return (status === 'delivered' || status === 'completed') && this.supportMinutesLeft() === 0;
+  }
+
+
+  showDeliveryTracking(): boolean {
+    const status = this.normalizeStatus(this.order.status);
+    return !!this.order.id && !['payment', 'payment_failed', 'cancelled'].includes(status);
+  }
 
   getDeliveryMapStatusText(): string {
     const status = this.normalizeStatus(this.order.status);

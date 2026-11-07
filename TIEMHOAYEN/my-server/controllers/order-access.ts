@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { InventoryError } from '../services/inventory/helpers.js';
-import { authorizeCheckout, authorizeOrder, lookupAccess, ownedOrderQuery, ownedRequestQuery, phonePattern, requestOrderOtp, revokeOrderAccess, verifyOrderOtp } from '../services/order-access.service.js';
+import { authorizeCheckout, authorizeOrder, createCheckoutLookupAccess, lookupAccess, ownedOrderQuery, ownedRequestQuery, phonePattern, requestOrderOtp, revokeOrderAccess, verifyOrderOtp } from '../services/order-access.service.js';
 import { getCollection } from '../mongo.js';
 import { sumVerifiedPayments } from '../services/admin-order.service.js';
 
@@ -35,13 +35,17 @@ export async function requireLookup(req: Request, res: Response, next: NextFunct
     next();
   } catch(e) { failure(res,e); }
 }
-/** A phone-verified lookup may act only on an owned Sales request route. */
+/**
+ * Khách vãng lai chỉ cần bảo mật ở bước vào phiên tra cứu (OTP SĐT người đặt hoặc vừa thanh toán).
+ * Sau đó được thao tác bình thường (hủy đơn, thanh toán lại, hỗ trợ, sửa giao hàng…) trên đúng đơn/yêu cầu
+ * thuộc SĐT đã xác minh — requireLookup đã kiểm tra quyền sở hữu đơn trước bước này.
+ */
 export async function requireLookupAction(req: Request, res: Response, next: NextFunction) {
   try {
     if (res.locals.checkoutAccess) return next();
     const access = res.locals.orderAccess || await lookupAccess(accessToken(req));
-    const verifiedRequestAction = access.authType === 'guest_lookup' && !!req.params.requestId;
-    if (access.authType !== 'member' && access.kind !== 'request' && !verifiedRequestAction) {
+    const verifiedGuestAction = access.authType === 'guest_lookup' && (!!req.params.requestId || !!req.params.orderId);
+    if (access.authType !== 'member' && access.kind !== 'request' && !verifiedGuestAction) {
       throw new InventoryError(403, 'Phiên tra cứu chỉ được xem thông tin. Thao tác này cần xác thực riêng.');
     }
     res.locals.orderAccess = access;
@@ -216,5 +220,13 @@ export async function requireAddressOwner(req: Request, res: Response, next: Nex
     res.locals.orderAccess = access;
     res.locals.customerId = access.customerId;
     next();
+  } catch (error) { failure(res, error); }
+}
+
+/** Khách vãng lai vừa thanh toán: đổi mã phiên thanh toán lấy phiên xem đúng đơn đó (không cần OTP lại). */
+export async function checkoutLookup(req: Request, res: Response) {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await createCheckoutLookupAccess(String(req.params.orderId || ''), req.headers['x-checkout-access']));
   } catch (error) { failure(res, error); }
 }

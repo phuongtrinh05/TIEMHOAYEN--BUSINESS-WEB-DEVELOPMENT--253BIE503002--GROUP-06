@@ -1,4 +1,4 @@
-import {orderEvent} from './admin-order.service.js';
+import {orderEvent, cleanAddress, slot24h} from './admin-order.service.js';
 import type { ClientSession } from 'mongodb';
 import { getCollection } from '../mongo.js';
 import { INVENTORY_CONFIG } from './inventory/constants.js';
@@ -33,9 +33,16 @@ export async function claimCheckoutBenefits(session: ClientSession, orderId: str
   }
   if (options.voucher) {
     const vouchers = await getCollection<any>('VOUCHER');
-    const locked = await vouchers.findOneAndUpdate({ VOUCHER_ID: options.voucher.VOUCHER_ID, DA_DUNG: { $nin: [true, 1] } }, { $inc: { PHIEN_BAN_DAT_HANG: 1 } }, { session, returnDocument: 'after' });
-    const prior = await (await getCollection<any>('DON_HANG_VOUCHER')).findOne({ VOUCHER_ID: options.voucher.VOUCHER_ID, DON_HANG_ID: { $in: activeIds } }, { session });
-    if (!locked || prior) throw new InventoryError(409, 'Voucher đã dùng hoặc đang được giữ cho đơn khác.');
+    if (options.voucher.KHACH_HANG_ID) {
+      // Voucher cá nhân dùng một lần: chặn đơn khác đang giữ cùng voucher.
+      const locked = await vouchers.findOneAndUpdate({ VOUCHER_ID: options.voucher.VOUCHER_ID, DA_DUNG: { $nin: [true, 1] } }, { $inc: { PHIEN_BAN_DAT_HANG: 1 } }, { session, returnDocument: 'after' });
+      const prior = await (await getCollection<any>('DON_HANG_VOUCHER')).findOne({ VOUCHER_ID: options.voucher.VOUCHER_ID, DON_HANG_ID: { $in: activeIds } }, { session });
+      if (!locked || prior) throw new InventoryError(409, 'Voucher đã dùng hoặc đang được giữ cho đơn khác.');
+    } else {
+      // Voucher công khai: không dùng cờ DA_DUNG; giới hạn lượt đã kiểm tra trong cùng transaction (priceCheckout).
+      // Tăng phiên bản để các lần đặt đồng thời trên cùng voucher xếp hàng tuần tự.
+      await vouchers.updateOne({ VOUCHER_ID: options.voucher.VOUCHER_ID }, { $inc: { PHIEN_BAN_DAT_HANG: 1 } }, { session });
+    }
   }
 }
 
@@ -69,6 +76,8 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
   const paymentMethodName = String(payment?.methodName || payment?.method || '');
   const order = {
     _id: orderId, DON_HANG_ID: orderId, KIEM_TRA_TON_KHO: true, KHONG_GIU_TAM_NVL: payload.inventoryMode === 'FUTURE_DEMAND',
+    // Nhân viên tạo đơn dù thiếu NVL/dưới 24 giờ: lưu lý do để kho chủ động nhập hàng.
+    ...(payload.staffOverride ? { CANH_BAO_TON_KHO_KHI_TAO: payload.staffOverride } : {}),
     MA_PHIEN_THANH_TOAN: payload.checkoutSessionId,
     TEN_NGUOI_DAT: String(sender.name), SDT_NGUOI_DAT: String(sender.phone), EMAIL_NGUOI_DAT: String(sender.email || ''),
     KHACH_HANG_ID: payload.customerId || null, NGAY_TAO: new Date(), TRANG_THAI: orderStatus, HAN_THANH_TOAN: requiresPayment ? new Date(paymentDeadline) : null,
@@ -76,15 +85,15 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
     TINH_TIEN_SNAPSHOT: summary,
     KHONG_YEU_CAU_COC: payment?.method === 'cod' && depositAmount === 0,
     PHUONG_THUC_THANH_TOAN: paymentMethodName, VAT: 0,
-    NGAY_MUON_GIAO: dateOnly(delivery?.date), KHUNG_GIO_MUON_GIAO: String(delivery?.time || ''),
+    NGAY_MUON_GIAO: dateOnly(delivery?.date), KHUNG_GIO_MUON_GIAO: slot24h(delivery?.time),
     LOI_NHAN_THIEP: String(delivery?.message || ''), GHI_CHU: String(delivery?.noteShop || ''),
     THIEP_TANG: payload.giftCard || null,
     GHI_CHU_NOI_BO: String(payload.adminNote || ''),
     AN_THONG_TIN: bit(flags?.hideSender), YEU_CAU_VAT: bit(flags?.requestVAT), GUI_ANH_QUA_ZALO: bit(flags?.sendZaloPhoto),
-    TEN_NGUOI_NHAN: receiver.name, SDT_NGUOI_NHAN: receiver.phone, DIA_CHI_GIAO_HANG: receiver.address,
+    TEN_NGUOI_NHAN: receiver.name, SDT_NGUOI_NHAN: receiver.phone, DIA_CHI_GIAO_HANG: cleanAddress(receiver.address),
     DA_CHINH_SUA_GIAO_HANG: false, LY_DO_HUY: null, NGAY_HUY: null, LY_DO_HOAN_TIEN_TRA_HANG: null,
     NGAY_YEU_CAU_HOAN_TIEN_TRA_HANG: null, DIEM_THUONG_SU_DUNG: options.loyaltyPoints || null,
-    DA_TRU_DIEM_THUONG: Number(options.loyaltyPoints || 0) > 0, DA_HOAN_DIEM_THUONG: false,
+    DA_TRU_DIEM_THUONG: false, DA_HOAN_DIEM_THUONG: false,
     DIEM_HET_HAN_TRUOC_KHI_DUNG: options.loyaltyExpiresAt || null, LY_DO_TU_CHOI: null,
     ...(options.requestId ? { YEU_CAU_DAT_HANG_ID: options.requestId, PHUONG_AN_SNAPSHOT: options.quote } : {}),
   };

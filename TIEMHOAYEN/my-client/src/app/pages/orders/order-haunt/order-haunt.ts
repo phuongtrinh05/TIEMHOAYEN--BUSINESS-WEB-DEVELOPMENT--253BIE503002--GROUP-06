@@ -25,6 +25,7 @@ export interface OrderItem {
   image: string;
   qty: number;
   price: number;
+  maxQuantity?: number;
 }
 
 interface CartStorageItem {
@@ -54,6 +55,9 @@ export interface Voucher {
   value: number;
   discountAmount?: number;
   endDate?: string | null;
+  eligible?: boolean;
+  reason?: string;
+  estimatedDiscount?: number;
 }
 
 export interface PaymentMethod {
@@ -315,11 +319,44 @@ export class OrderHauntComponent implements OnInit {
       image: String(item.image || this.defaultImage),
       qty: Math.max(1, Number(item.quantity || 1)),
       price: Number(item.price || 0),
+      maxQuantity: Number(item.maxQuantity) > 0 ? Number(item.maxQuantity) : undefined,
     }));
     this.refreshServerQuote();
 
     if (this.orderItems.length === 0) {
       this.router.navigate(['/cart']);
+    }
+  }
+
+  /** Giới hạn tăng: tồn kho từ giỏ (nếu có), tối đa 99. Máy chủ vẫn kiểm tra lại khi báo giá/đặt hàng. */
+  itemMaxQty(item: OrderItem): number {
+    return Math.min(99, item.maxQuantity && item.maxQuantity > 0 ? item.maxQuantity : 99);
+  }
+
+  changeItemQty(item: OrderItem, delta: number): void {
+    if (this.salesRequestId || this.isSubmitting) return;
+    const next = Math.min(this.itemMaxQty(item), Math.max(1, item.qty + delta));
+    if (next === item.qty) return;
+    item.qty = next;
+    this.submitOrderError = '';
+    this.syncQtyToStorage(item);
+    this.refreshServerQuote();
+  }
+
+  /** Giữ số lượng trong giỏ và danh sách thanh toán khớp với khung đơn hàng. */
+  private syncQtyToStorage(item: OrderItem): void {
+    for (const key of [this.checkoutItemsStorageKey, this.cartStorageKey]) {
+      const rows = this.readCartArray(key);
+      let changed = false;
+      for (const row of rows) {
+        if (String(row.lineKey || row.id || '') === item.lineKey) {
+          row.quantity = item.qty;
+          changed = true;
+        }
+      }
+      if (changed) {
+        try { localStorage.setItem(key, JSON.stringify(rows)); } catch { /* bộ nhớ trình duyệt bị chặn: vẫn đặt hàng theo số lượng trên trang */ }
+      }
     }
   }
 
@@ -343,51 +380,41 @@ export class OrderHauntComponent implements OnInit {
     }
   }
 
+  private voucherListVersion = 0;
+  /** Voucher công khai cho khách vãng lai, đánh giá theo giỏ hàng bằng cùng bộ luật với lúc đặt (mục 1.2, 6). */
   private loadPublicVouchers(): void {
     this.isLoadingPublicVouchers = true;
-
-    if (OrderHauntComponent.publicVouchersCache) {
-      this.availableVouchers = OrderHauntComponent.publicVouchersCache;
-      this.isLoadingPublicVouchers = false;
-      return;
-    }
-
-    fetch(`${apiBaseUrl()}/orders/public-vouchers`)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`Không thể lấy voucher công khai: ${response.status}`);
+    const version = ++this.voucherListVersion;
+    this.pricingService.availableVouchers({
+      items: this.orderItems.map(item => ({ id: item.id, quantity: item.qty })),
+      shippingFee: this.shippingFee,
+    }).subscribe({
+      next: ({ vouchers }) => {
+        if (version !== this.voucherListVersion) return;
+        this.availableVouchers = (vouchers || []).filter(v => v.kind === 'voucher').map(v => ({
+          id: v.id, code: String(v.code || '').toUpperCase(),
+          title: this.buildVoucherTitle(String(v.type || ''), Number(v.value || 0)),
+          desc: this.buildVoucherDesc(String(v.type || ''), Number(v.value || 0)),
+          type: String(v.type || ''), value: Number(v.value || 0), endDate: v.endDate || null,
+          eligible: v.eligible, reason: v.reason, estimatedDiscount: v.estimatedDiscount,
+        }));
+        if (this.selectedVoucher?.id) {
+          const current = this.availableVouchers.find(v => v.id === this.selectedVoucher!.id);
+          if (!current || current.eligible === false) {
+            this.clearVoucher();
+            this.voucherError = current?.reason || 'Voucher không còn áp dụng được cho đơn này.';
+          }
         }
-
-        return response.json();
-      })
-      .then((res: { vouchers?: any[] }) => {
-        const vouchers = Array.isArray(res?.vouchers) ? res.vouchers : [];
-
-        this.availableVouchers = vouchers.map((item: any) => {
-          const type = String(item.LOAI_GIAM_GIA || item.type || '').trim();
-          const value = Number(item.GIA_TRI_GIAM ?? item.value ?? 0);
-          const code = String(item.MA_VOUCHER || item.code || '').trim().toUpperCase();
-
-          return {
-            id: String(item.VOUCHER_ID || item.id || ''),
-            code,
-            title: this.buildVoucherTitle(type, value),
-            desc: this.buildVoucherDesc(type, value),
-            type,
-            value,
-            endDate: item.NGAY_KET_THUC || item.endDate || null,
-          };
-        }).sort((left, right) => this.estimateVoucherDiscount(right) - this.estimateVoucherDiscount(left)
-          || this.voucherExpiry(left) - this.voucherExpiry(right));
-
-        OrderHauntComponent.publicVouchersCache = this.availableVouchers;
         this.isLoadingPublicVouchers = false;
-      })
-      .catch((error) => {
-        console.error('Lỗi load voucher công khai:', error);
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        if (version !== this.voucherListVersion) return;
         this.availableVouchers = [];
         this.isLoadingPublicVouchers = false;
-      });
+        this.cdr.detectChanges();
+      },
+    });
   }
 
   private buildVoucherTitle(type: string, value: number): string {
@@ -588,6 +615,11 @@ export class OrderHauntComponent implements OnInit {
     return deliveryTimeSlots(/^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? isoDate : '');
   }
 
+  isUrgentSlot(slot: string): boolean {
+    const isoDate = this.toIsoDate(this.formData.deliveryDate);
+    return /^\d{4}-\d{2}-\d{2}$/.test(isoDate) && isUrgentDelivery(isoDate, slot);
+  }
+
   get quoteNeedsRequest(): boolean {
     return this.serverQuote?.fulfillment?.mode === 'request';
   }
@@ -721,14 +753,28 @@ export class OrderHauntComponent implements OnInit {
   }
 
   selectVoucher(voucher: Voucher): void {
+    if (voucher.eligible === false) return; // Không đạt điều kiện: làm mờ, không cho chọn.
     this.selectedVoucher = this.selectedVoucher?.id === voucher.id ? null : voucher;
     this.formData.voucherCode = this.selectedVoucher?.code || '';
     this.voucherError = '';
     this.showVoucherDropdown = false;
+    // Báo giá lại để phần giảm giá trong khung đơn hàng khớp voucher vừa chọn/bỏ.
+    this.refreshServerQuote();
+  }
+
+  /** Nút X: bỏ voucher đã chọn. */
+  clearVoucher(event?: Event): void {
+    event?.stopPropagation();
+    this.selectedVoucher = null;
+    this.formData.voucherCode = '';
+    this.voucherError = '';
+    this.showVoucherDropdown = false;
+    this.refreshServerQuote(false);
   }
 
   voucherEstimatedText(voucher: Voucher): string {
-    const value = this.estimateVoucherDiscount(voucher);
+    if (voucher.eligible === false) return voucher.reason || 'Chưa đạt điều kiện';
+    const value = voucher.estimatedDiscount ?? this.estimateVoucherDiscount(voucher);
     return value > 0 ? `Ước giảm ${value.toLocaleString('vi-VN')}đ` : voucher.desc;
   }
 
@@ -758,8 +804,14 @@ export class OrderHauntComponent implements OnInit {
     );
 
     if (!found) {
+      // Mã không có trong danh sách: để backend kiểm tra theo đúng quy định.
+      this.selectedVoucher = { id: '', code: voucherCode, title: voucherCode, desc: '', type: '', value: 0 };
+      this.refreshServerQuote(false);
+      return;
+    }
+    if (found.eligible === false) {
       this.selectedVoucher = null;
-      this.voucherError = 'Voucher không hợp lệ.';
+      this.voucherError = found.reason || 'Voucher chưa đạt điều kiện.';
       return;
     }
 
@@ -779,8 +831,9 @@ export class OrderHauntComponent implements OnInit {
 
   serverQuote: ServerQuote | null = null;
   private quoteVersion = 0;
-  private refreshServerQuote(): void {
+  private refreshServerQuote(reloadVouchers = true): void {
     if (!this.orderItems.length) return;
+    if (reloadVouchers) this.loadPublicVouchers();
     // Báo giá cần lịch giao hợp lệ; chưa chọn đủ thì dùng tạm tính phía trình duyệt.
     const delivery = this.quoteDelivery();
     const receiver = this.quoteReceiver();

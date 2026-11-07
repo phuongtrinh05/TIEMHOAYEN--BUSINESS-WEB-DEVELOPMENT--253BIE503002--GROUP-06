@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { getCollection } from '../mongo.js';
 import { InventoryError } from '../services/inventory/helpers.js';
 import { hasPermission } from '../services/role-permission.service.js';
-import { planChatReply } from '../services/chatbot-brain.service.js';
+import { currentProduct, planChatReply } from '../services/chatbot-brain.service.js';
 import { openChatImage } from '../services/chat-media.service.js';
 import { SUPPORT_TICKETS, publicMessage, rateSupport, readSupport, sendSupport, startSupport, supportDto, supportOrders, supportStaffAction, supportStartRate, updateSupportContact } from '../services/support.service.js';
 const actor = (req: Request) => ({ orderToken: String(req.headers['x-order-access'] || ''), guestToken: String(req.headers['x-support-token'] || '') });
@@ -140,3 +140,13 @@ export async function testChat(req: Request, res: Response) { try {
 catch (e) {
     fail(res, e);
 } }
+
+/** Thẻ sản phẩm khách đang xem (kiểu Shopee): chỉ trả thông tin công khai. */
+export async function productPreview(req: Request, res: Response) {
+    try {
+        const product = await currentProduct(String(req.params.productId || '').slice(0, 80));
+        if (!product) return res.status(404).json({ message: 'Sản phẩm không còn bán.' });
+        return res.json({ product: { id: product.id, name: product.name, price: product.price, image: product.image } });
+    }
+    catch (e: any) { return fail(res, e); }
+}

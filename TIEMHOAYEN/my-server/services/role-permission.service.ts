@@ -54,6 +54,8 @@ export const defaultRolePermissions: Record<string, RolePermissionSet> = {
     orders: allow('view', 'create', 'update'),
     payments: allow('view', 'create', 'update'),
     products: allow('view'),
+    // Chỉ XEM tồn thành phẩm/NVL để kiểm tra đơn có đủ hàng làm hay không.
+    materials: allow('view'),
     customers: allow('view', 'create', 'update'),
     promotions: allow('view'),
     customerService: allow('view'),
@@ -81,6 +83,8 @@ export const defaultRolePermissions: Record<string, RolePermissionSet> = {
   }),
   'Nhân viên kho': makePermissions({
     dashboard: allow('view'),
+    // Kho cùng Admin chuyển đơn sang "Chờ vận chuyển"; giới hạn trạng thái kiểm tra ở admin-order.service.
+    orders: allow('view', 'update'),
     products: allow('view', 'update'),
     materials: allow('view', 'create', 'update', 'delete'),
   }),

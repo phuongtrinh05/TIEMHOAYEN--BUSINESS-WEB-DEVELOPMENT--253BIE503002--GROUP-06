@@ -162,6 +162,8 @@ export interface AdminOrderDetail {
   cardTemplate: string;
   giftCard?: any;
   handoverMedia?: string[];
+  supportDeadline?: string | null;
+  supportException?: { until: string; reason: string; actor: string; at: string } | null;
   cardMessage: string;
   subtotal: number;
   shippingFee: number;
@@ -584,6 +586,19 @@ export interface AdminCampaign {
   selected: boolean;
 }
 
+export interface AdminOrderQuoteSummary {
+  subtotal: number;
+  shippingFee: number;
+  baseShippingFee: number;
+  cardFee: number;
+  productDiscount: number;
+  shippingDiscount: number;
+  loyaltyPoints: number;
+  loyaltyDiscount: number;
+  depositAmount: number;
+  total: number;
+}
+
 export interface AdminVoucher {
   id: number;
   code: string;
@@ -895,7 +910,13 @@ export class AdminApiService {
     try { return typeof localStorage !== 'undefined' && JSON.parse(localStorage.getItem('adminPermissions') || '{}')?.[module]?.[action] === true; } catch { return false; }
   }
 
-  updateOrderMetadata(orderId: string, body: { action: 'note' | 'preparation' | 'start-preparation' | 'handover-media' | 'delivery' | 'assign-shipper'; expectedVersion?:string|null; adminNote?: string; preparationAt?: string; reason?: string; media?: string[]; receiverName?: string; receiverPhone?: string; deliveryAddress?: string; deliveryDate?: string; deliverySlot?: string; shipperId?: string }): Observable<AdminOrderDetailResponse> {
+  uploadHandoverImage(orderId: string, file: File): Observable<{ url: string }> {
+    const form = new FormData();
+    form.append('image', file);
+    return this.http.post<{ url: string }>(`${this.apiUrl}/orders/${encodeURIComponent(orderId)}/handover-image`, form);
+  }
+
+  updateOrderMetadata(orderId: string, body: { action: 'note' | 'preparation' | 'start-preparation' | 'handover-media' | 'delivery' | 'assign-shipper' | 'support-exception'; expectedVersion?:string|null; adminNote?: string; preparationAt?: string; reason?: string; media?: string[]; receiverName?: string; receiverPhone?: string; deliveryAddress?: string; deliveryDate?: string; deliverySlot?: string; shipperId?: string }): Observable<AdminOrderDetailResponse> {
     return this.http.put<AdminOrderDetailResponse>(`${this.apiUrl}/orders/${encodeURIComponent(orderId)}/status`, body).pipe(tap(() => this.clearOrdersCache()));
   }
 
@@ -933,6 +954,9 @@ export class AdminApiService {
     deliveryDate: string;
     deliverySlot: string;
     deliveryAddress: string;
+    districtName: string;
+    provinceName: string;
+    shippingMethod: 'standard' | 'fast';
     products: Array<{ id: string; qty: number; price: number }>;
     customerNote: string;
     cardMessage: string;
@@ -940,13 +964,9 @@ export class AdminApiService {
     adminNote: string;
     paymentMethod: string;
     orderStatus: string;
-    shippingFee: number;
-    tax: number;
     voucher?: { id?: string; code?: string } | null;
-    voucherDiscount: number;
-    loyaltyDiscount: number;
     loyaltyPoints?: number;
-  }): Observable<{ message: string; orderId: string; kind?: string; requestId?: string }> {
+  }): Observable<{ message: string; orderId: string; kind?: string; requestId?: string; summary?: AdminOrderQuoteSummary; paymentAmount?: number }> {
     const fingerprint = JSON.stringify(payload);
     let pending: { fingerprint: string; key: string } | null = null;
     try { pending = JSON.parse(sessionStorage.getItem('adminPendingOrder') || 'null'); } catch {}
@@ -957,6 +977,11 @@ export class AdminApiService {
     return this.http.post<{ message: string; orderId: string; kind?: string; requestId?: string }>(`${this.apiUrl}/orders`, { ...payload, checkoutSessionId: pending!.key }).pipe(
       tap(() => this.clearOrdersCache())
     );
+  }
+
+  /** Báo giá đơn Admin: backend dùng cùng bảng giá/phí giao/voucher với trang Khách, không giữ hàng. */
+  quoteOrder(payload: Record<string, unknown>): Observable<{ summary: AdminOrderQuoteSummary }> {
+    return this.http.post<{ summary: AdminOrderQuoteSummary }>(`${this.apiUrl}/orders/quote`, payload);
   }
 
   getCardTemplates(): Observable<{ templates: Array<{ id: string; code: string; name: string; image?: string; fee: number }> }> {

@@ -84,10 +84,10 @@ export class OrderList implements OnInit, OnDestroy {
     @Inject(PLATFORM_ID) private readonly platformId: object
   ) {}
 
-  afterSalesQueue:any[]=[];
+  afterSalesQueue:any[]=[];afterSalesSummary:{count:number;totalApproved:number;totalRefunded:number}|null=null;
   afterSalesSearch='';afterSalesStatus='';afterSalesType='';afterSalesFrom='';afterSalesTo='';afterSalesTotal=0;afterSalesLoading=false;
-  readonly afterSalesStatuses=['Đã gửi yêu cầu','Đang xem xét','Cần bổ sung thông tin','Đang thực hiện phương án','Chờ hoàn tiền','Cần đối soát hoàn tiền','Đã từ chối','Đã xử lý xong'];
-  loadAfterSalesQueue() { this.afterSalesLoading=true;this.adminApi.getAfterSales({search:this.afterSalesSearch.trim(),status:this.afterSalesStatus,type:this.afterSalesType,from:this.afterSalesFrom,to:this.afterSalesTo?`${this.afterSalesTo}T23:59:59.999Z`:'',limit:'50'}).subscribe({next:r=>{this.afterSalesQueue=r.requests||[];this.afterSalesTotal=Number(r.total||0);this.afterSalesLoading=false;this.cdr.markForCheck();},error:()=>{this.afterSalesLoading=false;this.cdr.markForCheck();}}); }
+  readonly afterSalesStatuses=['Đã gửi yêu cầu','Đang xem xét','Cần bổ sung thông tin','Chờ Admin duyệt','Đang thực hiện phương án','Chờ hoàn tiền','Cần đối soát hoàn tiền','Đã từ chối','Đã xử lý xong'];
+  loadAfterSalesQueue() { this.afterSalesLoading=true;this.adminApi.getAfterSales({search:this.afterSalesSearch.trim(),status:this.afterSalesStatus,type:this.afterSalesType,from:this.afterSalesFrom,to:this.afterSalesTo?`${this.afterSalesTo}T23:59:59.999Z`:'',limit:'50'}).subscribe({next:r=>{this.afterSalesQueue=r.requests||[];this.afterSalesTotal=Number(r.total||0);this.afterSalesSummary=r.summary||null;this.afterSalesLoading=false;this.cdr.markForCheck();},error:()=>{this.afterSalesLoading=false;this.cdr.markForCheck();}}); }
   openAfterSales(row:any) { this.router.navigate(['/orders/order-detail',row.orderId]); }
   allOrders: Order[] = [];
   private filteredOrdersCache: Order[] = [];

@@ -965,3 +965,7 @@ input[type="checkbox"] {
   color: #333;
   padding: 7px 9px;
 }
+
+.stock-breakdown { font-size: 12px; color: #6b7280; white-space: nowrap; }
+
+.stock-available--out strong { color: #b03939; }

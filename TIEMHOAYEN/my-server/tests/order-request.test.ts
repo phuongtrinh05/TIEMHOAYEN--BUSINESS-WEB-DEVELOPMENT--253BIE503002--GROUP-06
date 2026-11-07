@@ -381,6 +381,9 @@ if (!uri) {
   test('lookup OTP is single-use, hashed, rate-limited, expires and revokes access', async () => {
     const access = await import('../services/order-access.service.js'); process.env.ORDER_OTP_DELIVERY='console';
     const log=console.info; let code=''; console.info=(line:any)=>{code=String(line).match(/: (\d{6})/)?.[1]||'';};
+    // OTP chỉ gửi cho SĐT người đặt đã có đơn: tạo đơn mẫu cho các số dùng trong test.
+    await (await mongo.getCollection<any>('DON_HANG')).insertMany(['0900111222','0900111223','0900111224','0900111225'].map(phone=>({DON_HANG_ID:`YENOTP${phone}`,SDT_NGUOI_DAT:phone,TRANG_THAI:'Chờ xử lý',NGAY_TAO:new Date()})));
+    await assert.rejects(access.requestOrderOtp('0900999888','test-otp-ip'),/chưa đặt đơn hàng/);
     try {
       const challenge=await access.requestOrderOtp('+84 900 111 222','test-otp-ip'); assert.ok(code); assert.equal((challenge as any).code,undefined);
       const raw=await (await mongo.getCollection<any>('XAC_THUC_TRA_CUU_DON')).findOne({_id:challenge.challengeId});assert.notEqual(raw.codeHash,code);
@@ -656,7 +659,7 @@ test('backend prices catalog, shipping and voucher instead of submitted money', 
   assert.equal(quote.summary.total, 255000);
   assert.equal(quote.items[0].image, '/sample.jpg');
   rows.VOUCHER = { VOUCHER_ID: 'V1', LOAI_GIAM_GIA: 'Tiền', GIA_TRI_GIAM: 100000, DON_TOI_THIEU: 1000000 };
-  await assert.rejects(priceCheckout(payload, undefined, collections), /chưa đạt điều kiện voucher/);
+  await assert.rejects(priceCheckout(payload, undefined, collections), /đơn tối thiểu 1\.000\.000đ/);
   for (const type of ['Số tiền', 'Tiền mặt']) {
     rows.VOUCHER = { VOUCHER_ID: 'V1', LOAI_GIAM_GIA: type, GIA_TRI_GIAM: 50000 };
     const fixed = await priceCheckout(payload, undefined, collections);

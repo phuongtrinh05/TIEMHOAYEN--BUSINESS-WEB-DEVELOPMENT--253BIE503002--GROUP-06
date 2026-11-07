@@ -14,7 +14,7 @@ export class LuckyWheel implements OnInit,OnDestroy{
   private api=inject(LuckyWheelService);private browser=isPlatformBrowser(inject(PLATFORM_ID));
   data=signal<any>(null);error=signal('');busy=signal(false);loading=signal(false);result=signal<any>(null);tab=signal('wheel');rotation=signal(0);spinning=signal(false);
   member=false;selectedSpin='';historyPage=1;rewardPage=1;
-  ngOnInit(){if(!this.browser)return;this.selectedSpin=this.initialSpinId||this.route.snapshot.queryParamMap.get('spin')||'';this.member=orderAccessSession()?.authType==='member';this.load();}
+  ngOnInit(){if(!this.browser)return;this.selectedSpin=this.initialSpinId||this.route.snapshot.queryParamMap.get('spin')||'';this.member=orderAccessSession()?.authType==='member';const tab=this.route.snapshot.queryParamMap.get('tab');if(tab==='rewards'||tab==='history')this.tab.set(tab);this.load();}
   load(clearError=true){if(this.loading())return;this.loading.set(true);if(clearError)this.error.set('');
     (this.member?this.api.wallet({rewardPage:this.rewardPage,historyPage:this.historyPage}):this.api.program()).subscribe({next:d=>{this.data.set(this.member?d:{program:d,spins:[],rewards:[],history:[]});if(!this.selectedSpin)this.selectedSpin=this.availableSpins[0]?.id||'';this.loading.set(false);},error:e=>{this.loading.set(false);this.error.set(e.error?.message||'Không tải được chương trình.');}});
   }
@@ -28,6 +28,8 @@ export class LuckyWheel implements OnInit,OnDestroy{
   }
   get rewards(){return this.data()?.rewards||[];}
   get history(){return this.data()?.history||[];}
+  /** Tiền định dạng Việt Nam: 150.000 */
+  money(v:unknown){const n=Number(v);return Number.isFinite(n)?n.toLocaleString('vi-VN',{maximumFractionDigits:0}):'0';}
   pages(total:number,size:number){return Math.max(1,Math.ceil((total||0)/size));}
   spinLabel(s:any){return `${s.orderId} · hạn ${new Date(s.expiresAt).toLocaleDateString('vi-VN')}`;}
 }

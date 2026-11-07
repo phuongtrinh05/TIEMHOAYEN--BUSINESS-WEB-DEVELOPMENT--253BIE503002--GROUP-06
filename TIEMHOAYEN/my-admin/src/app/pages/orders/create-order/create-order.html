@@ -48,9 +48,6 @@
           <i class="bi order-status-badge__icon" [ngClass]="orderStatusIcon(form.orderStatus)"></i>
           {{ form.orderStatus }}
         </span>
-        <button class="btn-icon-text btn-icon-text--primary" type="button" (click)="submitOrder()" [disabled]="isSubmitting || !canCreateOrder">
-          <i class="bi bi-plus-lg"></i> Tạo đơn hàng
-        </button>
       </div>
     </div>
 
@@ -317,8 +314,10 @@
               <span class="payment-val-italic">{{ formatVND(computedSubtotal) }}</span>
             </div>
             <div class="payment-row">
-              <span class="payment-label payment-label--italic">Phí ship</span>
-              <span class="payment-val-italic">{{ formatVND(shippingFee) }}</span>
+              <span class="payment-label payment-label--italic">
+                Phí giao ({{ form.shippingMethod === 'fast' ? 'Giao nhanh' : 'Giao tiêu chuẩn' }}<ng-container *ngIf="selectedDistrictName"> · {{ isInnerDistrict ? 'Nội thành' : 'Ngoại thành' }}</ng-container>)
+              </span>
+              <span class="payment-val-italic">{{ selectedDistrictName ? (shippingFee ? formatVND(shippingFee) : 'Miễn phí') : 'Chọn quận/huyện' }}</span>
             </div>
             <div class="payment-row" *ngIf="selectedCardFee > 0">
               <span class="payment-label payment-label--italic">Phụ phí thiệp</span>
@@ -359,28 +358,24 @@
               <span class="voucher-success">
                 <i class="bi bi-check-circle-fill"></i> Đã áp dụng <strong>{{ form.voucher }}</strong>
               </span>
-              <span class="discount-voucher">-{{ formatVND(voucherDiscount) }}</span>
+              <span class="discount-voucher">-{{ formatVND(displayedVoucherDiscount) }}</span>
             </div>
 
             <div class="loyalty-bar">
               <span class="loyalty-bar__label">Sử dụng điểm đang tạm khóa trong khi chính sách được hoàn thiện.</span>
             </div>
 
-            <div class="payment-row">
-              <span class="payment-label">Tổng cộng</span>
-              <span class="payment-val">{{ formatVND(computedTotalBeforeTax) }}</span>
-            </div>
-            <div class="payment-row">
-              <span class="payment-label">Phí & Thuế dự kiến</span>
-              <span class="payment-val">{{ formatVND(tax) }}</span>
-            </div>
-
             <div class="payment-divider"></div>
 
             <div class="payment-row payment-row--total">
-              <span class="payment-label">Tổng tiền</span>
+              <span class="payment-label">Tổng tiền <small class="vat-note">(đã bao gồm VAT)</small></span>
               <span class="total-val">{{ formatVND(computedGrandTotal) }}</span>
             </div>
+            <div class="quote-status" *ngIf="quoteLoading">Đang báo giá theo bảng giá của shop…</div>
+            <div class="quote-status quote-status--ok" *ngIf="!quoteLoading && quote">
+              <i class="bi bi-check-circle-fill"></i> Đã đối chiếu với backend (cùng cách tính như trang Khách).
+            </div>
+            <div class="quote-status quote-status--error" *ngIf="!quoteLoading && quoteError">{{ quoteError }}</div>
 
             <div class="payment-row payment-row--paid">
               <span class="payment-label">Đã thanh toán</span>
@@ -473,6 +468,7 @@
                   #deliveryDatePicker
                   type="date"
                   class="date-hidden-input"
+                  [min]="minDeliveryDate"
                   [ngModel]="form.deliveryDate"
                   (ngModelChange)="onDatePickerChange($event)"
                 />
@@ -489,31 +485,86 @@
             </div>
 
             <div class="form-field form-field--full">
-              <label class="form-label">Khung giờ giao <span class="required">*</span></label>
+              <label class="form-label">Giờ giao <span class="required">*</span></label>
               <div class="form-select-wrap">
                 <select
                   class="form-select"
                   [(ngModel)]="form.deliverySlot"
                   [class.form-select--error]="errors.deliverySlot"
+                  [disabled]="!form.deliveryDate"
                 >
-                  <option value="" disabled>Chọn khung giờ</option>
-                  <option *ngFor="let slot of deliverySlots" [value]="slot">{{ slot }}</option>
+                  <option value="" disabled>{{ form.deliveryDate ? 'Chọn giờ (08:00–22:00)' : 'Chọn ngày giao trước' }}</option>
+                  <option *ngFor="let slot of deliverySlots" [value]="slot">{{ slot }}{{ isUrgentSlot(slot) ? ' · đơn gấp' : '' }}</option>
                 </select>
                 <i class="bi bi-chevron-down form-select-chevron"></i>
+              </div>
+              <div class="form-hint" *ngIf="form.deliveryDate && !deliverySlots.length">Hôm nay đã hết giờ giao, vui lòng chọn ngày khác.</div>
+              <div class="form-error" *ngIf="urgentDeliverySelected && !errors.deliverySlot">
+                Lịch giao dưới 4 giờ là đơn gấp, vui lòng xử lý qua số {{ shopPhone }}.
               </div>
               <div class="form-error" *ngIf="errors.deliverySlot">{{ errors.deliverySlot }}</div>
             </div>
 
             <div class="form-field form-field--full">
-              <label class="form-label">Địa chỉ giao hàng <span class="required">*</span></label>
+              <label class="form-label">Hình thức giao <span class="required">*</span></label>
+              <div class="form-select-wrap">
+                <select class="form-select" [(ngModel)]="form.shippingMethod" (ngModelChange)="onShippingMethodChange()">
+                  <option *ngFor="let m of shippingMethods" [ngValue]="m.value">{{ m.label }}</option>
+                </select>
+                <i class="bi bi-chevron-down form-select-chevron"></i>
+              </div>
+            </div>
+
+            <div class="form-field form-field--full">
+              <label class="form-label">Tỉnh/Thành phố <span class="required">*</span></label>
+              <div class="form-select-wrap">
+                <select class="form-select" [(ngModel)]="form.provinceCode" (ngModelChange)="onProvinceChange()"
+                  [class.form-select--error]="errors.provinceCode">
+                  <option value="" disabled>Tỉnh/Thành phố</option>
+                  <option *ngFor="let p of provinces" [value]="p.code">{{ p.name }}</option>
+                </select>
+                <i class="bi bi-chevron-down form-select-chevron"></i>
+              </div>
+              <div class="form-error" *ngIf="errors.provinceCode">{{ errors.provinceCode }}</div>
+            </div>
+
+            <div class="form-field form-field--full">
+              <label class="form-label">Quận/Huyện <span class="required">*</span></label>
+              <div class="form-select-wrap">
+                <select class="form-select" [(ngModel)]="form.districtCode" (ngModelChange)="onDistrictChange()"
+                  [disabled]="!form.provinceCode" [class.form-select--error]="errors.districtCode">
+                  <option value="" disabled>Quận/Huyện</option>
+                  <option *ngFor="let d of availableDistricts" [value]="d.code">{{ d.name }}</option>
+                </select>
+                <i class="bi bi-chevron-down form-select-chevron"></i>
+              </div>
+              <div class="form-error" *ngIf="errors.districtCode">{{ errors.districtCode }}</div>
+            </div>
+
+            <div class="form-field form-field--full">
+              <label class="form-label">Phường/Xã <span class="required">*</span></label>
+              <div class="form-select-wrap">
+                <select class="form-select" [(ngModel)]="form.wardCode" [disabled]="!form.districtCode"
+                  [class.form-select--error]="errors.wardCode">
+                  <option value="" disabled>Phường/Xã</option>
+                  <option *ngFor="let w of availableWards" [value]="w.code">{{ w.name }}</option>
+                </select>
+                <i class="bi bi-chevron-down form-select-chevron"></i>
+              </div>
+              <div class="form-error" *ngIf="errors.wardCode">{{ errors.wardCode }}</div>
+            </div>
+
+            <div class="form-field form-field--full">
+              <label class="form-label">Số nhà, tên đường <span class="required">*</span></label>
               <input
                 type="text"
                 class="form-input"
-                placeholder="Số nhà, tên đường, phường, quận, thành phố"
-                [(ngModel)]="form.deliveryAddress"
-                [class.form-input--error]="errors.deliveryAddress"
+                placeholder="VD: 12 Nguyễn Huệ"
+                [(ngModel)]="form.street"
+                [class.form-input--error]="errors.street"
               />
-              <div class="form-error" *ngIf="errors.deliveryAddress">{{ errors.deliveryAddress }}</div>
+              <div class="form-error" *ngIf="errors.street">{{ errors.street }}</div>
+              <div class="form-hint" *ngIf="fullDeliveryAddress">Địa chỉ giao: {{ fullDeliveryAddress }}</div>
             </div>
           </div>
 
@@ -576,6 +627,17 @@
 
     </div>
     <!-- /MAIN GRID -->
+
+    <!-- ===== NÚT TẠO ĐƠN (cuối trang, sau khi điền xong) ===== -->
+    <div class="create-order-actions">
+      <div class="create-order-actions__total">
+        Tổng tiền: <strong>{{ formatVND(computedGrandTotal) }}</strong>
+        <span class="create-order-actions__vat">(đã bao gồm VAT)</span>
+      </div>
+      <button class="btn-icon-text btn-icon-text--primary" type="button" (click)="submitOrder()" [disabled]="isSubmitting || !canCreateOrder">
+        <i class="bi bi-plus-lg"></i> {{ isSubmitting ? 'Đang tạo đơn…' : 'Tạo đơn hàng' }}
+      </button>
+    </div>
 
   </div>
 

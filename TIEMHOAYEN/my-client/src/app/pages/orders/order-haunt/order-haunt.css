@@ -6,7 +6,8 @@
   display: block;
   background-color: var(--color-blush-white);
   max-width: 100%;
-  overflow-x: hidden;
+  /* clip (không phải hidden): hidden tạo vùng cuộn riêng làm hỏng position: sticky của khung đơn hàng. */
+  overflow-x: clip;
 }
 
 .order-page {
@@ -15,7 +16,7 @@
   font-family: var(--font-body);
   max-width: 100%;
   box-sizing: border-box;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .order-container {
@@ -782,7 +783,11 @@
   max-width: 100%;
   box-sizing: border-box;
   position: sticky;
-  top: 20px;
+  /* Chừa chỗ cho header cố định phía trên. */
+  top: 110px;
+  max-height: calc(100vh - 130px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* Danh sách sản phẩm */
@@ -830,6 +835,119 @@
 .order-item__qty {
   font-size: 0.82rem;
   color: #888;
+}
+
+.order-item__unit {
+  font-size: 0.76rem;
+  color: #888;
+}
+
+.qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  border: 1px solid #ead8c3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.qty-stepper button {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: rgba(217, 179, 130, 0.18);
+  color: var(--primary-color);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.qty-stepper button:hover:not(:disabled) {
+  background: rgba(217, 179, 130, 0.4);
+}
+
+.qty-stepper button:disabled {
+  color: #c9bcae;
+  cursor: not-allowed;
+}
+
+.qty-stepper span {
+  min-width: 32px;
+  text-align: center;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.qty-hint {
+  font-size: 0.74rem;
+  color: #b0533f;
+}
+
+/* Gợi ý giờ hoạt động */
+.delivery-hours-hint {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  color: #7a6a5c;
+  line-height: 1.4;
+}
+
+/* Điểm thưởng */
+.loyalty-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px dashed #d9b382;
+  border-radius: 10px;
+  background: rgba(217, 179, 130, 0.08);
+}
+
+.loyalty-box__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.86rem;
+  color: var(--text-color);
+}
+
+.loyalty-box__text small {
+  color: #7a6a5c;
+  font-size: 0.78rem;
+}
+
+.btn-loyalty-login {
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--primary-color);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--primary-color);
+  font-family: var(--font-body);
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-loyalty-login:hover {
+  background: var(--primary-color);
+  color: #fff;
+}
+
+.applied-voucher-code {
+  font-size: 0.76rem;
+  color: #888;
+  margin-left: 4px;
 }
 
 .order-item__price {
@@ -988,6 +1106,8 @@
 
   .order-right > .order-summary {
     position: static;
+    max-height: none;
+    overflow-y: visible;
   }
 
   .form-row-3 {
@@ -1188,3 +1308,10 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+/* ===== Voucher: làm mờ voucher chưa đạt điều kiện + nút X ===== */
+.voucher-item.is-disabled { opacity: .5; filter: grayscale(.6); }
+.voucher-item__desc--reason { color: #9a3b3b; }
+.btn-use-voucher:disabled { cursor: not-allowed; }
+.voucher-select-text.has-value { color: #3b2a30; font-weight: 600; }
+.voucher-clear { margin-left: auto; margin-right: 6px; border: 0; background: #f3e6e9; color: #7a2848; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; cursor: pointer; flex: none; }

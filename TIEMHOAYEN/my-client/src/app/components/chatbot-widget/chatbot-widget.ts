@@ -1,7 +1,7 @@
 import { Component, inject, OnDestroy, OnInit, ChangeDetectorRef, AfterViewChecked, ElementRef, ViewChild, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Subscription } from 'rxjs';
 import { apiBaseUrl, currentOrderAccountKey, orderAccessSession } from '../../services/api-config';
@@ -49,6 +49,28 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
         return Number.isFinite(total) ? total.toLocaleString('vi-VN', { maximumFractionDigits: 0 }) : '—';
     }
     ratingNotice = '';
+    /** Sản phẩm khách đang xem (kiểu Shopee): hiện thẻ trong chat để gửi nhanh cho shop. */
+    viewingProduct: { id: string; name: string; price: number; image: string | null } | null = null;
+    dismissedProductId = '';
+    private previewProductId = '';
+    get showProductCard() { return !!this.viewingProduct && this.viewingProduct.id !== this.dismissedProductId; }
+    private loadViewingProduct() {
+        const id = String(this.context().productId || '');
+        if (id === this.previewProductId) return;
+        this.previewProductId = id;
+        this.viewingProduct = null;
+        if (!id) { this.cdr.markForCheck(); return; }
+        this.http.get<any>(`${this.url}/product-preview/${encodeURIComponent(id)}`).subscribe({
+            next: r => { if (this.previewProductId === id) { this.viewingProduct = r.product; this.cdr.markForCheck(); } },
+            error: () => { if (this.previewProductId === id) { this.viewingProduct = null; this.cdr.markForCheck(); } },
+        });
+    }
+    /** Gửi thẻ sản phẩm (kèm câu đang gõ nếu có) để nhân viên biết khách hỏi mẫu nào. */
+    sendProduct() {
+        if (!this.viewingProduct) return;
+        this.dismissedProductId = this.viewingProduct.id;
+        this.sendMessage({ chatInput: this.inputText.trim(), attachProduct: true });
+    }
     private subscriptions: Subscription[] = [];
     private timer?: ReturnType<typeof setInterval>;
     private accountKey = '';
@@ -73,6 +95,8 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
             this.latestSalesRequestId = id;
             this.isOpen = true;
         } this.cdr.markForCheck(); }));
+        this.loadViewingProduct();
+        this.subscriptions.push(this.router.events.subscribe(e => { if (e instanceof NavigationEnd) this.loadViewingProduct(); }));
         this.subscriptions.push(this.support.opened.subscribe(s => { this.session = s; this.sales.assistant(); this.isOpen = true; this.read(); }));
         this.timer = setInterval(() => { this.now = Date.now(); const account = currentOrderAccountKey(); if (account !== this.accountKey) {
             this.accountKey = account;
@@ -160,7 +184,7 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
         if (this.busy || !this.session)
             return;
         const text = String(extra.chatInput ?? this.inputText).trim();
-        if (!text && !this.selectedImageDataUrl && !extra.selectedImageId)
+        if (!text && !this.selectedImageDataUrl && !extra.selectedImageId && !extra.attachProduct)
             return;
         const payload = { chatInput: text, imageDataUrl: this.selectedImageDataUrl || undefined, ...this.context(), ...extra };
         const fingerprint = JSON.stringify(payload);
@@ -178,7 +202,7 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
     }
     quick(text: string) { this.sendMessage({ chatInput: text }); }
     selectImage(image: any) { this.sendMessage({ chatInput: 'Tôi muốn nhân viên tư vấn mẫu ảnh này.', selectedImageId: image.id, action: 'handoff' }); }
-    onEnter(e: KeyboardEvent) { if (e.key === 'Enter' && !e.shiftKey) {
+    onEnter(e: KeyboardEvent) { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
         this.sendMessage();
     } }

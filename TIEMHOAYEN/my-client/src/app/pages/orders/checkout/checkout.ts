@@ -1,4 +1,5 @@
-import { currentOrderAccountKey, orderAccessSession } from '../../../services/api-config';
+import { apiBaseUrl, currentOrderAccountKey, orderAccessSession, setTransientGuestLookupSession } from '../../../services/api-config';
+import { memberAccessToken } from '../../../services/session-auth';
 import { LuckyOrderSpin } from '../../../components/lucky-order-spin/lucky-order-spin';
 ﻿import { CommonModule, isPlatformBrowser } from '@angular/common';
 import {
@@ -113,6 +114,12 @@ export class CheckoutComponent implements OnInit, OnDestroy {
   isPaymentFailed = false;
   checkoutResultError = '';
   checkoutResultDismissed = false;
+  /** Mã QR hết 5 phút: làm mờ QR, khách bấm nút để tạo mã mới (đơn vẫn chờ thanh toán). */
+  qrExpired = false;
+  qrError = '';
+  /** Hạn thanh toán của đơn (24 giờ hoặc trước giờ nhận 4 giờ); quá hạn đơn bị hủy. */
+  orderPaymentDeadline: string | null = null;
+  orderCancelledForPayment = false;
   luckyCheckPending = false;
   isRetryingPayment = false;
 
@@ -510,7 +517,7 @@ export class CheckoutComponent implements OnInit, OnDestroy {
     this.stopCountdown();
 
     this.countdownTimerId = window.setInterval(() => {
-      if (!this.order || this.isPaymentSuccess || this.isOrderAccepted || this.isPaymentFailed) {
+      if (!this.order || this.isPaymentSuccess || this.isOrderAccepted || this.isPaymentFailed || this.qrExpired) {
         return;
       }
 
@@ -558,6 +565,22 @@ export class CheckoutComponent implements OnInit, OnDestroy {
     this.paymentStatus = String(res.paymentStatus || this.paymentStatus);
     this.orderStatus = String(res.orderStatus || this.orderStatus);
     this.remainingSeconds = Math.max(0, Number(res.remainingSeconds ?? this.remainingSeconds));
+    const extra = res as any;
+    if (extra.orderPaymentDeadline !== undefined) this.orderPaymentDeadline = extra.orderPaymentDeadline || null;
+    // Đơn đã bị hủy vì quá hạn thanh toán: lúc này mới báo thất bại.
+    if (/đã hủy/i.test(this.orderStatus) && !this.isSuccessText(this.paymentStatus)) {
+      this.orderCancelledForPayment = true;
+      this.qrExpired = false;
+      this.handlePaymentFailed();
+      return;
+    }
+    // Mã QR hết 5 phút nhưng đơn còn trong hạn: không báo thất bại, chỉ làm mờ QR.
+    if (extra.qrExpired) {
+      this.qrExpired = true;
+      this.stopTimers();
+      this.cdr.detectChanges();
+      return;
+    }
 
     if (this.order && res.summary) {
       Object.assign(this.order.summary, { subtotal: res.summary.subtotal, shipping: res.summary.shippingFee,
@@ -583,10 +606,13 @@ export class CheckoutComponent implements OnInit, OnDestroy {
   }
 
   private handlePaymentExpired(): void {
-    if (!this.order?.orderId || this.isPaymentSuccess || this.isOrderAccepted || this.isPaymentFailed || this.expiringPayment) {
+    if (!this.order?.orderId || this.isPaymentSuccess || this.isOrderAccepted || this.isPaymentFailed || this.expiringPayment || this.qrExpired) {
       return;
     }
 
+    // Làm mờ QR ngay, không chờ server; server xác nhận rồi applyPaymentStatus cập nhật tiếp.
+    this.qrExpired = true;
+    this.cdr.detectChanges();
     this.expiringPayment = true;
     this.orderService.expirePayment(this.order.orderId).subscribe({
       next: (res: OrderPaymentStatusResponse) => {
@@ -666,12 +692,32 @@ export class CheckoutComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.router.navigate(['/order-detail', orderId]);
+    // Thành viên hoặc đã có phiên tra cứu: mở thẳng.
+    const checkoutToken = sessionStorage.getItem(`checkoutOrderAccess:${orderId}`);
+    if (memberAccessToken() || orderAccessSession() || !checkoutToken) {
+      this.router.navigate(['/order-detail', orderId]);
+      return;
+    }
+    // Khách vãng lai vừa thanh toán: đổi mã phiên thanh toán lấy phiên xem đúng đơn này, không cần nhập OTP lại.
+    fetch(`${apiBaseUrl()}/orders/${encodeURIComponent(orderId)}/checkout-lookup`, { method: 'POST', headers: { 'x-checkout-access': checkoutToken } })
+      .then(response => response.ok ? response.json() : Promise.reject(response))
+      .then(session => {
+        setTransientGuestLookupSession({ ...session, accountKey: currentOrderAccountKey() });
+        this.router.navigate(['/order-detail', orderId]);
+      })
+      .catch(() => this.router.navigate(['/order-requests'], { queryParams: { orderId } }));
+  }
+
+  /** Nút xoay trên QR mờ: tạo mã QR mới cho đơn đang chờ thanh toán. */
+  refreshQr(): void {
+    this.qrError = '';
+    this.retryPayment();
   }
 
   retryPayment(): void {
     if (this.isRetryingPayment) return;
     this.checkoutResultError = '';
+    this.qrError = '';
 
     const orderId = String(this.order?.orderId || '').trim();
 
@@ -690,6 +736,8 @@ export class CheckoutComponent implements OnInit, OnDestroy {
         this.isRetryingPayment = false;
         this.isPaymentFailed = false;
         this.isPaymentSuccess = false;
+        this.qrExpired = false;
+        this.qrError = '';
         this.checkoutResultError = '';
         this.paymentStatus = 'Chờ thanh toán';
         this.orderStatus = 'Chờ thanh toán';
@@ -713,7 +761,17 @@ export class CheckoutComponent implements OnInit, OnDestroy {
           this.connectionNotice = 'Kết nối gián đoạn. Đang kiểm tra phiên hiện hành để tránh tạo thanh toán trùng.';
           this.checkPaymentStatus(); this.startPaymentPolling();
         }
-        this.checkoutResultError = err?.error?.message || 'Không thể tạo lại mã thanh toán. Vui lòng thử lại.';
+        const message = err?.error?.message || 'Không thể tạo lại mã thanh toán. Vui lòng thử lại.';
+        if (err?.error?.code === 'ORDER_PAYMENT_EXPIRED') {
+          // Quá hạn thanh toán của đơn: chuyển sang báo thất bại.
+          this.orderCancelledForPayment = true;
+          this.qrExpired = false;
+          this.handlePaymentFailed();
+        } else if (this.qrExpired) {
+          this.qrError = message; // hiện ngay dưới QR mờ, không bật popup
+        } else {
+          this.checkoutResultError = message;
+        }
         this.cdr.detectChanges();
       },
     });
@@ -902,15 +960,31 @@ export class CheckoutComponent implements OnInit, OnDestroy {
     return method === 'momo' || method === 'vnpay' || method === 'bank';
   }
 
+  /** Đếm ngược dễ đọc: "Còn 4 giờ 16 phút", "Còn 12:05" (dưới 1 giờ), "Còn 2 ngày 3 giờ". */
   get formattedCountdown(): string {
-    const minutes = Math.floor(this.remainingSeconds / 60)
-      .toString()
-      .padStart(2, '0');
+    const total = Math.max(0, Math.floor(this.remainingSeconds));
+    const days = Math.floor(total / 86400);
+    const hours = Math.floor((total % 86400) / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
 
-    const seconds = Math.floor(this.remainingSeconds % 60)
-      .toString()
-      .padStart(2, '0');
+    if (days > 0) return `Còn ${days} ngày${hours ? ` ${hours} giờ` : ''}`;
+    if (hours > 0) return `Còn ${hours} giờ${minutes ? ` ${minutes} phút` : ''}`;
+    return `Còn ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
 
-    return `${minutes}:${seconds}`;
+  /** Hạn chót thanh toán (giờ máy khách), hiển thị cạnh đồng hồ đếm ngược. */
+  get paymentDeadlineDate(): Date | null {
+    const value = this.order?.paymentDeadline ? new Date(this.order.paymentDeadline) : null;
+    return value && Number.isFinite(value.getTime()) ? value : null;
+  }
+
+  get showPaymentCountdown(): boolean {
+    return !this.isOrderAccepted && !this.isPaymentSuccess && !this.isPaymentFailed;
+  }
+
+  get orderPaymentDeadlineDate(): Date | null {
+    const value = this.orderPaymentDeadline ? new Date(this.orderPaymentDeadline) : null;
+    return value && Number.isFinite(value.getTime()) ? value : null;
   }
 }

@@ -12,6 +12,7 @@ import { reserveProducts, reserveMaterialNeeds, sweepExpiredReservations } from 
 import { requestWorkflow } from './request-workflow.js';
 import { requestByVerifiedPhone, createRequestAccess, lookupAccess } from './order-access.service.js';
 import { emitAdminNotification } from './analytics/notifications.service.js';
+import { cleanAddress } from './admin-order.service.js';
 
 /** Checkout boundary check on the actual allocated stock; does not change the inventory schema. */
 export async function assertReservedStockUsable(session: ClientSession, orderId: string, deliveryAt: string, salesReviewed = false) {
@@ -171,6 +172,7 @@ export async function routeCheckout(
   items: { productId: string; quantity: number }[],
   create: (session: ClientSession, orderId: string, prepared?: any) => Promise<any>,
   prepare?: (session: ClientSession) => Promise<any>,
+  options: { staffCreated?: boolean } = {},
 ) {
   if (!/^[\w-]{16,100}$/.test(key)) throw new InventoryError(400, 'Thiếu mã phiên đặt hàng hợp lệ. Vui lòng tải lại trang.');
   const fingerprint = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
@@ -200,6 +202,14 @@ export async function routeCheckout(
       if (!delivery.deliveryAt) throw new InventoryError(400, 'Cần ngày và giờ giao hợp lệ.');
       // Thời gian giao ngoài 08:00–22:00, đã qua hoặc dưới 4 giờ: lỗi 400, không tạo yêu cầu.
       evaluation = await evaluateCheckoutFulfillment(items, delivery, new Date(), session);
+      // Nhân viên (Sales/Admin) tạo đơn: đã tự kiểm tra tồn với khách nên tạo THẲNG đơn hàng, không qua Yêu cầu đặt hàng.
+      // Thiếu NVL thì không giữ tạm; sau thanh toán hệ thống lập nhu cầu NVL như đơn giao xa.
+      if (options.staffCreated && evaluation.mode === 'request') {
+        prepared = { ...prepared, inventoryMode: 'FUTURE_DEMAND', staffOverride: { reasonCodes: evaluation.reasonCodes, reasons: evaluation.customerReasons } };
+        const result = { kind: 'order', ...await create(session, orderId, prepared) };
+        await sessions.updateOne({ _id: key }, { $set: { result } }, { session });
+        return result;
+      }
       try {
         if (evaluation.mode === 'request') throw new InventoryError(409, evaluation.customerReasons.join(' '), { evaluation });
         if (evaluation.inventoryMode === 'HOLD_NOW') {
@@ -228,6 +238,8 @@ export async function routeCheckout(
       if (old) return old;
     }
     if (error !== shortage) throw error;
+    // Đơn nhân viên tạo không bao giờ đổi thành Yêu cầu đặt hàng: báo lỗi giữ tồn để nhân viên xử lý.
+    if (options.staffCreated) throw new InventoryError(409, `Không giữ được tồn kho: ${shortage?.message || 'thiếu hàng'} Vui lòng kiểm tra tồn rồi tạo lại.`);
   }
   // Reservation transaction has rolled back ALL lines. A request creates no order, payment or stock movement.
   const requestId = `YC${randomBytes(8).toString('hex').toUpperCase()}`;
@@ -266,7 +278,7 @@ export async function routeCheckout(
       const requestDocument = {
         _id: requestId, requestId,
         status: REQUEST_STATUS.waiting, assignedTo: null, assignedName: null,
-        sender: payload.sender, receiver: payload.receiver, delivery: { ...payload.delivery, deliveryAt: prepared.delivery?.deliveryAt, deliveryStartAt: prepared.delivery?.deliveryStartAt },
+        sender: payload.sender, receiver: payload.receiver ? { ...payload.receiver, address: cleanAddress(payload.receiver.address) } : payload.receiver, delivery: { ...payload.delivery, deliveryAt: prepared.delivery?.deliveryAt, deliveryStartAt: prepared.delivery?.deliveryStartAt },
         flags: payload.flags || {}, giftCard: prepared.giftCard || null, originalSummary: prepared.summary || {},
         customerId: payload.customerId || null, items: snapshot,
         reason: shortage!.message, shortages: details.evaluation ? null : details,

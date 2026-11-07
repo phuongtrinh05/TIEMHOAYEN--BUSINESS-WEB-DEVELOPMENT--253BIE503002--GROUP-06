@@ -3,7 +3,7 @@ import type { ClientSession } from 'mongodb';
 import { getCollection } from '../mongo.js';
 import { InventoryError, withTransaction } from './inventory/helpers.js';
 import { lookupAccess, normalizeOrderPhone, ownedOrderQuery, ownedRequestQuery } from './order-access.service.js';
-import { needsImmediateHandoff, planChatReply } from './chatbot-brain.service.js';
+import { currentProduct, needsImmediateHandoff, planChatReply } from './chatbot-brain.service.js';
 import { hasPermission } from './role-permission.service.js';
 import { deleteChatImage, storeChatImage, type StoredChatMedia } from './chat-media.service.js';
 export const SUPPORT_TICKETS = 'YEU_CAU_HO_TRO';
@@ -131,7 +131,7 @@ export async function supportOrders(id: string, actor: SupportActor, orderId = '
     return { orders, requests };
 }
 export async function sendSupport(id: string, body: any, actor: SupportActor) {
-    const text = supportText(body.chatInput || (body.imageDataUrl ? 'Khách gửi ảnh cần nhân viên tư vấn' : body.selectedImageId ? 'Tôi muốn tư vấn mẫu này' : ''));
+    const text = supportText(body.chatInput || (body.imageDataUrl ? 'Khách gửi ảnh cần nhân viên tư vấn' : body.selectedImageId ? 'Tôi muốn tư vấn mẫu này' : body.attachProduct ? 'Mình muốn hỏi về sản phẩm này.' : ''));
     if (!/^[\w-]{16,100}$/.test(String(body.messageId || '')))
         throw new InventoryError(400, 'Thiếu mã tin nhắn hợp lệ.');
     const col = await getCollection<any>(SUPPORT_TICKETS);
@@ -154,6 +154,12 @@ export async function sendSupport(id: string, body: any, actor: SupportActor) {
         }
         if (body.imageDataUrl)
             storedMedia = await storeChatImage(body.imageDataUrl, id);
+        // Khách bấm "Gửi sản phẩm" ở trang chi tiết: đính kèm thẻ sản phẩm để nhân viên thấy ngay khách hỏi mẫu nào.
+        let productSnapshot: any = null;
+        if (body.attachProduct && body.productId) {
+            const p = await currentProduct(String(body.productId).slice(0, 80));
+            if (p) productSnapshot = { id: p.id, name: p.name, price: p.price, image: p.image };
+        }
         await withTransaction(async (session) => {
             const current = await supportOwner(id, actor, session);
             const recent = current.messageWindowAt && Date.now() - new Date(current.messageWindowAt).getTime() < 600000;
@@ -161,7 +167,7 @@ export async function sendSupport(id: string, body: any, actor: SupportActor) {
                 throw new InventoryError(429, 'Bạn nhắn quá nhanh. Vui lòng đợi một chút rồi thử lại.');
             const reopen = current.status === 'Đã xử lý';
             await col.updateOne({ _id: id }, { $set: { messageWindowAt: recent ? current.messageWindowAt : new Date(), messageCount: recent ? Number(current.messageCount) + 1 : 1 } }, { session });
-            await addMessage(current, text, 'customer', { id: messageKey, image: storedMedia?.url || selectedImage?.URL_ANH_KET_QUA, imageId: selectedImage?.YEU_CAU_ID }, session);
+            await addMessage(current, text, 'customer', { id: messageKey, image: storedMedia?.url || selectedImage?.URL_ANH_KET_QUA, imageId: selectedImage?.YEU_CAU_ID, product: productSnapshot }, session);
             await col.updateOne({ _id: id }, { $set: { updatedAt: new Date(), ...(needsImmediateHandoff(text) ? { priority: 'urgent' } : {}), ...(body.productId ? { productId: String(body.productId).slice(0, 80) } : {}), ...(selectedImage ? { selectedImageId: selectedImage.YEU_CAU_ID } : {}), ...(reopen ? { status: current.assignedTo ? 'Đang xử lý' : 'Chưa xử lý', mode: current.assignedTo ? 'HUMAN' : 'WAITING' } : {}) }, $inc: { version: 1, ...(reopen ? { round: 1 } : {}) }, ...(reopen ? { $push: { history: { at: new Date(), action: 'Khách mở lại yêu cầu', actor: 'customer' } } } : {}) } as any, { session });
         });
         messageCommitted = true;

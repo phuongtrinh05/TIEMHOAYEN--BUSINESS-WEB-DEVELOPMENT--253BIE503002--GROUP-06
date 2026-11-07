@@ -98,6 +98,12 @@ export class OrderRequest implements OnInit, OnDestroy {
       error: err => { this.error = err?.error?.message || 'Chưa gửi được xác nhận.'; this.busy = false; this.cdr.markForCheck(); },
     });
   }
+  /** Enter gửi tin; Shift+Enter xuống dòng; bỏ qua khi bộ gõ tiếng Việt đang ghép chữ. */
+  onComposerKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    this.send();
+  }
   send() {
     if (this.busy || !this.message.trim()) return;
     const content = this.message.trim();

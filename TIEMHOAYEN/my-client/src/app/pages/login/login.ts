@@ -99,7 +99,8 @@ export class LoginComponent implements OnInit, OnDestroy {
   formData = {
     phone: '',
     password: '',
-    rememberMe: false,
+    // Mặc định ghi nhớ đăng nhập; khách dùng máy chung có thể bỏ chọn.
+    rememberMe: true,
   };
 
   /* ---------- Quên mật khẩu ---------- */

@@ -1,4 +1,5 @@
 import { CommonModule } from '@angular/common';
+import { MAX_CART_ITEMS, cartLimitMessage, guestCartTotal } from '../../services/cart-limit';
 import { AfterViewInit, Component, OnDestroy, OnInit, ChangeDetectorRef } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
@@ -224,8 +225,11 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   get maxQuantity(): number {
-    return 1000;
+    return MAX_CART_ITEMS;
   }
+
+  /** Thông báo khi vượt giới hạn 99 sản phẩm trong giỏ. */
+  cartLimitError = '';
 
   private loadProductDetail(productId: string): void {
     this.productRequestSubscription?.unsubscribe();
@@ -1035,6 +1039,12 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     this.normalizeQuantity();
     event?.stopPropagation();
     event?.preventDefault();
+    this.cartLimitError = '';
+    // Khách vãng lai: kiểm tra giới hạn 99 sản phẩm ngay trên trình duyệt; thành viên do backend kiểm tra.
+    if (!this.getCustomerId()) {
+      const current = guestCartTotal();
+      if (current + this.quantity > MAX_CART_ITEMS) { this.cartLimitError = cartLimitMessage(current); this.cdr.detectChanges(); return; }
+    }
     this.playFlyToCartEffect(event);
     this.saveProductToCart();
   }
@@ -1177,8 +1187,10 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
           this.dispatchCartChanged();
           this.router.navigate(['/order-registrant']);
         },
-        error: (err: unknown) => {
+        error: (err: any) => {
           console.error('Lỗi mua ngay:', err);
+          this.cartLimitError = err?.error?.message || 'Chưa thêm được sản phẩm vào giỏ hàng.';
+          this.cdr.detectChanges();
         }
       });
 
@@ -1215,8 +1227,10 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
         next: () => {
           this.dispatchCartChanged();
         },
-        error: (err: unknown) => {
+        error: (err: any) => {
           console.error('Lỗi thêm sản phẩm vào database giỏ hàng:', err);
+          this.cartLimitError = err?.error?.message || 'Chưa thêm được sản phẩm vào giỏ hàng.';
+          this.cdr.detectChanges();
         }
       });
 

@@ -29,7 +29,8 @@ describe('CreateOrder', () => {
       expect(component.form.receiverName).toBe('');
       expect(component.form.deliveryDate).toBe('');
       expect(component.form.deliverySlot).toBe('');
-      expect(component.form.deliveryAddress).toBe('');
+      expect(component.form.street).toBe('');
+      expect(component.form.districtCode).toBe('');
       expect(component.form.products).toEqual([]);
     });
 
@@ -76,13 +77,13 @@ describe('CreateOrder', () => {
       expect(component.computedSubtotal).toBe(250000);
     });
 
-    it('computedGrandTotal = subtotal + shippingFee + tax khi không có voucher/loyalty', () => {
+    it('computedGrandTotal = subtotal + shippingFee (đã gồm VAT) khi không có voucher/loyalty', () => {
       component.form.products = [
         { id: 'P1', name: 'A', image: '', qty: 1, price: 200000 },
       ];
       component.form.voucher = null;
       component.useLoyalty = false;
-      const expected = 200000 + component.shippingFee + component.tax;
+      const expected = 200000 + component.shippingFee;
       expect(component.computedGrandTotal).toBe(expected);
     });
 
@@ -93,7 +94,7 @@ describe('CreateOrder', () => {
       component.form.voucher = 'YEN10';
       component.voucherDiscount = 40000;
       component.useLoyalty = false;
-      const expected = 200000 + component.shippingFee - 40000 + component.tax;
+      const expected = 200000 + component.shippingFee - 40000;
       expect(component.computedGrandTotal).toBe(expected);
     });
 
@@ -104,7 +105,7 @@ describe('CreateOrder', () => {
       component.form.voucher = null;
       component.useLoyalty = true;
       component.loyaltyDiscount = 70000;
-      const expected = 200000 + component.shippingFee - 70000 + component.tax;
+      const expected = 200000 + component.shippingFee - 70000;
       expect(component.computedGrandTotal).toBe(expected);
     });
 
@@ -401,6 +402,28 @@ describe('CreateOrder', () => {
 
   // ===== VALIDATE & SUBMIT =====
   describe('validate()', () => {
+    const fillAddress = () => {
+      component.provinces = [{ code: '79', name: 'Thành phố Hồ Chí Minh', districts: [
+        { code: '760', name: 'Quận 1', wards: [{ code: '26734', name: 'Phường Tân Định' }] }] }];
+      component.form.provinceCode = '79';
+      component.form.districtCode = '760';
+      component.form.wardCode = '26734';
+      component.form.street = '12 Nguyễn Huệ';
+    };
+
+    it('ghép địa chỉ đúng định dạng của trang Khách', () => {
+      fillAddress();
+      expect(component.fullDeliveryAddress).toBe('12 Nguyễn Huệ, Phường Tân Định, Quận 1, Thành phố Hồ Chí Minh');
+    });
+
+    it('chặn giờ ngoài 08:00–22:00 và ngày đã qua', () => {
+      component.form.deliveryDate = '2000-01-01';
+      component.form.deliverySlot = '23:00';
+      component.validate();
+      expect(component.errors['deliveryDate']).toBeTruthy();
+      expect(component.errors['deliverySlot']).toBeTruthy();
+    });
+
     it('trả về false và set errors nếu form rỗng', () => {
       const result = component.validate();
       expect(result).toBe(false);
@@ -410,7 +433,8 @@ describe('CreateOrder', () => {
       expect(component.errors['receiverPhone']).toBeTruthy();
       expect(component.errors['deliveryDate']).toBeTruthy();
       expect(component.errors['deliverySlot']).toBeTruthy();
-      expect(component.errors['deliveryAddress']).toBeTruthy();
+      expect(component.errors['districtCode']).toBeTruthy();
+      expect(component.errors['street']).toBeTruthy();
     });
 
     it('trả về true khi điền đủ các trường bắt buộc', () => {
@@ -418,9 +442,10 @@ describe('CreateOrder', () => {
       component.form.senderPhone = '0901234567';
       component.form.receiverName = 'Trần Thị B';
       component.form.receiverPhone = '0912345678';
-      component.form.deliveryDate = '2026-07-01';
-      component.form.deliverySlot = '09:00 AM–11:00 AM';
-      component.form.deliveryAddress = '123 Nguyễn Huệ, Q1, HCM';
+      component.form.deliveryDate = '2099-07-01';
+      component.form.deliverySlot = '10:00';
+      fillAddress();
+      component.form.products = [{ id: 'SP001', name: 'A', image: '', qty: 1, price: 200000 }];
       const result = component.validate();
       expect(result).toBe(true);
       expect(Object.keys(component.errors).length).toBe(0);
@@ -433,9 +458,10 @@ describe('CreateOrder', () => {
       component.form.senderPhone = '0901234567';
       component.form.receiverName = 'B';
       component.form.receiverPhone = '0912345678';
-      component.form.deliveryDate = '2026-07-01';
-      component.form.deliverySlot = '09:00 AM–11:00 AM';
-      component.form.deliveryAddress = '123 test';
+      component.form.deliveryDate = '2099-07-01';
+      component.form.deliverySlot = '10:00';
+      fillAddress();
+      component.form.products = [{ id: 'SP001', name: 'A', image: '', qty: 1, price: 200000 }];
       component.validate();
       expect(Object.keys(component.errors).length).toBe(0);
     });

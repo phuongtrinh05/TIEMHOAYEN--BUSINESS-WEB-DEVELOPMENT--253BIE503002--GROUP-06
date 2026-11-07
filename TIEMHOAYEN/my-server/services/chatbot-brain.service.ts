@@ -37,7 +37,7 @@ export async function currentProduct(productId: string) {
     if (!productId)
         return null;
     const p = await (await getCollection<any>('SAN_PHAM')).findOne({ SAN_PHAM_ID: productId });
-    if (!p || /da xoa|ngung|an$/.test(normalizeChatText(p.TRANG_THAI)))
+    if (!p || /da xoa|ngung|(^| )an$/.test(normalizeChatText(p.TRANG_THAI)))
         return null;
     const [image, bom] = await Promise.all([(await getCollection<any>('HINH_ANH_SAN_PHAM')).findOne({ SAN_PHAM_ID: productId }, { sort: { LA_ANH_CHINH: -1, HINH_ANH_ID: 1 } }), getActiveBom(productId)]);
     const materials = await (await getCollection<any>('NGUYEN_VAT_LIEU')).find({ NGUYEN_VAT_LIEU_ID: { $in: bom.lines.map(l => l.NGUYEN_VAT_LIEU_ID) } }).toArray();

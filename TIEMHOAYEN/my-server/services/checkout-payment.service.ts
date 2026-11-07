@@ -78,9 +78,20 @@ export async function consumeCheckoutBenefits(session: ClientSession, order: any
       const debit = await (await getCollection<any>('KHACH_HANG')).updateOne({ KHACH_HANG_ID: order.KHACH_HANG_ID, DIEM_TICH_LUY: { $gte: points } }, { $inc: { DIEM_TICH_LUY: -points } }, { session });
       if (!debit.matchedCount) throw new InventoryError(409, 'Không đủ điểm để chốt đơn. Cần đối soát trước khi xác nhận.');
       await orders.updateOne({ DON_HANG_ID: order.DON_HANG_ID }, { $set: { DA_TRU_DIEM_THUONG: true } }, { session });
+      const after = await (await getCollection<any>('KHACH_HANG')).findOne({ KHACH_HANG_ID: order.KHACH_HANG_ID }, { session, projection: { DIEM_TICH_LUY: 1 } });
+      await (await getCollection<any>('LICH_SU_DIEM')).insertOne({ NGUON_LOAI: 'DON_HANG', NGUON_ID: order.DON_HANG_ID, LOAI_BUT_TOAN: 'SU_DUNG', KHACH_HANG_ID: order.KHACH_HANG_ID,
+        SO_DIEM: -points, SO_DU_SAU: Number(after?.DIEM_TICH_LUY || 0), NGAY_TAO: new Date() }, { session });
     }
     const links = await (await getCollection<any>('DON_HANG_VOUCHER')).find({ DON_HANG_ID: order.DON_HANG_ID }, { session }).toArray();
-    if (links.length) await (await getCollection<any>('VOUCHER')).updateMany({ VOUCHER_ID: { $in: links.map(v => v.VOUCHER_ID) } }, { $set: { DA_DUNG: true } }, { session });
+    if (links.length) {
+      const vouchers = await getCollection<any>('VOUCHER');
+      const rows = await vouchers.find({ VOUCHER_ID: { $in: links.map(v => v.VOUCHER_ID) } }, { session }).toArray();
+      for (const v of rows) {
+        // Cá nhân: dùng một lần. Công khai: chỉ tăng số lượt đã dùng, không khóa voucher của mọi người.
+        if (v.KHACH_HANG_ID) await vouchers.updateOne({ VOUCHER_ID: v.VOUCHER_ID }, { $set: { DA_DUNG: true }, $inc: { LUOT_DA_DUNG: 1 } }, { session });
+        else await vouchers.updateOne({ VOUCHER_ID: v.VOUCHER_ID }, { $inc: { LUOT_DA_DUNG: 1 } }, { session });
+      }
+    }
 
 }
 

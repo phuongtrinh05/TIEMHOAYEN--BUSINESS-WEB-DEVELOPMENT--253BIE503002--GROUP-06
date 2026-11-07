@@ -25,6 +25,9 @@
   </div>
 
   <p class="checkout-result-error" role="status" *ngIf="connectionNotice">{{connectionNotice}}</p>
+  <!-- Đơn đủ điều kiện vòng quay: thanh toán/cọc thành công là mở ngay popup quay (thay cho popup kết quả). -->
+  <app-lucky-order-spin *ngIf="isPaymentSuccess" [orderId]="order.orderId" (opened)="checkoutResultDismissed=true" (checked)="luckyCheckPending=false" (viewOrder)="viewOrderDetail()" (shopping)="continueShopping()"></app-lucky-order-spin>
+  <p *ngIf="luckyCheckPending" role="status" class="lucky-check-pending">Đang kiểm tra lượt quay của đơn…</p>
   <div class="checkout-body">
     <div class="checkout-left">
       <!-- Thông tin người nhận -->
@@ -170,10 +173,19 @@
             [class.is-danger]="remainingSeconds <= 60 && !isPaymentSuccess && !isPaymentFailed && !isOrderAccepted"
             [class.is-success]="isPaymentSuccess || isOrderAccepted"
             [class.is-failed]="isPaymentFailed"
+            [attr.title]="showPaymentCountdown ? 'Thời gian còn lại để thanh toán' : null"
           >
-            {{ isOrderAccepted ? 'Không cần trả trước' : isPaymentSuccess ? 'OK' : isPaymentFailed ? 'Hết hạn' : formattedCountdown }}
+            {{ isOrderAccepted ? 'Không cần trả trước' : isPaymentSuccess ? 'Đã thanh toán' : isPaymentFailed ? 'Đơn đã hủy' : qrExpired ? 'Mã QR hết hạn' : formattedCountdown }}
           </strong>
         </div>
+
+        <p class="payment-deadline-note" *ngIf="showPaymentCountdown">
+          <i class="bi bi-clock"></i>
+          <span>
+            Mỗi mã QR có hiệu lực 5 phút.
+            <ng-container *ngIf="orderPaymentDeadlineDate">Vui lòng thanh toán trước <b>{{ orderPaymentDeadlineDate | date:'dd/MM/yyyy HH:mm' }}</b>, quá hạn đơn sẽ tự hủy.</ng-container>
+          </span>
+        </p>
 
         <div class="payment-method-summary">
           <span>Phương thức:</span>
@@ -190,12 +202,26 @@
           class="payment-qr"
           *ngIf="!isPaymentSuccess && !isPaymentFailed && !isOrderAccepted && (isOnlinePayment || order.payment.amountToPay > 0)"
         >
-          <p class="payment-qr__label">Quét mã để thanh toán</p>
-          <img
-            src="assets/images/checkout-qrcode.png"
-            alt="QR thanh toán"
-            class="payment-qr__img"
-          />
+          <p class="payment-qr__label">{{ qrExpired ? 'Mã QR đã hết hạn' : 'Quét mã để thanh toán' }}</p>
+          <div class="payment-qr__frame" [class.is-expired]="qrExpired">
+            <img
+              src="assets/images/checkout-qrcode.png"
+              alt="QR thanh toán"
+              class="payment-qr__img"
+            />
+            <button
+              *ngIf="qrExpired"
+              type="button"
+              class="payment-qr__refresh"
+              (click)="refreshQr()"
+              [disabled]="isRetryingPayment"
+              [attr.aria-label]="isRetryingPayment ? 'Đang tạo mã QR mới' : 'Tạo mã QR mới'"
+              title="Tạo mã QR mới">
+              <i class="bi bi-arrow-clockwise" [class.is-spinning]="isRetryingPayment"></i>
+            </button>
+          </div>
+          <p class="payment-qr__hint" *ngIf="qrExpired && !qrError">Bấm nút xoay để tạo mã QR mới và thanh toán lại.</p>
+          <p class="payment-qr__error" *ngIf="qrError" role="alert">{{ qrError }}</p>
         </div>
 
         <div
@@ -320,7 +346,7 @@
 
   <div
     class="checkout-result-overlay"
-    *ngIf="isPaymentSuccess || isPaymentFailed || isOrderAccepted"
+    *ngIf="(isPaymentSuccess || isPaymentFailed || isOrderAccepted) && !checkoutResultDismissed && !luckyCheckPending"
     role="dialog"
     aria-modal="true"
     (click)="closeCheckoutResultPopup()">
@@ -343,7 +369,7 @@
       </p>
 
       <p class="checkout-result-sub-message" *ngIf="isPaymentFailed">
-        Đơn hàng đã hết thời gian thanh toán hoặc thanh toán thất bại.
+        Đơn hàng đã quá hạn thanh toán nên đã được hủy. Bạn có thể đặt lại đơn mới.
       </p>
 
       <p class="checkout-result-error" *ngIf="checkoutResultError">
@@ -363,6 +389,7 @@
 
       <div class="checkout-result-actions" *ngIf="isPaymentFailed">
         <button
+          *ngIf="!orderCancelledForPayment"
           type="button"
           class="checkout-result-action"
           [disabled]="isRetryingPayment"

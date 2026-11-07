@@ -1,9 +1,10 @@
 import { readAfterSales,createAfterSales,supplementAfterSales } from '../controllers/order.js';
 import express from 'express';
-import { sendLookupOtp, verifyLookupOtp, requireLookup, requireLookupAction, lookupHistory, endLookup } from '../controllers/order-access.js';
+import { sendLookupOtp, verifyLookupOtp, requireLookup, requireLookupAction, lookupHistory, endLookup, checkoutLookup } from '../controllers/order-access.js';
 import { readPublicRequest, customerRespond, listRequestMessages, postRequestMessage, customerUpdateRequest } from '../controllers/order-request.js';
 import { requireAdminPermission } from '../middleware/rolePermission.js';
 import {
+  getAvailableVouchers,
   getPublicVouchers,
   createOrder,
   quoteOrder,
@@ -22,10 +23,12 @@ const router = express.Router();
 
 router.post('/lookup/otp', sendLookupOtp);
 router.post('/lookup/verify', verifyLookupOtp);
+router.post('/:orderId/checkout-lookup', checkoutLookup);
 router.get('/lookup', requireLookup, lookupHistory);
 router.post('/lookup/logout', requireLookup, endLookup);
 router.get('/', requireLookup, lookupHistory);
 router.get('/public-vouchers', getPublicVouchers);
+router.post('/vouchers/available', getAvailableVouchers);
 router.get('/card-templates', getCardTemplates);
 router.post('/', createOrder);
 router.post('/quote', quoteOrder);

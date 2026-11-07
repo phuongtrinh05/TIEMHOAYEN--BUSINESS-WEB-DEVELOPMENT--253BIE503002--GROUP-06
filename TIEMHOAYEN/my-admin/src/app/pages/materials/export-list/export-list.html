@@ -7,7 +7,7 @@
         <button class="inv-btn" type="button" [class.primary]="statusFilter === s" [attr.aria-pressed]="statusFilter === s" (click)="statusFilter = s; load()">{{ s || 'Tất cả' }}</button>
       }
     </div>
-<div class="inv-toolbar inv-list-tools"><div class="grow"><input class="inv-input" placeholder="Tìm mã phiếu, mã đơn, sản phẩm, ghi chú…" [(ngModel)]="search" (ngModelChange)="refilter()"></div><button class="inv-btn" type="button" [class.inv-filter-active]="filtersOpen || typeFilter" [attr.aria-expanded]="filtersOpen" (click)="filtersOpen = !filtersOpen"><i class="bi bi-funnel"></i> Bộ lọc</button><button class="inv-btn" type="button" title="Tải lại" aria-label="Tải lại" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button><button class="inv-btn inv-add-btn" type="button" (click)="openCreate()" title="Lập phiếu xuất" aria-label="Lập phiếu xuất"><i class="bi bi-plus-circle" aria-hidden="true"></i></button><button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button></div>
+<div class="inv-toolbar inv-list-tools"><div class="grow"><input class="inv-input" placeholder="Tìm mã phiếu, mã đơn, sản phẩm, ghi chú…" [(ngModel)]="search" (ngModelChange)="refilter()"></div><button class="inv-btn" type="button" [class.inv-filter-active]="filtersOpen || typeFilter" [attr.aria-expanded]="filtersOpen" (click)="filtersOpen = !filtersOpen"><i class="bi bi-funnel"></i> Bộ lọc</button><button class="inv-btn" type="button" title="Tải lại" aria-label="Tải lại" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button>@if (canEdit) {<button class="inv-btn inv-add-btn" type="button" (click)="openCreate()" title="Lập phiếu xuất" aria-label="Lập phiếu xuất"><i class="bi bi-plus-circle" aria-hidden="true"></i></button>}<button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button></div>
 @if (filtersOpen) { <div class="inv-toolbar inv-filter-panel">
 <select class="inv-select" style="width:220px" [(ngModel)]="typeFilter" (ngModelChange)="load()">
         <option value="">Mọi loại xuất</option>
@@ -120,12 +120,20 @@
           }
           @if (header.type === 'Cắm bó sẵn') {
             <div class="inv-field"><label class="required">Sản phẩm</label>
-              <select class="inv-select" [(ngModel)]="header.productId">
-                <option value="">— Chọn bó hoa —</option>
-                @for (p of products(); track p.SAN_PHAM_ID) { <option [value]="p.SAN_PHAM_ID" [disabled]="!p.lineCount">{{ p.SAN_PHAM_ID }} · {{ p.TEN_SAN_PHAM }} (làm được {{ p.buildable }})</option> }
+              <input class="inv-input" placeholder="Tìm mã hoặc tên bó hoa…" [(ngModel)]="productQuery" (ngModelChange)="productTick.set(productTick() + 1)">
+              <select class="inv-select mt-1" [(ngModel)]="header.productId" (ngModelChange)="onReadyMadeChange()">
+                <option value="">— Chọn bó hoa ({{ filteredProducts().length }}) —</option>
+                @for (p of filteredProducts(); track p.SAN_PHAM_ID) { <option [value]="p.SAN_PHAM_ID" [disabled]="!p.lineCount">{{ p.SAN_PHAM_ID }} · {{ p.TEN_SAN_PHAM }} ({{ p.lineCount ? 'NVL đủ làm tối đa ' + p.buildable + ' bó' : 'chưa có BOM' }})</option> }
               </select>
             </div>
-            <div class="inv-field"><label class="required">Số bó</label><input class="inv-input" type="number" min="1" [(ngModel)]="header.bundles"></div>
+            <div class="inv-field"><label class="required">Số bó muốn cắm</label>
+              <input class="inv-input" type="number" min="1" step="1" [(ngModel)]="header.bundles" (ngModelChange)="onReadyMadeChange()">
+              @if (selectedProduct(); as sp) {
+                <div class="hint" [class.text-danger]="header.bundles > sp.buildable">
+                  {{ header.bundles > sp.buildable ? 'Vượt mức NVL cho phép (' + sp.buildable + ' bó)' : 'Tối đa ' + sp.buildable + ' bó' }}
+                </div>
+              }
+            </div>
           }
           <div class="inv-field"><label>Thời điểm xuất</label><input class="inv-input" type="datetime-local" [(ngModel)]="header.exportedAt"><div class="hint">Để trống = bây giờ.</div></div>
           <div class="inv-field full"><label [class.required]="header.type === 'Khác'">Ghi chú</label><input class="inv-input" [(ngModel)]="header.note"></div>

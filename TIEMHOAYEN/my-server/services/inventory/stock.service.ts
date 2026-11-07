@@ -1,4 +1,5 @@
 import { eligiblePaidOrderIds } from './order-eligibility.js';
+import { slot24h } from '../time-format.js';
 import { ObjectId, type ClientSession } from 'mongodb';
 import {
   ACTIVE_RESERVATION_STATUSES,
@@ -942,7 +943,8 @@ const PREP_T_EDITABLE_STATUSES = ['Đã xác nhận đơn hàng', 'Đã đặt h
 export const orderDeliveryAt = (order: any): Date | null => {
   if (!order?.NGAY_MUON_GIAO) return null;
   const date = new Date(order.NGAY_MUON_GIAO).toISOString().slice(0, 10);
-  const time = String(order.KHUNG_GIO_MUON_GIAO || '').match(/([01]?\d|2[0-3]):[0-5]\d/)?.[0] || '23:59';
+  // Đổi khung giờ cũ dạng AM/PM sang 24h trước khi đọc (tránh "01:00 PM" bị hiểu thành 01:00 sáng).
+  const time = slot24h(order.KHUNG_GIO_MUON_GIAO).match(/([01]?\d|2[0-3]):[0-5]\d/)?.[0] || '23:59';
   const at = new Date(`${date}T${time.padStart(5, '0')}:00+07:00`);
   return Number.isFinite(at.getTime()) ? at : null;
 };
@@ -1053,7 +1055,7 @@ export const listPreparationOrders = async (now = new Date()) => {
     return {
       orderId: order.DON_HANG_ID, orderStatus: order.TRANG_THAI, requestId: order.YEU_CAU_DAT_HANG_ID || null,
       customerName: order.TEN_NGUOI_DAT || '', receiverName: order.TEN_NGUOI_NHAN || '',
-      deliveryAt, deliverySlot: order.KHUNG_GIO_MUON_GIAO || '',
+      deliveryAt, deliverySlot: slot24h(order.KHUNG_GIO_MUON_GIAO),
       prepAt, prepSetBy: order.NGUOI_NHAP_T || null, prepSetAt: order.THOI_DIEM_NHAP_T || null, prepHistory: order.LICH_SU_T || [],
       state, stateLabel: PREP_STATE_LABEL[state], materialState, actions, hoursToT: hoursToT === null ? null : Math.round(hoursToT * 10) / 10,
       holdDueSoon: materialState === 'WAITING' && hoursToT !== null && hoursToT <= HOLD_REMINDER_HOURS,

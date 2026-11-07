@@ -15,6 +15,7 @@ import {
   InventoryApiService,
   inventoryErrorMessage,
 } from '../../../services/inventory-api.service';
+import { AdminApiService } from '../../../services/admin-api.service';
 
 interface ExportLine {
   materialId: string;
@@ -50,6 +51,8 @@ export class ExportListComponent implements OnInit {
   @ViewChild(InventoryDialogComponent) private dialog!: InventoryDialogComponent;
   private readonly api = inject(InventoryApiService);
   private readonly route = inject(ActivatedRoute);
+  /** Sales chỉ có quyền xem kho: ẩn nút lập phiếu (backend cũng chặn). */
+  readonly canEdit = inject(AdminApiService).can('materials', 'create');
 
   readonly docs = signal<InvDocument[]>([]);
   readonly materials = signal<InvMaterial[]>([]);
@@ -108,6 +111,7 @@ export class ExportListComponent implements OnInit {
     this.editingId = null;
     this.header = { type: 'Làm hoa theo đơn', orderId: '', productId: '', bundles: 1, exportedAt: '', note: '' };
     this.lines = [];
+    this.productQuery = '';
     this.formError.set('');
     this.formOpen.set(true);
   }
@@ -145,6 +149,30 @@ export class ExportListComponent implements OnInit {
     });
   }
 
+  /* ---------- Cắm bó sẵn: tìm sản phẩm + số bó tự chọn ---------- */
+  productQuery = '';
+  readonly productTick = signal(0);
+  readonly filteredProducts = computed(() => {
+    this.productTick();
+    const q = this.productQuery.trim().toLowerCase();
+    const list = this.products();
+    if (!q) return list;
+    const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').toLowerCase();
+    const nq = norm(q);
+    return list.filter((p) => p.SAN_PHAM_ID === this.header.productId || norm(`${p.SAN_PHAM_ID} ${p.TEN_SAN_PHAM}`).includes(nq));
+  });
+  selectedProduct(): InvBomProduct | undefined { return this.products().find((p) => p.SAN_PHAM_ID === this.header.productId); }
+
+  private readyMadeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Đổi sản phẩm hoặc số bó thì tính lại dòng NVL theo BOM × đúng số bó đã chọn. */
+  onReadyMadeChange(): void {
+    if (this.header.type !== 'Cắm bó sẵn') return;
+    if (this.readyMadeTimer) clearTimeout(this.readyMadeTimer);
+    const bundles = Math.floor(Number(this.header.bundles));
+    if (!this.header.productId || !(bundles > 0)) { this.lines = []; return; }
+    this.readyMadeTimer = setTimeout(() => this.suggest(), 250);
+  }
+
   lineWarn(l: ExportLine): string {
     const m = this.materialById(l.materialId);
     if (!l.materialId) return 'Chưa chọn NVL';
@@ -158,7 +186,7 @@ export class ExportListComponent implements OnInit {
   async save(post: boolean): Promise<void> {
     const t = this.header.type;
     if (t === 'Làm hoa theo đơn' && !this.header.orderId) { this.formError.set('Xuất theo đơn phải có mã đơn hàng.'); return; }
-    if (t === 'Cắm bó sẵn' && (!this.header.productId || !(this.header.bundles > 0))) { this.formError.set('Cắm bó sẵn phải chọn sản phẩm và số bó.'); return; }
+    if (t === 'Cắm bó sẵn' && (!this.header.productId || !(this.header.bundles > 0) || !Number.isInteger(Number(this.header.bundles)))) { this.formError.set('Cắm bó sẵn phải chọn sản phẩm và số bó là số nguyên ≥ 1.'); return; }
     if (t === 'Khác' && !this.header.note.trim()) { this.formError.set('Loại "Khác" bắt buộc ghi chú.'); return; }
     const lines = this.lines.filter((l) => l.materialId);
     if (!lines.length) { this.formError.set('Phiếu phải có ít nhất một NVL.'); return; }
