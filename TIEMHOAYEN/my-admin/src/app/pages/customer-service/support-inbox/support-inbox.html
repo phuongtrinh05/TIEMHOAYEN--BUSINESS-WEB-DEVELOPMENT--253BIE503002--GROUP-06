@@ -4,20 +4,9 @@
       <a class="active" routerLink="/customer-service/customer-chat">Hộp thư hỗ trợ <span>{{pending}}</span></a>
       <a routerLink="/customer-service/chatbot-management">Quản lý chatbot</a>
     </nav>
-    <div class="toolbar-actions">
-      <a routerLink="/customer-service/legacy-chat">Hội thoại cũ</a>
-      <button class="outline" (click)="testOpen=!testOpen"><i class="bi bi-stars"></i> Test chatbot</button>
-    </div>
   </header>
 
   @if(error){<p class="error" role="alert"><i class="bi bi-exclamation-circle"></i> {{error}}</p>}
-  @if(testOpen){
-    <section class="test-panel">
-      <div class="section-heading"><div><h2>Thử nghiệm chatbot</h2><p>Kiểm tra phản hồi, không gửi tin nhắn đến khách.</p></div><button class="icon-button" (click)="testOpen=false" aria-label="Đóng thử nghiệm"><i class="bi bi-x-lg"></i></button></div>
-      <div class="test-fields"><label>Câu hỏi<input [(ngModel)]="testText" maxlength="2000" placeholder="Nhập câu hỏi muốn kiểm tra"></label><label>Mã sản phẩm<input [(ngModel)]="testProduct" placeholder="Không bắt buộc"></label><button class="primary" (click)="test()" [disabled]="testBusy||!testText.trim()">{{testBusy?'Đang thử…':'Kiểm tra'}}</button></div>
-      @if(testResult){<div class="test-result"><span class="badge">{{testResult.intent}}</span><p>{{testResult.reply}}</p>@for(pic of testResult.images||[];track pic.id){<img class="preview" [src]="pic.url" alt="Mẫu minh họa">}</div>}
-    </section>
-  }
 
   <div class="inbox" [class.with-info]="infoOpen&&active">
     <aside class="conversations">

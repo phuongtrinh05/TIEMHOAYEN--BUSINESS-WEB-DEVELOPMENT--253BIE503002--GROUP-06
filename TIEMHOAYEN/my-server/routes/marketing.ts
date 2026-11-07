@@ -19,7 +19,7 @@ router.use('/admin', async (req: Request, res: Response, next: NextFunction) => 
 });
 router.get('/admin/options', handle(async (_req, res) => {
   const [vouchers, campaigns, products, customers, ranks] = await Promise.all([
-    (await col('VOUCHER')).find({ DA_DUNG: { $ne: true } }, { projection: { _id: 0, VOUCHER_ID: 1, MA_VOUCHER: 1, KHACH_HANG_ID: 1, CHIEN_DICH_ID: 1, NGAY_KET_THUC: 1 } }).limit(1000).toArray(),
+    (await col('VOUCHER')).find({ DA_DUNG: { $ne: true }, KICH_HOAT: { $ne: false }, DA_XOA: { $ne: true } }, { projection: { _id: 0, VOUCHER_ID: 1, MA_VOUCHER: 1, MA_VOUCHER_GOC: 1, NHOM_PHAT_HANH_ID: 1, KHACH_HANG_ID: 1, CHIEN_DICH_ID: 1, NGAY_KET_THUC: 1 } }).limit(1000).toArray(),
     (await col('CHIEN_DICH')).find({}, { projection: { _id: 0, CHIEN_DICH_ID: 1, TEN_CHIEN_DICH: 1 } }).limit(500).toArray(),
     (await col('SAN_PHAM')).find({}, { projection: { _id: 0, SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1 } }).limit(2000).toArray(),
     (await col('KHACH_HANG')).find({ DA_XOA: { $ne: true } }, { projection: { _id: 0, KHACH_HANG_ID: 1, TEN: 1 } }).limit(1000).toArray(),
@@ -68,7 +68,8 @@ async function loadConfig(id: string) {
 router.post('/admin/configs/:id/preview', handle(async (req, res) => {
   const { c, t, fingerprint } = await loadConfig(String(req.params.id));
   const customer = req.body.customerId ? await (await col('KHACH_HANG')).findOne({ KHACH_HANG_ID: req.body.customerId }) : null;
-  const { v, p } = await m.checkLinks(c, t);
+  const { v: selectedVoucher, p } = await m.checkLinks(c, t);
+  const v = selectedVoucher?.KHACH_HANG_ID ? await m.resolveVoucherForCustomer(selectedVoucher, customer) : selectedVoucher;
   const values = { ten_khach: customer?.TEN || 'Khách hàng mẫu', ma_voucher: v?.MA_VOUCHER, ten_san_pham: p?.TEN_SAN_PHAM, ma_don: c.SU_KIEN_KICH_HOAT === 'order' ? 'ĐƠN-MINH-HỌA' : null };
   const preview = { title: m.render(t.TIEU_DE || t.TEN_MAU, values), text: m.render(t.NOI_DUNG, values), channel: t.KENH_GUI, sample: true };
   await (await col('CAU_HINH_GUI_TU_DONG')).updateOne({ CAU_HINH_ID: c.CAU_HINH_ID, PHIEN_BAN: c.PHIEN_BAN }, { $set: { XEM_TRUOC_HASH: fingerprint, BAN_XEM_TRUOC: preview } });

@@ -34,6 +34,7 @@ export class Marketing implements OnInit {
     });
   }
   template(id: string) { return this.templates.find(t => t.MAU_ID === id); }
+  selectedVoucher() { return this.options.vouchers.find((v: any) => v.VOUCHER_ID === this.detail?.VOUCHER_ID); }
   switchSection(section: string) { this.section = section; this.search = ''; this.purpose = ''; this.channel = ''; this.status = ''; if (section === 'history') this.loadHistory(); }
   open(row?: any) {
     this.kind = this.section === 'configs' ? 'config' : 'template'; this.readOnly = !!row; this.preview = null; this.error = '';

@@ -41,11 +41,6 @@ export class SupportInbox implements OnInit, OnDestroy, AfterViewChecked {
     targetStaff = '';
     error = '';
     busy = false;
-    testOpen = false;
-    testText = '';
-    testProduct = '';
-    testResult: any;
-    testBusy = false;
     infoOpen = false;
     private selectedId = '';
     initials(name: string) { return (name || 'Khách').trim().split(/\s+/).slice(-2).map(s => s[0]).join('').toUpperCase(); }
@@ -54,7 +49,7 @@ export class SupportInbox implements OnInit, OnDestroy, AfterViewChecked {
     get visibleTickets() { const k = this.search.trim().toLowerCase(); return this.tickets.filter(t => !k || `${t.name} ${t.phone} ${t.id}`.toLowerCase().includes(k)); }
     get canHandle() { return this.active?.assignedTo === localStorage.getItem('adminEmployeeId') || localStorage.getItem('adminRole') === 'Admin'; }
     ngOnInit() { if (typeof window === 'undefined')
-        return; this.testOpen = this.route.snapshot.queryParamMap.get('test') === '1'; this.load(); const id = this.route.snapshot.queryParamMap.get('ticketId'); if (id)
+        return; this.load(); const id = this.route.snapshot.queryParamMap.get('ticketId'); if (id)
         this.open(id); this.http.get<any[]>(`${this.url}/staff`).subscribe({ next: r => { this.staff = r; this.cdr.markForCheck(); }, error: e => this.fail(e) }); this.timer = setInterval(() => { if (!document.hidden && !this.busy) {
         this.load();
         if (this.active)
@@ -104,7 +99,5 @@ export class SupportInbox implements OnInit, OnDestroy, AfterViewChecked {
         reader.readAsDataURL(file);
     }
     clearReplyImage() { this.replyImageDataUrl = ''; this.replyImageName = ''; }
-    test() { if (this.testBusy)
-        return; this.testBusy = true; this.error = ''; this.http.post<any>(`${this.url}/test`, { chatInput: this.testText, productId: this.testProduct }).subscribe({ next: r => { this.testResult = r; this.testBusy = false; this.cdr.markForCheck(); }, error: e => { this.testBusy = false; this.fail(e); } }); }
     private fail(e: any) { this.busy = false; this.error = e?.error?.message || 'Chưa tải/lưu được dữ liệu.'; this.cdr.markForCheck(); }
 }

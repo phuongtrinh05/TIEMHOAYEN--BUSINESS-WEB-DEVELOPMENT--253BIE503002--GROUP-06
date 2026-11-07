@@ -13,6 +13,38 @@ const bad = (message: string, status = 400): never => { throw new InventoryError
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 export const revision = (v: any) => hash(JSON.stringify(v));
 const active = (c: any) => c && !c.DA_XOA && !/khóa|ngừng|inactive/i.test(c.TRANG_THAI || '');
+const voucherAvailable = (v: any, now: Date) => {
+  if (!v || v.KICH_HOAT === false || v.DA_XOA) return false;
+  if (v.NGAY_BAT_DAU && new Date(v.NGAY_BAT_DAU) > now) return false;
+  if (v.NGAY_KET_THUC && new Date(v.NGAY_KET_THUC) < now) return false;
+  const totalLimit = Number(v.GIOI_HAN_TONG || 0);
+  if (totalLimit > 0 && Number(v.LUOT_DA_DUNG || 0) >= totalLimit) return false;
+  if (v.DA_DUNG === true && Number(v.LUOT_DA_DUNG || 0) === 0) return false;
+  return true;
+};
+
+const sameVoucherFamilyQuery = (seed: any, customerId: string) => {
+  if (seed.NHOM_PHAT_HANH_ID) return { NHOM_PHAT_HANH_ID: seed.NHOM_PHAT_HANH_ID, KHACH_HANG_ID: customerId };
+  const baseCode = seed.MA_VOUCHER_GOC || seed.MA_VOUCHER_CHUAN || seed.MA_VOUCHER;
+  return {
+    KHACH_HANG_ID: customerId,
+    $or: [{ MA_VOUCHER_GOC: baseCode }, { MA_VOUCHER_CHUAN: baseCode }, { MA_VOUCHER: baseCode }],
+    CHIEN_DICH_ID: seed.CHIEN_DICH_ID ?? null,
+    LOAI_GIAM_GIA: seed.LOAI_GIAM_GIA,
+    GIA_TRI_GIAM: seed.GIA_TRI_GIAM,
+  };
+};
+
+export async function resolveVoucherForCustomer(seed: any, customer: any, now = new Date()) {
+  if (!seed) return null;
+  if (!seed.KHACH_HANG_ID) return voucherAvailable(seed, now) ? seed : bad('Voucher không còn hiệu lực.');
+  if (!customer?.KHACH_HANG_ID) return bad('Chọn khách minh họa để xác định voucher cá nhân.');
+  const voucher = seed.KHACH_HANG_ID === customer.KHACH_HANG_ID
+    ? seed
+    : await (await col('VOUCHER')).findOne(sameVoucherFamilyQuery(seed, customer.KHACH_HANG_ID));
+  if (!voucher || !voucherAvailable(voucher, now)) bad('Khách không có voucher cá nhân còn hiệu lực trong nhóm đã chọn.');
+  return voucher;
+}
 export const emailReady = () => {
   try {
     const url = new URL(process.env.MARKETING_PUBLIC_URL || '');
@@ -54,7 +86,10 @@ export async function checkLinks(c: any, t: any, now = new Date()) {
   const p = c.SAN_PHAM_ID ? await (await col('SAN_PHAM')).findOne({ SAN_PHAM_ID: c.SAN_PHAM_ID }) : null;
   const campaignId = c.CHIEN_DICH_ID || v?.CHIEN_DICH_ID;
   const campaign = campaignId ? await (await col('CHIEN_DICH')).findOne({ CHIEN_DICH_ID: campaignId }) : null;
-  if (c.VOUCHER_ID && (!v || v.DA_DUNG || v.NGAY_KET_THUC && new Date(v.NGAY_KET_THUC) < now)) bad('Voucher không tồn tại, đã dùng hoặc hết hạn.');
+  const selectedPersonalGroupUnavailable = v?.KHACH_HANG_ID && (v.KICH_HOAT === false || v.DA_XOA
+    || v.NGAY_BAT_DAU && new Date(v.NGAY_BAT_DAU) > now
+    || v.NGAY_KET_THUC && new Date(v.NGAY_KET_THUC) < now);
+  if (c.VOUCHER_ID && (!v || (v.KHACH_HANG_ID ? selectedPersonalGroupUnavailable : !voucherAvailable(v, now)))) bad('Voucher không tồn tại, chưa bật, đã hết lượt hoặc hết hạn.');
   if (c.SAN_PHAM_ID && (!p || /ẩn|ngừng|hết kinh doanh/i.test(p.TRANG_THAI || ''))) bad('Sản phẩm không còn hiển thị.');
   if (c.CHIEN_DICH_ID && !campaign || campaignId && (!campaign || /ẩn|dừng|kết thúc|hủy/i.test(campaign.TRANG_THAI || '') || campaign.NGAY_KET_THUC && new Date(campaign.NGAY_KET_THUC) < now)) bad('Chiến dịch không còn hiệu lực.');
   if (v?.CHIEN_DICH_ID && c.CHIEN_DICH_ID && v.CHIEN_DICH_ID !== c.CHIEN_DICH_ID) bad('Voucher không thuộc chiến dịch đã chọn.');
@@ -69,8 +104,8 @@ export async function context(c: any, t: any, customer: any, orderId?: string, n
   if (c.LOAI_THANH_VIEN && c.LOAI_THANH_VIEN !== customer.LOAI_THANH_VIEN) bad('Khách không thuộc nhóm nhận.');
   if (t.MUC_DICH !== 'Nhắc đánh giá' && customer.DONG_Y_NHAN_QUANG_CAO !== true) bad('Khách chưa đồng ý nhận quảng cáo.');
   if (t.KENH_GUI === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.EMAIL || '')) bad('Khách chưa có email hợp lệ.');
-  const { v, p, campaign } = await checkLinks(c, t, now);
-  if (v && (v.KHACH_HANG_ID && v.KHACH_HANG_ID !== customer.KHACH_HANG_ID || v.NGAY_BAT_DAU && new Date(v.NGAY_BAT_DAU) > now)) bad('Voucher chưa có hiệu lực hoặc thuộc khách khác.');
+  const { v: selectedVoucher, p, campaign } = await checkLinks(c, t, now);
+  const v = await resolveVoucherForCustomer(selectedVoucher, customer, now);
   if (campaign?.NGAY_BAT_DAU && new Date(campaign.NGAY_BAT_DAU) > now) bad('Chiến dịch chưa bắt đầu.');
   let order: any = null;
   if (c.SU_KIEN_KICH_HOAT === 'order') {
@@ -80,6 +115,7 @@ export async function context(c: any, t: any, customer: any, orderId?: string, n
   }
   const values = { ten_khach: customer.TEN, ma_voucher: v?.MA_VOUCHER, ten_san_pham: p?.TEN_SAN_PHAM, ma_don: orderId };
   return { title: render(t.TIEU_DE || t.TEN_MAU, values), text: render(t.NOI_DUNG, values), address: t.KENH_GUI === 'email' ? customer.EMAIL : customer.KHACH_HANG_ID,
+    voucherId: v?.VOUCHER_ID || null, voucherCode: v?.MA_VOUCHER || null,
     link: c.SU_KIEN_KICH_HOAT === 'order' ? '/order-review?orderId=' + encodeURIComponent(orderId || '') : p ? '/product-detail/' + encodeURIComponent(p.SAN_PHAM_ID) : '/account?section=voucher' };
 }
 export async function ensureMarketingIndexes() {
@@ -95,6 +131,7 @@ export async function enqueue(c: any, t: any, customer: any, event: string, orde
     GUI_ID: id('GUI'), KHOA_CHONG_TRUNG: key, CAU_HINH_ID: c.CAU_HINH_ID, PHIEN_BAN_CAU_HINH: c.PHIEN_BAN, MAU_ID: t.MAU_ID, PHIEN_BAN_MAU: t.PHIEN_BAN,
     KHACH_HANG_ID: customer.KHACH_HANG_ID, DON_HANG_ID: orderId || null, SU_KIEN_CU_THE: event, KENH_GUI: t.KENH_GUI, DIA_CHI_NHAN: payload.address,
     TIEU_DE_THUC_TE: payload.title, NOI_DUNG_THUC_TE: payload.text, DUONG_DAN: payload.link,
+    VOUCHER_ID_THUC_TE: payload.voucherId, MA_VOUCHER_THUC_TE: payload.voucherCode,
     THOI_DIEM_DU_KIEN: now, TRANG_THAI: 'Chờ gửi', SO_LAN_THU: 0, LAN_THU_TIEP_THEO: now, NGAY_TAO: now,
   } }, { upsert: true });
 }

@@ -1536,10 +1536,14 @@ export const createAdminVoucher = async (req: Request, res: Response) => {
       return res.status(409).json({ message: 'Đã đạt giới hạn 9.999 ID voucher theo định dạng VC0000.' });
     }
     const employeeId = body.employeeId || await getFirstEmployeeId();
+    // Các voucher sinh cùng một lần có chung mã nhóm để Marketing tự lấy
+    // đúng voucher cá nhân của từng khách khi gửi hàng loạt.
+    const issuanceGroupId = `VGRP_${randomUUID()}`;
     const vouchers = recipients.map((customerId, index) => {
       const voucherId = `VC${String(firstNumber + index).padStart(4, '0')}`;
       return {
         _id: voucherId, VOUCHER_ID: voucherId, NHAN_VIEN_ID: employeeId,
+        NHOM_PHAT_HANH_ID: issuanceGroupId, MA_VOUCHER_GOC: code,
         CHIEN_DICH_ID: body.campaignCode || body.campaignId || null, KHACH_HANG_ID: customerId,
         MA_VOUCHER: codes[index], MA_VOUCHER_CHUAN: codes[index], LOAI_GIAM_GIA: discountType, GIA_TRI_GIAM: discountValue,
         MUC_GIAM_TOI_DA: Math.max(0, Number(body.maxDiscount || 0)), DON_TOI_THIEU: Math.max(0, Number(body.minimumOrder || 0)),

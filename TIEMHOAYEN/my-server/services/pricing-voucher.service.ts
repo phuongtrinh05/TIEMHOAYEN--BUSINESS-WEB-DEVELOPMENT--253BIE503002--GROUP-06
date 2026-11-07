@@ -189,7 +189,7 @@ export async function claimVoucherUsage(session: ClientSession, voucherResult: a
     const counterId = `${voucher.VOUCHER_ID}:${voucherResult.identityKey}`;
     try {
       const counter = await counters.findOneAndUpdate(
-        { _id: counterId, $expr: { $lt: [{ $ifNull: ['$LUOT_DA_DUNG', 0] }, voucherResult.perUserLimit] } },
+        { _id: counterId, LUOT_DA_DUNG: { $lt: voucherResult.perUserLimit } },
         { $setOnInsert: { VOUCHER_ID: voucher.VOUCHER_ID, DINH_DANH: voucherResult.identityKey }, $inc: { LUOT_DA_DUNG: 1 } },
         { session, upsert: true, returnDocument: 'after' },
       );

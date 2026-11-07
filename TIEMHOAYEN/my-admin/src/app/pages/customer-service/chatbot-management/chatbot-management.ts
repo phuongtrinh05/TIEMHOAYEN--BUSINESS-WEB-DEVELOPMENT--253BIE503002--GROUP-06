@@ -1,9 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { finalize, forkJoin, timeout } from 'rxjs';
 import { AdminApiService, AdminFAQPayload, AdminFAQRow } from '../../../services/admin-api.service';
+import { apiBaseUrl } from '../../../services/api-config';
 
 interface ChatbotItem {
     askedCount?: number;
@@ -38,6 +40,12 @@ export class ChatbotManagementComponent implements OnInit {
     detailReadOnly = true;
     isLoading = false;
     isSaving = false;
+    isTestModalOpen = false;
+    testText = '';
+    testProduct = '';
+    testResult: any = null;
+    testBusy = false;
+    testError = '';
 
     currentPage = 1;
     pageSize = 8;
@@ -67,8 +75,43 @@ export class ChatbotManagementComponent implements OnInit {
 
     constructor(
         private readonly adminApi: AdminApiService,
+        private readonly http: HttpClient,
         private readonly cdr: ChangeDetectorRef
     ) {}
+
+    openTestModal(): void {
+        this.testResult = null;
+        this.testError = '';
+        this.isTestModalOpen = true;
+    }
+
+    closeTestModal(): void {
+        if (!this.testBusy) this.isTestModalOpen = false;
+    }
+
+    testChatbot(): void {
+        const chatInput = this.testText.trim();
+        if (!chatInput || this.testBusy) return;
+
+        this.testBusy = true;
+        this.testError = '';
+        this.testResult = null;
+        this.http.post<any>(`${apiBaseUrl()}/support/admin/test`, {
+            chatInput,
+            productId: this.testProduct.trim()
+        }).subscribe({
+            next: result => {
+                this.testResult = result;
+                this.testBusy = false;
+                this.cdr.detectChanges();
+            },
+            error: error => {
+                this.testError = error?.error?.message || 'Chưa kiểm tra được chatbot. Vui lòng thử lại.';
+                this.testBusy = false;
+                this.cdr.detectChanges();
+            }
+        });
+    }
 
     ngOnInit(): void {
         this.loadFAQs();
