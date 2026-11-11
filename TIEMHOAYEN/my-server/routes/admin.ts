@@ -4,7 +4,7 @@ import {
   getAdminCustomers, setAdminCustomerLock, setAdminReviewVisibility, setDefaultAdminCustomerAddress, updateAdminCustomer, updateAdminCustomerAddress,
 } from '../controllers/admin-customer.js';
 import express from 'express';
-import { requireSales, listRequests, changeRequest, salesOptions, salesPropose, salesConvert, salesConfirmOriginal, listRequestMessages, postRequestMessage, requireRequestOwner, uploadedProposalImage, salesRecordContact } from '../controllers/order-request.js';
+import { requireSales, listRequests, changeRequest, salesOptions, salesPropose, salesConvert, salesConfirmOriginal, listRequestMessages, listUnreadRequestMessages, postRequestMessage, requireRequestOwner, uploadedProposalImage, salesRecordContact } from '../controllers/order-request.js';
 import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
@@ -89,6 +89,7 @@ router.get('/after-sales',requireAdminPermission('orders'),getAdminAfterSales);
 router.patch('/after-sales/:requestId',requireAdminPermission('orders','update'),(req,res,next)=>req.body.action==='refund' ? requireAdminPermission('payments','update')(req,res,next) : next(),changeAdminAfterSales);
 router.get('/orders', requireAdminPermission('orders'), getAdminOrders);
 router.get('/order-requests', requireSales, listRequests);
+router.get('/order-requests/unread-messages', requireSales, listUnreadRequestMessages);
 router.patch('/order-requests/:requestId', requireSales, changeRequest);
 router.get('/order-requests/:requestId/options', requireSales, salesOptions);
 router.post('/order-requests/:requestId/proposal', requireSales, salesPropose);

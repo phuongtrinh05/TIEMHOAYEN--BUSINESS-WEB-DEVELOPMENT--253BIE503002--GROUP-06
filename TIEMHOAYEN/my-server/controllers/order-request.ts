@@ -5,7 +5,7 @@ import { getPublicRequest, LEGACY_WAITING_STATUS, REQUESTS, REQUEST_STATUS, upda
 import { resolveRoleName } from '../services/role-permission.service.js';
 import { requestWorkflow } from '../services/request-workflow.js';
 import { accessToken } from './order-access.js';
-import { consultationOptions, confirmOriginalRequest, convertProposal, messages, propose, respondToProposal, sendMessage, recordContact, customerChangeRequest } from '../services/sales-proposal.service.js';
+import { consultationOptions, confirmOriginalRequest, convertProposal, messages, propose, respondToProposal, sendMessage, recordContact, customerChangeRequest, unreadCustomerMessages } from '../services/sales-proposal.service.js';
 import { authenticatedEmployee } from '../middleware/rolePermission.js';
 
 const failure = (res: Response, error: any) => res.status(error instanceof InventoryError ? error.status : 500)
@@ -160,6 +160,10 @@ export async function customerUpdateRequest(req: Request, res: Response) {
 const participant = (req: Request, res: Response) => ({ token: accessToken(req), employee: res.locals.salesEmployee });
 export async function listRequestMessages(req: Request, res: Response) {
   try { res.setHeader('Cache-Control', 'no-store'); res.json(await messages(String(req.params.requestId), participant(req, res))); }
+  catch (error) { failure(res, error); }
+}
+export async function listUnreadRequestMessages(_req: Request, res: Response) {
+  try { res.setHeader('Cache-Control', 'no-store'); res.json(await unreadCustomerMessages(res.locals.salesEmployee)); }
   catch (error) { failure(res, error); }
 }
 export async function postRequestMessage(req: Request, res: Response) {

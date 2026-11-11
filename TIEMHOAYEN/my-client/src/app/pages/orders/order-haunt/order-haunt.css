@@ -1315,3 +1315,6 @@
 .btn-use-voucher:disabled { cursor: not-allowed; }
 .voucher-select-text.has-value { color: #3b2a30; font-weight: 600; }
 .voucher-clear { margin-left: auto; margin-right: 6px; border: 0; background: #f3e6e9; color: #7a2848; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; cursor: pointer; flex: none; }
+
+/* Voucher dài luôn nằm gọn trong ô chọn và từng dòng danh sách. */
+.voucher-select-text{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}.voucher-item{min-width:0;max-width:100%;box-sizing:border-box}.voucher-item__info{min-width:0;max-width:100%;overflow:hidden}.voucher-item__title{display:-webkit-box;max-width:100%;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2}.voucher-item__desc{max-width:100%;overflow:hidden;overflow-wrap:anywhere;word-break:break-word}.btn-use-voucher{flex:none}

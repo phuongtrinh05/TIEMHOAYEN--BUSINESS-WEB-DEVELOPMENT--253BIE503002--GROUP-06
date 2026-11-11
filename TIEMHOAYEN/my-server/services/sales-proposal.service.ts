@@ -499,8 +499,52 @@ export async function ensureSalesRequestIndexes() {
 
 export async function messages(id: string, actor: { token?: string; employee?: any }) {
   if (actor.employee) await ownedRequest(id, actor.employee); else await requestForCustomer(id, actor.token || '');
-  const rows = await (await getCollection<any>(MESSAGES)).find({ YEU_CAU_ID: id, LOAI_TIN_NHAN: { $in: SALES_CHAT_TYPES } }).sort({ THOI_GIAN_GUI: -1, TIN_NHAN_ID: -1 }).limit(100).toArray();
+  const collection = await getCollection<any>(MESSAGES);
+  if (actor.employee) {
+    await collection.updateMany(
+      { YEU_CAU_ID: id, LOAI_TIN_NHAN: SALES_CHAT_TYPES[0], NHAN_VIEN_DA_DOC: { $ne: actor.employee.NHAN_VIEN_ID } },
+      { $addToSet: { NHAN_VIEN_DA_DOC: actor.employee.NHAN_VIEN_ID }, $set: { DOC_LUC: new Date() } },
+    );
+  }
+  const rows = await collection.find({ YEU_CAU_ID: id, LOAI_TIN_NHAN: { $in: SALES_CHAT_TYPES } }).sort({ THOI_GIAN_GUI: -1, TIN_NHAN_ID: -1 }).limit(100).toArray();
   return rows.reverse().map(mapRequestMessage);
+}
+export async function unreadCustomerMessages(employee: any) {
+  const employeeId = String(employee?.NHAN_VIEN_ID || '');
+  if (!employeeId) throw new InventoryError(401, 'Phiên đăng nhập không hợp lệ.');
+  const requestRows = await (await getCollection<any>(REQUESTS)).find(
+    { assignedTo: employeeId },
+    { projection: { _id: 1, requestId: 1, status: 1, 'sender.name': 1 } },
+  ).toArray();
+  const requestIds = requestRows.map((row: any) => String(row.requestId || row._id));
+  if (!requestIds.length) return { unread: 0, conversations: [] };
+  const query = {
+    YEU_CAU_ID: { $in: requestIds },
+    LOAI_TIN_NHAN: SALES_CHAT_TYPES[0],
+    NHAN_VIEN_DA_DOC: { $ne: employeeId },
+  };
+  const collection = await getCollection<any>(MESSAGES);
+  const [unread, rows] = await Promise.all([
+    collection.countDocuments(query),
+    collection.find(query).sort({ THOI_GIAN_GUI: -1, TIN_NHAN_ID: -1 }).limit(200).toArray(),
+  ]);
+  const requestById = new Map(requestRows.map((row: any) => [String(row.requestId || row._id), row]));
+  const grouped = new Map<string, any>();
+  for (const row of rows) {
+    const requestId = String(row.YEU_CAU_ID || '');
+    const request = requestById.get(requestId);
+    const current = grouped.get(requestId);
+    if (current) current.unread += 1;
+    else grouped.set(requestId, {
+      requestId,
+      customerName: request?.sender?.name || row.TEN_NGUOI_GUI || 'Khách đặt hoa',
+      status: request?.status || '',
+      lastMessage: row.NOI_DUNG_CAU_HOI || '',
+      lastAt: row.THOI_GIAN_GUI,
+      unread: 1,
+    });
+  }
+  return { unread, conversations: [...grouped.values()] };
 }
 const mapRequestMessage = (row: any) => ({ id: row.TIN_NHAN_ID, requestId: row.YEU_CAU_ID,
   senderType: row.LOAI_TIN_NHAN === SALES_CHAT_TYPES[1] ? 'sales' : 'customer', senderName: row.TEN_NGUOI_GUI,
@@ -518,7 +562,8 @@ export async function sendMessage(id: string, body: any, actor: { token?: string
     NOI_DUNG_CAU_HOI: senderType === 'customer' ? content : null, NOI_DUNG_TRA_LOI: senderType === 'sales' ? content : null,
     LOAI_TIN_NHAN: senderType === 'sales' ? SALES_CHAT_TYPES[1] : SALES_CHAT_TYPES[0], THOI_GIAN_GUI: new Date(), TRANG_THAI: 'completed',
     HINH_ANH: null, TEN_FILE_ANH: null, LOAI_FILE_ANH: null,
-    TEN_NGUOI_GUI: actor.employee ? row.assignedName : row.sender?.name || 'Khách hàng', KENH_TRAO_DOI: channel, MA_TIN_NHAN_CLIENT: body.messageId };
+    TEN_NGUOI_GUI: actor.employee ? row.assignedName : row.sender?.name || 'Khách hàng', KENH_TRAO_DOI: channel, MA_TIN_NHAN_CLIENT: body.messageId,
+    NHAN_VIEN_DA_DOC: actor.employee ? [actor.employee.NHAN_VIEN_ID] : [] };
   const col = await getCollection<any>(MESSAGES);
   const existing = await col.findOne({ _id: entry._id });
   if (existing && (mapRequestMessage(existing).text !== content || existing.KENH_TRAO_DOI !== channel)) throw new InventoryError(409, 'Mã tin nhắn đã được dùng cho nội dung khác.');

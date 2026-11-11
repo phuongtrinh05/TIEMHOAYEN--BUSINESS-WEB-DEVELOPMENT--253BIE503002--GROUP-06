@@ -173,6 +173,7 @@ export class OrderRegistrantComponent implements OnInit {
   salesRequestId = '';
   salesRequestMessage = '';
   voucherError = '';
+  private voucherSelectionTouched = false;
   isSubmittingOrder = false;
 
   // ===== ĐIỂM THƯỞNG =====
@@ -467,8 +468,19 @@ export class OrderRegistrantComponent implements OnInit {
         if (picked && picked.id) {
           const current = this.availableVouchers.find(v => v.id === picked.id && (v.kind || 'voucher') === (picked.kind || 'voucher'));
           if (!current || !current.eligible) {
-            this.clearVoucher();
+            this.clearVoucher(undefined, false);
             this.voucherError = current?.reason || 'Voucher không còn áp dụng được cho đơn này.';
+          }
+        }
+        // Danh sách từ backend đã xếp theo mức giảm ước tính giảm dần. Khi
+        // khách chưa tự chọn/bỏ voucher, luôn áp sẵn voucher hợp lệ tốt nhất.
+        if (!this.voucherSelectionTouched) {
+          const best = this.availableVouchers.find(v => (v.kind || 'voucher') === 'voucher' && v.eligible !== false) || null;
+          if (best && this.selectedVoucher?.id !== best.id) {
+            this.selectedLucky = null;
+            this.selectedVoucher = best;
+            this.formData.voucherCode = best.code;
+            this.refreshServerQuote(false);
           }
         }
         this.cdr.detectChanges();
@@ -1331,6 +1343,7 @@ export class OrderRegistrantComponent implements OnInit {
 
   selectVoucher(v: Voucher): void {
     if (v.eligible === false) return; // Không đạt điều kiện: làm mờ, không cho chọn.
+    this.voucherSelectionTouched = true;
     const picked = this.selectedBenefit;
     const already = !!picked && picked.id === v.id && (picked.kind || 'voucher') === (v.kind || 'voucher');
     this.voucherError = '';
@@ -1353,8 +1366,9 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   /** Nút X: bỏ voucher/ưu đãi đã chọn. */
-  clearVoucher(event?: Event): void {
+  clearVoucher(event?: Event, markTouched = true): void {
     event?.stopPropagation();
+    if (markTouched) this.voucherSelectionTouched = true;
     this.selectedVoucher = null;
     this.selectedLucky = null;
     this.formData.voucherCode = '';
@@ -1375,6 +1389,16 @@ export class OrderRegistrantComponent implements OnInit {
     const found = this.availableVouchers.find(v => v.code.trim().toUpperCase() === code);
     if (found) {
       if (found.eligible === false) { this.voucherError = found.reason || 'Voucher chưa đạt điều kiện.'; return; }
+      this.voucherSelectionTouched = true;
+      const picked = this.selectedBenefit;
+      if (picked?.id === found.id && (picked.kind || 'voucher') === (found.kind || 'voucher')) {
+        // Bấm "Áp dụng" với voucher đang chọn phải giữ nguyên voucher, không
+        // chạy lại hành vi toggle của selectVoucher rồi làm voucher biến mất.
+        this.formData.voucherCode = found.code;
+        this.showVoucherDropdown = false;
+        this.refreshServerQuote(false);
+        return;
+      }
       this.selectVoucher(found);
       return;
     }
@@ -1384,6 +1408,7 @@ export class OrderRegistrantComponent implements OnInit {
       return;
     }
     // Mã không có trong danh sách: để backend kiểm tra theo đúng quy định.
+    this.voucherSelectionTouched = true;
     this.selectedLucky = null;
     this.luckyPicker?.choose('');
     this.selectedVoucher = { id: '', code, title: code, desc: '', type: '', value: 0, kind: 'voucher' };
