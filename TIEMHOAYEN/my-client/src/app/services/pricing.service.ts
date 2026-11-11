@@ -4,7 +4,7 @@ import { map, Observable } from 'rxjs';
 import { apiBaseUrl } from './api-config';
 
 export interface ServerQuote {
-  items: Array<{ id: string; lineKey: string; unitPrice: number; regularPrice: number; priceChanged: boolean; availability?: { decision?: string; sellable?: number; reasons?: string[] } }>;
+  items: Array<{ id: string; lineKey: string; unitPrice: number; regularPrice: number; priceChanged: boolean; availableQty?: number | null; availability?: { decision?: string; sellable?: number; reasons?: string[] } }>;
   subtotal: number;
   shippingFee: number;
   productDiscount: number;
@@ -68,6 +68,12 @@ export function deliveryTimeSlots(isoDate: string, now = new Date()): string[] {
     const at = vnDeliveryDate(isoDate, slot);
     return !!at && at.getTime() > now.getTime();
   });
+}
+
+/** Giao trong 24 giờ kể từ bây giờ: Giao nhanh, số lượng giới hạn theo tồn khả thi. */
+export function isWithin24h(isoDate: string, time: string, now = new Date()): boolean {
+  const at = vnDeliveryDate(isoDate, time);
+  return !!at && at.getTime() - now.getTime() < 24 * 60 * 60 * 1000;
 }
 
 /** Lịch giao còn dưới 4 giờ: không nhận online, khách gọi shop. */

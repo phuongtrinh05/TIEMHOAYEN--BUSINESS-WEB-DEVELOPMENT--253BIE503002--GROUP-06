@@ -132,10 +132,11 @@ if (!uri) {
   test('Admin confirms payment atomically with official stock hold; repeated confirmation adds no hold', async () => {
     const { updateAdminOrderPaymentStatus } = await import('../controllers/admin.js');
     const { data: order } = await submit('SP_PAID');
-    const first = await invoke(updateAdminOrderPaymentStatus, { status: 'Thành công', amount: 400000 }, { orderId: order.orderId });
+    // Giao dưới 24 giờ là Giao nhanh nên khoản cần trả gồm cả phí giao: dùng đúng số tiền của đơn.
+    const first = await invoke(updateAdminOrderPaymentStatus, { status: 'Thành công', amount: order.paymentAmount }, { orderId: order.orderId });
     assert.equal(first.code, 200);
     assert.equal((await (await mongo.getCollection<any>('GIU_TON')).findOne({ DON_HANG_ID: order.orderId })).TRANG_THAI, 'CHINH_THUC');
-    assert.equal((await invoke(updateAdminOrderPaymentStatus, { status: 'Thành công', amount: 400000 }, { orderId: order.orderId })).code, 200);
+    assert.equal((await invoke(updateAdminOrderPaymentStatus, { status: 'Thành công', amount: order.paymentAmount }, { orderId: order.orderId })).code, 200);
     assert.equal((await (await mongo.getCollection<any>('SAN_PHAM')).findOne({ SAN_PHAM_ID: 'SP_PAID' })).TP_DANG_GIU, 1);
   });
   test('late payment cannot revive an expired hold or steal stock from another buyer', async () => {
@@ -618,6 +619,63 @@ if (!uri) {
     assert.equal(holds.reduce((n: number, h: any) => n + Number(h.SO_LUONG), 0), 4);
   });
 
+  test('next-day delivery under 24h: old perishable lot is not sent to Sales; explicit expiry still blocks', async () => {
+    const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + 86400000));
+    const deliveryAt = new Date(`${tomorrow}T10:00:00+07:00`).toISOString();
+    await (await mongo.getCollection<any>('NGUYEN_VAT_LIEU')).insertOne({ NGUYEN_VAT_LIEU_ID: 'PERI_T', TEN_NGUYEN_VAT_LIEU: 'Hoa tươi test', NHOM_NVL: 'DE_HU', SO_NGAY_BAO_QUAN: 1, TON_THUC: 10, TON_DANG_GIU: 2, TON_KHONG_DAT: 0, TRANG_THAI: 'Đang sử dụng' });
+    await (await mongo.getCollection<any>('CHI_TIET_PHIEU_NHAP_NVL')).insertMany([
+      { PHIEU_NHAP_ID: 'PN_OLD', NGUYEN_VAT_LIEU_ID: 'PERI_T', LA_NGUON_NHAP: true, SL_CON_LAI: 10, THOI_DIEM_NHAN: new Date(Date.now() - 10 * 86400000) },
+      { PHIEU_NHAP_ID: 'PN_EXP', NGUYEN_VAT_LIEU_ID: 'PERI_T', LA_NGUON_NHAP: true, SL_CON_LAI: 10, THOI_DIEM_NHAN: new Date(), NGAY_HET_HAN: new Date(Date.now() - 3600000) },
+    ]);
+    await (await mongo.getCollection<any>('GIU_TON')).insertMany([
+      { DON_HANG_ID: 'PERI_OK', LOAI_DOI_TUONG: 'NVL', NGUYEN_VAT_LIEU_ID: 'PERI_T', PHIEU_NHAP_NGUON: 'PN_OLD', SO_LUONG: 2, TRANG_THAI: 'TAM_CHO_QR' },
+      { DON_HANG_ID: 'PERI_EXP', LOAI_DOI_TUONG: 'NVL', NGUYEN_VAT_LIEU_ID: 'PERI_T', PHIEU_NHAP_NGUON: 'PN_EXP', SO_LUONG: 2, TRANG_THAI: 'TAM_CHO_QR' },
+    ]);
+    const run = async (orderId: string) => { const s = (await mongo.getMongoClient()).startSession(); try { await service.assertReservedStockUsable(s, orderId, deliveryAt); } finally { await s.endSession(); } };
+    await run('PERI_OK');
+    await assert.rejects(run('PERI_EXP'), /hết hạn/);
+  });
+
+  test('material export for an order checks the order and moves it to "Đang chuẩn bị hàng" exactly once', async () => {
+    await (await mongo.getCollection<any>('NGUYEN_VAT_LIEU')).insertOne({ NGUYEN_VAT_LIEU_ID: 'RIBBON_T', TEN_NGUYEN_VAT_LIEU: 'Ruy băng test', NHOM_NVL: 'IT_HU', TON_THUC: 50, TON_DANG_GIU: 0, TON_KHONG_DAT: 0, GIA_VON_BQ: 1000, DON_VI_TINH: 'cuộn', TRANG_THAI: 'Đang sử dụng' });
+    await (await mongo.getCollection<any>('CHI_TIET_PHIEU_NHAP_NVL')).insertOne({ PHIEU_NHAP_ID: 'PN_RIBBON', NGUYEN_VAT_LIEU_ID: 'RIBBON_T', LA_NGUON_NHAP: true, SL_NHAP: 50, SL_CON_LAI: 50, SL_DANG_GIU: 0, SL_HONG: 0, DON_GIA: 1000, THOI_DIEM_NHAN: new Date() });
+    const orders = await mongo.getCollection<any>('DON_HANG');
+    const base = { KIEM_TRA_TON_KHO: true, PHUONG_THUC_THANH_TOAN: 'Chuyển khoản', TONG_TIEN: 100000, TIEN_COC: 0, NGAY_MUON_GIAO: new Date('2099-11-02T00:00:00Z'), KHUNG_GIO_MUON_GIAO: '10:00' };
+    await orders.insertMany([
+      { ...base, DON_HANG_ID: 'EXP_UNPAID', TRANG_THAI: 'Chờ thanh toán', THOI_DIEM_CHUAN_BI_DU_KIEN: new Date('2099-11-02T01:00:00Z') },
+      { ...base, DON_HANG_ID: 'EXP_NO_T', TRANG_THAI: 'Đã đặt hàng thành công' },
+      { ...base, DON_HANG_ID: 'EXP_OK', TRANG_THAI: 'Đã đặt hàng thành công', THOI_DIEM_CHUAN_BI_DU_KIEN: new Date('2099-11-02T01:00:00Z') },
+    ]);
+    await (await mongo.getCollection<any>('THANH_TOAN')).insertMany([
+      { _id: 'TT_EXP_NO_T', THANH_TOAN_ID: 'TT_EXP_NO_T', DON_HANG_ID: 'EXP_NO_T', SO_TIEN: 100000, TRANG_THAI_THANH_TOAN: 'Thành công' },
+      { _id: 'TT_EXP_OK', THANH_TOAN_ID: 'TT_EXP_OK', DON_HANG_ID: 'EXP_OK', SO_TIEN: 100000, TRANG_THAI_THANH_TOAN: 'Thành công' },
+    ]);
+    const actor = { id: 'NV_KHO', role: 'Nhân viên kho' } as any;
+    const exportFor = (orderId: string) => stock.createExport({ type: 'Làm hoa theo đơn', orderId, details: [{ materialId: 'RIBBON_T', quantity: 1 }], post: true }, actor);
+    await assert.rejects(exportFor('EXP_UNPAID'), /chưa được xuất NVL/);
+    await assert.rejects(exportFor('EXP_NO_T'), /thời điểm chuẩn bị dự kiến T/);
+    await exportFor('EXP_OK');
+    const ok = await orders.findOne({ DON_HANG_ID: 'EXP_OK' });
+    assert.equal(ok.TRANG_THAI, 'Đang chuẩn bị hàng');
+    assert.equal(ok.DA_XUAT_NVL, true);
+    assert.ok(ok.THOI_DIEM_BAT_DAU_THUC_TE);
+    assert.equal(ok.LICH_SU_TRANG_THAI.filter((h: any) => h.to === 'Đang chuẩn bị hàng').length, 1);
+    await assert.rejects(exportFor('EXP_OK'), /đã xuất NVL/);
+    assert.equal((await (await mongo.getCollection<any>('NGUYEN_VAT_LIEU')).findOne({ NGUYEN_VAT_LIEU_ID: 'RIBBON_T' })).TON_THUC, 49);
+    assert.equal((await orders.findOne({ DON_HANG_ID: 'EXP_UNPAID' })).TRANG_THAI, 'Chờ thanh toán');
+  });
+
+  test('admin dispose of wilted finished bouquets never touches bouquets held for orders', async () => {
+    await (await mongo.getCollection<any>('SAN_PHAM')).insertOne({ SAN_PHAM_ID: 'SP_WILT', TEN_SAN_PHAM: 'Bó héo test', GIA: 100000, TON_THANH_PHAM: 3, TP_DANG_GIU: 2, TRANG_THAI: 'Đang bán' });
+    const actor = { id: 'NV_ADMIN', role: 'Admin' } as any;
+    await assert.rejects(stock.disposeFinishedGoods('SP_WILT', 2, 'Héo', actor), /không đủ/);
+    await stock.disposeFinishedGoods('SP_WILT', 1, 'Héo', actor);
+    const p = await (await mongo.getCollection<any>('SAN_PHAM')).findOne({ SAN_PHAM_ID: 'SP_WILT' });
+    assert.equal(p.TON_THANH_PHAM, 2);
+    assert.equal(p.TP_DANG_GIU, 2);
+    assert.equal(await (await mongo.getCollection<any>('BIEN_DONG_KHO')).countDocuments({ SAN_PHAM_ID: 'SP_WILT' }), 1);
+  });
+
   test('request whose wanted delivery time has passed is rejected automatically', async () => {
     const { rejectRequestsPastDelivery } = await import('../services/sales-request-expiry.service.js');
     const requests = await mongo.getCollection<any>(service.REQUESTS);
@@ -761,7 +819,8 @@ test('same-day stock is not diverted to Sales only because checkout is after the
 
 test('same-day reserved perishable stock skips shelf-day review but explicit expiry remains blocked', async () => {
   const file = await import('node:fs/promises').then(async fs => fs.readFile((await import('node:path')).resolve(process.cwd(), 'services/order-request.service.ts'), 'utf8'));
-  assert.match(file, /if \(future && !product && item\.NHOM_NVL === 'DE_HU'/);
+  // Quy tắc mới: đơn dưới 24 giờ chỉ xét NVL; số ngày bảo quản không chặn đặt hàng.
+  assert.doesNotMatch(file, /Nguồn hoa cần Sales xác minh chất lượng/);
   assert.match(file, /if \(expires && \(!Number\.isFinite\(expires\.getTime\(\)\) \|\| expires <= now \|\| expires < when\)\)/);
 });
 
@@ -904,4 +963,13 @@ test('Admin order details offer preparation only after payment and scheduling', 
   assert.deepEqual(allowedOrderStatuses(scheduled, 100000, 'Admin'), ['Đã hủy']);
   assert.deepEqual(allowedOrderStatuses(scheduled, 100000, 'Nhân viên kho', true), []);
   assert.deepEqual(allowedOrderStatuses({ ...scheduled, TRANG_THAI: 'Đã hủy' }, 100000, 'Admin', true), []);
+});
+
+test('shipping method is derived from the delivery time: under 24h fast, otherwise standard', async () => {
+  const { shippingMethodFor, SHIPPING_METHOD_NAME } = await import('../services/admin-order.service.js');
+  const now = new Date('2026-11-11T10:00:00+07:00');
+  assert.equal(shippingMethodFor('2026-11-11T18:00:00+07:00', now), 'fast');
+  assert.equal(shippingMethodFor('2026-11-12T09:59:00+07:00', now), 'fast');
+  assert.equal(shippingMethodFor('2026-11-12T10:00:00+07:00', now), 'standard');
+  assert.equal(SHIPPING_METHOD_NAME.fast, 'Giao nhanh');
 });

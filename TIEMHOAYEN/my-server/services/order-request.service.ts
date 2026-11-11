@@ -15,10 +15,8 @@ import { emitAdminNotification } from './analytics/notifications.service.js';
 import { cleanAddress } from './admin-order.service.js';
 
 /** Checkout boundary check on the actual allocated stock; does not change the inventory schema. */
-export async function assertReservedStockUsable(session: ClientSession, orderId: string, deliveryAt: string, salesReviewed = false) {
+export async function assertReservedStockUsable(session: ClientSession, orderId: string, deliveryAt: string, _salesReviewed = false) {
   const when = new Date(deliveryAt), now = new Date();
-  const day = (v: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(v);
-  const future = day(when) !== day(now);
   const holds = await (await getCollection<any>('GIU_TON')).find({ DON_HANG_ID: orderId, TRANG_THAI: { $in: [RESERVATION_STATUS.temporary, RESERVATION_STATUS.official] } }, { session }).toArray();
   const productIds = [...new Set(holds.filter(hold => hold.LOAI_DOI_TUONG === 'THANH_PHAM').map(hold => hold.SAN_PHAM_ID).filter(Boolean))];
   const materialIds = [...new Set(holds.filter(hold => hold.LOAI_DOI_TUONG !== 'THANH_PHAM').map(hold => hold.NGUYEN_VAT_LIEU_ID).filter(Boolean))];
@@ -34,24 +32,16 @@ export async function assertReservedStockUsable(session: ClientSession, orderId:
   const materialById = new Map(materials.map(row => [row.NGUYEN_VAT_LIEU_ID, row]));
   const sourceByKey = new Map(sources.map(row => [`${row.PHIEU_NHAP_ID}:${row.NGUYEN_VAT_LIEU_ID}`, row]));
   for (const hold of holds) {
-    const product = hold.LOAI_DOI_TUONG === 'THANH_PHAM';
-    const item: any = product ? productById.get(hold.SAN_PHAM_ID) : materialById.get(hold.NGUYEN_VAT_LIEU_ID);
+    const isProduct = hold.LOAI_DOI_TUONG === 'THANH_PHAM';
+    const item: any = isProduct ? productById.get(hold.SAN_PHAM_ID) : materialById.get(hold.NGUYEN_VAT_LIEU_ID);
     const source: any = hold.PHIEU_NHAP_NGUON ? sourceByKey.get(`${hold.PHIEU_NHAP_NGUON}:${hold.NGUYEN_VAT_LIEU_ID}`) : item;
     if (!item || /ngừng|ngưng|khóa|hỏng/i.test(String(item.TRANG_THAI || ''))) throw new InventoryError(409, 'Thành phẩm hoặc nguyên liệu không còn đủ điều kiện sử dụng.');
     const expiration = source?.NGAY_HET_HAN || source?.HAN_SU_DUNG_DEN || source?.expiresAt;
     const expires = expiration ? new Date(expiration) : null;
     if (expires && (!Number.isFinite(expires.getTime()) || expires <= now || expires < when)) throw new InventoryError(409, 'Hàng đã hết hạn hoặc không bảo đảm hạn dùng tới lịch giao.');
-    // The inventory module treats shelf days as a quality-review threshold, not a disposal date.
-    const shelfDays = Number(item.SO_NGAY_BAO_QUAN || 0);
-    const received = source?.THOI_DIEM_NHAN ? new Date(source.THOI_DIEM_NHAN).getTime() : NaN;
-    const qualityUntil = Number.isFinite(received) && shelfDays > 0 ? received + shelfDays * 86400000 : NaN;
-    // Số ngày bảo quản là cờ rà soát cho đơn tương lai, không phải ngày hết hạn
-    // cứng. Đơn cùng ngày đã đủ tồn và giữ được nguồn thực tế thì đi tiếp.
-    if (future && !product && item.NHOM_NVL === 'DE_HU' && !salesReviewed &&
-      (!Number.isFinite(qualityUntil) || qualityUntil <= Math.max(now.getTime(), when.getTime()))) {
-      throw new InventoryError(409, 'Nguồn hoa cần Sales xác minh chất lượng theo thời điểm nhận và số ngày bảo quản trước khi nhận cọc.');
-    }
-    if (future && !salesReviewed && !expires && (product || item.NHOM_NVL === 'DE_HU' && !Number.isFinite(qualityUntil))) throw new InventoryError(409, 'Đơn tương lai cần Sales xác minh hạn dùng, nguồn hoa và lịch chuẩn bị trước khi nhận cọc.');
+    // Đơn giao dưới 24 giờ chỉ xét NVL: đủ NVL và giữ được nguồn thực tế thì tạo đơn.
+    // Số ngày bảo quản chỉ là cờ rà soát chất lượng của kho (cảnh báo ở trang Tồn kho), không chặn đặt hàng
+    // và không chuyển đơn sang Yêu cầu đặt hàng. Hạn dùng ghi rõ của lô (ở trên) vẫn được kiểm tra.
   }
 }
 
@@ -246,7 +236,7 @@ export async function routeCheckout(
   const details: any = shortage?.details || {};
   const checked = details.evaluation || evaluation;
   const reasonCodes: string[] = [...(checked?.reasonCodes || [])];
-  // Giữ tồn thất bại dù kiểm tra trước đó đủ (đơn khác vừa giữ, hoặc nguồn hoa cần xác minh hạn dùng).
+  // Giữ tồn thất bại dù kiểm tra trước đó đủ (đơn khác vừa giữ hoặc lô hoa hết hạn dùng ghi rõ).
   if (!details.evaluation) reasonCodes.push(/xác minh/i.test(String(shortage?.message)) ? REQUEST_REASON.dataIncomplete : REQUEST_REASON.materialShortage);
   const codes = [...new Set(reasonCodes)];
   const reviewReason = customerReasonText(codes).join(' ');

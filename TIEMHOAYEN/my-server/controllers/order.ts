@@ -2,6 +2,7 @@ import { afterSalesRead, afterSalesCreate, afterSalesSupplement, orderEvent, sup
 import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
 import { writeCheckoutOrder, claimCheckoutBenefits } from '../services/checkout-order-writer.service.js';
+import { getProductSellableStockMap } from '../services/inventory/availability.service.js';
 import { routeCheckout, assertReservedStockUsable, evaluateCheckoutFulfillment } from '../services/order-request.service.js';
 import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
 import { INVENTORY_CONFIG, RESERVATION_STATUS } from '../services/inventory/constants.js';
@@ -373,7 +374,12 @@ export const quoteOrder = async (req: Request, res: Response) => {
       fulfillment = { mode: 'blocked', code, message: error.message, phone: (error.details as any)?.phone || null };
     }
     const requiresSales = fulfillment.mode === 'request';
-    return res.json({ items: priced.items, summary: priced.summary, payment: priced.payment,
+    // Số lượng tồn khả thi (bó sẵn + cắm được từ NVL) để trang thanh toán giới hạn đơn giao trong 24 giờ.
+    const catalogIds = priced.items.map((item: any) => String(item.id)).filter((id: string) => id.startsWith('SP') && !id.startsWith('SP3D_'));
+    const stockProducts = catalogIds.length ? await (await getCollection<any>('SAN_PHAM')).find({ SAN_PHAM_ID: { $in: catalogIds } }).toArray() : [];
+    const stockMap = await getProductSellableStockMap(stockProducts);
+    const items = priced.items.map((item: any) => ({ ...item, availableQty: stockMap.get(String(item.id))?.sellable ?? null }));
+    return res.json({ items, summary: priced.summary, payment: priced.payment,
       fulfillment, requiresSales, routing,
       message: fulfillment.mode === 'blocked' ? fulfillment.message : requiresSales
         ? `${fulfillment.reasons.join(' ')} Bạn có thể gửi Yêu cầu đặt hàng; bạn chưa cần thanh toán.`
@@ -414,8 +420,8 @@ export const createOrder = async (req: Request, res: Response) => {
     const productItems: CreateOrderItem[] = [];
     for (const rawItem of items) {
       const quantity = Number(rawItem.qty ?? rawItem.quantity ?? rawItem.SO_LUONG ?? 1);
-      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000) {
-        return res.status(400).json({ message: 'Số lượng sản phẩm phải là số nguyên từ 1–1000.' });
+      if (!Number.isSafeInteger(quantity) || quantity < 1) {
+        return res.status(400).json({ message: 'Số lượng sản phẩm phải là số nguyên lớn hơn 0.' });
       }
       const item: CreateOrderItem = {
         id: String(rawItem.id || rawItem.SAN_PHAM_ID || ''),
