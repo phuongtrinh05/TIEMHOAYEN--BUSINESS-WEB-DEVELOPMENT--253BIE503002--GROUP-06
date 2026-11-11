@@ -192,6 +192,12 @@ export class CreateOrder implements OnInit {
   }
 
   onShippingMethodChange(): void { this.requestQuote(); }
+  /** Không cho chọn hình thức giao: lịch giao trong 24 giờ là Giao nhanh, từ 24 giờ trở lên là Giao tiêu chuẩn. */
+  syncShippingMethod(): void {
+    const at = this.form.deliveryDate && this.form.deliverySlot ? vnDeliveryDate(this.form.deliveryDate, this.form.deliverySlot) : null;
+    const method: 'standard' | 'fast' = at && at.getTime() - Date.now() < 24 * 60 * 60 * 1000 ? 'fast' : 'standard';
+    if (this.form.shippingMethod !== method) { this.form.shippingMethod = method; this.onShippingMethodChange(); }
+  }
 
   // ===== LỊCH GIAO (cùng quy tắc với trang Khách) =====
   readonly shopPhone = SHOP_PHONE;
@@ -734,6 +740,7 @@ export class CreateOrder implements OnInit {
       this.deliveryDateDisplay = '';
     }
     if (this.form.deliverySlot && !this.deliverySlots.includes(this.form.deliverySlot)) this.form.deliverySlot = '';
+    this.syncShippingMethod();
   }
 
   // ===== SHIPPER =====

@@ -192,6 +192,7 @@
 
         <div class="table-wrapper">
 
+            <p class="dispose-success" *ngIf="disposeMessage">{{ disposeMessage }}</p>
             <table>
 
                 <thead>
@@ -288,6 +289,10 @@
                         <td class="stock-available" [class.stock-available--out]="!(($any(product).finishedAvailable || 0) + ($any(product).buildable || 0))">
                             <strong>{{ ($any(product).finishedAvailable || 0) + ($any(product).buildable || 0) }}</strong> bó
                             <div class="stock-breakdown">{{ $any(product).finishedAvailable || 0 }} sẵn + {{ $any(product).buildable || 0 }} làm thêm</div>
+                            <button type="button" class="dispose-btn" *ngIf="canDisposeFinished && ($any(product).finishedAvailable || 0) > 0"
+                                (click)="openDispose(product.sku, product.name, $any(product).finishedAvailable, $event)" title="Xuất bỏ bó héo/hỏng sau khi kiểm tra thực tế">
+                                <i class="bi bi-trash3"></i> Xuất bỏ
+                            </button>
                         </td>
 
                         <td>
@@ -649,4 +654,23 @@
 
     </div>
 
+</div>
+
+<div class="dispose-overlay" *ngIf="disposeTarget as d" (click)="closeDispose()">
+  <div class="dispose-modal" role="dialog" aria-modal="true" aria-labelledby="dispose-title" (click)="$event.stopPropagation()">
+    <h3 id="dispose-title"><i class="bi bi-trash3"></i> Xuất bỏ thành phẩm</h3>
+    <p class="dispose-product"><strong>{{ d.name }}</strong> · {{ d.id }}</p>
+    <p class="dispose-help">Kiểm tra bó thực tế trước. Chỉ xuất bỏ bó héo/hỏng; hiện có <strong>{{ d.available }}</strong> bó khả dụng (bó đang giữ cho đơn không bị trừ).</p>
+    <label>Số bó xuất bỏ
+      <input type="number" min="1" [max]="d.available" step="1" [(ngModel)]="disposeQty" [disabled]="disposeBusy">
+    </label>
+    <label>Lý do
+      <textarea rows="2" maxlength="300" [(ngModel)]="disposeNote" [disabled]="disposeBusy"></textarea>
+    </label>
+    <p class="dispose-error" *ngIf="disposeError">{{ disposeError }}</p>
+    <div class="dispose-actions">
+      <button type="button" class="dispose-cancel" (click)="closeDispose()" [disabled]="disposeBusy">Hủy</button>
+      <button type="button" class="dispose-confirm" (click)="confirmDispose()" [disabled]="disposeBusy">{{ disposeBusy ? 'Đang xuất bỏ…' : 'Xuất bỏ' }}</button>
+    </div>
+  </div>
 </div>

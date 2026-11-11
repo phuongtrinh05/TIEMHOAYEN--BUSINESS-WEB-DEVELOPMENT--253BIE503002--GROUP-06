@@ -490,6 +490,7 @@
                 <select
                   class="form-select"
                   [(ngModel)]="form.deliverySlot"
+                  (ngModelChange)="syncShippingMethod()"
                   [class.form-select--error]="errors.deliverySlot"
                   [disabled]="!form.deliveryDate"
                 >
@@ -506,13 +507,11 @@
             </div>
 
             <div class="form-field form-field--full">
-              <label class="form-label">Hình thức giao <span class="required">*</span></label>
-              <div class="form-select-wrap">
-                <select class="form-select" [(ngModel)]="form.shippingMethod" (ngModelChange)="onShippingMethodChange()">
-                  <option *ngFor="let m of shippingMethods" [ngValue]="m.value">{{ m.label }}</option>
-                </select>
-                <i class="bi bi-chevron-down form-select-chevron"></i>
-              </div>
+              <label class="form-label">Hình thức giao</label>
+              <p class="form-hint">
+                <strong>{{ form.shippingMethod === 'fast' ? 'Giao nhanh' : 'Giao tiêu chuẩn' }}</strong>
+                — tự xác định theo ngày giờ giao: trong 24 giờ là Giao nhanh, từ 24 giờ trở lên là Giao tiêu chuẩn.
+              </p>
             </div>
 
             <div class="form-field form-field--full">

@@ -137,31 +137,14 @@
           <!-- Hình thức giao hàng -->
           <div class="shipping-method-block">
             <p class="section-label">Hình thức giao hàng</p>
-
-            <div class="shipping-methods">
-              <label
-                class="shipping-option"
-                *ngFor="let method of shippingMethods"
-                [class.is-selected]="formData.shippingMethod === method.value">
-
-                <input
-                  type="radio"
-                  name="shippingMethod"
-                  [value]="method.value"
-                  [(ngModel)]="formData.shippingMethod"
-                  (ngModelChange)="onShippingMethodChange()">
-
-                <i
-                  class="bi shipping-icon"
-                  [ngClass]="method.value === 'fast' ? 'bi-lightning-charge' : 'bi-truck'">
-                </i>
-
-                <span class="shipping-option__content">
-                  <span class="shipping-option__title">{{ method.label }}</span>
-                  <span class="shipping-option__desc">{{ method.desc }}</span>
-                </span>
-              </label>
-            </div>
+            <p class="shipping-auto">
+              <i class="bi" [ngClass]="formData.shippingMethod === 'fast' ? 'bi-lightning-charge' : 'bi-truck'"></i>
+              <ng-container *ngIf="formData.deliveryDate && formData.deliveryTime; else chooseSchedule">
+                <strong>{{ shippingMethodName }}</strong>
+                <span>{{ formData.shippingMethod === 'fast' ? '— giao trong vòng 24 giờ' : '— giao sau 24 giờ trở lên' }}</span>
+              </ng-container>
+              <ng-template #chooseSchedule><span>Tự xác định theo ngày giờ giao: trong 24 giờ là Giao nhanh, từ 24 giờ trở lên là Giao tiêu chuẩn.</span></ng-template>
+            </p>
 
             <p class="shipping-estimate">
               Thời gian dự kiến: {{ shippingTimeEstimate }}
@@ -477,6 +460,7 @@
             Chưa có sản phẩm nào được chọn từ giỏ hàng.
           </div>
 
+          <p class="qty-limit-notice" *ngIf="qtyLimitNotice">{{ qtyLimitNotice }}</p>
           <div class="or-item" *ngFor="let item of orderItems">
             <img
               [src]="item.image"
@@ -488,10 +472,12 @@
               <span class="or-item__unit">{{ item.price | number:'1.0-0' }}đ / sản phẩm</span>
               <div class="qty-stepper" role="group" [attr.aria-label]="'Số lượng ' + item.name">
                 <button type="button" aria-label="Giảm số lượng" [disabled]="item.qty <= 1 || !!salesRequestId || isSubmittingOrder" (click)="changeItemQty(item, -1)">−</button>
-                <span aria-live="polite">{{ item.qty }}</span>
+                <input class="qty-input" type="text" inputmode="numeric" [value]="item.qty" [attr.aria-label]="'Nhập số lượng ' + item.name"
+                  [disabled]="!!salesRequestId || isSubmittingOrder" #qtyInput
+                  (change)="setItemQty(item, qtyInput.value, qtyInput)" (keydown.enter)="qtyInput.blur()">
                 <button type="button" aria-label="Tăng số lượng" [disabled]="item.qty >= itemMaxQty(item) || !!salesRequestId || isSubmittingOrder" (click)="changeItemQty(item, 1)">+</button>
               </div>
-              <span class="qty-hint" *ngIf="item.qty >= itemMaxQty(item)">Đã đạt số lượng tối đa</span>
+              <span class="qty-hint" *ngIf="deliveryWithin24h && item.qty >= itemMaxQty(item)">Giao trong 24 giờ: tối đa {{ itemMaxQty(item) }} theo tồn kho</span>
             </div>
 
             <span class="or-item__price">

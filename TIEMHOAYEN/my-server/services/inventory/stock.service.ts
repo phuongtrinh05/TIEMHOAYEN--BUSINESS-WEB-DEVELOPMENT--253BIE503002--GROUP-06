@@ -465,6 +465,37 @@ export const suggestExportLines = async (params: { type?: string; orderId?: stri
   });
 };
 
+const ORDER_READY_FOR_EXPORT = ['Đã đặt hàng thành công', 'Chờ xử lý'];
+const ORDER_PREPARING = ['Đang chuẩn bị hàng', 'Đang chuẩn bị'];
+
+/** Đơn được xuất NVL khi: chưa hủy, đã thanh toán/cọc đủ, đã có T (cùng điều kiện với nút "Bắt đầu chuẩn bị"). */
+export const assertOrderReadyForMaterialExport = async (order: any, session?: ClientSession) => {
+  const status = String(order?.TRANG_THAI || '');
+  if (ORDER_PREPARING.includes(status)) return;
+  if (!ORDER_READY_FOR_EXPORT.includes(status)) throw new InventoryError(409, `Đơn ${order?.DON_HANG_ID} đang ở trạng thái "${status}", chưa được xuất NVL. Chỉ xuất cho đơn đã đặt hàng thành công.`);
+  const { assertOrderTransition, sumVerifiedPayments } = await import('../admin-order.service.js');
+  const receipts = await (await col('THANH_TOAN')).find({ DON_HANG_ID: order.DON_HANG_ID }, { session }).toArray();
+  assertOrderTransition(order, 'Đang chuẩn bị hàng', sumVerifiedPayments(receipts));
+};
+
+/** Chuyển đơn sang "Đang chuẩn bị hàng" đúng một lần; đơn đã ở bước chuẩn bị thì giữ nguyên. Trả về true nếu vừa chuyển. */
+export const markOrderPreparationStarted = async (orderId: string, actor: Actor, session: ClientSession, reason: string) => {
+  const orders = await col(COLLECTIONS.order);
+  const order = await orders.findOne({ DON_HANG_ID: orderId }, { session });
+  if (!order || ORDER_PREPARING.includes(String(order.TRANG_THAI))) return false;
+  const startedAt = new Date();
+  const changed = await orders.updateOne(
+    { DON_HANG_ID: orderId, TRANG_THAI: { $in: ORDER_READY_FOR_EXPORT } },
+    { $set: { TRANG_THAI: 'Đang chuẩn bị hàng', THOI_DIEM_BAT_DAU_THUC_TE: order.THOI_DIEM_BAT_DAU_THUC_TE || startedAt, NGUOI_BAT_DAU_CHUAN_BI: actor.id, NGAY_CAP_NHAT: startedAt },
+      $push: { LICH_SU_TRANG_THAI: { from: order.TRANG_THAI, to: 'Đang chuẩn bị hàng', action: 'start-preparation', at: startedAt, actor: actor.id, reason } } } as any,
+    { session },
+  );
+  if (!changed.modifiedCount) return false;
+  const { orderEvent } = await import('../admin-order.service.js');
+  await orderEvent(session, `${orderId}:status:Đang chuẩn bị hàng`, order.KHACH_HANG_ID || null, orderId, 'Đơn đang được chuẩn bị', 'Shop đã bắt đầu chuẩn bị hoa cho đơn của bạn.');
+  return true;
+};
+
 export const postExport = async (receiptId: string, actor: Actor, outerSession?: ClientSession) => {
  const work = async (session: ClientSession) => {
   const slips = await col(COLLECTIONS.exportSlip);
@@ -482,6 +513,8 @@ export const postExport = async (receiptId: string, actor: Actor, outerSession?:
     if (!current.DON_HANG_ID) throw new InventoryError(400, 'Xuất làm hoa theo đơn phải chọn mã đơn hàng.');
     const order = await (await col(COLLECTIONS.order)).findOne({ DON_HANG_ID: current.DON_HANG_ID }, { session });
     if (!order) throw new InventoryError(400, `Không tìm thấy đơn ${current.DON_HANG_ID}.`);
+    // Một quy trình cho màn Đơn và màn NVL: chỉ xuất cho đơn đủ điều kiện bắt đầu chuẩn bị.
+    await assertOrderReadyForMaterialExport(order, session);
     const held = await (await col(COLLECTIONS.reservation)).find({ DON_HANG_ID: current.DON_HANG_ID,
       LOAI_DOI_TUONG: ITEM_KIND.material, TRANG_THAI: { $in: ACTIVE_RESERVATION_STATUSES } }, { session }).toArray();
     const missing = held.filter((r: any) => !details.some((d: any) => d.NGUYEN_VAT_LIEU_ID === r.NGUYEN_VAT_LIEU_ID));
@@ -613,6 +646,8 @@ export const postExport = async (receiptId: string, actor: Actor, outerSession?:
       { $set: { DA_XUAT_NVL: true, PHIEU_XUAT_NVL_ID: receiptId, NGAY_XUAT_NVL: new Date() } },
       { session },
     );
+    // Xuất NVL thành công thì đơn tự chuyển "Đang chuẩn bị hàng" (dù xuất từ màn Đơn hay màn NVL).
+    await markOrderPreparationStarted(String(current.DON_HANG_ID), actor, session, `Xuất NVL theo phiếu ${receiptId}`);
   }
   await slips.updateOne({ PHIEU_XUAT_ID: receiptId }, { $set: { TONG_GIA_VON: totalCost } }, { session });
   return { ...flipped, TONG_GIA_VON: totalCost, alreadyPosted: false };

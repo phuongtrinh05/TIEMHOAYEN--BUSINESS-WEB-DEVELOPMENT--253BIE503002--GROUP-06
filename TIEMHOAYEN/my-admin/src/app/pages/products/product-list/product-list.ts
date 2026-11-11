@@ -1,9 +1,10 @@
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { ChangeDetectorRef, Component, ElementRef, HostListener, Inject, OnInit, PLATFORM_ID, ViewChild } from '@angular/core';
+import { ChangeDetectorRef, Component, ElementRef, HostListener, Inject, OnInit, PLATFORM_ID, ViewChild, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { AdminApiService, AdminProduct } from '../../../services/admin-api.service';
+import { InventoryApiService } from '../../../services/inventory-api.service';
 
 type ProductFilter = 'all' | 'featured' | 'sale' | 'stop';
 type PaginationItem = number | 'ellipsis';
@@ -498,6 +499,59 @@ export class ProductList implements OnInit {
       }
     });
   }
+
+  // ===== XUẤT BỎ THÀNH PHẨM HỎNG =====
+  // Admin tự kiểm tra bó thực tế; bó héo/hỏng thì bấm "Xuất bỏ" để trừ khỏi tồn thành phẩm.
+  // Chỉ xuất bỏ được phần khả dụng (bó đang giữ cho đơn không bị trừ).
+  private readonly inventoryApi = inject(InventoryApiService);
+  disposeTarget: { id: string; name: string; available: number } | null = null;
+  disposeQty = 1;
+  disposeNote = 'Bó héo/hỏng, không còn đạt chất lượng';
+  disposeBusy = false;
+  disposeError = '';
+  disposeMessage = '';
+
+  get canDisposeFinished(): boolean { return this.adminApi.can('materials', 'update'); }
+
+  openDispose(id: string, name: string, available: number, event?: Event): void {
+    event?.stopPropagation();
+    this.disposeTarget = { id, name, available: Math.max(0, Math.floor(Number(available) || 0)) };
+    this.disposeQty = 1;
+    this.disposeNote = 'Bó héo/hỏng, không còn đạt chất lượng';
+    this.disposeError = '';
+  }
+
+  closeDispose(): void {
+    if (this.disposeBusy) return;
+    this.disposeTarget = null;
+  }
+
+  confirmDispose(): void {
+    const target = this.disposeTarget;
+    if (!target || this.disposeBusy) return;
+    const qty = Math.floor(Number(this.disposeQty));
+    if (!Number.isInteger(qty) || qty < 1 || qty > target.available) { this.disposeError = `Nhập số bó từ 1 đến ${target.available}.`; return; }
+    const note = String(this.disposeNote || '').trim();
+    if (!note) { this.disposeError = 'Vui lòng nhập lý do xuất bỏ.'; return; }
+    this.disposeBusy = true;
+    this.disposeError = '';
+    this.inventoryApi.disposeFinished(target.id, qty, note).subscribe({
+      next: () => {
+        this.disposeBusy = false;
+        this.disposeTarget = null;
+        this.disposeMessage = `Đã xuất bỏ ${qty} bó "${target.name}".`;
+        this.afterDispose(target.id);
+        this.cdr.detectChanges();
+      },
+      error: (error) => {
+        this.disposeBusy = false;
+        this.disposeError = error?.error?.message || 'Không xuất bỏ được. Vui lòng thử lại.';
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  private afterDispose(_productId: string): void { this.loadProducts(); }
 
   openDeletePopup(product: AdminProduct): void {
     this.selectedProduct = product;

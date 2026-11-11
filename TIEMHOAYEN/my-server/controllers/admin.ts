@@ -9,7 +9,7 @@ import { finishedAvailableOf, InventoryError, nextCode, withTransaction } from '
 import { computeBuildable } from '../services/inventory/availability.service.js';
 import { createBomVersion, getActiveBom, getActiveBomMap } from '../services/inventory/bom.service.js';
 import { syncCheckoutInventory, changeCheckoutPayment } from '../services/checkout-payment.service.js';
-import { assertPrepTimeChangeAllowed, createExport, releaseReservations, shipFinishedGoodsForOrder, suggestExportLines, syncOrderPrepTime } from '../services/inventory/stock.service.js';
+import { assertOrderReadyForMaterialExport, markOrderPreparationStarted, assertPrepTimeChangeAllowed, createExport, releaseReservations, shipFinishedGoodsForOrder, suggestExportLines, syncOrderPrepTime } from '../services/inventory/stock.service.js';
 import { invalidateAnalyticsCache } from '../services/analytics/cache.js';
 import { audit } from '../services/auth.service.js';
 import { derivePromotionStatus, ensureVoucherStorage, normalizeVoucherCode } from '../services/pricing-voucher.service.js';
@@ -1196,20 +1196,16 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
         if (current.TRANG_THAI === 'Đang chuẩn bị hàng' && current.THOI_DIEM_BAT_DAU_THUC_TE) return true;
         if (!['Đã đặt hàng thành công', 'Chờ xử lý'].includes(String(current.TRANG_THAI))) throw new InventoryError(409, 'Chỉ bắt đầu chuẩn bị với đơn đã đặt hàng thành công.');
         if (!current.THOI_DIEM_CHUAN_BI_DU_KIEN) throw new InventoryError(409, 'Cần nhập thời điểm chuẩn bị dự kiến T trước.');
-        const receipts = await (await getCollection<any>('THANH_TOAN')).find({ DON_HANG_ID: orderId }, { session }).toArray();
-        assertOrderTransition(current, 'Đang chuẩn bị hàng', sumVerifiedPayments(receipts));
+        // Cùng điều kiện và cùng quy trình với phiếu xuất ở màn NVL.
+        await assertOrderReadyForMaterialExport(current, session);
+        // Có NVL cần xuất: ghi nhận phiếu xuất, phiếu xuất tự chuyển đơn sang "Đang chuẩn bị hàng".
         if (!current.DA_XUAT_NVL && details.length) await createExport(
           { type: 'Làm hoa theo đơn', orderId, details, post: true, note: 'Xuất NVL khi bắt đầu chuẩn bị đơn' }, actor, { session },
         );
-        const startedAt = new Date();
-        const changed = await orders.updateOne(
-          { DON_HANG_ID: orderId, TRANG_THAI: { $in: ['Đã đặt hàng thành công', 'Chờ xử lý'] }, THOI_DIEM_BAT_DAU_THUC_TE: { $in: [null] } },
-          { $set: { TRANG_THAI: 'Đang chuẩn bị hàng', THOI_DIEM_BAT_DAU_THUC_TE: startedAt, NGUOI_BAT_DAU_CHUAN_BI: actorId, NGAY_CAP_NHAT: startedAt },
-            $push: { LICH_SU_TRANG_THAI: { from: current.TRANG_THAI, to: 'Đang chuẩn bị hàng', action: 'start-preparation', at: startedAt, actor: actorId } } } as any,
-          { session },
-        );
-        if (!changed.modifiedCount) throw new InventoryError(409, 'Trạng thái đơn vừa thay đổi. Vui lòng tải lại.');
-        await orderEvent(session, `${orderId}:status:Đang chuẩn bị hàng`, current.KHACH_HANG_ID || null, orderId, 'Đơn đang được chuẩn bị', 'Shop đã bắt đầu chuẩn bị hoa cho đơn của bạn.');
+        // Đơn chỉ dùng bó sẵn hoặc đã xuất trước đó: chuyển trạng thái trực tiếp.
+        await markOrderPreparationStarted(orderId, actor, session, 'Bắt đầu chuẩn bị');
+        const after = await orders.findOne({ DON_HANG_ID: orderId }, { session });
+        if (after?.TRANG_THAI !== 'Đang chuẩn bị hàng') throw new InventoryError(409, 'Trạng thái đơn vừa thay đổi. Vui lòng tải lại.');
         return false;
       });
       const order = await getAdminOrderDetailById(orderId, res.locals?.adminEmployee?.VAI_TRO);

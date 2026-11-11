@@ -225,6 +225,13 @@ export function validateCheckoutDelivery(delivery: any) {
   return { ...delivery, date, time: slot, deliveryAt: at.toISOString(), deliveryStartAt: startAt.toISOString() };
 }
 
+export const SHIPPING_METHOD_NAME: Record<'fast' | 'standard', string> = { fast: 'Giao nhanh', standard: 'Giao tiêu chuẩn' };
+/** Giao trong 24 giờ kể từ lúc đặt là Giao nhanh; từ 24 giờ trở lên là Giao tiêu chuẩn. */
+export function shippingMethodFor(deliveryAt: string | Date, now = new Date()): 'fast' | 'standard' {
+  const at = new Date(deliveryAt).getTime();
+  return Number.isFinite(at) && at - now.getTime() < 24 * 60 * 60 * 1000 ? 'fast' : 'standard';
+}
+
 /** Mirrors the existing storefront tariff; no new deposit/cutoff policy is introduced. */
 export async function priceCheckout(payload: any, session?: ClientSession, collections: typeof getCollection = getCollection) {
   const delivery = validateCheckoutDelivery(payload.delivery);
@@ -234,7 +241,7 @@ export async function priceCheckout(payload: any, session?: ClientSession, colle
   for (const item of payload.items || []) {
     const id = String(item.id || item.productId || item.SAN_PHAM_ID || '');
     const qty = Number(item.qty ?? item.quantity ?? item.SO_LUONG);
-    if (!id || !Number.isSafeInteger(qty) || qty <= 0 || qty > 1000) throw new InventoryError(400, 'Sản phẩm hoặc số lượng không hợp lệ.');
+    if (!id || !Number.isSafeInteger(qty) || qty <= 0) throw new InventoryError(400, 'Sản phẩm hoặc số lượng không hợp lệ.');
     merged.set(id, (merged.get(id) || 0) + qty);
   }
   if (!merged.size) throw new InventoryError(400, 'Đơn hàng chưa có sản phẩm.');
@@ -256,7 +263,6 @@ export async function priceCheckout(payload: any, session?: ClientSession, colle
   const imageByProduct = new Map<string, any>();
   for (const image of images) if (!imageByProduct.has(image.SAN_PHAM_ID)) imageByProduct.set(image.SAN_PHAM_ID, image);
   for (const [id, qty] of merged) {
-    if (qty > 1000) throw new InventoryError(400, 'Số lượng gộp vượt giới hạn.');
     const product: any = productById.get(id);
     if (!product || /ngừng|ngưng|ẩn|khóa|đã xóa/i.test(String(product.TRANG_THAI || ''))) throw new InventoryError(400, `Sản phẩm ${id} không còn bán.`);
     const regular = Number(product.GIA), sale = Number(product.GIA_KHUYEN_MAI);
@@ -273,8 +279,8 @@ export async function priceCheckout(payload: any, session?: ClientSession, colle
   const outer = ['Quận 2','Quận 9','Quận 12','Quận Bình Tân','Thành phố Thủ Đức','Huyện Bình Chánh','Huyện Cần Giờ','Huyện Củ Chi','Huyện Hóc Môn','Huyện Nhà Bè'].map(statusKey);
   const selected = [...inner, ...outer].find(d => address.split(',').some(part => part.trim() === d));
   if (!selected || district && district !== selected || !/ho chi minh|\bhcm\b/.test(address)) throw new InventoryError(400, 'Cần địa chỉ và quận/huyện thuộc Thành phố Hồ Chí Minh để tính phí giao.');
-  const method = String(payload.shippingMethod || 'standard');
-  if (!['standard', 'fast'].includes(method)) throw new InventoryError(400, 'Phương thức giao hàng không hợp lệ.');
+  // Không cho chọn hình thức giao: lịch giao trong 24 giờ là Giao nhanh, từ 24 giờ trở lên là Giao tiêu chuẩn.
+  const method = shippingMethodFor(delivery.deliveryStartAt || delivery.deliveryAt);
   const fast = method === 'fast', isInner = inner.includes(selected);
   const baseShippingFee = isInner ? (fast ? subtotal < 300000 ? 60000 : subtotal <= 500000 ? 30000 : 0 : subtotal < 300000 ? 30000 : 0)
     : (fast ? subtotal < 300000 ? 80000 : subtotal <= 500000 ? 40000 : 30000 : subtotal < 300000 ? 40000 : subtotal <= 500000 ? 20000 : 0);
@@ -321,7 +327,7 @@ export async function priceCheckout(payload: any, session?: ClientSession, colle
   if (paymentMethod === 'cod') {
     depositAmount = depositByPolicy(subtotal, total, items);
   }
-  return { ...payload, delivery: { ...delivery, message: cardMessage }, giftCard: card ? { templateId: card.CARD_TEMPLATE_ID, code: card.MA_THIEP, name: card.TEN_THIEP, theme: card.CHU_DE, type: card.LOAI, image: card.HINH_ANH, fee: cardFee, writingMode, message: cardMessage, note: cardNote } : null, items, summary: { subtotal, shippingFee, baseShippingFee, cardFee, productDiscount, shippingDiscount, loyaltyPoints, loyaltyDiscount, depositAmount, total },
+  return { ...payload, delivery: { ...delivery, message: cardMessage }, giftCard: card ? { templateId: card.CARD_TEMPLATE_ID, code: card.MA_THIEP, name: card.TEN_THIEP, theme: card.CHU_DE, type: card.LOAI, image: card.HINH_ANH, fee: cardFee, writingMode, message: cardMessage, note: cardNote } : null, items, shippingMethod: method, summary: { shippingMethod: method, shippingMethodName: SHIPPING_METHOD_NAME[method], subtotal, shippingFee, baseShippingFee, cardFee, productDiscount, shippingDiscount, loyaltyPoints, loyaltyDiscount, depositAmount, total },
     payment: { method: paymentMethod, methodName: ({ cod: 'COD', bank: 'Chuyển khoản', momo: 'MoMo', vnpay: 'VNPay' } as Record<string,string>)[paymentMethod] }, validatedVoucher: voucher };
 }
 
