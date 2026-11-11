@@ -186,6 +186,7 @@ export class OrderHauntComponent implements OnInit {
   salesRequestId = '';
   salesRequestMessage = '';
   voucherError = '';
+  private voucherSelectionTouched = false;
   isSubmitting = false;
 
   availableVouchers: Voucher[] = [];
@@ -401,8 +402,16 @@ export class OrderHauntComponent implements OnInit {
         if (this.selectedVoucher?.id) {
           const current = this.availableVouchers.find(v => v.id === this.selectedVoucher!.id);
           if (!current || current.eligible === false) {
-            this.clearVoucher();
+            this.clearVoucher(undefined, false);
             this.voucherError = current?.reason || 'Voucher không còn áp dụng được cho đơn này.';
+          }
+        }
+        if (!this.voucherSelectionTouched) {
+          const best = this.availableVouchers.find(v => v.eligible !== false) || null;
+          if (best && this.selectedVoucher?.id !== best.id) {
+            this.selectedVoucher = best;
+            this.formData.voucherCode = best.code;
+            this.refreshServerQuote(false);
           }
         }
         this.isLoadingPublicVouchers = false;
@@ -754,17 +763,19 @@ export class OrderHauntComponent implements OnInit {
 
   selectVoucher(voucher: Voucher): void {
     if (voucher.eligible === false) return; // Không đạt điều kiện: làm mờ, không cho chọn.
+    this.voucherSelectionTouched = true;
     this.selectedVoucher = this.selectedVoucher?.id === voucher.id ? null : voucher;
     this.formData.voucherCode = this.selectedVoucher?.code || '';
     this.voucherError = '';
     this.showVoucherDropdown = false;
     // Báo giá lại để phần giảm giá trong khung đơn hàng khớp voucher vừa chọn/bỏ.
-    this.refreshServerQuote();
+    this.refreshServerQuote(false);
   }
 
   /** Nút X: bỏ voucher đã chọn. */
-  clearVoucher(event?: Event): void {
+  clearVoucher(event?: Event, markTouched = true): void {
     event?.stopPropagation();
+    if (markTouched) this.voucherSelectionTouched = true;
     this.selectedVoucher = null;
     this.formData.voucherCode = '';
     this.voucherError = '';
@@ -792,6 +803,7 @@ export class OrderHauntComponent implements OnInit {
   applyVoucher(): void {
     const voucherCode = this.formData.voucherCode.trim().toUpperCase();
     this.voucherError = '';
+    this.voucherSelectionTouched = true;
 
     if (!voucherCode) {
       this.selectedVoucher = null;
@@ -817,7 +829,7 @@ export class OrderHauntComponent implements OnInit {
 
     this.selectedVoucher = found;
     this.formData.voucherCode = found.code;
-    this.refreshServerQuote();
+    this.refreshServerQuote(false);
   }
 
   private quoteReceiver(): { address: string; districtName?: string; provinceName?: string } | null {

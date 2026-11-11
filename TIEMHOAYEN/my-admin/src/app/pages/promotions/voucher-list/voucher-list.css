@@ -1146,3 +1146,5 @@
 }
 
 .promotion-load-error{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 15px;margin-bottom:16px;border:1px solid #efcdd1;background:#fff1f2;color:#8e3542;border-radius:8px;font-size:13px}.promotion-load-error button{border:1px solid #e5c3c8;border-radius:6px;background:white;color:#781b20;padding:6px 12px}.promotion-empty{text-align:center;padding:35px!important;color:#ab8d92;font-size:13px}
+.voucher-form-error{margin:0 24px 12px;padding:10px 12px;border:1px solid #efcdd1;border-radius:8px;background:#fff1f2;color:#8e3542;font-size:13px}
+.voucher-name,.voucher-name strong,.voucher-name span,.code-text{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

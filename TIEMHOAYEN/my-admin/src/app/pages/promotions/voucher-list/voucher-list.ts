@@ -56,6 +56,7 @@ interface CustomerOption {
 export class VoucherListComponent implements OnInit {
     loading = false;
     loadError = '';
+    voucherFormError = '';
     searchKeyword = '';
     selectedDiscountType = 'Tất cả';
 
@@ -431,13 +432,16 @@ export class VoucherListComponent implements OnInit {
             return;
         }
 
+        this.voucherFormError = '';
         const payload = this.buildPayload(this.newVoucher, this.newStartDateText, this.newEndDateText);
         if (!payload) {
+            this.voucherFormError = 'Vui lòng kiểm tra mã voucher, thời gian và giá trị giảm.';
             return;
         }
 
         const quantity = this.normalizeNewVoucherQuantity();
         if (quantity === null) {
+            this.voucherFormError = 'Số lượng voucher phải từ 1 và tổng số voucher không vượt quá 500.';
             return;
         }
 
@@ -455,6 +459,7 @@ export class VoucherListComponent implements OnInit {
             },
             error: (error) => {
                 console.error('Cannot create voucher:', error);
+                this.voucherFormError = error?.error?.message || 'Không thể tạo voucher. Vui lòng thử lại.';
                 if (error?.status === 409 && error?.error?.voucherId && this.newVoucher) {
                     this.newVoucher.code = String(error.error.voucherId);
                     this.cdr.detectChanges();
@@ -481,6 +486,7 @@ export class VoucherListComponent implements OnInit {
         this.newVoucherQuantity = 1;
         this.selectedCustomerIds = [];
         this.customerSearchKeyword = '';
+        this.voucherFormError = '';
     }
 
     closeEditModal(): void {

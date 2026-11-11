@@ -1557,7 +1557,19 @@ export const createAdminVoucher = async (req: Request, res: Response) => {
     if (!code) return res.status(400).json({ message: 'Thiếu mã voucher.' });
     if (!start || !end || start >= end) return res.status(400).json({ message: 'Ngày bắt đầu phải nhỏ hơn ngày kết thúc.' });
     if (discountValue <= 0 || (discountType === 'Phần trăm' && discountValue > 100)) return res.status(400).json({ message: 'Giá trị giảm không hợp lệ.' });
-    const customerIds = Array.isArray(body.customerIds) ? [...new Set(body.customerIds.map(String).filter(Boolean))] : body.customerId ? [String(body.customerId)] : [];
+    const requestedCustomerIds: unknown[] = Array.isArray(body.customerIds)
+      ? body.customerIds : body.customerId ? [body.customerId] : [];
+    const customerIds = [...new Set<string>(requestedCustomerIds
+      .map(value => String(value || '').trim()).filter(value => value.length > 0))];
+    if (customerIds.length) {
+      const existingCustomers = await (await getCollection<any>('KHACH_HANG')).find(
+        { KHACH_HANG_ID: { $in: customerIds }, DA_XOA: { $nin: [true, 1] } },
+        { projection: { KHACH_HANG_ID: 1 } },
+      ).toArray();
+      const existingIds = new Set(existingCustomers.map((customer: any) => String(customer.KHACH_HANG_ID)));
+      const missingIds = customerIds.filter(customerId => !existingIds.has(customerId));
+      if (missingIds.length) return res.status(400).json({ message: `Khách hàng nhận voucher không hợp lệ: ${missingIds.join(', ')}.` });
+    }
     const quantity = Math.max(1, Math.min(500, Math.floor(Number(body.quantity || 1))));
     const recipients: Array<string | null> = customerIds.length ? customerIds.flatMap(customerId => Array(quantity).fill(customerId)) : Array(quantity).fill(null);
     if (recipients.length > 500) return res.status(400).json({ message: 'Mỗi lần chỉ được tạo tối đa 500 voucher.' });
@@ -1596,6 +1608,38 @@ export const createAdminVoucher = async (req: Request, res: Response) => {
       };
     });
     await voucherCollection.insertMany(vouchers, { ordered: true });
+    const personalVouchers = vouchers.filter(voucher => Boolean(voucher.KHACH_HANG_ID));
+    if (personalVouchers.length) {
+      const notificationCollection = await getCollection<any>('THONG_BAO');
+      const createdAt = new Date();
+      await notificationCollection.bulkWrite(personalVouchers.map(voucher => {
+        const notificationId = `TB_VOUCHER_${voucher.VOUCHER_ID}`;
+        const voucherName = String(voucher.MA_VOUCHER || '').trim();
+        return {
+          updateOne: {
+            filter: { _id: notificationId },
+            update: {
+              $setOnInsert: {
+                _id: notificationId,
+                THONG_BAO_ID: notificationId,
+                KHACH_HANG_ID: voucher.KHACH_HANG_ID,
+                DON_HANG_ID: null,
+                LOAI_THONG_BAO: 'promotion',
+                TIEU_DE: `Bạn nhận được voucher ${voucherName}`,
+                NOI_DUNG: `Voucher ${voucherName} đã được thêm vào Voucher của tôi. Bấm để xem voucher.`,
+                HINH_ANH: null,
+                DUONG_DAN: '/account/vouchers',
+                KENH_THONG_BAO: 'CUSTOMER',
+                DA_DOC: false,
+                DA_XEM: false,
+                NGAY_TAO: createdAt,
+              },
+            },
+            upsert: true,
+          },
+        };
+      }), { ordered: true });
+    }
     return res.status(201).json({ message: `Đã tạo ${vouchers.length} voucher.`, voucher: vouchers[0], vouchers });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot create voucher: ' + error.message });

@@ -12,11 +12,15 @@ export class OrderRequests implements OnInit, OnDestroy {
   statuses = ['Chờ xử lý', 'Sales đang xử lý', 'Chờ khách xác nhận', 'Chờ khách thanh toán', 'Đã lên đơn', 'Đã từ chối', 'Khách đã hủy', 'Hết hạn thanh toán'];
   employeeId = typeof localStorage !== 'undefined' ? localStorage.getItem('adminEmployeeId') : '';
   requests: any[] = []; active: any; options: any; draft: any; messages: any[] = [];
+  unreadMessages = 0; unreadConversations: any[] = []; notificationsOpen = false; unreadLoading = false;
   private draftBaseline = '';
   private replacementBaseline = '{}';
   workTab = 'stock'; chatOpen = false; showDecision = false; showOriginalConfirm = false;
   replacementChoice: Record<string, string> = {};
   proposalReplacementChoice: Record<string, string> = {};
+  productOptionSearch: Record<number, string> = {};
+  materialOptionSearch: Record<string, string> = {};
+  replacementOptionSearch: Record<string, string> = {};
   approvedReplacements: Record<string, { productId: string; sourceMaterialId: string; substituteMaterialId: string; substituteName: string }> = {};
   contact = { outcome: 'connected', note: '', followUpAt: '', readBackConfirmed: false };
   readonly closedStatuses = ['Đã lên đơn', 'Đã từ chối', 'Đã tư vấn', 'Khách đã hủy'];
@@ -56,7 +60,7 @@ export class OrderRequests implements OnInit, OnDestroy {
       INVENTORY_DATA_INCOMPLETE: 'Thiếu dữ liệu BOM/tồn kho',
     };
     const codes: string[] = r?.reasonCodes?.length ? r.reasonCodes : r?.requestReason ? [r.requestReason] : [];
-    return codes.map(code => labels[code] || (code === 'future_delivery' ? 'Lịch giao tương lai (quy tắc cũ)' : code === 'inventory_shortage' ? 'Thiếu tồn (quy tắc cũ)' : code));
+    return codes.map(code => labels[code] || (code === 'future_delivery' ? 'Lịch giao tương lai' : code === 'inventory_shortage' ? 'Thiếu tồn' : code));
   }
   hoursUntil(r: any): string {
     const minutes = Number(r?.routing?.minutesUntilDelivery);
@@ -98,6 +102,7 @@ export class OrderRequests implements OnInit, OnDestroy {
   total = 0; page = 1; status = ''; queueSearch = ''; appliedQueueSearch = ''; error = ''; loading = false; busy = false;
   private timer?: ReturnType<typeof setInterval>;
   private targetRequestId = '';
+  private openChatAfterLoad = false;
   private pendingEdit = false;
   private pendingMessage: { text: string; channel: string; id: string } | null = null;
   private get url() { return `${apiBaseUrl()}/admin/order-requests`; }
@@ -108,7 +113,10 @@ export class OrderRequests implements OnInit, OnDestroy {
       this.queueSearch = this.targetRequestId;
       this.appliedQueueSearch = this.targetRequestId;
     }
-    this.load(); this.timer = setInterval(() => { if (!document.hidden && !this.busy && !this.editing) this.load(true); }, 15000);
+    this.load(); this.loadUnreadMessages();
+    this.timer = setInterval(() => {
+      if (!document.hidden && !this.busy && !this.editing) { this.load(true); this.loadUnreadMessages(); }
+    }, 15000);
   }
   ngOnDestroy() { if (this.timer) clearInterval(this.timer); }
   image(url: string) { return url?.startsWith('/uploads/') ? `${apiBaseUrl().replace(/\/api$/, '')}${url}` : url || 'assets/images/logo-main.png'; }
@@ -121,8 +129,12 @@ export class OrderRequests implements OnInit, OnDestroy {
       next: data => { this.requests = data.requests; this.total = data.total; this.allCount = Number(data.summary?.total ?? data.total ?? 0); this.waitingCount = Number(data.summary?.waiting || 0); this.urgentCount = Number(data.summary?.urgent || 0); this.loading = false;
         if (this.targetRequestId && !this.active) {
           const target = this.requests.find(r => r.requestId === this.targetRequestId);
-          if (target) this.open(target);
+          if (target) {
+            this.open(target);
+            if (this.openChatAfterLoad) this.openChat();
+          }
           this.targetRequestId = '';
+          this.openChatAfterLoad = false;
         }
         if (this.active) { const oldActive = this.active; const oldQuote = oldActive.quote?.id; this.active = this.requests.find(r => r.requestId === oldActive.requestId) || oldActive; if (oldQuote !== this.active.quote?.id) { this.contact.readBackConfirmed = false; this.contact.outcome = 'connected'; } if (this.chatOpen) this.loadMessages(); }
         this.cdr.markForCheck(); }, error: err => { this.loading = false; this.fail(err); },
@@ -139,6 +151,38 @@ export class OrderRequests implements OnInit, OnDestroy {
   }
   openChat() { if (!this.active) return; this.chatOpen = true; this.loadMessages(); }
   closeChat() { this.chatOpen = false; }
+  toggleNotifications() {
+    this.notificationsOpen = !this.notificationsOpen;
+    if (this.notificationsOpen) this.loadUnreadMessages();
+  }
+  unreadForRequest(requestId: string) {
+    return Number(this.unreadConversations.find(item => item.requestId === requestId)?.unread || 0);
+  }
+  loadUnreadMessages() {
+    if (this.unreadLoading) return;
+    this.unreadLoading = true;
+    this.http.get<any>(`${this.url}/unread-messages`).subscribe({
+      next: data => {
+        this.unreadMessages = Number(data?.unread || 0);
+        this.unreadConversations = Array.isArray(data?.conversations) ? data.conversations : [];
+        this.unreadLoading = false;
+        this.cdr.markForCheck();
+      },
+      error: () => { this.unreadLoading = false; this.cdr.markForCheck(); },
+    });
+  }
+  openUnreadConversation(item: any) {
+    this.notificationsOpen = false;
+    const row = this.requests.find(request => request.requestId === item.requestId);
+    if (row) { this.open(row); this.openChat(); return; }
+    this.targetRequestId = String(item.requestId || '');
+    this.openChatAfterLoad = true;
+    this.queueSearch = this.targetRequestId;
+    this.appliedQueueSearch = this.targetRequestId;
+    this.page = 1;
+    this.active = null;
+    this.load();
+  }
   replacementKey(product: any, requirement: any) { return `${product.id}:${requirement.materialId}`; }
   canReplaceRequirement(requirement: any) {
     return requirement?.substitutionExplicitlyAllowed === true
@@ -230,7 +274,11 @@ export class OrderRequests implements OnInit, OnDestroy {
   loadMessages() {
     if (!this.active) return;
     const id = this.active.requestId;
-    this.http.get<any[]>(`${this.url}/${id}/messages`).subscribe({ next: data => { if (this.active?.requestId === id) this.messages = data; this.cdr.markForCheck(); }, error: err => this.fail(err) });
+    this.http.get<any[]>(`${this.url}/${id}/messages`).subscribe({ next: data => {
+      if (this.active?.requestId === id) this.messages = data;
+      this.loadUnreadMessages();
+      this.cdr.markForCheck();
+    }, error: err => this.fail(err) });
   }
   update(row: any, action: string) {
     if (this.busy) return;
@@ -254,6 +302,9 @@ export class OrderRequests implements OnInit, OnDestroy {
   }
   edit() {
     if (!this.active || !this.options) return;
+    this.productOptionSearch = {};
+    this.materialOptionSearch = {};
+    this.replacementOptionSearch = {};
     const q = this.active.quote;
     this.draft = { items: q ? q.items.map((item: any) => ({ ...item, materials: item.custom ? item.bom.materials.map((m: any) => ({ ...m })) : [], designFee: item.bom?.designFee || 0, extraFee: item.bom?.extraFee || 0 }))
       : this.active.items.map((i: any) => i.designId ? {id:i.productId,qty:i.quantity,custom:true,designId:i.designId,name:i.name,image:i.image,imageDescription:'Thiết kế 3D khách gửi; cần xác nhận khả năng thực hiện',materials:i.bom.materials.map((m:any)=>({...m})),designFee:i.bom.designFee || 0,extraFee:i.bom.extraFee || 0} : { id: i.productId, qty: i.quantity, custom: false }),
@@ -277,6 +328,23 @@ export class OrderRequests implements OnInit, OnDestroy {
   private dateInput(value: string) { return /^\d{2}\/\d{2}\/\d{4}$/.test(value || '') ? value.split('/').reverse().join('-') : value || ''; }
   addCatalog() { this.draft.items.push({ id: '', qty: 1, custom: false }); }
   draftProduct(item: any) { return this.options?.products?.find((product: any) => product.id === item.id) || null; }
+  private optionMatches(option: any, query: string, fields: string[]) {
+    const normalized = String(query || '').trim().toLocaleLowerCase('vi');
+    if (!normalized) return true;
+    return fields.some(field => String(option?.[field] || '').toLocaleLowerCase('vi').includes(normalized));
+  }
+  filteredProducts(query: string, selectedId = ''): any[] {
+    return (this.options?.products || []).filter((product: any) => product.id === selectedId
+      || this.optionMatches(product, query, ['name', 'id']));
+  }
+  filteredMaterials(query: string, selectedId = ''): any[] {
+    return (this.options?.materials || []).filter((material: any) => material.id === selectedId
+      || this.optionMatches(material, query, ['name', 'id', 'unit']));
+  }
+  filteredSubstitutes(options: any[], query: string, selectedId = ''): any[] {
+    return (options || []).filter(option => option.materialId === selectedId
+      || this.optionMatches(option, query, ['name', 'materialId', 'unit']));
+  }
   replaceableRequirements(product: any): any[] {
     return (product?.requirements || []).filter((requirement: any) => this.canReplaceRequirement(requirement));
   }

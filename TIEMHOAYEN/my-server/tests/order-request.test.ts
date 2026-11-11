@@ -257,7 +257,10 @@ if (!uri) {
     const id = randomUUID();
     await Promise.all([flow.sendMessage(r.requestId, { text: 'OK mẫu này', messageId: id }, { token: r.accessToken }), flow.sendMessage(r.requestId, { text: 'OK mẫu này', messageId: id }, { token: r.accessToken })]);
     await flow.sendMessage(r.requestId, { text: 'Đã gọi tư vấn; vui lòng xác nhận phương án trên website.', channel: 'phone', messageId: randomUUID() }, { employee: sales });
+    assert.equal((await flow.unreadCustomerMessages(sales)).unread, 1);
     assert.equal((await flow.messages(r.requestId, { token: r.accessToken })).length, 2);
+    await flow.messages(r.requestId, { employee: sales });
+    assert.equal((await flow.unreadCustomerMessages(sales)).unread, 0);
     const stored = await (await mongo.getCollection<any>('TIN_NHAN_CHAT')).find({ YEU_CAU_ID: r.requestId }).toArray();
     assert.equal(stored.length, 2);
     assert.ok(stored.every(m => m.TIN_NHAN_ID && m.THOI_GIAN_GUI instanceof Date));
