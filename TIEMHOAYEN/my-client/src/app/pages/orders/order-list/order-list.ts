@@ -5,6 +5,8 @@ import { RouterLink } from '@angular/router';
 import { OrderAccessService } from '../../../services/order-access.service';
 import { currentOrderAccountKey } from '../../../services/api-config';
 import { OrderService } from '../../../services/order.service';
+import { Subscription } from 'rxjs';
+import { requestStatusTone } from '../request-status-tone';
 
 type LookupTab = 'all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
 
@@ -13,7 +15,7 @@ type LookupTab = 'all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './order-list.html',
-  styleUrl: './order-list.css',
+  styleUrls: ['./order-list.css', '../request-status-tone.css'],
 })
 export class OrderList implements OnInit, OnDestroy {
   readonly access = inject(OrderAccessService);
@@ -36,6 +38,11 @@ export class OrderList implements OnInit, OnDestroy {
   private timer?: ReturnType<typeof setInterval>;
   private searchTimer?: ReturnType<typeof setTimeout>;
   private lastAutoRefreshAt = 0;
+  private requestEvents?: Subscription;
+  private historyLoad?: Subscription;
+  private eventsToken = '';
+  private refreshing = false;
+  private refreshPending = false;
   get isMember() { return !!currentOrderAccountKey(); }
   get validPhone() { return /^0\d{9}$/.test(this.phone.replace(/[\s().-]/g, '')); }
   get validOrderId() { return !this.orderId || /^YEN[A-Z0-9]{8,32}$/.test(this.orderId); }
@@ -64,14 +71,13 @@ export class OrderList implements OnInit, OnDestroy {
     if (session) this.load();
     this.timer = setInterval(() => {
       this.now = Date.now();
-      if (this.access.session && !this.busy && !document.hidden && this.now - this.lastAutoRefreshAt >= 15000) {
-        this.lastAutoRefreshAt = this.now;
-        this.load();
-      }
+      this.syncRequestEvents();
+      if (this.access.session && !document.hidden && this.now - this.lastAutoRefreshAt >= 15000) this.refreshPending = true;
+      this.refreshIfReady();
       this.cdr.markForCheck();
     }, 1000);
   }
-  ngOnDestroy() { if (this.timer) clearInterval(this.timer); if (this.searchTimer) clearTimeout(this.searchTimer); }
+  ngOnDestroy() { this.requestEvents?.unsubscribe(); this.historyLoad?.unsubscribe(); if (this.timer) clearInterval(this.timer); if (this.searchTimer) clearTimeout(this.searchTimer); }
   phoneInput(value:string){this.phone=String(value||'').replace(/\D/g,'').slice(0,10);this.error=''}
   lookupCodeInput(value:string){this.lookupCode=String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,35);this.orderId=this.lookupCode.startsWith('YEN')?this.lookupCode:'';this.requestId=this.lookupCode.startsWith('YC')?this.lookupCode:'';this.error=''}
   otpDigit(event:Event,index:number){const input=event.target as HTMLInputElement;const digit=input.value.replace(/\D/g,'').slice(-1);this.otpValues[index]=digit;input.value=digit;this.code=this.otpValues.join('');this.error='';if(digit&&index<5)document.getElementById(`lookup-otp-${index+1}`)?.focus()}
@@ -89,13 +95,58 @@ export class OrderList implements OnInit, OnDestroy {
   canCancelRequest(request:any){return !['Đã lên đơn','Đã từ chối','Đã tư vấn','Khách đã hủy','Hết hạn thanh toán'].includes(String(request?.status||''))}
   canConfirmRequest(request:any){return String(request?.status||'')==='Chờ khách xác nhận'&&!!request?.quote?.id}
   requestStatusLabel(status:any){const value=String(status||'');if(['Khách đã hủy','Hết hạn thanh toán'].includes(value))return'Đã hủy yêu cầu';if(value==='Chờ khách xác nhận')return'Chờ xác nhận';return value}
-  requestStatusTone(status:any){const value=String(status||'');if(value==='Đã lên đơn')return'success';if(['Chờ khách xác nhận','Chờ khách thanh toán','Chờ thanh toán'].includes(value))return'waiting';if(['Đã từ chối','Khách đã hủy','Hết hạn thanh toán'].includes(value))return'danger';return value==='Chờ xử lý'||value==='Chờ Sales tiếp nhận'?'new':'processing'}
+  readonly requestStatusTone = requestStatusTone;
   linkedOrderId(request:any){return String(request?.linkedOrder?.DON_HANG_ID||request?.orderId||request?.orderResult?.orderId||'')}
   hasLinkedOrder(request:any){return request?.status==='Đã lên đơn'&&!!this.linkedOrderId(request)}
   cancelRequest(request:any){const session=this.access.session;if(this.busy||!session||!this.canCancelRequest(request))return;this.busy=true;this.error='';this.ordersService.updateSalesRequest(request.requestId,session.accessToken,{action:'cancel'}).subscribe({next:()=>{this.busy=false;this.load()},error:e=>this.fail(e)})}
   confirmRequest(request:any){const session=this.access.session;if(this.busy||!session||!this.canConfirmRequest(request))return;this.busy=true;this.error='';this.ordersService.respondSalesRequest(request.requestId,session.accessToken,request.quote.id,'accept').subscribe({next:()=>{this.busy=false;this.load()},error:e=>this.fail(e)})}
   chatWithSales(request:any){this.ordersService.openSalesChat(request.requestId)}
-  load(){if(!this.access.session||this.busy)return;this.busy=true;this.lastAutoRefreshAt=Date.now();this.error='';this.access.history(1,{pageSize:500,scope:'all'}).subscribe({next:r=>{this.allOrders=r.orders||[];this.allRequests=r.requests||[];this.statuses=r.statuses||[];this.counts=r.counts||{};this.busy=false;this.applyLocalView();this.cdr.markForCheck()},error:e=>{if(e?.status===401)this.end();this.fail(e)}})}
+  private syncRequestEvents() {
+    const token = this.access.session?.accessToken || '';
+    if (token === this.eventsToken) return;
+    this.requestEvents?.unsubscribe();
+    this.eventsToken = token;
+    this.refreshPending = false;
+    if (token) this.requestEvents = this.access.watchRequests().subscribe(() => {
+      this.refreshPending = true;
+      this.refreshIfReady();
+    });
+  }
+  private refreshIfReady() {
+    if (!this.refreshPending || this.busy || this.refreshing) return;
+    this.load(true);
+  }
+  load(quiet = false) {
+    const token = this.access.session?.accessToken;
+    if (this.busy || (quiet && this.refreshing) || !token) return;
+    this.syncRequestEvents();
+    this.historyLoad?.unsubscribe();
+    this.refreshPending = false;
+    this.refreshing = quiet;
+    this.busy = !quiet;
+    this.lastAutoRefreshAt = Date.now();
+    if (!quiet) this.error = '';
+    this.historyLoad = this.access.history(1, { pageSize: 500, scope: 'all' }).subscribe({
+      next: result => {
+        this.refreshing = false;
+        if (!quiet) this.busy = false;
+        if (this.access.session?.accessToken !== token) return;
+        this.allOrders = result.orders || [];
+        this.allRequests = result.requests || [];
+        this.statuses = result.statuses || [];
+        this.counts = result.counts || {};
+        this.applyLocalView();
+      },
+      error: error => {
+        this.refreshing = false;
+        if (!quiet) this.busy = false;
+        if (this.access.session?.accessToken !== token) return;
+        if (error.status === 401) this.end();
+        if (!quiet) this.fail(error);
+        this.cdr.markForCheck();
+      },
+    });
+  }
   private applyLocalView(){
     const keyword=this.normalize(this.search); const day=this.date;
     let orderRows=this.allOrders.filter(order=>this.activeTab==='all'||this.activeTab==='requests'?this.activeTab==='all':order.uiGroup===this.activeTab);

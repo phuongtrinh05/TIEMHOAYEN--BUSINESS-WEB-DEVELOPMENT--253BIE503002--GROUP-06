@@ -10,8 +10,10 @@ import { OrderAccessService } from '../../services/order-access.service';
 import { SalesChatService } from '../../services/sales-chat.service';
 import { SupportChatService, SupportSession } from '../../services/support-chat.service';
 import { OrderRequest } from '../../pages/orders/order-request/order-request';
-@Component({ selector: 'app-chatbot-widget', standalone: true, imports: [CommonModule, FormsModule, RouterLink, OrderRequest], templateUrl: './chatbot-widget.html', styleUrl: './chatbot-widget.css' })
+import { requestStatusTone } from '../../pages/orders/request-status-tone';
+@Component({ selector: 'app-chatbot-widget', standalone: true, imports: [CommonModule, FormsModule, RouterLink, OrderRequest], templateUrl: './chatbot-widget.html', styleUrls: ['./chatbot-widget.css', '../../pages/orders/request-status-tone.css'] })
 export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
+    readonly requestStatusTone = requestStatusTone;
     @ViewChild('chatBody')
     private chatBody?: ElementRef<HTMLElement>;
     private lastScrollKey = '';

@@ -52,7 +52,8 @@ test('Chỉ Admin/kho được chuyển "Chờ vận chuyển"; shipper chỉ c�
   assert.deepEqual(allowedOrderStatuses(preparing, 100000, 'Nhân viên giao hàng'), []);
   assert.deepEqual(allowedOrderStatuses(preparing, 100000, 'Nhân viên kho'), ['Chờ vận chuyển']);
   const shipping = { ...preparing, TRANG_THAI: 'Chờ vận chuyển' };
-  assert.deepEqual(allowedOrderStatuses(shipping, 100000, 'Nhân viên giao hàng'), ['Đang giao']);
+  assert.deepEqual(allowedOrderStatuses(shipping, 100000, 'Nhân viên giao hàng'), []);
+  assert.deepEqual(allowedOrderStatuses({ ...shipping, NHAN_VIEN_GIAO_HANG_ID: 'NV001' }, 100000, 'Nhân viên giao hàng'), ['Đang giao']);
 });
 
 test('Hạn gửi hỗ trợ 1 giờ sau giao thành công và tự chuyển Hoàn thành', async () => {

@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { apiBaseUrl, currentOrderAccountKey, orderAccessSession, setTransientGuestLookupSession } from './api-config';
-import { tap } from 'rxjs';
+import { Observable, repeat, retry, tap } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class OrderAccessService {
@@ -11,6 +11,46 @@ export class OrderAccessService {
     for (const key of Object.keys(localStorage)) if (key === 'tiemHoaYenSalesRequest' || key.startsWith('tiemHoaYenSalesRequest:')) localStorage.removeItem(key);
   }
   get session() { return orderAccessSession(); }
+  watchRequests(requestId?: string) {
+    const path = requestId ? `/requests/${encodeURIComponent(requestId)}/events` : '/request-events';
+    return new Observable<void>(subscriber => {
+      const token = this.session?.accessToken;
+      if (!token) {
+        subscriber.complete();
+        return;
+      }
+      const controller = new AbortController();
+      const read = async () => {
+        const response = await fetch(`${apiBaseUrl()}/orders${path}`, {
+          headers: { 'x-order-access': token },
+          signal: controller.signal,
+        });
+        if (!response.ok || !response.body) {
+          await response.body?.cancel();
+          throw new Error('Không thể kết nối cập nhật yêu cầu đặt hàng.');
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let pending = '';
+        try {
+          while (!subscriber.closed) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            pending += decoder.decode(value, { stream: true });
+            const events = pending.split('\n\n');
+            pending = events.pop() || '';
+            if (this.session?.accessToken !== token) break;
+            if (events.some(event => event === 'data: changed')) subscriber.next();
+          }
+        } finally {
+          reader.releaseLock();
+        }
+        subscriber.complete();
+      };
+      void read().catch(error => subscriber.error(error));
+      return () => controller.abort();
+    }).pipe(retry({ delay: 5000 }), repeat({ delay: 1000 }));
+  }
   useRequestLink(accessToken: string, requestId: string, expiresAt?: string) {
     if (currentOrderAccountKey() || !/^ra_[a-f0-9]{64}$/.test(accessToken)) return false;
     sessionStorage.setItem('orderLookupAccess', JSON.stringify({ accessToken, authType: 'guest_request', accountKey: '', requestId,

@@ -18,8 +18,11 @@ export async function changeCheckoutPayment(session: ClientSession, paymentId: s
   const order = await (await collections<any>('DON_HANG')).findOne({ DON_HANG_ID: current.DON_HANG_ID }, { session });
   if (!order) throw new InventoryError(404, 'Không tìm thấy đơn của giao dịch.');
   const requested = String(body.status ?? current.TRANG_THAI_THANH_TOAN);
-  const success = paymentSucceeded(requested);
-  const failed = ['Thất bại', 'Thanh toán thất bại', 'Hết hạn'].includes(requested);
+  const success = paymentSucceeded(requested) || requested === 'Đã thanh toán cọc';
+  const failed = ['Thất bại', 'Thanh toán thất bại', 'Thanh toán cọc thất bại', 'Hết hạn'].includes(requested);
+  if (current.LOAI_GIAO_DICH === 'SO_DU' && requested === 'Hết hạn') {
+    throw new InventoryError(400, 'Khoản số dư chỉ nhận kết quả đã thanh toán hoặc thanh toán thất bại.');
+  }
   if (!success && !failed) throw new InventoryError(400, 'Chỉ xác nhận thành công hoặc thất bại cho giao dịch đang chờ.');
   const amount = body.amount === undefined ? Number(current.SO_TIEN) : Number(body.amount);
   if (!Number.isSafeInteger(amount) || amount <= 0 || amount !== Number(current.SO_TIEN)) throw new InventoryError(409, 'Số tiền phải khớp nghĩa vụ thanh toán, không được sửa khoản thu.');

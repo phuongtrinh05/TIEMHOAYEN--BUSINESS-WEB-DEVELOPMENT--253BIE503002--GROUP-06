@@ -33,11 +33,11 @@
 .request-head{display:flex;align-items:center;gap:12px}
 .request-head>b{color:#731919;font-size:16px}
 .request-status{padding:5px 10px;border-radius:99px;font-size:12px;font-weight:900}
-.request-status[data-tone=new]{background:#f6e8d3;color:#7b4e11}
-.request-status[data-tone=processing]{background:#e8eef8;color:#285b91}
-.request-status[data-tone=waiting]{background:#fff2c7;color:#805d00}
-.request-status[data-tone=success]{background:#e3f3e8;color:#24643a}
-.request-status[data-tone=danger]{border:1px solid #8b171d;background:#a51f25;color:#fff}
+
+
+
+
+
 .customer-request-card h3{margin:10px 0 5px;color:#571717;font:700 21px 'Playfair Display',serif}
 .customer-request-card h3 small{color:#8a746d;font:700 13px 'Nunito Sans',sans-serif}
 .customer-request-card p{margin:5px 0;color:#765f58}

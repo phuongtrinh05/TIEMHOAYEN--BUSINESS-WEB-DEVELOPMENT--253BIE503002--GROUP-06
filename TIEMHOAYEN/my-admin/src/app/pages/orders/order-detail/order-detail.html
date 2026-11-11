@@ -433,6 +433,8 @@
                         <strong *ngIf="order.nextStep?.nextStatus">Bước tiếp theo: {{ order.nextStep?.nextStatus }}{{ order.nextStep?.blocked ? ' — chưa thể chuyển' : '' }}</strong>
                         <p>{{ order.nextStep?.reason }}</p>
                         <a *ngIf="order.nextStep?.action === 'payment'" routerLink="/transactions">Mở trang Thanh toán (tìm mã {{ order.id }})</a>
+                        <button *ngIf="order.nextStep?.action === 'assign-shipper' && canEditNote"
+                          type="button" class="status-assign-shipper" (click)="openShipperAssignment()">Phân công shipper</button>
                       </div>
                     </div>
                     <div class="status-update-panel__body">
@@ -778,7 +780,7 @@
                 <div class="shipper-name">{{ order.shipperName || 'Chưa phân công' }}</div>
                 <div class="shipper-phone">{{ order.shipperPhone }}</div>
               </div>
-              <button class="btn-icon-sm" type="button" (click)="toggleShipperDropdown()">
+              <button id="order-shipper-picker" class="btn-icon-sm" type="button" (click)="toggleShipperDropdown()" aria-label="Phân công shipper">
                 <i
                   class="bi"
                   [ngClass]="showShipperDropdown ? 'bi-chevron-up' : 'bi-chevron-down'"

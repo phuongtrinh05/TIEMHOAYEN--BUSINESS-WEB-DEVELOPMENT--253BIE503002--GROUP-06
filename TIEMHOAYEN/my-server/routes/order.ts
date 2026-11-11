@@ -1,7 +1,7 @@
 import { readAfterSales,createAfterSales,supplementAfterSales } from '../controllers/order.js';
 import express from 'express';
 import { sendLookupOtp, verifyLookupOtp, requireLookup, requireLookupAction, lookupHistory, endLookup, checkoutLookup } from '../controllers/order-access.js';
-import { readPublicRequest, customerRespond, listRequestMessages, postRequestMessage, customerUpdateRequest } from '../controllers/order-request.js';
+import { readPublicRequest, customerRespond, listRequestMessages, postRequestMessage, customerUpdateRequest, watchCustomerRequests } from '../controllers/order-request.js';
 import { requireAdminPermission } from '../middleware/rolePermission.js';
 import {
   getAvailableVouchers,
@@ -32,6 +32,8 @@ router.post('/vouchers/available', getAvailableVouchers);
 router.get('/card-templates', getCardTemplates);
 router.post('/', createOrder);
 router.post('/quote', quoteOrder);
+router.get('/request-events', requireLookup, watchCustomerRequests);
+router.get('/requests/:requestId/events', requireLookup, watchCustomerRequests);
 router.get('/requests/:requestId', requireLookup, readPublicRequest);
 router.post('/requests/:requestId/respond', requireLookup, requireLookupAction, customerRespond);
 router.patch('/requests/:requestId', requireLookup, requireLookupAction, customerUpdateRequest);

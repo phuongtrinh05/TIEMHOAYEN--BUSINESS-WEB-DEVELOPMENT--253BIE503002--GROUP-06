@@ -1,0 +1,6 @@
+.request-status[data-tone='new'] { background: #f6e8d3; color: #7b4e11; }
+.request-status[data-tone='processing'] { background: #e8eef8; color: #285b91; }
+.request-status[data-tone='waiting'] { background: #fff2c7; color: #805d00; }
+.request-status[data-tone='success'] { background: #e3f3e8; color: #24643a; }
+.request-status[data-tone='danger'] { background: #fae2e2; color: #9d2424; }
+.status-pill.request-status { border-color: transparent; }

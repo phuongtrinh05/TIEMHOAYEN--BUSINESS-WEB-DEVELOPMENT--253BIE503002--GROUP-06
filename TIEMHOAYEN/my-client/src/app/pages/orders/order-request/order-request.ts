@@ -4,9 +4,11 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { OrderAccessService } from '../../../services/order-access.service';
 import { OrderService } from '../../../services/order.service';
+import { Subscription } from 'rxjs';
+import { requestStatusTone } from '../request-status-tone';
 
 @Component({ selector: 'app-order-request', standalone: true, imports: [CommonModule, FormsModule, RouterLink],
-  templateUrl: './order-request.html', styleUrls: ['./order-request.css', './order-request-refinement.css'] })
+  templateUrl: './order-request.html', styleUrls: ['./order-request.css', './order-request-refinement.css', '../request-status-tone.css'] })
 export class OrderRequest implements OnInit, OnDestroy {
   @Input() requestId = '';
   @Input() compact = false;
@@ -20,11 +22,15 @@ export class OrderRequest implements OnInit, OnDestroy {
   readOnly = false;
   private token = ''; private id = ''; private timer?: ReturnType<typeof setInterval>;
   private pendingMessage: { text: string; id: string } | null = null;
+  private requestEvents?: Subscription;
+  private refreshPending = false;
+  readonly requestStatusTone = requestStatusTone;
   ngOnInit() {
     if (typeof localStorage === 'undefined') return;
     this.id = this.requestId || this.route.snapshot.paramMap.get('id') || '';
     this.readOnly = this.isReadOnlySession();
-    const linkToken = new URLSearchParams(location.hash.slice(1)).get('access') || sessionStorage.getItem(`guestRequestLink:${this.id}`) || '';
+    const linkToken = this.compact ? '' :
+      new URLSearchParams(location.hash.slice(1)).get('access') || sessionStorage.getItem(`guestRequestLink:${this.id}`) || '';
     if (/^ra_[a-f0-9]{64}$/.test(linkToken)) {
       const ok = this.access.useRequestLink(linkToken, this.id);
       if (location.hash) history.replaceState(null, '', location.pathname);
@@ -34,8 +40,23 @@ export class OrderRequest implements OnInit, OnDestroy {
     this.readOnly = this.isReadOnlySession();
     if (!this.token) this.error = 'Vui lòng xác minh số điện thoại người đặt bằng OTP để xem yêu cầu.';
     this.load();
+    if (this.token && this.id) {
+      this.requestEvents = this.access.watchRequests(this.id).subscribe(() => {
+        this.refreshPending = true;
+        this.refreshIfReady();
+      });
+    }
     let ticks = 0;
-    this.timer = setInterval(() => { this.cdr.markForCheck(); if (++ticks % 10 === 0 && !this.busy && !document.hidden) this.load(true); }, 1000);
+    this.timer = setInterval(() => {
+      this.cdr.markForCheck();
+      if (++ticks % 10 === 0 && !document.hidden) this.refreshPending = true;
+      this.refreshIfReady();
+    }, 1000);
+  }
+  private refreshIfReady() {
+    if (!this.refreshPending || this.busy || this.loading) return;
+    this.refreshPending = false;
+    this.load(true);
   }
   get historyRoute() { return this.access.session?.authType === 'guest_lookup' ? '/order-list' : '/order-requests'; }
   get paymentRemainingLabel() {
@@ -49,7 +70,7 @@ export class OrderRequest implements OnInit, OnDestroy {
     const session = this.access.session;
     return session?.readOnly === true && !(session.authType === 'guest_lookup' && !!this.id);
   }
-  ngOnDestroy() { if (this.timer) clearInterval(this.timer); }
+  ngOnDestroy() { this.requestEvents?.unsubscribe(); if (this.timer) clearInterval(this.timer); }
   image(url: string) { return this.service.assetUrl(url); }
   get privateLink() {
     const token = typeof sessionStorage === 'undefined' ? '' : sessionStorage.getItem(`guestRequestLink:${this.id}`);

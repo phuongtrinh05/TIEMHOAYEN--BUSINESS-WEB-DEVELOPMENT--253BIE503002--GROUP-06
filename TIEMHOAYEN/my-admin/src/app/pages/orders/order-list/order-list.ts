@@ -160,12 +160,12 @@ export class OrderList implements OnInit, OnDestroy {
 
   editableOrderStatuses: OrderStatus[] = [
     'Đã đặt hàng thành công',
-    'Đã giao',
-    'Đang giao',
-    'Hoàn thành',
     'Chờ xử lý',
     'Đang chuẩn bị hàng',
     'Chờ vận chuyển',
+    'Đang giao',
+    'Đã giao',
+    'Hoàn thành',
     'Đã hủy',
   ];
 

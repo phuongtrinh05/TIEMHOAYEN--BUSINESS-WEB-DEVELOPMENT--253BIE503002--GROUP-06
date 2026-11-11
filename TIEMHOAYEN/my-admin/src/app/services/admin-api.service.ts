@@ -402,6 +402,8 @@ export interface AdminChatConversationsResponse {
 }
 
 export interface AdminTransaction {
+  kind?: 'full' | 'deposit' | 'balance' | 'refund';
+  canRecordBalance?: boolean;
   total?: number; deposit?: number; paid?: number; remaining?: number; editable?: boolean; confirmedAt?: string; confirmedBy?: string; history?: any[];
   id: number;
   code: string;
@@ -1161,6 +1163,8 @@ export class AdminApiService {
     amount: number;
     referenceCode: string;
     transactionDate: string;
+    balance?: boolean;
+    reason?: string;
   }): Observable<{ message: string; transaction: AdminTransaction }> {
     return this.http.post<{ message: string; transaction: AdminTransaction }>(
       `${this.apiUrl}/transactions`,

@@ -227,7 +227,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       for (const product of this.products) if (!(product.id in this.afterSalesQuantities)) this.afterSalesQuantities[product.id] = 0;
       this.vouchers = this.mapVouchers(res.vouchers || []);
       this.steps = this.buildSteps(this.order.status).map(step => {
-        const event = [...(this.order.history || [])].reverse().find(item => this.normalizeStatus(item.to) === step.key);
+        const event = [...(this.order.history || [])].reverse().find(item => item.action !== 'assign-shipper' && this.normalizeStatus(item.to) === step.key);
         return { ...step, time: event?.at ? this.formatDateTime24(event.at) : '' };
       });
 
@@ -927,8 +927,13 @@ export class OrderDetail implements OnInit, OnDestroy {
     }
   }
 
+  canReorder(): boolean {
+    const status = this.normalizeStatus(this.order.status);
+    return status === 'completed' || status === 'cancelled';
+  }
+
   async reorder(): Promise<void> {
-    if (!isPlatformBrowser(this.platformId)) {
+    if (!isPlatformBrowser(this.platformId) || !this.canReorder()) {
       return;
     }
 
@@ -1159,13 +1164,21 @@ export class OrderDetail implements OnInit, OnDestroy {
     return this.order.deliveryTime ? `Khung giờ giao: ${this.order.deliveryTime}` : 'Đang cập nhật thời gian giao';
   }
 
-  private formatDate(value: string | null | undefined): string {
+  private formatDate(value: string | null | undefined, shortYear = false): string {
     if (!value) return '';
 
+    const localDate = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+    if (localDate) {
+      const [, day, month, year] = localDate;
+      const displayYear = shortYear ? year.slice(-2) : year.padStart(4, '20');
+      return `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${displayYear}`;
+    }
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return String(value);
 
-    return date.toLocaleDateString('vi-VN');
+    return date.toLocaleDateString('en-GB', {
+      day: '2-digit', month: '2-digit', year: shortYear ? '2-digit' : 'numeric', timeZone: 'Asia/Ho_Chi_Minh',
+    });
   }
 
   private formatDateTime(value: string | null | undefined): string {
@@ -1237,6 +1250,8 @@ export class OrderDetail implements OnInit, OnDestroy {
   isEditingShipping = false;
   isSavingShipping = false;
   saveShippingError = '';
+  shippingDateError = '';
+  shippingTimeError = '';
   provinces: any[] = [];
   districts: any[] = [];
   wards: any[] = [];
@@ -1260,28 +1275,33 @@ export class OrderDetail implements OnInit, OnDestroy {
   ];
 
   canEditShipping(): boolean {
-    if (this.order.hasEditedShipping) {
-      return false;
-    }
-    const s = this.normalizeStatus(this.order.status);
-    return s === 'created' || s === 'preparing';
+    const status = String(this.order.status || '').toLowerCase();
+    return !this.order.hasEditedShipping &&
+      ['đã đặt hàng thành công', 'chờ xử lý'].some(allowed => status.includes(allowed));
+  }
+
+  get shippingDateLabel(): string {
+    return this.formatDate(this.order.deliveryDate, true);
   }
 
   openEditShipping(): void {
+    if (!this.canEditShipping()) return;
+
     if (this.autoRefreshTimer !== null) {
       window.clearInterval(this.autoRefreshTimer);
       this.autoRefreshTimer = null;
     }
 
-    const inputDate = this.toInputDate(this.order.deliveryDate);
     this.editShipping = {
       receiver: this.order.receiver,
       phone: this.order.phone.replace(/\s/g, ''),
       address: this.order.address,
-      deliveryDate: inputDate,
+      deliveryDate: this.shippingDateLabel,
       deliveryTime: this.order.deliveryTime,
     };
     this.saveShippingError = '';
+    this.shippingDateError = '';
+    this.shippingTimeError = '';
 
     this.provinces = (addressData as any[]) || [];
 
@@ -1326,6 +1346,13 @@ export class OrderDetail implements OnInit, OnDestroy {
       return;
     }
 
+    const deliveryDate = this.toInputDate(this.editShipping.deliveryDate);
+    const deliveryTime = this.editShipping.deliveryTime.trim().replace(/\s*[-–]\s*/g, '–');
+    this.shippingDateError = deliveryDate ? '' : 'Nhập ngày giao hợp lệ theo dạng dd/mm/yy.';
+    this.shippingTimeError = /^(?:[01]\d|2[0-3]):[0-5]\d(?:–(?:[01]\d|2[0-3]):[0-5]\d)?$/.test(deliveryTime)
+      ? '' : 'Nhập giờ theo dạng HH:mm hoặc HH:mm–HH:mm.';
+    if (this.shippingDateError || this.shippingTimeError) return;
+
     this.isSavingShipping = true;
     this.saveShippingError = '';
 
@@ -1333,15 +1360,15 @@ export class OrderDetail implements OnInit, OnDestroy {
       receiver: this.editShipping.receiver.trim(),
       phone: this.editShipping.phone.trim(),
       address: this.editShipping.address.trim(),
-      deliveryDate: this.editShipping.deliveryDate,
-      deliveryTime: this.editShipping.deliveryTime,
+      deliveryDate,
+      deliveryTime,
     }).subscribe({
       next: () => {
         this.order.receiver = this.editShipping.receiver.trim();
         this.order.phone = this.formatPhone(this.editShipping.phone.trim());
         this.order.address = this.editShipping.address.trim();
-        this.order.deliveryDate = this.formatDate(this.editShipping.deliveryDate);
-        this.order.deliveryTime = this.editShipping.deliveryTime;
+        this.order.deliveryDate = this.formatDate(deliveryDate);
+        this.order.deliveryTime = deliveryTime;
         this.order.hasEditedShipping = true;
         this.isSavingShipping = false;
         this.isEditingShipping = false;
@@ -1361,17 +1388,19 @@ export class OrderDetail implements OnInit, OnDestroy {
     });
   }
 
-  private toInputDate(viDate: string): string {
-    if (!viDate) return '';
-    if (/^\d{4}-\d{2}-\d{2}$/.test(viDate)) return viDate;
-    const parts = viDate.split('/');
-    if (parts.length === 3) {
-      const day = parts[0].padStart(2, '0');
-      const month = parts[1].padStart(2, '0');
-      const year = parts[2];
-      return `${year}-${month}-${day}`;
-    }
-    return '';
+  selectShippingDate(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.editShipping.deliveryDate = this.formatDate(value, true);
+    this.shippingDateError = '';
+  }
+
+  toInputDate(viDate: string): string {
+    const parts = viDate.trim().match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
+    if (!parts) return '';
+    const [, day, month, year] = parts;
+    const isoDate = `20${year}-${month}-${day}`;
+    const parsed = new Date(`${isoDate}T00:00:00Z`);
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().startsWith(isoDate) ? isoDate : '';
   }
 
   onProvinceChange(): void {

@@ -2356,4 +2356,5 @@
 .status-next-step{display:flex;gap:8px;margin:8px 0 10px;padding:10px 12px;border-radius:10px;background:#f3f6fb;color:#2f3b52;font-size:13px;line-height:1.45}
 .status-next-step p{margin:2px 0 0}
 .status-next-step a{display:inline-block;margin-top:4px;font-weight:600}
+.status-assign-shipper{margin-top:4px;padding:0;border:0;background:none;color:inherit;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
 .status-next-step--blocked{background:#fff4e5;color:#7a4100}

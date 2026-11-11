@@ -61,6 +61,11 @@ export function summarizePayments(payments: any[], totalPayable = 0, requiredDep
     actualRefundsTotal, netCollected, remainingAmount, paymentStatus };
 }
 
+const SHIPPER_REQUIRED_MESSAGE = 'Cần phân công nhân viên giao hàng trong mục Thông tin giao hàng trước khi chuyển sang Đang giao.';
+const needsShipper = (order: any, next: string) =>
+  next === 'Đang giao' && !String(order.NHAN_VIEN_GIAO_HANG_ID || order.NHAN_VIEN_GIAO_HANG?.id || '').trim();
+const isDeliveredStatus = (status: string) => ['Đã giao', 'Giao hàng thành công'].includes(status);
+
 export function assertOrderTransition(order: any, next: string, paid: number) {
   const current = String(order.TRANG_THAI || '');
   if (current === next) return;
@@ -83,7 +88,11 @@ export function assertOrderTransition(order: any, next: string, paid: number) {
     return;
   }
   const due = /cod/i.test(String(order.PHUONG_THUC_THANH_TOAN)) ? Number(order.TIEN_COC || 0) : Number(order.TONG_TIEN || 0);
+  if (isDeliveredStatus(next) && paid < Number(order.TONG_TIEN || 0)) {
+    throw new InventoryError(409, 'Cần xác minh đã thu đủ tiền ở trang Thanh toán trước khi chuyển sang Đã giao.');
+  }
   if (paid < due) throw new InventoryError(409, 'Chưa xác minh đủ khoản thanh toán cần thiết.');
+  if (needsShipper(order, next)) throw new InventoryError(409, SHIPPER_REQUIRED_MESSAGE);
   if (/^Đang chuẩn bị/.test(next) && !order.THOI_DIEM_CHUAN_BI_DU_KIEN) throw new InventoryError(409, 'Nhân viên cần nhập thời điểm chuẩn bị dự kiến T.');
   if (next === 'Hoàn thành' && paid < Number(order.TONG_TIEN || 0)) throw new InventoryError(409, 'Cần xác minh đủ số dư trước khi hoàn thành đơn.');
 }
@@ -95,7 +104,7 @@ const MAIN_NEXT_STATUS: Record<string, string> = {
   'Đang chuẩn bị': 'Chờ vận chuyển', 'Đang chuẩn bị hàng': 'Chờ vận chuyển', 'Chờ vận chuyển': 'Đang giao',
   'Đang giao': 'Đã giao', 'Giao không thành công': 'Chờ vận chuyển', 'Đã giao': 'Hoàn thành', 'Giao hàng thành công': 'Hoàn thành',
 };
-export type OrderNextStep = { nextStatus: string | null; blocked: boolean; reason: string; action: 'payment' | 'preparation' | 'start-preparation' | 'status' | 'after-sales' | 'none' };
+export type OrderNextStep = { nextStatus: string | null; blocked: boolean; reason: string; action: 'payment' | 'preparation' | 'start-preparation' | 'assign-shipper' | 'status' | 'after-sales' | 'none' };
 
 /**
  * Giải thích bước tiếp theo của đơn cho Admin: đi tiếp được không, nếu không thì vì sao và cần làm gì.
@@ -112,6 +121,10 @@ export function orderNextStep(order: any, paid: number): OrderNextStep {
     return { nextStatus, blocked: true, action: 'payment',
       reason: `Đơn chưa ghi nhận thanh toán (cần ${vnd(due)}, đã thu ${vnd(paid)}). Ghi nhận giao dịch "Đã thanh toán" ở trang Thanh toán, đơn sẽ tự chuyển sang "Đã đặt hàng thành công".` };
   }
+  if (isDeliveredStatus(nextStatus) && paid < total) {
+    return { nextStatus, blocked: true, action: 'payment',
+      reason: `Chưa thu đủ tiền đơn. Ghi nhận khoản còn lại ${vnd(total - paid)} ở trang Thanh toán trước khi chuyển sang Đã giao.` };
+  }
   const needsPayment = nextStatus !== 'Hoàn thành' && paid < due;
   if (needsPayment) {
     return { nextStatus, blocked: true, action: 'payment',
@@ -125,8 +138,9 @@ export function orderNextStep(order: any, paid: number): OrderNextStep {
     if (!order?.THOI_DIEM_CHUAN_BI_DU_KIEN) return { nextStatus, blocked: true, action: 'preparation',
       reason: 'Chưa có thời điểm chuẩn bị T. Nhập T ở khối "Thời điểm chuẩn bị đặt trước", bấm "Lưu T dự kiến" rồi bấm "Bắt đầu chuẩn bị".' };
     return { nextStatus, blocked: false, action: 'start-preparation',
-      reason: 'Đã đủ điều kiện. Bấm "Bắt đầu chuẩn bị" ở khối "Thời điểm chuẩn bị đặt trước" (bước này kiểm tra và xuất NVL nên không chọn trong danh sách).' };
+      reason: 'Có thể bắt đầu chuẩn bị. Hệ thống sẽ kiểm tra và xuất nguyên vật liệu nếu đơn cần.' };
   }
+  if (needsShipper(order, nextStatus)) return { nextStatus, blocked: true, action: 'assign-shipper', reason: SHIPPER_REQUIRED_MESSAGE };
   try { assertOrderTransition(order, nextStatus, paid); }
   catch (error: any) { return { nextStatus, blocked: true, action: 'status', reason: String(error?.message || 'Chưa đủ điều kiện chuyển bước.') }; }
   return { nextStatus, blocked: false, action: 'status', reason: `Có thể chuyển sang "${nextStatus}".` };
@@ -177,9 +191,9 @@ export function assertRoleCanDoOrderAction(role: unknown, action: string) {
   if (kind === 'shipper' && !SHIPPER_ORDER_ACTIONS.includes(action)) throw new InventoryError(403, 'Nhân viên giao hàng không được thực hiện thao tác này trên đơn hàng.');
 }
 
-export function allowedOrderStatuses(order: any, paid: number, role?: unknown): string[] {
+export function allowedOrderStatuses(order: any, paid: number, role?: unknown, includePreparation = false): string[] {
   return ['Đang chuẩn bị hàng', 'Chờ vận chuyển', 'Đang giao', 'Đã giao', 'Hoàn thành', 'Giao không thành công', 'Đã hủy', 'Từ chối hoàn tiền/trả hàng'].filter(next => {
-    if (next === 'Đang chuẩn bị hàng') return false; // command Bắt đầu chuẩn bị kiểm tra/xuất kho riêng
+    if (next === 'Đang chuẩn bị hàng' && (!includePreparation || orderStaffKind(role) !== 'admin')) return false;
     if (next === order.TRANG_THAI) return false;
     if (role !== undefined && !roleCanSetOrderStatus(role, next)) return false;
     try { assertOrderTransition(order, next, paid); return true; } catch { return false; }
@@ -594,8 +608,8 @@ export const getAdminOrderDetailById = async (orderId: string, role?: unknown): 
           : minutesToT <= 1440 ? { level: 'soon', label: 'Sắp đến lịch', minutesToT }
             : { level: 'normal', label: 'Bình thường', minutesToT };
   return {
-    allowedStatuses: allowedOrderStatuses(order, paid, role),
-    nextStep: orderNextStep(order, paid),
+    allowedStatuses: allowedOrderStatuses(order, paymentSummary.netCollected, role, true),
+    nextStep: orderNextStep(order, paymentSummary.netCollected),
     snapshotAvailable: !!order.TINH_TIEN_SNAPSHOT && items.every(item => !!item.TEN_SAN_PHAM_SNAPSHOT),
     history: order.LICH_SU_TRANG_THAI || [],
     preparationHistory: order.LICH_SU_T || [],

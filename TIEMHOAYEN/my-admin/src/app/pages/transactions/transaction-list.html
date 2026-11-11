@@ -1,5 +1,6 @@
 <div class="transaction-page">
     <div class="transaction-card">
+        <p class="transaction-field-error" *ngIf="errorMessage" role="alert">{{ errorMessage }}</p>
 
         <div class="toolbar">
             <div class="search-box">
@@ -16,6 +17,7 @@
             </div>
 
             <div class="toolbar-actions">
+                <button *ngIf="canCreate" class="tool-btn" type="button" (click)="openAddModal()">Ghi nhận số dư</button>
                 <span class="selected-count">
                     Đã chọn: {{ selectedCount }}
                 </span>
@@ -68,9 +70,7 @@
                                 (change)="applyFilters()"
                             >
                                 <option value="Tất cả">Tất cả</option>
-                                <option value="Đã thanh toán">Đã thanh toán</option>
-                                <option value="Chờ thanh toán">Chờ thanh toán</option>
-                                <option value="Thanh toán thất bại">Thanh toán thất bại</option>
+                                <option *ngFor="let status of statusOptions" [value]="status">{{ status }}</option>
                             </select>
                         </div>
                         <div class="filter-group">
@@ -200,23 +200,29 @@
                         </td>
 
                         <td>
+                            <small class="payment-part" *ngIf="item.kind === 'balance'">Tiền còn lại</small>
+                            <small class="payment-part" *ngIf="item.kind === 'deposit'">Tiền cọc</small>
                             <select
                                 *ngIf="isEditingTransaction(item)"
                                 class="inline-control status-control"
                                 [(ngModel)]="item.status"
+                                [attr.aria-invalid]="!!editErrors[item.code]?.status"
                             >
                                 <option
-                                    *ngIf="!editableStatusOptions.includes(item.status)"
+                                    *ngIf="!editableStatusOptions(item).includes(item.status)"
                                     [value]="item.status"
                                     disabled
                                     hidden
                                 >
                                     {{ item.status }}
                                 </option>
-                                <option *ngFor="let status of editableStatusOptions" [value]="status">
+                                <option *ngFor="let status of editableStatusOptions(item)" [value]="status">
                                     {{ status }}
                                 </option>
                             </select>
+                            <p class="transaction-field-error" *ngIf="isEditingTransaction(item) && editErrors[item.code]?.status" role="alert">
+                                {{ editErrors[item.code].status }}
+                            </p>
                             <span
                                 *ngIf="!isEditingTransaction(item)"
                                 class="status-badge"
@@ -224,16 +230,28 @@
                             >
                                 {{ item.status }}
                             </span>
+                            <button *ngIf="canCreate && item.canRecordBalance" class="record-balance-btn" type="button"
+                                (click)="openAddModal(item)">Ghi nhận tiền còn lại</button>
                         </td>
 
                         <td>
-                            <span>{{ formatPrice(item.amount) }}</span></td><td>{{formatPrice(item.total || 0)}}<br>Cọc: {{formatPrice(item.deposit || 0)}}</td><td>{{formatPrice(item.paid || 0)}}<br>Còn: {{formatPrice(item.remaining || 0)}}
+                            <span>{{ formatPrice(item.amount) }}</span>
+                            <p class="transaction-field-error" *ngIf="isEditingTransaction(item) && editErrors[item.code]?.amount" role="alert">{{ editErrors[item.code].amount }}</p>
+                        </td><td>{{formatPrice(item.total || 0)}}<br>Cọc: {{formatPrice(item.deposit || 0)}}</td><td>{{formatPrice(item.paid || 0)}}<br>Còn: {{formatPrice(item.remaining || 0)}}
                         </td>
 
                         <td><span class="reconciliation-badge" [ngClass]="reconciliationClass(item)">{{ reconciliationLabel(item) }}</span></td>
 
                         <td class="code-text">
-                            <input *ngIf="isEditingTransaction(item)" [(ngModel)]="item.referenceCode" aria-label="Mã tham chiếu xác minh" placeholder="Mã tham chiếu"><input *ngIf="isEditingTransaction(item)" [(ngModel)]="editReasons[item.code]" aria-label="Căn cứ đối soát" placeholder="Căn cứ đối soát bắt buộc"><span *ngIf="!isEditingTransaction(item)">{{ item.referenceCode }}</span>
+                            @if (isEditingTransaction(item)) {
+                                <input [(ngModel)]="item.referenceCode" [attr.aria-invalid]="!!editErrors[item.code]?.referenceCode" aria-label="Mã tham chiếu xác minh" placeholder="Mã tham chiếu">
+                                <p class="transaction-field-error" *ngIf="editErrors[item.code]?.referenceCode" role="alert">{{ editErrors[item.code].referenceCode }}</p>
+                                <input [(ngModel)]="editReasons[item.code]" [attr.aria-invalid]="!!editErrors[item.code]?.reason" aria-label="Căn cứ đối soát" placeholder="Căn cứ đối soát bắt buộc">
+                                <p class="transaction-field-error" *ngIf="editErrors[item.code]?.reason" role="alert">{{ editErrors[item.code].reason }}</p>
+                                <p class="transaction-field-error" *ngIf="editErrors[item.code]?.general || editErrors[item.code]?.orderCode" role="alert">{{ editErrors[item.code].general || editErrors[item.code].orderCode }}</p>
+                            } @else {
+                                <span>{{ item.referenceCode }}</span>
+                            }
                         </td>
 
                         <td>
@@ -315,7 +333,7 @@
 <div class="add-modal">
 <div class="add-modal-header">
     <div class="title-mark"></div>
-    <h2>Thêm thanh toán</h2>
+    <h2>Ghi nhận số dư</h2>
 
     <button
         type="button"
@@ -344,7 +362,10 @@
             type="text"
             placeholder="Nhập mã đơn hàng"
             [(ngModel)]="newTransaction.orderCode"
+            (ngModelChange)="balanceErrors.orderCode = undefined"
+            [attr.aria-invalid]="!!balanceErrors.orderCode"
         >
+        <p class="transaction-field-error" *ngIf="balanceErrors.orderCode" role="alert">{{ balanceErrors.orderCode }}</p>
     </div>
 
     <div class="form-row">
@@ -358,27 +379,32 @@
         </div>
 
         <div class="form-group">
-            <label>Trạng thái thanh toán</label>
-            <select [(ngModel)]="newTransaction.status">
-                <option *ngFor="let status of statusOptions" [value]="status">
+            <label>Trạng thái thanh toán tiền còn lại</label>
+            <select [(ngModel)]="newTransaction.status"
+                (ngModelChange)="balanceErrors.status = undefined" [attr.aria-invalid]="!!balanceErrors.status">
+                <option *ngFor="let status of balanceStatuses" [value]="status">
                     {{ status }}
                 </option>
             </select>
+            <p class="transaction-field-error" *ngIf="balanceErrors.status" role="alert">{{ balanceErrors.status }}</p>
         </div>
     </div>
 
     <div class="form-row">
         <div class="form-group">
-            <label>Số tiền</label>
+            <label>Tiền còn lại</label>
             <div class="money-input">
                 <input
                     type="number"
                     min="0"
                     placeholder="0"
                     [(ngModel)]="newTransaction.amount"
+                    (ngModelChange)="balanceErrors.amount = undefined"
+                    [attr.aria-invalid]="!!balanceErrors.amount"
                 >
                 <span>đ</span>
             </div>
+            <p class="transaction-field-error" *ngIf="balanceErrors.amount" role="alert">{{ balanceErrors.amount }}</p>
         </div>
 
         <div class="form-group">
@@ -387,8 +413,18 @@
                 type="text"
                 placeholder="Nhập mã giao dịch"
                 [(ngModel)]="newTransaction.referenceCode"
+                (ngModelChange)="balanceErrors.referenceCode = undefined"
+                [attr.aria-invalid]="!!balanceErrors.referenceCode"
             >
+            <p class="transaction-field-error" *ngIf="balanceErrors.referenceCode" role="alert">{{ balanceErrors.referenceCode }}</p>
         </div>
+    </div>
+
+    <div class="form-group">
+        <label for="balance-reason">Căn cứ đối soát</label>
+        <input id="balance-reason" type="text" [(ngModel)]="balanceReason"
+            (ngModelChange)="balanceErrors.reason = undefined" [attr.aria-invalid]="!!balanceErrors.reason">
+        <p class="transaction-field-error" *ngIf="balanceErrors.reason" role="alert">{{ balanceErrors.reason }}</p>
     </div>
 
     <div class="form-group date-field">
@@ -402,7 +438,9 @@
             >
             <i class="bi bi-calendar3"></i>
         </div>
+        <p class="transaction-field-error" *ngIf="balanceErrors.date" role="alert">{{ balanceErrors.date }}</p>
     </div>
+    <p class="transaction-field-error" *ngIf="balanceErrors.general" role="alert">{{ balanceErrors.general }}</p>
 </div>
 
 <div class="add-modal-actions">
@@ -417,16 +455,12 @@
     <button
         type="button"
         class="save-add-btn"
+        [disabled]="savingBalance"
         (click)="saveNewTransaction()"
     >
-        Thêm
+        {{ savingBalance ? 'Đang lưu…' : 'Lưu giao dịch' }}
     </button>
 </div>
 
-@if(errorMessage){
-  <div class="transaction-error-backdrop"><section class="transaction-error-dialog" role="alertdialog" aria-modal="true" aria-labelledby="transaction-error-title">
-    <h2 id="transaction-error-title"><i class="bi bi-exclamation-circle"></i> Chưa lưu được giao dịch</h2>
-    <p>{{errorMessage}}</p>
-    <button type="button" (click)="errorMessage=''">Đã hiểu</button>
-  </section></div>
-}
+</div>
+</div>

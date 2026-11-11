@@ -868,8 +868,37 @@ test('Admin sees why an order cannot move to the next status', async () => {
   const ready = orderNextStep({ ...cod, TRANG_THAI: 'Chờ xử lý', THOI_DIEM_CHUAN_BI_DU_KIEN: new Date() }, 100000);
   assert.equal(ready.blocked, false); assert.equal(ready.action, 'start-preparation');
   const unpaid = orderNextStep({ ...cod, TRANG_THAI: 'Đang giao' }, 0);
-  assert.equal(unpaid.action, 'payment'); assert.match(unpaid.reason, /100\.000đ/);
+  assert.equal(unpaid.action, 'payment'); assert.match(unpaid.reason, /300\.000đ/);
   const balance = orderNextStep({ ...cod, TRANG_THAI: 'Đã giao' }, 100000);
   assert.equal(balance.blocked, true); assert.match(balance.reason, /200\.000đ/);
-  assert.equal(orderNextStep({ ...cod, TRANG_THAI: 'Chờ vận chuyển' }, 100000).blocked, false);
+  const shipping = { ...cod, TRANG_THAI: 'Chờ vận chuyển' };
+  assert.equal(orderNextStep(shipping, 100000).action, 'assign-shipper');
+  assert.match(orderNextStep(shipping, 100000).reason, /phân công nhân viên giao hàng/);
+  assert.equal(orderNextStep({ ...shipping, NHAN_VIEN_GIAO_HANG_ID: 'NV001' }, 100000).blocked, false);
+});
+
+test('COD delivery requires the verified balance, while unsuccessful delivery remains available', async () => {
+  const { allowedOrderStatuses, assertOrderTransition, orderNextStep, sumVerifiedPayments } = await import('../services/admin-order.service.js');
+  const order = { TRANG_THAI: 'Đang giao', PHUONG_THUC_THANH_TOAN: 'COD', TIEN_COC: 150000, TONG_TIEN: 500000 };
+  const deposit = { THANH_TOAN_ID: 'COC', SO_TIEN: 150000, TRANG_THAI_THANH_TOAN: 'Thành công' };
+  const balance = { THANH_TOAN_ID: 'SO_DU', SO_TIEN: 350000, LOAI_GIAO_DICH: 'SO_DU' };
+  const paid = sumVerifiedPayments([deposit, { ...balance, TRANG_THAI_THANH_TOAN: 'Thất bại' }]);
+  assert.throws(() => assertOrderTransition(order, 'Đã giao', paid), /thu đủ tiền/);
+  assert.throws(() => assertOrderTransition(order, 'Giao hàng thành công', paid), /thu đủ tiền/);
+  assert.deepEqual(allowedOrderStatuses(order, paid, 'Admin'), ['Giao không thành công']);
+  assert.match(orderNextStep(order, paid).reason, /350\.000đ/);
+  const fullyPaid = sumVerifiedPayments([deposit, { ...balance, TRANG_THAI_THANH_TOAN: 'Thành công' }]);
+  assert.doesNotThrow(() => assertOrderTransition(order, 'Đã giao', fullyPaid));
+});
+
+test('Admin order details offer preparation only after payment and scheduling', async () => {
+  const { allowedOrderStatuses } = await import('../services/admin-order.service.js');
+  const order = { TRANG_THAI: 'Đã đặt hàng thành công', TONG_TIEN: 100000 };
+  const scheduled = { ...order, THOI_DIEM_CHUAN_BI_DU_KIEN: new Date() };
+  assert.deepEqual(allowedOrderStatuses(order, 100000, 'Admin', true), ['Đã hủy']);
+  assert.deepEqual(allowedOrderStatuses(scheduled, 0, 'Admin', true), ['Đã hủy']);
+  assert.deepEqual(allowedOrderStatuses(scheduled, 100000, 'Admin', true), ['Đang chuẩn bị hàng', 'Đã hủy']);
+  assert.deepEqual(allowedOrderStatuses(scheduled, 100000, 'Admin'), ['Đã hủy']);
+  assert.deepEqual(allowedOrderStatuses(scheduled, 100000, 'Nhân viên kho', true), []);
+  assert.deepEqual(allowedOrderStatuses({ ...scheduled, TRANG_THAI: 'Đã hủy' }, 100000, 'Admin', true), []);
 });

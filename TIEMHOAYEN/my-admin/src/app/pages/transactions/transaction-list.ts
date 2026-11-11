@@ -7,7 +7,12 @@ import { FormsModule } from '@angular/forms';
 import { interval, Subscription } from 'rxjs';
 import { AdminApiService, AdminTransaction } from '../../services/admin-api.service';
 
+type TransactionField = 'orderCode' | 'status' | 'amount' | 'referenceCode' | 'reason' | 'date' | 'general';
+type TransactionErrors = Partial<Record<TransactionField, string>>;
+
 interface TransactionItem {
+    kind?: AdminTransaction['kind'];
+    canRecordBalance?: boolean;
     total?: number; deposit?: number; paid?: number; remaining?: number; editable?: boolean; confirmedAt?: string; confirmedBy?: string; history?: any[];
     id: number;
     code: string;
@@ -45,6 +50,9 @@ export class TransactionListComponent implements OnInit, OnDestroy {
 
     newTransaction: TransactionItem | null = null;
     newTransactionDateText = '';
+    balanceReason = '';
+    savingBalance = false;
+    balanceErrors: TransactionErrors = {};
 
     gatewayOptions = [
         'VNPay',
@@ -55,15 +63,26 @@ export class TransactionListComponent implements OnInit, OnDestroy {
 
     statusOptions = [
         'Đã thanh toán',
+        'Đã thanh toán cọc',
         'Chờ thanh toán',
-        'Thanh toán thất bại'
+        'Thanh toán thất bại',
+        'Thanh toán cọc thất bại',
+        'Hết hạn'
     ];
 
-    editableStatusOptions = [
+    readonly balanceStatuses = ['Đã thanh toán', 'Thanh toán thất bại'];
+    private readonly fullStatuses = [
         'Đã thanh toán',
         'Thanh toán thất bại',
         'Hết hạn'
     ];
+    private readonly depositStatuses = ['Đã thanh toán cọc', 'Thanh toán cọc thất bại', 'Hết hạn'];
+
+    editableStatusOptions(item: TransactionItem): readonly string[] {
+        if (item.kind === 'balance') return this.balanceStatuses;
+        if (item.kind === 'deposit') return this.depositStatuses;
+        return this.fullStatuses;
+    }
 
     currentPage = 1;
     pageSize = 10;
@@ -71,6 +90,8 @@ export class TransactionListComponent implements OnInit, OnDestroy {
     editingTransactionIds = new Set<number>();
     expandedHistoryIds = new Set<number>();
     editReasons: Record<string, string> = {};
+    editErrors: Record<string, TransactionErrors> = {};
+    private savingTransactions = new Set<string>();
     private readonly liveRefreshMs = 30000;
     private liveRefreshSub?: Subscription;
     private isLiveRefreshInFlight = false;
@@ -217,6 +238,7 @@ export class TransactionListComponent implements OnInit, OnDestroy {
 
     private normalizeTransactionStatus(status: string): string {
         const raw = String(status || '').trim();
+        if (this.depositStatuses.includes(raw)) return raw;
         const normalized = this.statusKey(raw);
 
         if (!raw) {
@@ -405,7 +427,7 @@ export class TransactionListComponent implements OnInit, OnDestroy {
     }
 
     canEditTransaction(transaction: TransactionItem): boolean {
-        if (!this.adminApi.can('payments','update') || !transaction.editable) return false;
+        if (!this.adminApi.can('payments','update') || !transaction.editable || this.savingTransactions.has(transaction.code)) return false;
         if (!this.hasSelectedTransactions) {
             return true;
         }
@@ -473,18 +495,22 @@ export class TransactionListComponent implements OnInit, OnDestroy {
         }
 
         if (this.editingTransactionIds.has(transaction.id)) {
-            const reason = String(this.editReasons[transaction.code] || '').trim();
-            if (!reason) { alert('Vui lòng nhập căn cứ đối soát giao dịch.'); return; }
-            this.editingTransactionIds.delete(transaction.id);
-            const amount = this.parseMoneyAmount(transaction.amount);
-
-            if (!Number.isFinite(amount) || amount < 0) {
-                alert('Vui long nhap so tien hop le.');
-                this.loadTransactions();
-                return;
+            const errors: TransactionErrors = {};
+            if (!this.editableStatusOptions(transaction).includes(transaction.status)) {
+                errors.status = 'Vui lòng chọn kết quả đối soát giao dịch.';
             }
+            const reason = String(this.editReasons[transaction.code] || '').trim();
+            if (!reason) errors.reason = 'Vui lòng nhập căn cứ đối soát giao dịch.';
+            if (transaction.status.startsWith('Đã thanh toán') && !transaction.referenceCode.trim()) {
+                errors.referenceCode = 'Vui lòng nhập mã giao dịch.';
+            }
+            const amount = this.parseMoneyAmount(transaction.amount);
+            if (!Number.isSafeInteger(amount) || amount <= 0) errors.amount = 'Số tiền giao dịch không hợp lệ.';
+            this.editErrors[transaction.code] = errors;
+            if (Object.keys(errors).length) return;
 
             transaction.amount = amount;
+            this.savingTransactions.add(transaction.code);
             this.adminApi.updateTransaction(transaction.code, {
                 gateway: transaction.gateway,
                 status: transaction.status,
@@ -493,19 +519,32 @@ export class TransactionListComponent implements OnInit, OnDestroy {
                 reason,
                 source: 'ADMIN_MANUAL'
             }).subscribe({
-                next: (response) => {
-                    delete this.editReasons[transaction.code]; this.loadTransactions();
+                next: () => {
+                    this.savingTransactions.delete(transaction.code);
+                    delete this.editReasons[transaction.code];
+                    delete this.editErrors[transaction.code];
+                    this.loadTransactions();
                 },
                 error: (error) => {
-                    console.error('Cannot update transaction', error);
-                    alert(error?.error?.message || 'Không thể lưu giao dịch. Vui lòng thử lại.');
-                    this.loadTransactions();
+                    this.savingTransactions.delete(transaction.code);
+                    this.editErrors[transaction.code] = this.paymentErrors(error?.error?.message || 'Không thể lưu giao dịch. Vui lòng thử lại.');
+                    this.cdr.markForCheck();
                 }
             });
             return;
         }
 
+        delete this.editErrors[transaction.code];
         this.editingTransactionIds.add(transaction.id);
+    }
+
+    private paymentErrors(message: string): TransactionErrors {
+        if (/chọn kết quả đối soát/.test(message)) return { status: message };
+        if (/mã tham chiếu/.test(message)) return { referenceCode: message };
+        if (/căn cứ đối soát/.test(message)) return { reason: message };
+        if (/không tìm thấy đơn hàng/.test(message.toLowerCase())) return { orderCode: message };
+        if (/số tiền|khớp nghĩa vụ/.test(message.toLowerCase())) return { amount: message };
+        return { general: message };
     }
 
     onRowSelectionChange(transaction: TransactionItem): void {
@@ -517,7 +556,7 @@ export class TransactionListComponent implements OnInit, OnDestroy {
     }
 
     deleteSelectedTransactions(): void {
-        alert('Giao dịch được giữ để đối soát; không hỗ trợ xóa.');
+        this.errorMessage = 'Giao dịch được giữ để đối soát, không hỗ trợ xóa.';
     }
 
     exportTransactions(format: 'excel' | 'pdf'): void {
@@ -528,7 +567,7 @@ export class TransactionListComponent implements OnInit, OnDestroy {
             if (format === 'excel') { const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([headers, ...rows]), 'Giao dich'); XLSX.writeFile(book, 'TiemHoaYen-GiaoDich.xlsx'); }
             else { const pdf = new jsPDF({orientation:'landscape'}); autoTable(pdf,{head:[headers],body:rows.map(r => r.map(v => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/Đ/g,'D')))}); pdf.save('TiemHoaYen-GiaoDich.pdf'); }
             this.isExportMenuOpen = false;
-        }, error: e => alert(e?.error?.message || 'Chưa xuất được dữ liệu từ backend.') });
+        }, error: e => { this.errorMessage = e?.error?.message || 'Chưa xuất được dữ liệu.'; this.cdr.markForCheck(); } });
     }
 
     previousPage(): void {
@@ -584,7 +623,7 @@ export class TransactionListComponent implements OnInit, OnDestroy {
         });
     }
 
-    openAddModal(): void {
+    openAddModal(item?: TransactionItem): void {
         if (!this.canCreate) return;
         this.isFilterMenuOpen = false;
         this.isSortMenuOpen = false;
@@ -593,65 +632,60 @@ export class TransactionListComponent implements OnInit, OnDestroy {
         this.newTransaction = {
             id: 0,
             code: 'Tự động',
-            orderCode: '',
-            gateway: 'VNPay',
-            status: 'Chờ thanh toán',
-            amount: 0,
+            orderCode: item?.orderCode || '',
+            gateway: item?.gateway || 'Thanh toán khi nhận hàng (COD)',
+            status: 'Đã thanh toán',
+            amount: item?.remaining || 0,
             referenceCode: '',
             transactionDate: new Date(),
             selected: false
         };
 
         this.newTransactionDateText = this.formatShortDate(new Date());
+        this.balanceReason = '';
+        this.balanceErrors = {};
         this.isAddModalOpen = true;
     }
 
     closeAddModal(): void {
+        if (this.savingBalance) return;
         this.isAddModalOpen = false;
         this.newTransaction = null;
         this.newTransactionDateText = '';
     }
 
     saveNewTransaction(): void {
-        if (!this.canCreate) return;
+        if (!this.canCreate || this.savingBalance) return;
         if (!this.newTransaction) {
             return;
         }
 
-        if (!this.newTransaction.orderCode.trim()) {
-            alert('Vui lòng nhập mã đơn hàng.');
-            return;
-        }
-
-        if (!this.newTransaction.referenceCode.trim()) {
-            alert('Vui lòng nhập mã giao dịch.');
-            return;
-        }
-
+        const errors: TransactionErrors = {};
+        if (!this.newTransaction.orderCode.trim()) errors.orderCode = 'Vui lòng nhập mã đơn hàng.';
+        if (!this.newTransaction.referenceCode.trim()) errors.referenceCode = 'Vui lòng nhập mã giao dịch.';
+        const reason = this.balanceReason.trim();
+        if (!reason) errors.reason = 'Vui lòng nhập căn cứ đối soát giao dịch.';
         const amount = this.parseMoneyAmount(this.newTransaction.amount);
-
-        if (!Number.isFinite(amount) || amount <= 0) {
-            alert('Vui lòng nhập số tiền hợp lệ.');
-            return;
-        }
-
+        if (!Number.isSafeInteger(amount) || amount <= 0) errors.amount = 'Vui lòng nhập số tiền hợp lệ.';
         const parsedDate = this.parseShortDate(this.newTransactionDateText);
+        if (!parsedDate) errors.date = 'Ngày giao dịch phải có định dạng DD/MM/YYYY.';
+        this.balanceErrors = errors;
+        if (!parsedDate || Object.keys(errors).length) return;
 
-        if (!parsedDate) {
-            alert('Ngày giao dịch phải có định dạng DD/MM/YYYY.');
-            return;
-        }
-
+        this.savingBalance = true;
         this.adminApi.createTransaction({
             orderCode: this.newTransaction.orderCode.trim(),
             gateway: this.newTransaction.gateway,
             status: this.newTransaction.status,
             amount,
             referenceCode: this.newTransaction.referenceCode.trim(),
-            transactionDate: parsedDate.toISOString()
+            transactionDate: parsedDate.toISOString(),
+            balance: true,
+            reason
         }).subscribe({
             next: () => {
-                this.searchKeyword = '';
+                this.savingBalance = false;
+                this.searchKeyword = this.newTransaction?.orderCode.trim() || '';
                 this.selectedGateway = 'Tất cả';
                 this.selectedStatus = 'Tất cả';
                 this.currentPage = 1;
@@ -659,8 +693,9 @@ export class TransactionListComponent implements OnInit, OnDestroy {
                 this.loadTransactions();
             },
             error: (error) => {
-                console.error('Cannot create transaction', error);
-                alert(error?.error?.message || 'Không thể thêm giao dịch. Vui lòng kiểm tra mã đơn hàng rồi thử lại.');
+                this.savingBalance = false;
+                this.balanceErrors = this.paymentErrors(error?.error?.message || 'Không thể lưu giao dịch. Vui lòng thử lại.');
+                this.cdr.markForCheck();
             }
         });
 

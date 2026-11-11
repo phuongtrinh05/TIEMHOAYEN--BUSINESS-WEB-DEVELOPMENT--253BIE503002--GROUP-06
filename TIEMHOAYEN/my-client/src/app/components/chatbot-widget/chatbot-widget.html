@@ -31,7 +31,7 @@
                     </a>
                   }
                   @if(orderData.requests.length){<p class="request-list-title">Yêu cầu tư vấn đặt hoa</p>}
-                  @for(r of orderData.requests;track r.requestId){<button type="button" class="order-card request-card" (click)="latestSalesRequestId=r.requestId;resumeSalesChat()"><div class="order-card-top"><strong>{{r.requestId}}</strong></div><div class="order-card-bottom"><span class="request-status">{{r.status}}</span><span class="order-detail-link">Trao đổi <span aria-hidden="true">→</span></span></div></button>}
+                  @for(r of orderData.requests;track r.requestId){<button type="button" class="order-card request-card" (click)="latestSalesRequestId=r.requestId;resumeSalesChat()"><div class="order-card-top"><strong>{{r.requestId}}</strong></div><div class="order-card-bottom"><span class="request-status" [attr.data-tone]="requestStatusTone(r.status)">{{r.status}}</span><span class="order-detail-link">Trao đổi <span aria-hidden="true">→</span></span></div></button>}
                 </div>
                 @if(!orderData.orders.length&&!orderData.requests.length){<p class="order-empty">Chưa có đơn hàng hoặc yêu cầu tư vấn.</p>}
               }

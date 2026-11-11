@@ -500,8 +500,8 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   // ===== TIMELINE =====
   get timeline(): TimelineStep[] {
-    const history = this.order.history || [];
-    return history.length ? history.map(h => ({ status: this.toDetailOrderStatus(h.to), action: h.action === 'note' ? 'Cập nhật ghi chú nội bộ' : h.action === 'preparation' ? 'Nhập thời điểm chuẩn bị T' : h.action === 'delivery' ? 'Cập nhật thông tin giao hàng' : h.action === 'handover-media' ? 'Cập nhật ảnh/video bàn giao' : '', actor: h.actor || '', time: formatDateTime24(h.at), done: true, icon: STEP_CONFIG[this.toDetailOrderStatus(h.to)]?.icon || 'bi-clock' }))
+    const history = (this.order.history || []).filter(event => event.action !== 'preparation' && event.action !== 'assign-shipper');
+    return history.length ? history.map(h => ({ status: this.toDetailOrderStatus(h.to), action: h.action === 'note' ? 'Cập nhật ghi chú nội bộ' : h.action === 'delivery' ? 'Cập nhật thông tin giao hàng' : h.action === 'handover-media' ? 'Cập nhật ảnh/video bàn giao' : '', actor: h.actor || '', time: formatDateTime24(h.at), done: true, icon: STEP_CONFIG[this.toDetailOrderStatus(h.to)]?.icon || 'bi-clock' }))
       : [{ status: this.order.orderStatus, time: this.order.createdAt ? 'Ngày tạo: ' + this.order.createdAt : '', done: true, icon: STEP_CONFIG[this.order.orderStatus]?.icon || 'bi-clock' }];
   }
 
@@ -541,7 +541,7 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   get canApplySelectedStatus(): boolean {
-    return Boolean(this.selectedNextStatus && !this.isStatusOptionDisabled(this.selectedNextStatus));
+    return Boolean(!this.preparationBusy && this.selectedNextStatus && !this.isStatusOptionDisabled(this.selectedNextStatus));
   }
 
   isStatusOptionDisabled(status: OrderStatus): boolean {
@@ -663,7 +663,12 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   applySelectedStatus(): void {
-    if (!this.selectedNextStatus || !this.order.id || this.isStatusOptionDisabled(this.selectedNextStatus)) return;
+    if (!this.canApplySelectedStatus || !this.selectedNextStatus || !this.order.id) return;
+
+    if (this.selectedNextStatus === 'Đang chuẩn bị hàng') {
+      this.startPreparation();
+      return;
+    }
 
     if (this.selectedNextStatus === REFUND_REJECTED_STATUS) {
       this.customerRefundReason = this.order.refundReason;
@@ -725,6 +730,14 @@ export class OrderDetail implements OnInit, OnDestroy {
       },
       error: () => { this.shippers = []; this.cdr.markForCheck(); },
     });
+  }
+
+  openShipperAssignment(): void {
+    this.closeStatusDropdown();
+    const picker = document.getElementById('order-shipper-picker');
+    picker?.scrollIntoView({ block: 'center' });
+    picker?.focus({ preventScroll: true });
+    if (!this.showShipperDropdown) this.toggleShipperDropdown();
   }
 
   toggleShipperDropdown(): void {
@@ -802,7 +815,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     if (this.preparationBusy) return;
     this.preparationBusy = true;
     this.adminApi.updateOrderMetadata(this.order.id, { action: 'start-preparation' }).subscribe({
-      next: r => { this.preparationBusy = false; this.applyApiOrderDetail(r.order); this.showToast('Đã bắt đầu chuẩn bị đơn.'); this.cdr.detectChanges(); },
+      next: r => { this.preparationBusy = false; this.applyApiOrderDetail(r.order); this.closeStatusDropdown(); this.showToast('Đã bắt đầu chuẩn bị đơn.'); this.cdr.detectChanges(); },
       error: e => { this.preparationBusy = false; this.showToast(e?.error?.message || 'Chưa thể bắt đầu chuẩn bị.', 'error'); },
     });
   }

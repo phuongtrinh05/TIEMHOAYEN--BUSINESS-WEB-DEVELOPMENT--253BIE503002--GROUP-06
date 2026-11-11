@@ -82,7 +82,7 @@
       <div class="shipping-card">
         <div class="shipping-header">
           <h3>Thông tin giao hàng</h3>
-          <button *ngIf="canEditShipping()" type="button" class="btn-edit-shipping" (click)="openEditShipping()"
+          <button *ngIf="!isEditingShipping && canEditShipping()" type="button" class="btn-edit-shipping" (click)="openEditShipping()"
             title="Cập nhật thông tin giao hàng">
             <span>Cập nhật</span>
           </button>
@@ -109,7 +109,7 @@
             <div class="shipping-icon"><i class="bi bi-calendar-event"></i></div>
             <div class="shipping-content">
               <span class="shipping-label">Ngày giao hàng:</span>
-              <span class="shipping-value">{{ order.deliveryDate || 'Chưa chọn' }}</span>
+              <span class="shipping-value">{{ shippingDateLabel || 'Chưa chọn' }}</span>
             </div>
           </div>
 
@@ -153,13 +153,22 @@
             </div>
 
             <div class="edit-field">
-              <label>Ngày giao hàng</label>
-              <input type="date" [(ngModel)]="editShipping.deliveryDate" class="edit-input" lang="vi">
+              <label for="edit-delivery-date">Ngày giao hàng</label>
+              <div class="delivery-date-control">
+                <input id="edit-delivery-date" type="text" [(ngModel)]="editShipping.deliveryDate" class="edit-input" placeholder="dd/mm/yy" maxlength="8"
+                  [attr.aria-invalid]="!!shippingDateError" (ngModelChange)="shippingDateError = ''">
+                <i class="bi bi-calendar-event delivery-date-icon" aria-hidden="true"></i>
+                <input type="date" class="delivery-date-picker" aria-label="Chọn ngày giao hàng trên lịch"
+                  [value]="toInputDate(editShipping.deliveryDate)" (change)="selectShippingDate($event)">
+              </div>
+              <small class="save-shipping-error" *ngIf="shippingDateError">{{ shippingDateError }}</small>
             </div>
 
             <div class="edit-field">
-              <label>Khung giờ giao</label>
-              <input type="time" [(ngModel)]="editShipping.deliveryTime" class="edit-input">
+              <label for="edit-delivery-time">Khung giờ giao</label>
+              <input id="edit-delivery-time" type="text" [(ngModel)]="editShipping.deliveryTime" class="edit-input" placeholder="HH:mm hoặc HH:mm–HH:mm"
+                [attr.aria-invalid]="!!shippingTimeError" (ngModelChange)="shippingTimeError = ''">
+              <small class="save-shipping-error" *ngIf="shippingTimeError">{{ shippingTimeError }}</small>
             </div>
 
             <div class="edit-field">
@@ -409,7 +418,7 @@
           <div class="action-card">
             <h3>Thao tác đơn hàng</h3>
 
-            <button type="button" (click)="reorder()">
+            <button type="button" *ngIf="canReorder()" (click)="reorder()">
               <i class="bi bi-arrow-repeat"></i>
               Đặt lại đơn này
             </button>

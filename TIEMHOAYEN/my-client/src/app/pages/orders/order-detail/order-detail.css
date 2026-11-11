@@ -768,6 +768,51 @@ h3{
   min-height: 70px;
 }
 
+.delivery-date-control {
+  position: relative;
+}
+
+.delivery-date-control .edit-input {
+  padding-right: 40px;
+}
+
+.delivery-date-icon,
+.delivery-date-picker {
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  width: 36px;
+}
+
+.delivery-date-icon {
+  display: grid;
+  place-items: center;
+  color: #731919;
+  pointer-events: none;
+}
+
+.delivery-date-picker {
+  height: 100%;
+  opacity: 0;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+.delivery-date-picker::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.delivery-date-control:focus-within .delivery-date-icon {
+  color: #a51f25;
+}
+
 .save-shipping-error {
   font-size: 13px;
   color: #E52B2B;

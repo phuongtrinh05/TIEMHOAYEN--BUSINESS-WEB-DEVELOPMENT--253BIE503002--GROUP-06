@@ -75,6 +75,7 @@ export class App {
         if (session?.authType !== 'guest_lookup') return;
         const target = this.getRoutePath(event.url);
         const remainsInLookupJourney = target === 'order-list'
+          || target === 'order-requests'
           || target.startsWith('order-detail/')
           || target.startsWith('order-request/');
         if (!remainsInLookupJourney) this.orderAccess.logout();

@@ -2,7 +2,7 @@ import { AFTER_SALES,afterSalesChange,afterSalesRead,orderEvent } from '../servi
 import { restoreOrderPoints } from '../services/loyalty-policy.service.js';
 import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId, escapeRegex } from '../mongo.js';
-import { getAdminOrderDetailById, priceCheckout, slot24h, sumVerifiedPayments, summarizePayments, assertOrderTransition, allowedOrderStatuses, assertRoleCanSetOrderStatus, assertRoleCanDoOrderAction } from '../services/admin-order.service.js';
+import { getAdminOrderDetailById, priceCheckout, slot24h, sumVerifiedPayments, summarizePayments, assertOrderTransition, allowedOrderStatuses, assertRoleCanSetOrderStatus, assertRoleCanDoOrderAction, paymentSucceeded } from '../services/admin-order.service.js';
 import { createOrder } from './order.js';
 import { randomUUID } from 'node:crypto';
 import { finishedAvailableOf, InventoryError, nextCode, withTransaction } from '../services/inventory/helpers.js';
@@ -265,6 +265,7 @@ export const getAdminOrders = async (req: Request, res: Response) => {
     const ordersRaw = await orderCollection.find({}, { projection: {
       DON_HANG_ID: 1, KHACH_HANG_ID: 1, TEN_NGUOI_DAT: 1, TEN_NGUOI_NHAN: 1,
       NGAY_MUON_GIAO: 1, KHUNG_GIO_MUON_GIAO: 1, TIEN_COC: 1, TONG_TIEN: 1,
+      PHUONG_THUC_THANH_TOAN: 1, NHAN_VIEN_GIAO_HANG_ID: 1, 'NHAN_VIEN_GIAO_HANG.id': 1,
       GHI_CHU_NOI_BO: 1, NGAY_TAO: 1, TRANG_THAI: 1,
     } }).toArray();
     const ids = ordersRaw.map(order => order.DON_HANG_ID);
@@ -298,7 +299,7 @@ export const getAdminOrders = async (req: Request, res: Response) => {
           deliveryDate: formatDate(row.NGAY_MUON_GIAO), deliverySlot: slot24h(row.KHUNG_GIO_MUON_GIAO),
           deposit: Number(row.TIEN_COC || 0), paid: paymentSummary.successfulReceiptsTotal, refunded:paymentSummary.actualRefundsTotal,
           remaining: paymentSummary.remainingAmount, paymentSummary,
-          allowedStatuses: allowedOrderStatuses(row, paymentSummary.successfulReceiptsTotal, res.locals?.adminEmployee?.VAI_TRO), adminNote: row.GHI_CHU_NOI_BO || '',
+          allowedStatuses: allowedOrderStatuses(row, paymentSummary.netCollected, res.locals?.adminEmployee?.VAI_TRO), adminNote: row.GHI_CHU_NOI_BO || '',
           customerId: row.KHACH_HANG_ID || '',
           createdAt: formatDate(row.NGAY_TAO),
           total: Number(row.TONG_TIEN || 0),
@@ -403,12 +404,14 @@ export const quoteAdminOrder = async (req: Request, res: Response) => {
   }
 };
 
+const balanceCollectionStatuses = ['Đang giao', 'Đã giao', 'Giao hàng thành công'];
+
 export const getAdminTransactions = async (req: Request, res: Response) => {
   try {
     const paymentCollection = await getCollection<any>('THANH_TOAN');
     const rows = await paymentCollection.find({}).sort({ NGAY_THANH_TOAN: -1 }).toArray();
     const orders = await (await getCollection<any>('DON_HANG')).find({ DON_HANG_ID: { $in: rows.map(r => r.DON_HANG_ID) } }, { projection: {
-      DON_HANG_ID: 1, TONG_TIEN: 1, TIEN_COC: 1, TRANG_THAI: 1,
+      DON_HANG_ID: 1, TONG_TIEN: 1, TIEN_COC: 1, TRANG_THAI: 1, PHUONG_THUC_THANH_TOAN: 1,
     } }).toArray();
     const ordersById = new Map(orders.map(order => [order.DON_HANG_ID, order]));
     const paymentsByOrder = new Map<string, any[]>();
@@ -422,13 +425,23 @@ export const getAdminTransactions = async (req: Request, res: Response) => {
     let transactions = rows.map((row, index) => {
       const order = ordersById.get(row.DON_HANG_ID);
       const paid = paidByOrder.get(row.DON_HANG_ID) || 0;
+      const total = Number(order?.TONG_TIEN || 0);
+      const deposit = Number(order?.TIEN_COC || 0);
+      const gateway = row.CONG_THANH_TOAN || order?.PHUONG_THUC_THANH_TOAN || '';
+      const kind = row.LOAI_GIAO_DICH === 'HOAN_TIEN' ? 'refund' : row.LOAI_GIAO_DICH === 'SO_DU' ? 'balance'
+        : /\bcod\b|thanh toan khi nhan hang/.test(normalizeText(gateway)) ? 'deposit' : 'full';
+      const status = kind === 'deposit' && paymentSucceeded(row.TRANG_THAI_THANH_TOAN) ? 'Đã thanh toán cọc'
+        : kind === 'deposit' && normalizeTransactionStatus(row.TRANG_THAI_THANH_TOAN) === 'Thất bại' ? 'Thanh toán cọc thất bại'
+        : row.TRANG_THAI_THANH_TOAN;
       return { ...row, id: index + 1, code: row.THANH_TOAN_ID, orderCode: row.DON_HANG_ID,
-        orderId: row.DON_HANG_ID, gateway: row.CONG_THANH_TOAN || '', referenceCode: row.MA_GIAO_DICH || '',
-        amount: Number(row.SO_TIEN || 0), status: row.TRANG_THAI_THANH_TOAN,
+        orderId: row.DON_HANG_ID, gateway, referenceCode: row.MA_GIAO_DICH || '',
+        amount: Number(row.SO_TIEN || 0), status, kind,
         transactionDate: row.NGAY_THANH_TOAN, paidAt: row.NGAY_THANH_TOAN,
-        total: Number(order?.TONG_TIEN || 0), deposit: Number(order?.TIEN_COC || 0), paid,
-        remaining: Math.max(0, Number(order?.TONG_TIEN || 0) - paid),
-        editable: row.TRANG_THAI_THANH_TOAN === 'Chờ thanh toán' && !!order && !['Đã hủy','Đã hoàn tiền'].includes(order.TRANG_THAI),
+        total, deposit, paid, remaining: Math.max(0, total - paid),
+        canRecordBalance: kind === 'deposit' && paymentSucceeded(row.TRANG_THAI_THANH_TOAN) && paid >= deposit && paid < total
+          && balanceCollectionStatuses.includes(order?.TRANG_THAI)
+          && !paymentsByOrder.get(row.DON_HANG_ID)?.some(payment => payment.LOAI_GIAO_DICH === 'SO_DU' && payment.TRANG_THAI_THANH_TOAN === 'Chờ thanh toán'),
+        editable: kind !== 'refund' && row.TRANG_THAI_THANH_TOAN === 'Chờ thanh toán' && !!order && !['Đã hủy','Đã hoàn tiền'].includes(order.TRANG_THAI),
         history: row.LICH_SU || [], confirmedAt: row.XAC_NHAN_LUC || null, confirmedBy: row.NGUOI_XAC_NHAN || '', selected: false };
     });
     const keyword = normalizeText(req.query.search || '');
@@ -437,7 +450,10 @@ export const getAdminTransactions = async (req: Request, res: Response) => {
     const from = toDate(req.query.from);
     const to = toDate(req.query.to);
     if (keyword) transactions = transactions.filter(row => normalizeText([row.code, row.orderCode, row.referenceCode, row.gateway].join(' ')).includes(keyword));
-    if (status) transactions = transactions.filter(row => normalizeTransactionStatus(row.status) === normalizeTransactionStatus(status));
+    if (status) {
+      const statusFilterKey = (value: string) => ['Đã thanh toán cọc', 'Thanh toán cọc thất bại'].includes(value) ? value : normalizeTransactionStatus(value);
+      transactions = transactions.filter(row => statusFilterKey(row.status) === statusFilterKey(status));
+    }
     if (gateway) transactions = transactions.filter(row => normalizeText(row.gateway) === normalizeText(gateway));
     if (from || to) transactions = transactions.filter(row => {
       const value = toDate(row.transactionDate)?.getTime();
@@ -476,22 +492,45 @@ export const createAdminTransaction = async (req: Request, res: Response) => {
       const rows = await payments.find({ DON_HANG_ID: orderId }, { session }).toArray();
       const reference = String(req.body.referenceCode || '').trim();
       const prior = reference && rows.find(p => p.MA_GIAO_DICH === reference);
-      let target = prior || rows.find(p => p.TRANG_THAI_THANH_TOAN === 'Chờ thanh toán');
+      const balance = req.body.balance === true;
+      const status = normalizeTransactionStatus(req.body.status);
+      const reason = String(req.body.reason || '').trim();
+      if (balance) {
+        if (!balanceCollectionStatuses.includes(order.TRANG_THAI)) throw new InventoryError(409, 'Chỉ ghi nhận số dư khi đơn đang giao hoặc đã giao.');
+        if (!['Thành công', 'Thất bại'].includes(status)) throw new InventoryError(400, 'Vui lòng chọn kết quả đối soát giao dịch.');
+        if (!reference) throw new InventoryError(400, 'Cần nhập mã tham chiếu.');
+        if (!reason) throw new InventoryError(400, 'Cần nhập căn cứ đối soát giao dịch.');
+      }
+      if (balance && prior && prior.LOAI_GIAO_DICH !== 'SO_DU') throw new InventoryError(409, 'Khoản số dư cần mã tham chiếu riêng.');
+      let target = prior || rows.find(p => p.TRANG_THAI_THANH_TOAN === 'Chờ thanh toán' && (!balance || p.LOAI_GIAO_DICH === 'SO_DU'));
       if (!target) {
         const paid = sumVerifiedPayments(rows), remaining = Number(order.TONG_TIEN) - paid;
+        if (balance) {
+          if (!(remaining > 0)) throw new InventoryError(409, 'Đơn không còn khoản phải thu.');
+          if (paid < Number(order.TIEN_COC || 0)) throw new InventoryError(409, 'Cần xác minh đủ tiền cọc trước khi ghi nhận số dư.');
+          if (Number(req.body.amount) !== remaining) throw new InventoryError(409, 'Số tiền phải khớp khoản còn lại của đơn.');
+        }
         if (!(paid > 0 || order.KHONG_YEU_CAU_COC) || !(remaining > 0) || Number(req.body.amount) !== remaining || !reference) throw new InventoryError(409, 'Cần khoản thu số dư chính xác và mã tham chiếu riêng.');
         if (['Đã hủy', 'Thanh toán thất bại'].includes(order.TRANG_THAI)) throw new InventoryError(409, 'Đơn không còn cho phép thu số dư.');
-        const id = `TT${randomUUID().replaceAll('-', '')}`;
+        // Use the same order-based prefix as the checkout transfer code.
+        const prefix = `GD${orderId.replace(/^YEN/, '')}-SD`;
+        const existingIds = new Set(rows.map(payment => payment.THANH_TOAN_ID));
+        let sequence = rows.filter(payment => payment.LOAI_GIAO_DICH === 'SO_DU').length + 1;
+        let id = `${prefix}${String(sequence).padStart(2, '0')}`;
+        while (existingIds.has(id)) {
+          sequence += 1;
+          id = `${prefix}${String(sequence).padStart(2, '0')}`;
+        }
         target = { _id: id, THANH_TOAN_ID: id, DON_HANG_ID: orderId, CONG_THANH_TOAN: order.PHUONG_THUC_THANH_TOAN,
           SO_TIEN: remaining, LOAI_GIAO_DICH: 'SO_DU', MA_GIAO_DICH: reference, TRANG_THAI_THANH_TOAN: 'Chờ thanh toán', NGAY_THANH_TOAN: new Date() };
         await orders.updateOne({ DON_HANG_ID: orderId }, { $inc: { PHIEN_BAN_THANH_TOAN: 1 } }, { session });
         await payments.insertOne(target, { session });
       }
-      if (normalizeTransactionStatus(req.body.status) === 'Chờ thanh toán') {
+      if (status === 'Chờ thanh toán') {
         if (target.TRANG_THAI_THANH_TOAN !== 'Chờ thanh toán' || Number(req.body.amount) !== Number(target.SO_TIEN)) throw new InventoryError(409, 'Không thể mở lại hoặc sửa tiền một giao dịch đã xử lý.');
         return target;
       }
-      return changeCheckoutPayment(session, target.THANH_TOAN_ID, { status: normalizeTransactionStatus(req.body.status), amount: req.body.amount, referenceCode: reference || undefined },
+      return changeCheckoutPayment(session, target.THANH_TOAN_ID, { status, amount: req.body.amount, referenceCode: reference || undefined, reason },
         String(res.locals?.adminEmployee?.NHAN_VIEN_ID || ''));
     });
     return res.status(201).json({ message: 'Đã ghi nhận khoản thu hợp lệ.', transaction });
@@ -1243,7 +1282,9 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
       }
       const expectedVersion = req.body.expectedVersion ? toDate(req.body.expectedVersion) : null;
       const write = await orders.updateOne({ DON_HANG_ID: orderId, ...(expectedVersion ? { NGAY_CAP_NHAT: expectedVersion } : {}) }, { $set: { ...changes, NGAY_CAP_NHAT: new Date() },
-        $push: { LICH_SU_TRANG_THAI: { from: current.TRANG_THAI, to: current.TRANG_THAI, action: req.body.action, at: new Date(), actor } } } as any, { session });
+        ...(req.body.action !== 'assign-shipper' ? {
+          $push: { LICH_SU_TRANG_THAI: { from: current.TRANG_THAI, to: current.TRANG_THAI, action: req.body.action, at: new Date(), actor } },
+        } : {}) } as any, { session });
       if (!write.modifiedCount) throw new InventoryError(409, 'Đơn vừa được nhân viên khác cập nhật. Vui lòng tải lại trước khi lưu.');
       if (req.body.action === 'preparation') await orderEvent(session, `${orderId}:prep:${new Date(changes.THOI_DIEM_CHUAN_BI_DU_KIEN).toISOString()}`, current.KHACH_HANG_ID || null, orderId, 'Cập nhật lịch chuẩn bị', `Shop đã cập nhật lịch chuẩn bị dự kiến cho đơn ${orderId}.`);
       if (req.body.action === 'support-exception') await orderEvent(session, `${orderId}:support-exception:${changes.HO_TRO_NGOAI_LE.at.toISOString()}`, current.KHACH_HANG_ID || null, orderId, 'Shop mở lại hỗ trợ cho đơn', 'Bạn có thêm 1 giờ để gửi yêu cầu hỗ trợ cho đơn này.', `/order-detail/${orderId}`);

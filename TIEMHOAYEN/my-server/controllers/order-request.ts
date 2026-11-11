@@ -5,12 +5,62 @@ import { getPublicRequest, LEGACY_WAITING_STATUS, REQUESTS, REQUEST_STATUS, upda
 import { resolveRoleName } from '../services/role-permission.service.js';
 import { requestWorkflow } from '../services/request-workflow.js';
 import { accessToken } from './order-access.js';
+import { ownedRequestQuery } from '../services/order-access.service.js';
 import { consultationOptions, confirmOriginalRequest, convertProposal, messages, propose, respondToProposal, sendMessage, recordContact, customerChangeRequest } from '../services/sales-proposal.service.js';
 import { authenticatedEmployee } from '../middleware/rolePermission.js';
 
 const failure = (res: Response, error: any) => res.status(error instanceof InventoryError ? error.status : 500)
   .json({ message: error instanceof InventoryError ? error.message : 'Không thể xử lý yêu cầu đặt hàng.',
     ...(error instanceof InventoryError && (error.details as any)?.code ? { code: (error.details as any).code } : {}) });
+
+export async function watchCustomerRequests(req: Request, res: Response) {
+  const scope = ownedRequestQuery(res.locals.orderAccess);
+  const requestId = String(req.params.requestId || '');
+  let closeStream = async () => {};
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const close = () => {
+    clearTimeout(timeout);
+    void closeStream().catch(() => {});
+  };
+  res.once('close', close);
+  try {
+    const requests = await getCollection(REQUESTS);
+    if (res.destroyed) return;
+    const stream = requests.watch([
+      { $match: {
+        operationType: { $in: ['insert', 'replace', 'update'] },
+        $and: [
+          Object.fromEntries(Object.entries(scope).map(([key, value]) => [`fullDocument.${key}`, value])),
+          ...(requestId ? [{ 'documentKey._id': requestId }] : []),
+        ],
+      } },
+    ], { fullDocument: 'updateLookup', maxAwaitTimeMS: 1000 });
+    closeStream = () => stream.close();
+    // Reconnect periodically so the normal lookup middleware revalidates access.
+    timeout = setTimeout(() => res.end(), 45_000);
+    await stream.tryNext();
+    if (res.destroyed || res.writableEnded) return;
+    res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store, no-transform', 'X-Accel-Buffering': 'no' });
+    // Refresh after the cursor opens to cover updates made while disconnected.
+    const notify = () => res.write('data: changed\n\n');
+    notify();
+    let lastWrite = Date.now();
+    while (!res.destroyed && !res.writableEnded) {
+      const change = await stream.tryNext();
+      if (res.destroyed || res.writableEnded) break;
+      if (change || Date.now() - lastWrite >= 15_000) {
+        const writable = change ? notify() : res.write(': heartbeat\n\n');
+        if (!writable) break;
+        lastWrite = Date.now();
+      }
+    }
+  } catch (error) {
+    if (!res.destroyed && !res.headersSent && !res.writableEnded) failure(res, error);
+  } finally {
+    close();
+    if (!res.destroyed && !res.writableEnded) res.end();
+  }
+}
 
 // Use the persisted employee role, never a claimed x-admin-role for this queue.
 export async function requireSales(req: Request, res: Response, next: NextFunction) {
