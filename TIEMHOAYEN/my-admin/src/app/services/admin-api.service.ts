@@ -7,6 +7,7 @@ import { apiBaseUrl } from './api-config';
 export interface AdminOrder {
   senderName?: string; receiverName?: string; deliveryDate?: string; deliverySlot?: string;
   products?: {name: string; qty: number}[]; deposit?: number; paid?: number; remaining?: number; allowedStatuses?: string[]; adminNote?: string;
+  pendingCash?: number; refundDue?: number; refundCase?: { requestId: string; status: string } | null;
   id: string;
   requestId?: string | null;
   customerId: string;
@@ -175,6 +176,7 @@ export interface AdminOrderDetail {
   total: number;
   paid: number;
   refunded: number;
+  pendingCollection?: { amount: number; items: CashCollection[] };
   paymentSummary?: { totalPayable:number; requiredDeposit:number; successfulReceiptsTotal:number; actualRefundsTotal:number; netCollected:number; remainingAmount:number; paymentStatus:string };
   remaining: number;
   paymentMethod: string;
@@ -401,9 +403,14 @@ export interface AdminChatConversationsResponse {
   conversations: AdminChatConversation[];
 }
 
+/** Khoản nhân viên giao hàng đã thu khi giao, chờ Nhân viên bán hàng đối soát. */
+export interface CashCollection { id: string; amount: number; method: string; collectorId: string; collectorName: string; collectedAt: string | null; note: string; proof: string; }
+export interface CashCollectionInput { amount: number; method: string; note?: string; proof?: string; }
+
 export interface AdminTransaction {
   kind?: 'full' | 'deposit' | 'balance' | 'refund';
   canRecordBalance?: boolean;
+  collection?: CashCollection | null;
   total?: number; deposit?: number; paid?: number; remaining?: number; editable?: boolean; confirmedAt?: string; confirmedBy?: string; history?: any[];
   id: number;
   code: string;
@@ -918,7 +925,7 @@ export class AdminApiService {
     return this.http.post<{ url: string }>(`${this.apiUrl}/orders/${encodeURIComponent(orderId)}/handover-image`, form);
   }
 
-  updateOrderMetadata(orderId: string, body: { action: 'note' | 'preparation' | 'start-preparation' | 'handover-media' | 'delivery' | 'assign-shipper' | 'support-exception'; expectedVersion?:string|null; adminNote?: string; preparationAt?: string; reason?: string; media?: string[]; receiverName?: string; receiverPhone?: string; deliveryAddress?: string; deliveryDate?: string; deliverySlot?: string; shipperId?: string }): Observable<AdminOrderDetailResponse> {
+  updateOrderMetadata(orderId: string, body: { action: 'open-refund-case' | 'note' | 'preparation' | 'start-preparation' | 'handover-media' | 'delivery' | 'assign-shipper' | 'support-exception'; expectedVersion?:string|null; adminNote?: string; preparationAt?: string; reason?: string; media?: string[]; receiverName?: string; receiverPhone?: string; deliveryAddress?: string; deliveryDate?: string; deliverySlot?: string; shipperId?: string }): Observable<AdminOrderDetailResponse> {
     return this.http.put<AdminOrderDetailResponse>(`${this.apiUrl}/orders/${encodeURIComponent(orderId)}/status`, body).pipe(tap(() => this.clearOrdersCache()));
   }
 
@@ -990,10 +997,10 @@ export class AdminApiService {
     return this.http.get<{ templates: Array<{ id: string; code: string; name: string; image?: string; fee: number }> }>(`${this.apiBaseUrl}/orders/card-templates`);
   }
 
-  updateOrderStatus(orderId: string, status: string, rejectReason?: string): Observable<{ message: string }> {
+  updateOrderStatus(orderId: string, status: string, rejectReason?: string, cashCollection?: CashCollectionInput): Observable<{ message: string }> {
     return this.http.put<{ message: string }>(
       `${this.apiUrl}/orders/${encodeURIComponent(orderId)}/status`,
-      { status, rejectReason }
+      { status, rejectReason, ...(cashCollection ? { cashCollection } : {}) }
     ).pipe(
       tap(() => this.clearOrdersCache())
     );

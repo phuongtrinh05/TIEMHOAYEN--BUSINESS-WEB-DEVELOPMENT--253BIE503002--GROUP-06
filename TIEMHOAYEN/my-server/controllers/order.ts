@@ -13,7 +13,7 @@ import { reserveOrderLines } from '../services/order-stock.service.js';
 import { cancelUnpaidOrdersPastDelivery, orderPaymentDeadline } from '../services/unpaid-order-expiry.service.js';
 import { URGENT_CONTACT_PHONE as SHOP_PHONE } from '../services/delivery-policy.service.js';
 import { lookupAccess } from '../services/order-access.service.js';
-import { priceCheckout, sumVerifiedPayments, validateCheckoutDelivery } from '../services/admin-order.service.js';
+import { priceCheckout, sumVerifiedPayments, validateCheckoutDelivery, ensureCancelRefundCase, pendingCashTotal } from '../services/admin-order.service.js';
 import { getActiveBom } from '../services/inventory/bom.service.js';
 import { synchronizeLuckyOrder, syncLuckyOrder } from '../services/lucky-wheel.service.js';
 import { getDesign, isDesignProduct } from '../services/design3d.service.js';
@@ -779,9 +779,11 @@ export const getOrderDetail = async (req: Request, res: Response) => {
         TAM_TINH: enrichedOrder.TAM_TINH,
         PHI_VAN_CHUYEN: enrichedOrder.PHI_VAN_CHUYEN,
         TIEN_COC: enrichedOrder.TIEN_COC,
-        DA_THU: paid,
+        // Khoản khách đã trả cho nhân viên giao hàng: với khách là đã thanh toán, shop đang đối soát nội bộ.
+        DA_THU: paid + pendingCashTotal(receipts),
+        DANG_DOI_SOAT: pendingCashTotal(receipts),
         DA_HOAN: receipts.filter(item => isSuccessStatus(String(item.TRANG_THAI_THANH_TOAN || '')) && item.LOAI_GIAO_DICH === 'HOAN_TIEN').reduce((sum, item) => sum + Math.max(0, Number(item.SO_TIEN || 0)), 0),
-        CON_LAI: Math.max(0,Number(order.TONG_TIEN)-paid),
+        CON_LAI: Math.max(0,Number(order.TONG_TIEN)-paid-pendingCashTotal(receipts)),
         TONG_TIEN: enrichedOrder.TONG_TIEN,
         GIAM_GIA: Math.max(
           0,
@@ -829,7 +831,6 @@ export const cancelOrder = async (req: Request, res: Response) => {
     await withTransaction(async session => {
     const fresh = await orderCollection.findOne({ DON_HANG_ID: orderId }, { session });
     if (fresh?.THOI_DIEM_BAT_DAU_THUC_TE) throw new InventoryError(409,'Đã bắt đầu chuẩn bị; cần liên hệ shop theo chính sách hủy.');
-    const lines = await (await getCollection<any>('DON_HANG_CHI_TIET')).find({DON_HANG_ID:orderId},{session}).toArray();
     const payments = await (await getCollection<any>('THANH_TOAN')).find({ DON_HANG_ID: orderId }, { session }).toArray();
     const paidAmount = sumVerifiedPayments(payments);
     refundRequired = paidAmount > 0;
@@ -846,36 +847,7 @@ export const cancelOrder = async (req: Request, res: Response) => {
     // Đơn chưa thanh toán: đóng giao dịch đang chờ để mã QR cũ không còn dùng được.
     await (await getCollection<any>('THANH_TOAN')).updateMany({ DON_HANG_ID: orderId, TRANG_THAI_THANH_TOAN: 'Chờ thanh toán' },
       { $set: { TRANG_THAI_THANH_TOAN: 'Thất bại' }, $push: { LICH_SU: { from: 'Chờ thanh toán', to: 'Thất bại', actor: 'CUSTOMER_CANCEL', at: new Date() } } } as any, { session });
-    if (paidAmount > 0) {
-      const afterSales = await getCollection<any>('YEU_CAU_HAU_MAI');
-      const activeRequest = await afterSales.findOne({ orderId, active: true }, { session });
-      if (!activeRequest) {
-        const requestId = `HM_CANCEL_${orderId}`;
-        const createdAt = new Date();
-        await afterSales.updateOne(
-          { _id: requestId },
-          { $setOnInsert: {
-            _id: requestId,
-            requestId,
-            orderId,
-            customerId: fresh.KHACH_HANG_ID || null,
-            type: 'refund',
-            reason: `Đơn được khách hủy trước khi chuẩn bị: ${reason}`,
-            items: lines.map(line => ({ productId: line.SAN_PHAM_ID, quantity: Number(line.SO_LUONG || 0) })).filter(item => item.productId && item.quantity > 0),
-            evidence: [],
-            status: 'Chờ tiếp nhận',
-            active: true,
-            version: 0,
-            assignedTo: null,
-            createdAt,
-            updatedAt: createdAt,
-            refundContext: { paidAmount, source: 'customer-cancellation' },
-            history: [{ action: 'Tự tạo hồ sơ đối soát sau hủy đơn đã thu tiền', actor: 'SYSTEM', at: createdAt, reason }],
-          } },
-          { upsert: true, session },
-        );
-      }
-    }
+    if (paidAmount > 0) await ensureCancelRefundCase(session, fresh, { reason, actor: 'CUSTOMER', source: 'customer-cancellation' });
     });
 
     return res.status(200).json({

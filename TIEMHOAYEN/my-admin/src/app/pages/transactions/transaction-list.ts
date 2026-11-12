@@ -13,6 +13,7 @@ type TransactionErrors = Partial<Record<TransactionField, string>>;
 interface TransactionItem {
     kind?: AdminTransaction['kind'];
     canRecordBalance?: boolean;
+    collection?: AdminTransaction['collection'];
     total?: number; deposit?: number; paid?: number; remaining?: number; editable?: boolean; confirmedAt?: string; confirmedBy?: string; history?: any[];
     id: number;
     code: string;
@@ -65,10 +66,18 @@ export class TransactionListComponent implements OnInit, OnDestroy {
         'Đã thanh toán',
         'Đã thanh toán cọc',
         'Chờ thanh toán',
+        'Chờ đối soát',
         'Thanh toán thất bại',
         'Thanh toán cọc thất bại',
         'Hết hạn'
     ];
+
+    /** Khoản nhân viên giao hàng đã thu khi giao, chờ Nhân viên bán hàng đối chiếu tiền nộp. */
+    get pendingCashCount(): number { return this.transactions.filter(t => t.status === 'Chờ đối soát').length; }
+    togglePendingCashFilter(): void {
+        this.selectedStatus = this.selectedStatus === 'Chờ đối soát' ? 'Tất cả' : 'Chờ đối soát';
+        this.applyFilters();
+    }
 
     readonly balanceStatuses = ['Đã thanh toán', 'Thanh toán thất bại'];
     private readonly fullStatuses = [
@@ -240,6 +249,7 @@ export class TransactionListComponent implements OnInit, OnDestroy {
         const raw = String(status || '').trim();
         if (this.depositStatuses.includes(raw)) return raw;
         const normalized = this.statusKey(raw);
+        if (normalized.includes('doi soat')) return 'Chờ đối soát';
 
         if (!raw) {
             return 'Chờ thanh toán';

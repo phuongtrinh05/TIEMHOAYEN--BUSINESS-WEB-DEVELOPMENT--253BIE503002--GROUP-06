@@ -32,7 +32,9 @@ export async function changeCheckoutPayment(session: ClientSession, paymentId: s
     if (!success || reference !== String(current.MA_GIAO_DICH || '')) throw new InventoryError(409, 'Giao dịch đã thu tiền; điều chỉnh/hoàn tiền phải xử lý riêng.');
     return current;
   }
-  if (current.TRANG_THAI_THANH_TOAN !== 'Chờ thanh toán') {
+  // Khoản nhân viên giao hàng đã thu (chờ đối soát) xử lý giống khoản đang chờ: xác nhận hoặc ghi thất bại.
+  const pendingState = current.TRANG_THAI_THANH_TOAN === 'Chờ đối soát' && current.LOAI_GIAO_DICH === 'SO_DU' ? 'Chờ đối soát' : 'Chờ thanh toán';
+  if (current.TRANG_THAI_THANH_TOAN !== pendingState) {
     if (!success && failed) return current;
     throw new InventoryError(409, 'Phiên thanh toán đã kết thúc. Cần tạo phiên hợp lệ mới.');
   }
@@ -55,7 +57,7 @@ export async function changeCheckoutPayment(session: ClientSession, paymentId: s
     if (!claim) await claims.insertOne({ _id: claimId, paymentId, createdAt: new Date() }, { session });
   }
   if (current.LOAI_GIAO_DICH !== 'SO_DU') await syncCheckoutInventory(session, current.DON_HANG_ID, success);
-  const updated = await payments.findOneAndUpdate({ THANH_TOAN_ID: paymentId, TRANG_THAI_THANH_TOAN: 'Chờ thanh toán' }, {
+  const updated = await payments.findOneAndUpdate({ THANH_TOAN_ID: paymentId, TRANG_THAI_THANH_TOAN: pendingState }, {
     $set: { TRANG_THAI_THANH_TOAN: target, MA_GIAO_DICH: reference || null,
       ...(success ? { XAC_NHAN_LUC: new Date(), NGUOI_XAC_NHAN: actor, NGUON_XAC_NHAN:String(body.source || 'ADMIN_MANUAL') } : {}) },
     $push: { LICH_SU: { id: randomUUID(), from: current.TRANG_THAI_THANH_TOAN, to: target, actor, at: new Date(),

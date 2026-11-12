@@ -61,6 +61,32 @@ export function summarizePayments(payments: any[], totalPayable = 0, requiredDep
     actualRefundsTotal, netCollected, remainingAmount, paymentStatus };
 }
 
+/* ===== Thu tiền khi giao (phương án A) =====
+ * Nhân viên giao hàng khai báo số tiền đã thu khi chuyển đơn sang "Đã giao".
+ * Khoản này ở trạng thái "Chờ đối soát": chưa tính là tiền đã xác minh cho tới khi
+ * Nhân viên bán hàng/Admin đối chiếu tiền nộp và xác nhận ở trang Thanh toán.
+ */
+export const CASH_PENDING_STATUS = 'Chờ đối soát';
+export const CASH_COLLECTION_METHODS = ['Tiền mặt', 'Chuyển khoản cho nhân viên giao hàng'];
+/** Tiền bắt buộc đã xác minh trước khi giao: COD là tiền cọc, còn lại là toàn bộ đơn. */
+export const requiredBeforeDelivery = (order: any) => /cod/i.test(String(order?.PHUONG_THUC_THANH_TOAN)) ? Number(order?.TIEN_COC || 0) : Number(order?.TONG_TIEN || 0);
+/** Số tiền dùng để kiểm tra bước "Đã giao": phần còn lại (sau khi đủ cọc) sẽ do nhân viên giao hàng khai báo đã thu. */
+export const paidForDeliveryCheck = (order: any, verified: number) => verified >= requiredBeforeDelivery(order) ? Math.max(verified, Number(order?.TONG_TIEN || 0)) : verified;
+export const isPendingCash = (p: any) => p?.LOAI_GIAO_DICH === 'SO_DU' && p?.TRANG_THAI_THANH_TOAN === CASH_PENDING_STATUS;
+export function pendingCashTotal(payments: any[]): number {
+  return payments.filter(isPendingCash).reduce((sum, p) => {
+    const value = Number(p.SO_TIEN);
+    return sum + (Number.isSafeInteger(value) && value > 0 ? value : 0);
+  }, 0);
+}
+export function pendingCashRows(payments: any[]) {
+  return payments.filter(isPendingCash).map(p => ({
+    id: String(p.THANH_TOAN_ID), amount: Number(p.SO_TIEN || 0), method: String(p.HINH_THUC_THU || ''),
+    collectorId: String(p.NGUOI_THU || ''), collectorName: String(p.NGUOI_THU_TEN || p.NGUOI_THU || ''),
+    collectedAt: p.THOI_DIEM_THU || p.NGAY_THANH_TOAN || null, note: String(p.GHI_CHU_THU || ''), proof: String(p.CHUNG_TU_THU || ''),
+  }));
+}
+
 const SHIPPER_REQUIRED_MESSAGE = 'Cần phân công nhân viên giao hàng trong mục Thông tin giao hàng trước khi chuyển sang Đang giao.';
 const needsShipper = (order: any, next: string) =>
   next === 'Đang giao' && !String(order.NHAN_VIEN_GIAO_HANG_ID || order.NHAN_VIEN_GIAO_HANG?.id || '').trim();
@@ -94,7 +120,7 @@ export function assertOrderTransition(order: any, next: string, paid: number) {
   if (paid < due) throw new InventoryError(409, 'Chưa xác minh đủ khoản thanh toán cần thiết.');
   if (needsShipper(order, next)) throw new InventoryError(409, SHIPPER_REQUIRED_MESSAGE);
   if (/^Đang chuẩn bị/.test(next) && !order.THOI_DIEM_CHUAN_BI_DU_KIEN) throw new InventoryError(409, 'Nhân viên cần nhập thời điểm chuẩn bị dự kiến T.');
-  if (next === 'Hoàn thành' && paid < Number(order.TONG_TIEN || 0)) throw new InventoryError(409, 'Cần xác minh đủ số dư trước khi hoàn thành đơn.');
+  if (next === 'Hoàn thành' && paid < Number(order.TONG_TIEN || 0)) throw new InventoryError(409, 'Cần đối soát đủ tiền của đơn (kể cả khoản nhân viên giao hàng đã thu) ở trang Thanh toán trước khi hoàn thành.');
 }
 
 const vnd = (value: number) => `${Math.max(0, Math.round(value)).toLocaleString('vi-VN')}đ`;
@@ -104,26 +130,32 @@ const MAIN_NEXT_STATUS: Record<string, string> = {
   'Đang chuẩn bị': 'Chờ vận chuyển', 'Đang chuẩn bị hàng': 'Chờ vận chuyển', 'Chờ vận chuyển': 'Đang giao',
   'Đang giao': 'Đã giao', 'Giao không thành công': 'Chờ vận chuyển', 'Đã giao': 'Hoàn thành', 'Giao hàng thành công': 'Hoàn thành',
 };
-export type OrderNextStep = { nextStatus: string | null; blocked: boolean; reason: string; action: 'payment' | 'preparation' | 'start-preparation' | 'assign-shipper' | 'status' | 'after-sales' | 'none' };
+export type OrderNextStep = { nextStatus: string | null; blocked: boolean; reason: string; action: 'payment' | 'preparation' | 'start-preparation' | 'assign-shipper' | 'status' | 'cash-collection' | 'after-sales' | 'refund' | 'none' };
 
 /**
  * Giải thích bước tiếp theo của đơn cho Admin: đi tiếp được không, nếu không thì vì sao và cần làm gì.
  * Dùng đúng điều kiện của assertOrderTransition, không nới quy tắc.
  */
-export function orderNextStep(order: any, paid: number): OrderNextStep {
+export function orderNextStep(order: any, paid: number, pendingCash = 0): OrderNextStep {
   const current = String(order?.TRANG_THAI || '');
   const nextStatus = MAIN_NEXT_STATUS[current] || null;
   const total = Number(order?.TONG_TIEN || 0);
   const due = /cod/i.test(String(order?.PHUONG_THUC_THANH_TOAN)) ? Number(order?.TIEN_COC || 0) : total;
+  if (current === 'Đã hủy' && paid > 0) return { nextStatus: null, blocked: false, action: 'refund',
+    reason: `Đơn đã hủy nhưng shop đã thu ${vnd(paid)}. Xử lý hoàn tiền trong hồ sơ hậu mãi: Nhân viên bán hàng tiếp nhận và duyệt số tiền, Admin xác nhận đã chuyển.` };
   if (['Hoàn thành', 'Đã hủy'].includes(current)) return { nextStatus: null, blocked: false, reason: 'Đơn đã kết thúc, không còn bước tiếp theo.', action: 'none' };
   if (!nextStatus) return { nextStatus: null, blocked: true, reason: 'Đơn đang trong quy trình hoàn tiền/trả hàng. Xử lý tại mục Chăm sóc khách hàng (hậu mãi).', action: 'after-sales' };
   if (nextStatus === 'Đã đặt hàng thành công') {
     return { nextStatus, blocked: true, action: 'payment',
       reason: `Đơn chưa ghi nhận thanh toán (cần ${vnd(due)}, đã thu ${vnd(paid)}). Ghi nhận giao dịch "Đã thanh toán" ở trang Thanh toán, đơn sẽ tự chuyển sang "Đã đặt hàng thành công".` };
   }
-  if (isDeliveredStatus(nextStatus) && paid < total) {
+  if (isDeliveredStatus(nextStatus) && paid < due) {
     return { nextStatus, blocked: true, action: 'payment',
       reason: `Chưa thu đủ tiền đơn. Ghi nhận khoản còn lại ${vnd(total - paid)} ở trang Thanh toán trước khi chuyển sang Đã giao.` };
+  }
+  if (isDeliveredStatus(nextStatus) && paid + pendingCash < total) {
+    return { nextStatus, blocked: false, action: 'cash-collection',
+      reason: `Khách còn phải trả ${vnd(total - paid - pendingCash)}. Khi giao xong, nhân viên giao hàng khai báo số tiền đã thu để chuyển sang "Giao thành công"; Nhân viên bán hàng đối soát khoản này sau.` };
   }
   const needsPayment = nextStatus !== 'Hoàn thành' && paid < due;
   if (needsPayment) {
@@ -132,7 +164,9 @@ export function orderNextStep(order: any, paid: number): OrderNextStep {
   }
   if (nextStatus === 'Hoàn thành' && paid < total) {
     return { nextStatus, blocked: true, action: 'payment',
-      reason: `Chưa thu đủ tiền đơn: tổng ${vnd(total)}, đã thu ${vnd(paid)} (còn ${vnd(total - paid)}). Ghi nhận khoản còn lại ở trang Thanh toán trước khi hoàn thành.` };
+      reason: pendingCash > 0
+        ? `Nhân viên giao hàng đã thu ${vnd(pendingCash)}, khoản này đang chờ đối soát. Nhân viên bán hàng xác nhận ở trang Thanh toán rồi mới hoàn thành đơn.`
+        : `Chưa thu đủ tiền đơn: tổng ${vnd(total)}, đã thu ${vnd(paid)} (còn ${vnd(total - paid)}). Ghi nhận khoản còn lại ở trang Thanh toán trước khi hoàn thành.` };
   }
   if (nextStatus === 'Đang chuẩn bị hàng') {
     if (!order?.THOI_DIEM_CHUAN_BI_DU_KIEN) return { nextStatus, blocked: true, action: 'preparation',
@@ -196,7 +230,9 @@ export function allowedOrderStatuses(order: any, paid: number, role?: unknown, i
     if (next === 'Đang chuẩn bị hàng' && (!includePreparation || orderStaffKind(role) !== 'admin')) return false;
     if (next === order.TRANG_THAI) return false;
     if (role !== undefined && !roleCanSetOrderStatus(role, next)) return false;
-    try { assertOrderTransition(order, next, paid); return true; } catch { return false; }
+    // "Đã giao": phần còn lại được nhân viên giao hàng khai báo khi chuyển trạng thái (chờ đối soát sau).
+    const effectivePaid = isDeliveredStatus(next) ? paidForDeliveryCheck(order, paid) : paid;
+    try { assertOrderTransition(order, next, effectivePaid); return true; } catch { return false; }
   });
 }
 
@@ -390,6 +426,7 @@ export interface AdminOrderDetailDto {
   paid: number;
   refunded: number;
   remaining: number;
+  pendingCollection?: { amount: number; items: ReturnType<typeof pendingCashRows> };
   paymentSummary: ReturnType<typeof summarizePayments>;
   paymentMethod: string;
   adminNote: string;
@@ -615,7 +652,8 @@ export const getAdminOrderDetailById = async (orderId: string, role?: unknown): 
             : { level: 'normal', label: 'Bình thường', minutesToT };
   return {
     allowedStatuses: allowedOrderStatuses(order, paymentSummary.netCollected, role, true),
-    nextStep: orderNextStep(order, paymentSummary.netCollected),
+    nextStep: orderNextStep(order, paymentSummary.netCollected, pendingCashTotal(payments)),
+    pendingCollection: { amount: pendingCashTotal(payments), items: pendingCashRows(payments) },
     snapshotAvailable: !!order.TINH_TIEN_SNAPSHOT && items.every(item => !!item.TEN_SAN_PHAM_SNAPSHOT),
     history: order.LICH_SU_TRANG_THAI || [],
     preparationHistory: order.LICH_SU_T || [],
@@ -704,6 +742,40 @@ export async function orderEvent(session: ClientSession | undefined, key: string
   } }, { upsert: true, ...(session ? { session } : {}) });
 }
 export function refundableAmount(receipts: any[]): number { return Math.max(0, sumVerifiedPayments(receipts)); }
+
+/**
+ * Đơn chuyển sang "Đã hủy" mà shop đã thu tiền (khách hay shop hủy đều vậy):
+ * tạo hồ sơ hoàn tiền để đơn xuất hiện ở tab "Cần hoàn tiền" và không bị bỏ sót.
+ * Trả về mã hồ sơ, hoặc null nếu không cần hoàn / đã có hồ sơ đang mở.
+ */
+export async function ensureCancelRefundCase(session: ClientSession, order: any, opts: { reason: string; actor: string; source: 'customer-cancellation' | 'shop-cancellation' | 'manual' }) {
+  const orderId = String(order.DON_HANG_ID);
+  const receipts = await (await getCollection<any>('THANH_TOAN')).find({ DON_HANG_ID: orderId }, { session }).toArray();
+  const paidAmount = refundableAmount(receipts);
+  if (paidAmount <= 0) return null;
+  const afterSales = await getCollection<any>(AFTER_SALES);
+  if (await afterSales.findOne({ orderId, active: true }, { session })) return null;
+  const lines = await (await getCollection<any>('DON_HANG_CHI_TIET')).find({ DON_HANG_ID: orderId }, { session }).toArray();
+  const requestId = `HM_CANCEL_${orderId}`;
+  const createdAt = new Date();
+  const label = opts.source === 'customer-cancellation' ? 'Đơn được khách hủy trước khi chuẩn bị' : 'Đơn được shop hủy';
+  const result = await afterSales.updateOne({ _id: requestId }, { $setOnInsert: {
+    _id: requestId, requestId, orderId, customerId: order.KHACH_HANG_ID || null, type: 'refund',
+    reason: `${label}: ${opts.reason}`,
+    items: lines.map(line => ({ productId: line.SAN_PHAM_ID, quantity: Number(line.SO_LUONG || 0) })).filter(item => item.productId && item.quantity > 0),
+    evidence: [], status: 'Chờ tiếp nhận', active: true, version: 0, assignedTo: null, createdAt, updatedAt: createdAt,
+    suggestion: { amount: paidAmount, minAmount: 0, rate: 1, affectedValue: paidAmount, shipping: 0, basis: 'Đơn đã hủy trước khi chuẩn bị: hoàn toàn bộ khoản đã thu.' },
+    refundContext: { paidAmount, source: opts.source },
+    history: [{ action: 'Tự tạo hồ sơ hoàn tiền sau khi hủy đơn đã thu tiền', actor: opts.actor || 'SYSTEM', at: createdAt, reason: opts.reason }],
+  } }, { upsert: true, session });
+  if (!result.upsertedCount) return null;
+  await emitAdminNotification({
+    key: `REFUND_CANCELLED:${orderId}`, type: 'REFUND_REQUEST', group: 'Khiếu nại', priority: 'Cao',
+    title: `Đơn hủy cần hoàn tiền — ${orderId}`, message: `Đơn đã hủy, cần hoàn ${vnd(paidAmount)} cho khách.`,
+    link: `/orders/order-detail/${orderId}`, module: 'orders', entityId: requestId, stateful: false,
+  }, session);
+  return requestId;
+}
 
 /* ===== Hạn gửi hỗ trợ sau giao hàng =====
  * Khách được gửi yêu cầu hỗ trợ (trả hàng, hoàn tiền, khiếu nại…) trong 1 giờ kể từ lúc giao thành công.
@@ -895,7 +967,9 @@ export async function afterSalesChange(id: string, body: any, actor: string, act
           sla: { ...(row.sla || {}), decideBy: new Date(now.getTime() + AFTER_SALES_SLA_MS) } });
       }
     } else {
-      if(row.assignedTo!==actor) throw new InventoryError(403,'Bạn chưa tiếp nhận hồ sơ này.');
+      // Xác nhận đã chuyển tiền hoàn: chỉ Admin (Nhân viên bán hàng tiếp nhận và duyệt số tiền trước đó).
+      if (body.action === 'refund' && orderStaffKind(actorRole) !== 'admin') throw new InventoryError(403, 'Chỉ Admin được xác nhận đã chuyển tiền hoàn cho khách.');
+      if(body.action!=='refund'&&row.assignedTo!==actor) throw new InventoryError(403,'Bạn chưa tiếp nhận hồ sơ này.');
       const rejectReasonLabels: Record<string, string> = {
         INSUFFICIENT_EVIDENCE: 'Không đủ căn cứ xác định lỗi từ cửa hàng',
         CUSTOMER_STORAGE_OR_USE: 'Lỗi do bảo quản hoặc sử dụng',
@@ -944,7 +1018,9 @@ export async function afterSalesChange(id: string, body: any, actor: string, act
         const deviationReason = String(body.deviationReason || '').trim();
         const deviates = body.action === 'accept' && !!suggestion && maxRefund !== Number(suggestion.amount);
         if (deviates && (deviationReason.length < 10 || deviationReason.length > 1000)) throw new InventoryError(400, `Mức hoàn khác mức gợi ý (${Number(suggestion!.amount).toLocaleString('vi-VN')}đ): cần ghi lý do cho khách, 10–1.000 ký tự.`);
-        const secondApproval = body.action === 'accept' && needsSecondApproval(maxRefund, Number(order?.TONG_TIEN || 0));
+        // Hồ sơ hoàn tiền của đơn đã hủy: hoàn đúng tiền đã thu và Admin là người xác nhận chuyển tiền, nên không cần duyệt lần 2.
+        const cancellationRefund = ['customer-cancellation', 'shop-cancellation', 'manual'].includes(String(row.refundContext?.source || ''));
+        const secondApproval = body.action === 'accept' && !cancellationRefund && needsSecondApproval(maxRefund, Number(order?.TONG_TIEN || 0));
         if (body.action === 'accept' && maxRefund > 0) await ledger.updateOne(
           { requestId: id },
           { $setOnInsert: { _id: `RF:${id}`, requestId: id, orderId: row.orderId, amount: maxRefund, refundedAmount: 0, status: 'Pending', method: null, reference: null, createdAt: now, history: [{ action: 'Duyệt hạn mức hoàn', actor, at: now, reason }] } },

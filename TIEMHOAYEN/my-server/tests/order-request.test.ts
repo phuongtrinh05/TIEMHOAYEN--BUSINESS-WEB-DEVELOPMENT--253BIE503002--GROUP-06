@@ -761,7 +761,7 @@ test('order state cannot skip preparation or finish with an unpaid balance', asy
   const { assertOrderTransition } = await import('../services/admin-order.service.js');
   assert.throws(() => assertOrderTransition({ TRANG_THAI: 'Chờ thanh toán' }, 'Đang giao', 1000000), /bỏ qua/);
   assert.throws(() => assertOrderTransition({ TRANG_THAI: 'Đã đặt hàng thành công', TONG_TIEN: 400000, PHUONG_THUC_THANH_TOAN: 'Chuyển khoản', THOI_DIEM_CHUAN_BI_DU_KIEN: new Date(Date.now()+60000) }, 'Đang chuẩn bị hàng', 100000), /Chưa xác minh/);
-  assert.throws(() => assertOrderTransition({ TRANG_THAI: 'Đã giao', TONG_TIEN: 400000, TIEN_COC: 100000, PHUONG_THUC_THANH_TOAN: 'COD' }, 'Hoàn thành', 100000), /số dư/);
+  assert.throws(() => assertOrderTransition({ TRANG_THAI: 'Đã giao', TONG_TIEN: 400000, TIEN_COC: 100000, PHUONG_THUC_THANH_TOAN: 'COD' }, 'Hoàn thành', 100000), /đối soát đủ tiền/);
 });
 
 test('forged Admin role and employee ID cannot replace an authenticated session', async () => {
@@ -947,7 +947,11 @@ test('COD delivery requires the verified balance, while unsuccessful delivery re
   const paid = sumVerifiedPayments([deposit, { ...balance, TRANG_THAI_THANH_TOAN: 'Thất bại' }]);
   assert.throws(() => assertOrderTransition(order, 'Đã giao', paid), /thu đủ tiền/);
   assert.throws(() => assertOrderTransition(order, 'Giao hàng thành công', paid), /thu đủ tiền/);
-  assert.deepEqual(allowedOrderStatuses(order, paid, 'Admin'), ['Giao không thành công']);
+  // Phương án A: "Đã giao" được mở, phần còn lại do nhân viên giao hàng khai báo đã thu (chờ đối soát).
+  assert.deepEqual(allowedOrderStatuses(order, paid, 'Admin'), ['Đã giao', 'Giao không thành công']);
+  assert.equal(orderNextStep(order, paid).action, 'cash-collection');
+  assert.match(orderNextStep({ ...order, TRANG_THAI: 'Đã giao' }, paid, 350000).reason, /chờ đối soát/);
+  assert.deepEqual(allowedOrderStatuses({ ...order, TRANG_THAI: 'Đã giao' }, paid, 'Admin'), []);
   assert.match(orderNextStep(order, paid).reason, /350\.000đ/);
   const fullyPaid = sumVerifiedPayments([deposit, { ...balance, TRANG_THAI_THANH_TOAN: 'Thành công' }]);
   assert.doesNotThrow(() => assertOrderTransition(order, 'Đã giao', fullyPaid));
