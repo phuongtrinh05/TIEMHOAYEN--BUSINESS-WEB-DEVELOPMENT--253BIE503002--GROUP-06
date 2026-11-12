@@ -3,7 +3,7 @@ import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { AdminApiService, AdminOrderDetail } from '../../../services/admin-api.service';
+import { AdminApiService, AdminOrderDetail, CashCollection } from '../../../services/admin-api.service';
 import { combineLatest, firstValueFrom, interval, Subscription } from 'rxjs';
 
 // ===== TYPES =====
@@ -85,6 +85,7 @@ export interface IOrderDetail {
   total: number;
   paid: number;
   refunded: number;
+  pendingCollection?: { amount: number; items: CashCollection[] };
   paymentSummary?: { totalPayable:number; requiredDeposit:number; successfulReceiptsTotal:number; actualRefundsTotal:number; netCollected:number; remainingAmount:number; paymentStatus:string };
   remaining: number;
   paymentMethod: string;
@@ -375,7 +376,8 @@ export class OrderDetail implements OnInit, OnDestroy {
       this.isReplying ||
       this.showShipperDropdown ||
       this.showStatusDropdown ||
-      this.showRejectPopup
+      this.showRejectPopup ||
+      this.showCashPopup
     );
   }
 
@@ -670,6 +672,11 @@ export class OrderDetail implements OnInit, OnDestroy {
       return;
     }
 
+    if (['Đã giao', 'Giao thành công', 'Giao hàng thành công'].includes(this.selectedNextStatus) && this.outstandingAtDelivery > 0) {
+      this.openCashPopup(this.selectedNextStatus);
+      return;
+    }
+
     if (this.selectedNextStatus === REFUND_REJECTED_STATUS) {
       this.customerRefundReason = this.order.refundReason;
       this.openRejectPopup();
@@ -679,13 +686,14 @@ export class OrderDetail implements OnInit, OnDestroy {
     this.persistOrderStatus(this.selectedNextStatus);
   }
 
-  private persistOrderStatus(status: OrderStatus, rejectReason?: string): void {
+  private persistOrderStatus(status: OrderStatus, rejectReason?: string, cashCollection?: { amount: number; method: string; note?: string; proof?: string }): void {
     const previousStatus = this.order.orderStatus;
     this.order.orderStatus = status;
     this.closeStatusDropdown();
 
-    this.adminApi.updateOrderStatus(this.order.id, status, rejectReason).subscribe({
-      next: () => {
+    this.adminApi.updateOrderStatus(this.order.id, status, rejectReason, cashCollection).subscribe({
+      next: (response) => {
+        if (response?.message && response.message !== 'Order status updated.') this.showToast(response.message);
         this.lastLoadedOrderId = '';
         this.fetchOrderDetailOnce(this.order.id);
       },
@@ -780,6 +788,8 @@ export class OrderDetail implements OnInit, OnDestroy {
   loadAfterSales() { if(!this.order.id)return; this.adminApi.getAfterSales(this.order.id).subscribe({next:r=>{this.afterSales=r.requests||[];
     const reviewing=this.afterSales.find((x:any)=>x.active&&x.status==='Đang xem xét'&&x.suggestion);
     if(reviewing&&!this.maxRefund)this.maxRefund=Number(reviewing.suggestion.amount||0);
+    const awaiting=this.afterSales.find((x:any)=>x.active&&['Chờ hoàn tiền','Cần đối soát hoàn tiền'].includes(x.status));
+    if(awaiting&&!this.refundAmount)this.refundAmount=Number(awaiting.decision?.maxRefund||0);
     this.cdr.markForCheck();},error:e=>{this.afterSalesError=e?.error?.message||'Chưa tải được hồ sơ.';this.cdr.markForCheck();}}); }
   actAfterSales(r:any,action:string) { if(this.afterSalesBusy||!this.canEditNote)return;if(action==='refund'&&!this.transferred){this.afterSalesError='Chỉ xác nhận sau khi chuyển tiền và đối soát chứng từ.';return;}this.afterSalesBusy=true;this.adminApi.changeAfterSales(r.requestId,{version:r.version,action,reason:this.afterSalesReason,reasonCode:this.afterSalesRejectCode||(action==='reject'?'OTHER':''),maxRefund:Number(this.maxRefund),deviationReason:this.deviationReason,amount:Number(this.refundAmount),reference:this.refundReference,transferred:this.transferred}).subscribe({next:()=>{this.afterSalesBusy=false;this.afterSalesReason='';this.afterSalesRejectCode='';this.transferred=false;this.deviationReason='';this.loadAfterSales();this.lastLoadedOrderId='';this.fetchOrderDetailOnce(this.order.id);},error:e=>{this.afterSalesBusy=false;this.afterSalesError=e?.error?.message||'Chưa xử lý được.';this.cdr.markForCheck();}}); }
   receiveAfterSalesReturn(request: any): void {
@@ -967,6 +977,56 @@ export class OrderDetail implements OnInit, OnDestroy {
   replyReview(): void {
     this.isReplying = true;
   }
+  // ===== HOÀN TIỀN ĐƠN ĐÃ HỦY =====
+  refundCaseBusy = false;
+  /** Tiền shop đang giữ của đơn đã hủy (đã thu − đã hoàn). */
+  get cancelledRefundDue(): number {
+    if (this.order.orderStatus !== 'Đã hủy') return 0;
+    return Math.max(0, Number(this.order.paymentSummary?.netCollected ?? (Number(this.order.paid || 0) - Number(this.order.refunded || 0))));
+  }
+  get canOpenRefundCase(): boolean {
+    return this.canEditNote && this.cancelledRefundDue > 0 && !this.afterSales.some((r: any) => r.active);
+  }
+  openRefundCase(): void {
+    if (this.refundCaseBusy || !this.canOpenRefundCase) return;
+    this.refundCaseBusy = true;
+    this.adminApi.updateOrderMetadata(this.order.id, { action: 'open-refund-case', reason: 'Mở hồ sơ hoàn tiền cho đơn hủy đã thu tiền' }).subscribe({
+      next: r => { this.refundCaseBusy = false; this.applyApiOrderDetail(r.order); this.showToast('Đã mở hồ sơ hoàn tiền.'); this.cdr.detectChanges(); },
+      error: e => { this.refundCaseBusy = false; this.showToast(e?.error?.message || 'Chưa mở được hồ sơ hoàn tiền.', 'error'); this.cdr.detectChanges(); },
+    });
+  }
+
+  // ===== THU TIỀN KHI GIAO (phương án A) =====
+  readonly cashMethods = ['Tiền mặt', 'Chuyển khoản cho nhân viên giao hàng'];
+  showCashPopup = false;
+  cashTargetStatus: OrderStatus | '' = '';
+  cashMethod = 'Tiền mặt';
+  cashNote = '';
+  cashProof = '';
+  cashConfirmed = false;
+  cashError = '';
+  get pendingCashAmount(): number { return Number(this.order.pendingCollection?.amount || 0); }
+  /** Phần khách còn phải trả khi nhận hàng (chưa xác minh, chưa khai báo). */
+  get outstandingAtDelivery(): number {
+    return Math.max(0, Number(this.order.total || 0) - this.computedPaid - this.pendingCashAmount);
+  }
+  openCashPopup(status: OrderStatus | string): void {
+    this.cashTargetStatus = status as OrderStatus;
+    this.cashMethod = 'Tiền mặt'; this.cashNote = ''; this.cashProof = ''; this.cashConfirmed = false; this.cashError = '';
+    this.showStatusDropdown = false;
+    this.showCashPopup = true;
+  }
+  closeCashPopup(): void { this.showCashPopup = false; this.cashError = ''; this.selectedNextStatus = ''; }
+  confirmCashCollection(): void {
+    if (!this.cashConfirmed) { this.cashError = 'Hãy xác nhận đã nhận đủ số tiền của khách.'; return; }
+    const proof = this.cashProof.trim();
+    if (proof && !/^https?:\/\//i.test(proof)) { this.cashError = 'Liên kết ảnh chứng từ phải bắt đầu bằng http:// hoặc https://'; return; }
+    const status = this.cashTargetStatus as OrderStatus;
+    const payload = { amount: this.outstandingAtDelivery, method: this.cashMethod, note: this.cashNote.trim(), proof };
+    this.showCashPopup = false;
+    this.persistOrderStatus(status, undefined, payload);
+  }
+
   // ===== REFUND REJECT POPUP =====
   showRejectPopup = false;
   rejectReasonInput = '';

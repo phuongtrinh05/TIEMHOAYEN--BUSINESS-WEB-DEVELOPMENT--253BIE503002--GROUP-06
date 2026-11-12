@@ -1,4 +1,5 @@
-import { AFTER_SALES,afterSalesChange,afterSalesRead,orderEvent } from '../services/admin-order.service.js';
+import { AFTER_SALES,afterSalesChange,afterSalesRead,orderEvent,ensureCancelRefundCase,pendingCashTotal,pendingCashRows,CASH_PENDING_STATUS,CASH_COLLECTION_METHODS,orderStaffKind,paidForDeliveryCheck } from '../services/admin-order.service.js';
+import { emitAdminNotification } from '../services/analytics/notifications.service.js';
 import { restoreOrderPoints } from '../services/loyalty-policy.service.js';
 import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId, escapeRegex } from '../mongo.js';
@@ -278,6 +279,12 @@ export const getAdminOrders = async (req: Request, res: Response) => {
       } }).toArray()),
     ]);
     const products = await (await getCollection<any>('SAN_PHAM')).find({ SAN_PHAM_ID: { $in: details.map(i => i.SAN_PHAM_ID) } }, { projection: { SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1 } }).toArray();
+    // Hồ sơ hoàn tiền của đơn đã hủy: hiện ở tab "Cần hoàn tiền".
+    const cancelledIds = ordersRaw.filter(o => normalizeOrderStatus(o.TRANG_THAI) === 'Đã hủy').map(o => o.DON_HANG_ID);
+    const refundCases = cancelledIds.length ? await (await getCollection<any>(AFTER_SALES)).find({ orderId: { $in: cancelledIds } },
+      { projection: { _id: 0, orderId: 1, requestId: 1, status: 1, active: 1, createdAt: 1 } }).sort({ createdAt: -1 }).toArray() : [];
+    const refundCaseByOrder = new Map<string, any>();
+    for (const row of refundCases) if (!refundCaseByOrder.has(row.orderId)) refundCaseByOrder.set(row.orderId, row);
     const productNames = new Map(products.map(p => [p.SAN_PHAM_ID, p.TEN_SAN_PHAM]));
     const customerNames = new Map(customers.map(customer => [customer.KHACH_HANG_ID, customer.TEN]));
     const detailsByOrder = new Map<string, any[]>();
@@ -299,6 +306,9 @@ export const getAdminOrders = async (req: Request, res: Response) => {
           deliveryDate: formatDate(row.NGAY_MUON_GIAO), deliverySlot: slot24h(row.KHUNG_GIO_MUON_GIAO),
           deposit: Number(row.TIEN_COC || 0), paid: paymentSummary.successfulReceiptsTotal, refunded:paymentSummary.actualRefundsTotal,
           remaining: paymentSummary.remainingAmount, paymentSummary,
+          pendingCash: pendingCashTotal(payment?.rows || []),
+          refundDue: normalizeOrderStatus(row.TRANG_THAI) === 'Đã hủy' ? paymentSummary.netCollected : 0,
+          refundCase: refundCaseByOrder.get(row.DON_HANG_ID) ? { requestId: refundCaseByOrder.get(row.DON_HANG_ID).requestId, status: refundCaseByOrder.get(row.DON_HANG_ID).status } : null,
           allowedStatuses: allowedOrderStatuses(row, paymentSummary.netCollected, res.locals?.adminEmployee?.VAI_TRO), adminNote: row.GHI_CHU_NOI_BO || '',
           customerId: row.KHACH_HANG_ID || '',
           createdAt: formatDate(row.NGAY_TAO),
@@ -314,6 +324,7 @@ export const getAdminOrders = async (req: Request, res: Response) => {
       newOrders: orders.filter(order => order.orderStatus === 'Đã đặt hàng thành công').length,
       undelivered: orders.filter(order => ['Đã đặt hàng thành công','Đang chuẩn bị hàng','Chờ vận chuyển','Đang giao'].includes(order.orderStatus)).length,
       unpaid: orders.filter(order => order.remaining > 0 && order.orderStatus !== 'Đã hủy').length,
+      refundDue: orders.filter(order => order.refundDue > 0).length,
     };
     const keyword = normalizeText(req.query.search || '');
     const tab = String(req.query.tab || '').trim();
@@ -328,6 +339,7 @@ export const getAdminOrders = async (req: Request, res: Response) => {
     if (tab === 'new') orders = orders.filter(order => order.orderStatus === 'Đã đặt hàng thành công');
     if (tab === 'undelivered') orders = orders.filter(order => ['Đã đặt hàng thành công','Đang chuẩn bị hàng','Chờ vận chuyển','Đang giao'].includes(order.orderStatus));
     if (tab === 'unpaid') orders = orders.filter(order => order.remaining > 0 && order.orderStatus !== 'Đã hủy');
+    if (tab === 'refund') orders = orders.filter(order => order.refundDue > 0);
     if (from || to) orders = orders.filter(order => {
       const value = toDate(order.createdAt)?.getTime();
       return value !== undefined && value !== null && (!from || value >= from.getTime()) && (!to || value <= to.getTime() + 86_399_999);
@@ -440,8 +452,9 @@ export const getAdminTransactions = async (req: Request, res: Response) => {
         total, deposit, paid, remaining: Math.max(0, total - paid),
         canRecordBalance: kind === 'deposit' && paymentSucceeded(row.TRANG_THAI_THANH_TOAN) && paid >= deposit && paid < total
           && balanceCollectionStatuses.includes(order?.TRANG_THAI)
-          && !paymentsByOrder.get(row.DON_HANG_ID)?.some(payment => payment.LOAI_GIAO_DICH === 'SO_DU' && payment.TRANG_THAI_THANH_TOAN === 'Chờ thanh toán'),
-        editable: kind !== 'refund' && row.TRANG_THAI_THANH_TOAN === 'Chờ thanh toán' && !!order && !['Đã hủy','Đã hoàn tiền'].includes(order.TRANG_THAI),
+          && !paymentsByOrder.get(row.DON_HANG_ID)?.some(payment => payment.LOAI_GIAO_DICH === 'SO_DU' && ['Chờ thanh toán', CASH_PENDING_STATUS].includes(payment.TRANG_THAI_THANH_TOAN)),
+        editable: kind !== 'refund' && ['Chờ thanh toán', CASH_PENDING_STATUS].includes(row.TRANG_THAI_THANH_TOAN) && !!order && !['Đã hủy','Đã hoàn tiền'].includes(order.TRANG_THAI),
+        collection: row.TRANG_THAI_THANH_TOAN === CASH_PENDING_STATUS || row.NGUOI_THU ? pendingCashRows([{ ...row, TRANG_THAI_THANH_TOAN: CASH_PENDING_STATUS }])[0] : null,
         history: row.LICH_SU || [], confirmedAt: row.XAC_NHAN_LUC || null, confirmedBy: row.NGUOI_XAC_NHAN || '', selected: false };
     });
     const keyword = normalizeText(req.query.search || '');
@@ -473,6 +486,12 @@ export const getAdminTransactions = async (req: Request, res: Response) => {
 export const updateAdminTransaction = async (req: Request, res: Response) => {
   try {
     if (!String(req.body?.reason || '').trim()) throw new InventoryError(400, 'Cần nhập căn cứ đối soát giao dịch.');
+    const actorId = String(res.locals?.adminEmployee?.NHAN_VIEN_ID || req.headers?.['x-admin-id'] || '');
+    const prior = await (await getCollection<any>('THANH_TOAN')).findOne({ THANH_TOAN_ID: String(req.params.transactionId) });
+    // Tách người thu và người xác nhận: người đã thu tiền khi giao không tự đối soát khoản của mình (trừ Admin).
+    if (prior?.TRANG_THAI_THANH_TOAN === CASH_PENDING_STATUS && prior.NGUOI_THU === actorId && orderStaffKind(res.locals?.adminEmployee?.VAI_TRO) !== 'admin') {
+      throw new InventoryError(403, 'Người đã thu tiền khi giao không tự đối soát khoản này. Nhờ nhân viên khác hoặc Admin xác nhận.');
+    }
     const transaction = await withTransaction(session => changeCheckoutPayment(session, String(req.params.transactionId), req.body,
       String(res.locals?.adminEmployee?.NHAN_VIEN_ID || req.headers?.['x-admin-id'] || '')));
     return res.json({ message: 'Đã xác minh giao dịch.', transaction });
@@ -502,6 +521,7 @@ export const createAdminTransaction = async (req: Request, res: Response) => {
         if (!reason) throw new InventoryError(400, 'Cần nhập căn cứ đối soát giao dịch.');
       }
       if (balance && prior && prior.LOAI_GIAO_DICH !== 'SO_DU') throw new InventoryError(409, 'Khoản số dư cần mã tham chiếu riêng.');
+      if (balance && rows.some(p => p.LOAI_GIAO_DICH === 'SO_DU' && p.TRANG_THAI_THANH_TOAN === CASH_PENDING_STATUS)) throw new InventoryError(409, 'Đơn đã có khoản nhân viên giao hàng thu đang chờ đối soát. Hãy đối soát khoản đó thay vì ghi nhận thêm.');
       let target = prior || rows.find(p => p.TRANG_THAI_THANH_TOAN === 'Chờ thanh toán' && (!balance || p.LOAI_GIAO_DICH === 'SO_DU'));
       if (!target) {
         const paid = sumVerifiedPayments(rows), remaining = Number(order.TONG_TIEN) - paid;
@@ -1211,11 +1231,22 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
       const order = await getAdminOrderDetailById(orderId, res.locals?.adminEmployee?.VAI_TRO);
       return res.status(200).json({ message: alreadyStarted ? 'Đơn đã bắt đầu chuẩn bị.' : 'Đã bắt đầu chuẩn bị đơn.', order });
     }
+    let cashDeclared: { paymentId: string; amount: number; method: string } | null = null;
+    let refundCaseId: string | null = null;
     await withTransaction(async session => {
+    cashDeclared = null; refundCaseId = null;
     const orders = await getCollection<any>('DON_HANG');
     const current = await orders.findOne({ DON_HANG_ID: orderId }, { session });
     if (!current) throw new InventoryError(404, 'Không tìm thấy đơn hàng.');
     const actor = actorId;
+    if (req.body.action === 'open-refund-case') {
+      // Đơn hủy cũ (trước khi có quy tắc tự tạo) vẫn mở được hồ sơ hoàn tiền thủ công.
+      if (String(current.TRANG_THAI) !== 'Đã hủy') throw new InventoryError(409, 'Chỉ mở hồ sơ hoàn tiền cho đơn đã hủy.');
+      const reason = String(req.body.reason || 'Mở hồ sơ hoàn tiền cho đơn hủy đã thu tiền').trim().slice(0, 500);
+      const requestId = await ensureCancelRefundCase(session, current, { reason, actor, source: 'manual' });
+      if (!requestId) throw new InventoryError(409, 'Đơn không còn khoản cần hoàn hoặc đã có hồ sơ hoàn tiền đang mở.');
+      return;
+    }
     if (req.body.action === 'note' || req.body.action === 'preparation' || req.body.action === 'handover-media' || req.body.action === 'delivery' || req.body.action === 'assign-shipper' || req.body.action === 'support-exception') {
       const changes: any = {};
       if (req.body.action === 'support-exception') {
@@ -1299,7 +1330,53 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
     if (status === 'Từ chối hoàn tiền/trả hàng' && await (await getCollection<any>(AFTER_SALES)).findOne({orderId,active:true},{session})) throw new InventoryError(409,'Yêu cầu có hồ sơ hậu mãi độc lập. Hãy xử lý quyết định trong hồ sơ để đồng bộ kết quả.');
     if (status === 'Từ chối hoàn tiền/trả hàng' && !String(current.LY_DO_HOAN_TIEN_TRA_HANG || '').trim()) throw new InventoryError(409, 'Thiếu nội dung yêu cầu trả/hoàn gốc; cần bổ sung hồ sơ hậu mãi ở Stage 4.');
     const receipts = await (await getCollection<any>('THANH_TOAN')).find({ DON_HANG_ID: orderId }, { session }).toArray();
-    assertOrderTransition(current, status, sumVerifiedPayments(receipts));
+    const verified = sumVerifiedPayments(receipts);
+    const delivering = ['Đã giao', 'Giao hàng thành công'].includes(status);
+    // "Đã giao": phần khách còn phải trả do nhân viên giao hàng khai báo đã thu, chờ đối soát sau.
+    assertOrderTransition(current, status, delivering ? paidForDeliveryCheck(current, verified) : verified);
+    if (delivering) {
+      const total = Number(current.TONG_TIEN || 0);
+      const outstanding = total - verified - pendingCashTotal(receipts);
+      if (outstanding > 0) {
+        const cash = req.body.cashCollection;
+        const vnd = (n: number) => `${n.toLocaleString('vi-VN')}đ`;
+        if (!cash || typeof cash !== 'object') throw new InventoryError(409, `Khách còn phải trả ${vnd(outstanding)}. Hãy khai báo số tiền đã thu khi giao để chuyển sang "Giao thành công".`);
+        const amount = Number(cash.amount);
+        if (!Number.isSafeInteger(amount) || amount !== outstanding) throw new InventoryError(409, `Số tiền đã thu phải đúng ${vnd(outstanding)}. Nếu khách trả thiếu, hãy chọn "Giao không thành công" và báo shop.`);
+        const method = String(cash.method || '').trim();
+        if (!CASH_COLLECTION_METHODS.includes(method)) throw new InventoryError(400, 'Chọn hình thức khách trả: Tiền mặt hoặc Chuyển khoản cho nhân viên giao hàng.');
+        const note = String(cash.note || '').trim();
+        if (note.length > 500) throw new InventoryError(400, 'Ghi chú tối đa 500 ký tự.');
+        const proof = String(cash.proof || '').trim();
+        if (proof && (proof.length > 2000 || (!/^https?:\/\//i.test(proof) && !/^\/uploads\/[\w./-]+$/.test(proof)))) throw new InventoryError(400, 'Liên kết chứng từ không hợp lệ.');
+        if (orderStaffKind(actorRole) === 'shipper' && String(current.NHAN_VIEN_GIAO_HANG_ID || current.NHAN_VIEN_GIAO_HANG?.id || '') !== actor) {
+          throw new InventoryError(403, 'Chỉ nhân viên được phân công giao đơn này mới khai báo được khoản đã thu.');
+        }
+        const payments = await getCollection<any>('THANH_TOAN');
+        const prefix = `GD${String(orderId).replace(/^YEN/, '')}-SD`;
+        const ids = new Set(receipts.map(p => p.THANH_TOAN_ID));
+        let seq = receipts.filter(p => p.LOAI_GIAO_DICH === 'SO_DU').length + 1;
+        let paymentId = `${prefix}${String(seq).padStart(2, '0')}`;
+        while (ids.has(paymentId)) { seq += 1; paymentId = `${prefix}${String(seq).padStart(2, '0')}`; }
+        const now = new Date();
+        const collectorName = String(res.locals?.adminEmployee?.HO_TEN || res.locals?.adminEmployee?.TEN || actor);
+        await (await getCollection<any>('DON_HANG')).updateOne({ DON_HANG_ID: orderId }, { $inc: { PHIEN_BAN_THANH_TOAN: 1 } }, { session });
+        await payments.insertOne({ _id: paymentId, THANH_TOAN_ID: paymentId, DON_HANG_ID: orderId, CONG_THANH_TOAN: current.PHUONG_THUC_THANH_TOAN || '',
+          SO_TIEN: amount, LOAI_GIAO_DICH: 'SO_DU', MA_GIAO_DICH: null, TRANG_THAI_THANH_TOAN: CASH_PENDING_STATUS, NGAY_THANH_TOAN: now,
+          HINH_THUC_THU: method, NGUOI_THU: actor, NGUOI_THU_TEN: collectorName, THOI_DIEM_THU: now, GHI_CHU_THU: note || null, CHUNG_TU_THU: proof || null,
+          LICH_SU: [{ id: randomUUID(), from: null, to: CASH_PENDING_STATUS, actor, at: now, action: 'Nhân viên giao hàng khai báo đã thu', reason: note || null }] } as any, { session });
+        await emitAdminNotification({
+          key: `CASH_PENDING:${paymentId}`, type: 'PAYMENT_RECONCILE', group: 'Đơn hàng', priority: 'Trung bình',
+          title: `Khoản thu chờ đối soát — ${orderId}`, message: `${collectorName} đã thu ${vnd(amount)} (${method.toLowerCase()}). Đối chiếu tiền nộp ở trang Thanh toán.`,
+          link: '/transactions', module: 'payments', entityId: paymentId, stateful: false,
+        } as any, session);
+        cashDeclared = { paymentId, amount, method };
+      }
+    }
+    if (status === 'Đã hủy') {
+      const reason = String(req.body.reason || current.LY_DO_HUY || 'Shop hủy đơn').trim().slice(0, 500);
+      refundCaseId = await ensureCancelRefundCase(session, current, { reason, actor, source: 'shop-cancellation' });
+    }
     await orderEvent(session,orderId+':status:'+status,current.KHACH_HANG_ID||null,String(orderId),'Cập nhật đơn hàng',status);
     if (current?.KIEM_TRA_TON_KHO && status === 'Đã hủy') {
       await releaseReservations({ orderId }, { id: String(req.headers['x-admin-id'] || ''), role: 'Admin' }, 'Admin hủy đơn', session);
@@ -1328,8 +1405,14 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
     );
     });
     invalidateAnalyticsCache(); // Dashboard lấy số mới ở lần xem tiếp theo
+    const declared = cashDeclared as { paymentId: string; amount: number; method: string } | null;
+    if (declared) await audit(req, 'KHAI_BAO_THU_TIEN_KHI_GIAO', orderId, { THANH_TOAN_ID: declared.paymentId, SO_TIEN: declared.amount, HINH_THUC: declared.method }).catch(() => undefined);
+    if (refundCaseId) await audit(req, 'MO_HO_SO_HOAN_TIEN', orderId, { YEU_CAU_ID: refundCaseId }).catch(() => undefined);
     const order = await getAdminOrderDetailById(orderId, res.locals?.adminEmployee?.VAI_TRO);
-    return res.status(200).json({ message: 'Order status updated.', order });
+    const message = req.body.action === 'open-refund-case' ? 'Đã mở hồ sơ hoàn tiền.'
+      : declared ? 'Đã chuyển sang Giao thành công. Khoản đã thu đang chờ Nhân viên bán hàng đối soát.'
+      : refundCaseId ? 'Đã hủy đơn và tạo hồ sơ hoàn tiền cho khoản đã thu.' : 'Order status updated.';
+    return res.status(200).json({ message, order, refundCaseId });
   } catch (error: any) {
     return res.status(error instanceof InventoryError ? error.status : 500).json({ message: error instanceof InventoryError ? error.message : 'Không thể cập nhật trạng thái đơn.' });
   }

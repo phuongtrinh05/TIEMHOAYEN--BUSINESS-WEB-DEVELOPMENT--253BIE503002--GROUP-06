@@ -17,6 +17,11 @@
             </div>
 
             <div class="toolbar-actions">
+                <button class="tool-btn tool-btn--reconcile" type="button" *ngIf="pendingCashCount > 0 || selectedStatus === 'Chờ đối soát'"
+                    [class.tool-btn--active]="selectedStatus === 'Chờ đối soát'" (click)="togglePendingCashFilter()"
+                    title="Khoản nhân viên giao hàng đã thu, cần đối chiếu tiền nộp">
+                    <i class="bi bi-cash-coin"></i> Chờ đối soát <span class="tool-btn__badge">{{ pendingCashCount }}</span>
+                </button>
                 <button *ngIf="canCreate" class="tool-btn" type="button" (click)="openAddModal()">Ghi nhận số dư</button>
                 <span class="selected-count">
                     Đã chọn: {{ selectedCount }}
@@ -232,6 +237,12 @@
                             </span>
                             <button *ngIf="canCreate && item.canRecordBalance" class="record-balance-btn" type="button"
                                 (click)="openAddModal(item)">Ghi nhận tiền còn lại</button>
+                            <small class="cash-collection-info" *ngIf="item.collection">
+                                <i class="bi bi-person-badge"></i> {{ item.collection.collectorName }} thu · {{ item.collection.method }}
+                                <ng-container *ngIf="item.collection.collectedAt"> · {{ item.collection.collectedAt | date:'dd/MM HH:mm' }}</ng-container>
+                                <ng-container *ngIf="item.collection.note"><br>{{ item.collection.note }}</ng-container>
+                                <a *ngIf="item.collection.proof" [href]="item.collection.proof" target="_blank" rel="noopener noreferrer"> · Chứng từ</a>
+                            </small>
                         </td>
 
                         <td>
@@ -244,7 +255,7 @@
 
                         <td class="code-text">
                             @if (isEditingTransaction(item)) {
-                                <input [(ngModel)]="item.referenceCode" [attr.aria-invalid]="!!editErrors[item.code]?.referenceCode" aria-label="Mã tham chiếu xác minh" placeholder="Mã tham chiếu">
+                                <input [(ngModel)]="item.referenceCode" [attr.aria-invalid]="!!editErrors[item.code]?.referenceCode" aria-label="Mã tham chiếu xác minh" [placeholder]="item.collection ? 'Mã phiếu nộp tiền' : 'Mã tham chiếu'">
                                 <p class="transaction-field-error" *ngIf="editErrors[item.code]?.referenceCode" role="alert">{{ editErrors[item.code].referenceCode }}</p>
                                 <input [(ngModel)]="editReasons[item.code]" [attr.aria-invalid]="!!editErrors[item.code]?.reason" aria-label="Căn cứ đối soát" placeholder="Căn cứ đối soát bắt buộc">
                                 <p class="transaction-field-error" *ngIf="editErrors[item.code]?.reason" role="alert">{{ editErrors[item.code].reason }}</p>

@@ -856,3 +856,37 @@
 .after-sales-money b { color: #3c201d; }
 .after-sales-total { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #fff7ec; font-size: 13px; color: #6f5a55; }
 .after-sales-total b { color: #731919; }
+
+/* ===== Hoàn tiền đơn hủy & thu tiền khi giao ===== */
+.order-tab__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #a32b32;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.order-flag {
+  display: block;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.order-flag--pending { background: #fff4e0; color: #9a5b12; }
+.order-flag--refund { background: #fdecec; color: #a32b32; }
+.order-refund-case {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: #8a7466;
+}

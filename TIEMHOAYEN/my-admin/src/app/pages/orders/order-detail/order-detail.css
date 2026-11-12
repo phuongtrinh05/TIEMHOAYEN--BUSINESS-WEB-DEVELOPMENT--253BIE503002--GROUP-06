@@ -2358,3 +2358,22 @@
 .status-next-step a{display:inline-block;margin-top:4px;font-weight:600}
 .status-assign-shipper{margin-top:4px;padding:0;border:0;background:none;color:inherit;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
 .status-next-step--blocked{background:#fff4e5;color:#7a4100}
+
+/* ===== Hoàn tiền đơn đã hủy ===== */
+.refund-due-callout{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:14px;padding:14px 16px;border:1px solid #f0c9c4;border-left:4px solid #a32b32;border-radius:12px;background:#fff6f4}
+.refund-due-callout p{margin:0;color:#5d3a34;font-size:.9rem;line-height:1.55}
+.refund-due-callout b{display:block;color:#731919;margin-bottom:2px}
+.refund-due-callout button{flex-shrink:0;padding:9px 14px;border:none;border-radius:8px;background:var(--primary-color);color:#fff;font-weight:700;cursor:pointer}
+.refund-due-callout button:disabled{opacity:.6;cursor:default}
+
+/* ===== Thu tiền khi giao: dòng chờ đối soát + popup ===== */
+.payment-row--pending span:first-child{color:#9a5b12}
+.payment-row--pending span:last-child{color:#9a5b12;font-weight:600}
+.payment-row--pending small{display:block;margin-top:2px;font-size:.78rem;color:#8a7466}
+.payment-row--pending a{color:var(--primary-color)}
+.popup-text-input{padding-right:14px;appearance:auto}
+.popup-check{display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:.9rem;color:var(--text-color);line-height:1.5;cursor:pointer}
+.popup-check input{margin-top:3px;accent-color:var(--primary-color)}
+.popup-hint{margin:8px 0 0;font-size:.8rem;color:#6B7280;line-height:1.5}
+.status-next-step small{display:block;margin-top:4px;color:#6B7280}
+@media (max-width:640px){.refund-due-callout{flex-direction:column;align-items:flex-start}}

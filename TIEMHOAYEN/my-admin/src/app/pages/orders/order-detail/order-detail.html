@@ -20,6 +20,15 @@
           {{ supportExceptionBusy ? 'Đang mở…' : 'Mở hỗ trợ ngoại lệ 1 giờ' }}
         </button>
       </div>
+      <div class="refund-due-callout" *ngIf="cancelledRefundDue > 0">
+        <p>
+          <b>Đơn đã hủy · cần hoàn {{ formatVND(cancelledRefundDue) }} cho khách.</b>
+          Nhân viên bán hàng tiếp nhận và duyệt số tiền hoàn, sau đó Admin chuyển tiền và xác nhận trong hồ sơ bên dưới.
+        </p>
+        <button type="button" *ngIf="canOpenRefundCase" (click)="openRefundCase()" [disabled]="refundCaseBusy">
+          {{ refundCaseBusy ? 'Đang mở…' : 'Mở hồ sơ hoàn tiền' }}
+        </button>
+      </div>
       <p role="alert">{{ afterSalesError }}</p>
       <article *ngFor="let r of afterSales" class="admin-after-sales-case">
         <div class="admin-case-head">
@@ -83,7 +92,7 @@
               Lý do khác mức gợi ý (khách xem được, tối thiểu 10 ký tự)
               <textarea [(ngModel)]="deviationReason" maxlength="1000" rows="2"></textarea>
             </label>
-            <p *ngIf="needsSecondApproval(+maxRefund)" class="after-sales-sla">Khoản hoàn trên 2 triệu hoặc trên 50% giá trị đơn: sau khi duyệt sẽ chờ Admin duyệt lần 2.</p
+            <p *ngIf="needsSecondApproval(+maxRefund) && !r.refundContext" class="after-sales-sla">Khoản hoàn trên 2 triệu hoặc trên 50% giá trị đơn: sau khi duyệt sẽ chờ Admin duyệt lần 2.</p
             ><button
               (click)="actAfterSales(r, 'accept')"
               [disabled]="afterSalesBusy || !afterSalesReason.trim() || (r.suggestion && +maxRefund !== +r.suggestion.amount && deviationReason.trim().length < 10)"
@@ -117,11 +126,18 @@
             </ng-container>
             <ng-template #waitAdmin><small>Chỉ tài khoản Admin được duyệt bước này.</small></ng-template>
           </div>
+          <p
+            class="after-sales-sla"
+            *ngIf="!isAdminRole && (r.status === 'Chờ hoàn tiền' || r.status === 'Cần đối soát hoàn tiền' || r.status === 'Đã chấp nhận')"
+          >
+            Đã duyệt hoàn {{ r.decision?.maxRefund | number: '1.0-0' }}đ. Chờ Admin chuyển tiền và xác nhận đã hoàn cho khách.
+          </p>
           <div
             *ngIf="
-              r.status === 'Chờ hoàn tiền' ||
+              isAdminRole &&
+              (r.status === 'Chờ hoàn tiền' ||
               r.status === 'Cần đối soát hoàn tiền' ||
-              r.status === 'Đã chấp nhận'
+              r.status === 'Đã chấp nhận')
             "
           >
             <label
@@ -433,6 +449,7 @@
                         <strong *ngIf="order.nextStep?.nextStatus">Bước tiếp theo: {{ order.nextStep?.nextStatus }}{{ order.nextStep?.blocked ? ' — chưa thể chuyển' : '' }}</strong>
                         <p>{{ order.nextStep?.reason }}</p>
                         <a *ngIf="order.nextStep?.action === 'payment'" routerLink="/transactions">Mở trang Thanh toán (tìm mã {{ order.id }})</a>
+                        <small *ngIf="order.nextStep?.action === 'cash-collection'">Chọn "Giao thành công" bên dưới, hệ thống sẽ hỏi số tiền đã thu.</small>
                         <button *ngIf="order.nextStep?.action === 'assign-shipper' && canEditNote"
                           type="button" class="status-assign-shipper" (click)="openShipperAssignment()">Phân công shipper</button>
                       </div>
@@ -655,6 +672,17 @@
               <span>{{ formatVND(computedPaid) }}</span>
             </div>
 
+            <div class="payment-row payment-row--pending" *ngIf="pendingCashAmount > 0">
+              <span>
+                Đã thu khi giao · chờ đối soát
+                <small *ngFor="let c of order.pendingCollection?.items">
+                  {{ c.collectorName }} · {{ c.method }} · {{ c.collectedAt | date: 'dd/MM/yyyy HH:mm' }}<ng-container *ngIf="c.note"> · {{ c.note }}</ng-container>
+                  <a *ngIf="c.proof" [href]="c.proof" target="_blank" rel="noopener noreferrer"> · Xem chứng từ</a>
+                </small>
+              </span>
+              <span>{{ formatVND(pendingCashAmount) }}</span>
+            </div>
+
             <div class="payment-row" *ngIf="order.refunded > 0">
               <span>Đã hoàn thực tế</span>
               <span>-{{ formatVND(order.refunded) }}</span>
@@ -662,7 +690,7 @@
 
             <div class="payment-row">
               <span>Còn lại</span>
-              <span>{{ formatVND(computedRemaining) }}</span>
+              <span>{{ formatVND(pendingCashAmount > 0 ? outstandingAtDelivery : computedRemaining) }}</span>
             </div>
 
             <div class="payment-row">
@@ -904,6 +932,65 @@
       <!-- /CỘT PHẢI -->
     </div>
     <!-- /MAIN GRID -->
+  </div>
+
+  <!-- POPUP THU TIỀN KHI GIAO -->
+  <div class="popup-overlay" *ngIf="showCashPopup" (click)="closeCashPopup()">
+    <div class="popup-box" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="cash-popup-title">
+      <h3 class="popup-title" id="cash-popup-title">
+        <span class="card-title__bar"></span>
+        Xác nhận đã giao và đã thu tiền
+        <button class="popup-close-btn" type="button" (click)="closeCashPopup()" aria-label="Đóng">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </h3>
+
+      <div class="popup-section-label">Thông tin đơn hàng</div>
+      <div class="popup-info-row">
+        <span class="popup-info-label">Mã đơn hàng</span>
+        <span class="popup-info-val">{{ order.id }}</span>
+      </div>
+      <div class="popup-info-row">
+        <span class="popup-info-label">Tổng tiền</span>
+        <span class="popup-info-val">{{ formatVND(order.total) }}</span>
+      </div>
+      <div class="popup-info-row">
+        <span class="popup-info-label">Shop đã xác minh</span>
+        <span class="popup-info-val">{{ formatVND(computedPaid) }}</span>
+      </div>
+      <div class="popup-info-row">
+        <span class="popup-info-label">Cần thu của khách khi giao</span>
+        <span class="popup-info-val popup-info-val--price">{{ formatVND(outstandingAtDelivery) }}</span>
+      </div>
+
+      <div class="popup-field-label">Hình thức khách trả</div>
+      <div class="popup-select-wrap">
+        <select class="popup-reason-select" [(ngModel)]="cashMethod">
+          <option *ngFor="let m of cashMethods" [value]="m">{{ m }}</option>
+        </select>
+        <i class="bi bi-chevron-down popup-select-chevron"></i>
+      </div>
+
+      <div class="popup-field-label">Ghi chú (không bắt buộc)</div>
+      <textarea class="popup-reason-textarea" [(ngModel)]="cashNote" maxlength="500" rows="2"
+        placeholder="Ví dụ: khách trả 2 tờ 500.000đ, đã thối lại 50.000đ"></textarea>
+
+      <div class="popup-field-label">Liên kết ảnh chứng từ (không bắt buộc)</div>
+      <input class="popup-reason-select popup-text-input" [(ngModel)]="cashProof" maxlength="2000"
+        placeholder="https://… (ảnh biên nhận hoặc ảnh chuyển khoản)" />
+
+      <label class="popup-check">
+        <input type="checkbox" [(ngModel)]="cashConfirmed" (ngModelChange)="cashError = ''" />
+        Tôi đã nhận đủ {{ formatVND(outstandingAtDelivery) }} của khách và sẽ nộp lại cho shop.
+      </label>
+      <p class="popup-hint">Khoản này chờ Nhân viên bán hàng đối soát ở trang Thanh toán. Đơn chỉ được hoàn thành sau khi đối soát xong.</p>
+
+      <div class="popup-error-text" *ngIf="cashError">{{ cashError }}</div>
+
+      <div class="popup-actions">
+        <button class="popup-btn-reject" type="button" (click)="confirmCashCollection()">Xác nhận đã giao</button>
+      </div>
+    </div>
   </div>
 
   <!-- POPUP TỪ CHỐI HOÀN TIỀN -->

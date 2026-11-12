@@ -28,6 +28,7 @@ export type OrderStatus =
   | 'Đã hủy';
 
 export interface Order {
+  pendingCash?: number; refundDue?: number; refundCase?: { requestId: string; status: string } | null;
   senderName?: string; receiverName?: string; deliveryDate?: string; deliverySlot?: string; products?: {name: string; qty: number}[]; deposit?: number; paid?: number; remaining?: number; allowedStatuses?: string[]; adminNote?: string;
   id: string;
   customerId: string;
@@ -38,7 +39,7 @@ export interface Order {
   selected: boolean;
 }
 
-type TabFilter = 'Tất cả' | 'Đơn mới' | 'Chưa giao' | 'Chưa thanh toán';
+type TabFilter = 'Tất cả' | 'Đơn mới' | 'Chưa giao' | 'Chưa thanh toán' | 'Cần hoàn tiền';
 type PaymentFilter = 'Tất cả thanh toán' | PaymentStatus;
 type OrderStatusFilter = 'Tất cả trạng thái' | OrderStatus;
 
@@ -86,7 +87,7 @@ export class OrderList implements OnInit, OnDestroy {
 
   afterSalesQueue:any[]=[];afterSalesSummary:{count:number;totalApproved:number;totalRefunded:number}|null=null;
   afterSalesSearch='';afterSalesStatus='';afterSalesType='';afterSalesFrom='';afterSalesTo='';afterSalesTotal=0;afterSalesLoading=false;
-  readonly afterSalesStatuses=['Đã gửi yêu cầu','Đang xem xét','Cần bổ sung thông tin','Chờ Admin duyệt','Đang thực hiện phương án','Chờ hoàn tiền','Cần đối soát hoàn tiền','Đã từ chối','Đã xử lý xong'];
+  readonly afterSalesStatuses=['Chờ tiếp nhận','Đã gửi yêu cầu','Đang xem xét','Cần bổ sung thông tin','Chờ Admin duyệt','Đang thực hiện phương án','Chờ hoàn tiền','Cần đối soát hoàn tiền','Đã từ chối','Đã xử lý xong'];
   loadAfterSalesQueue() { this.afterSalesLoading=true;this.adminApi.getAfterSales({search:this.afterSalesSearch.trim(),status:this.afterSalesStatus,type:this.afterSalesType,from:this.afterSalesFrom,to:this.afterSalesTo?`${this.afterSalesTo}T23:59:59.999Z`:'',limit:'50'}).subscribe({next:r=>{this.afterSalesQueue=r.requests||[];this.afterSalesTotal=Number(r.total||0);this.afterSalesSummary=r.summary||null;this.afterSalesLoading=false;this.cdr.markForCheck();},error:()=>{this.afterSalesLoading=false;this.cdr.markForCheck();}}); }
   openAfterSales(row:any) { this.router.navigate(['/orders/order-detail',row.orderId]); }
   allOrders: Order[] = [];
@@ -96,7 +97,9 @@ export class OrderList implements OnInit, OnDestroy {
   private completedOrderCountValue = 0;
   private cancelledOrderCountValue = 0;
 
-  tabs: TabFilter[] = ['Tất cả', 'Đơn mới', 'Chưa giao', 'Chưa thanh toán'];
+  tabs: TabFilter[] = ['Tất cả', 'Đơn mới', 'Chưa giao', 'Chưa thanh toán', 'Cần hoàn tiền'];
+  /** Đơn đã hủy mà shop còn giữ tiền của khách. */
+  get refundDueCount(): number { return this.allOrders.filter(o => Number(o.refundDue || 0) > 0).length; }
   activeTab: TabFilter = 'Tất cả';
 
   paymentFilters: PaymentFilter[] = [
@@ -400,6 +403,7 @@ export class OrderList implements OnInit, OnDestroy {
     if (this.activeTab === 'Đơn mới') list = list.filter(o => o.orderStatus === 'Đã đặt hàng thành công');
     if (this.activeTab === 'Chưa giao') list = list.filter(o => ['Đã đặt hàng thành công','Đang chuẩn bị hàng','Chờ vận chuyển','Đang giao'].includes(o.orderStatus));
     if (this.activeTab === 'Chưa thanh toán') list = list.filter(o => Number(o.remaining || 0) > 0 && o.orderStatus !== 'Đã hủy');
+    if (this.activeTab === 'Cần hoàn tiền') list = list.filter(o => Number(o.refundDue || 0) > 0);
 
     if (this.paymentFilter !== 'Tất cả thanh toán') {
       list = list.filter(order => order.paymentStatus === this.paymentFilter);
@@ -590,7 +594,15 @@ export class OrderList implements OnInit, OnDestroy {
   }
 
   canChangeSelected(status: string): boolean {
-    return this.adminApi.can('orders', 'update') && this.selectedOrders.length > 0 && this.selectedOrders.every(o => (o.allowedStatuses || []).includes(status));
+    return this.adminApi.can('orders', 'update') && this.selectedOrders.length > 0 && this.selectedOrders.every(o => (o.allowedStatuses || []).includes(status))
+      && !(this.isDeliveredStatus(status) && this.selectedOrders.some(o => this.cashToCollect(o) > 0));
+  }
+  private isDeliveredStatus(status: string): boolean { return ['Đã giao', 'Giao thành công', 'Giao hàng thành công'].includes(status); }
+  /** Đơn còn tiền phải thu khi giao: cần khai báo trong chi tiết đơn, không chuyển hàng loạt. */
+  cashToCollect(order: Order): number { return Math.max(0, Number(order.remaining || 0) - Number(order.pendingCash || 0)); }
+  statusChangeHint(status: string): string {
+    return this.isDeliveredStatus(status) && this.selectedOrders.some(o => this.cashToCollect(o) > 0)
+      ? 'Có đơn còn tiền phải thu khi giao. Mở chi tiết đơn để khai báo số tiền đã thu.' : '';
   }
   get canCreateOrder(): boolean { return this.adminApi.can('orders','create'); }
   updateSelectedOrderStatus(status: OrderStatus): void {
