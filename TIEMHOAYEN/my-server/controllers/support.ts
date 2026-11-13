@@ -4,7 +4,7 @@ import { InventoryError } from '../services/inventory/helpers.js';
 import { hasPermission } from '../services/role-permission.service.js';
 import { currentProduct, planChatReply } from '../services/chatbot-brain.service.js';
 import { openChatImage } from '../services/chat-media.service.js';
-import { SUPPORT_TICKETS, publicMessage, rateSupport, readSupport, sendSupport, startSupport, supportDto, supportOrders, supportStaffAction, supportStartRate, updateSupportContact } from '../services/support.service.js';
+import { SUPPORT_TICKETS, cancelSupportHandoff, publicMessage, rateSupport, readSupport, sendSupport, startSupport, supportDto, supportOrders, supportStaffAction, supportStartRate, updateSupportContact } from '../services/support.service.js';
 const actor = (req: Request) => ({ orderToken: String(req.headers['x-order-access'] || ''), guestToken: String(req.headers['x-support-token'] || '') });
 const fail = (res: Response, e: any) => res.status(e instanceof InventoryError ? e.status : 500).json({ message: e instanceof InventoryError ? e.message : 'Chưa xử lý được cuộc tư vấn. Vui lòng thử lại.' });
 export async function requireSupportStaff(req: Request, res: Response, next: NextFunction) {
@@ -47,6 +47,12 @@ catch (e) {
 } }
 export async function contact(req: Request, res: Response) { try {
     res.json(await updateSupportContact(String(req.params.id), req.body, actor(req)));
+}
+catch (e) {
+    fail(res, e);
+} }
+export async function cancelHandoff(req: Request, res: Response) { try {
+    res.json(await cancelSupportHandoff(String(req.params.id), actor(req)));
 }
 catch (e) {
     fail(res, e);

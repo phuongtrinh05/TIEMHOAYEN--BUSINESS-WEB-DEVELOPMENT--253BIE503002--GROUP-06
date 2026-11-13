@@ -50,6 +50,12 @@ else {
         const contacted = await support.updateSupportContact(anonymous.ticket.id, { name: 'Khách ẩn danh', phone: '0901111222' }, actor(anonymous));
         assert.equal(contacted.ticket.contactRequired, false);
         assert.equal(contacted.ticket.phone, '0901111222');
+        const anonymous2 = await support.startSupport({ anonymous: true }, {});
+        const handoff2 = await send(anonymous2, 'gặp nhân viên');
+        assert.equal(handoff2.ticket.contactRequired, true);
+        const cancelled = await support.cancelSupportHandoff(anonymous2.ticket.id, actor(anonymous2));
+        assert.equal(cancelled.ticket.contactRequired, false);
+        assert.equal(cancelled.ticket.mode, 'AI');
         const a = await guest(), b = await guest();
         await assert.rejects(support.readSupport(a.ticket.id, actor(b)));
         await assert.rejects(support.supportOrders(a.ticket.id, actor(a)));

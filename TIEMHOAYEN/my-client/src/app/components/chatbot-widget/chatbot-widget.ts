@@ -34,6 +34,10 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
     error = '';
     contact = { name: '', phone: '', email: '' };
     contactErrors = { name: '', phone: '' };
+    guestContactFormOpen = false;
+    guestContactFormDismissed = false;
+    handoffBusy = false;
+    private cancellingHandoff = false;
     selectedImageDataUrl = '';
     selectedFileName = '';
     orderData: any = null;
@@ -82,6 +86,14 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
     } | null = null;
     get hasAccount() { return !!currentOrderAccountKey(); }
     get isMember() { return !!memberAccessToken(); }
+    get isGuest() { return !this.isMember; }
+    get contactFormVisible() { return !!this.ticket && (this.guestContactFormOpen || (!!this.ticket.contactRequired && !this.guestContactFormDismissed)); }
+    get canOfferGuestContactForm() { return this.isGuest && !!this.ticket && !this.ticket.phone && !this.contactFormVisible; }
+    isGuestContactPrompt(message: any) {
+        if (!this.isGuest || !this.ticket || this.ticket.phone || message?.role === 'user')
+            return false;
+        return /để lại thông tin|thông tin liên hệ bên dưới/i.test(String(message?.text || ''));
+    }
     get canViewOrders() { return this.isMember || !!this.access.session; }
     get botCanAnswer() { return this.ticket?.mode === 'AI' || this.ticket?.mode === 'WAITING' && !this.ticket?.assignedTo; }
     get needsLogin() { return this.hasAccount && !memberAccessToken(); }
@@ -118,7 +130,7 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
         if (this.isOpen && memberAccessToken())
             this.start();
     }
-    ngAfterViewChecked() { const key = `${this.session?.ticketId}:${this.messages.length}:${this.showOrderAccess}:${this.ticket?.ratingEligible}`; if (this.chatBody && key !== this.lastScrollKey) {
+    ngAfterViewChecked() { const key = `${this.session?.ticketId}:${this.messages.length}:${this.showOrderAccess}:${this.contactFormVisible}:${this.ticket?.ratingEligible}`; if (this.chatBody && key !== this.lastScrollKey) {
         this.lastScrollKey = key;
         this.chatBody.nativeElement.scrollTop = this.chatBody.nativeElement.scrollHeight;
     } }
@@ -157,11 +169,50 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
         this.error = '';
         this.http.post<any>(`${this.url}/sessions/${this.session.ticketId}/contact`, this.contact, { headers: this.headers() }).subscribe({ next: r => {
             this.busy = false;
+            this.guestContactFormOpen = false;
+            this.guestContactFormDismissed = false;
             this.ticket = r.ticket;
             this.messages = r.messages;
             this.contactErrors = { name: '', phone: '' };
             this.cdr.markForCheck();
         }, error: e => this.fail(e) });
+    }
+    cancelHandoff() {
+        if (this.cancellingHandoff || !this.session)
+            return;
+        this.contactErrors = { name: '', phone: '' };
+        this.guestContactFormOpen = false;
+        this.guestContactFormDismissed = true;
+        if (!this.ticket?.contactRequired) {
+            this.cdr.markForCheck();
+            return;
+        }
+        if (this.ticket) {
+            this.ticket.contactRequired = false;
+            this.ticket.mode = 'AI';
+        }
+        this.cancellingHandoff = true;
+        this.http.post<any>(`${this.url}/sessions/${this.session.ticketId}/cancel-handoff`, {}, { headers: this.headers() }).subscribe({
+            next: r => {
+                this.cancellingHandoff = false;
+                this.ticket = r.ticket;
+                this.messages = r.messages;
+                this.cdr.markForCheck();
+            },
+            error: () => {
+                this.cancellingHandoff = false;
+                this.cdr.markForCheck();
+            }
+        });
+    }
+    openGuestContactForm() {
+        if (!this.isGuest || !this.ticket || this.ticket.phone)
+            return;
+        this.contactErrors = { name: '', phone: '' };
+        this.guestContactFormDismissed = false;
+        this.guestContactFormOpen = true;
+        this.showOrderAccess = false;
+        this.cdr.markForCheck();
     }
     read(quiet = false) {
         if (!this.session)
@@ -193,8 +244,9 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
         if (this.pendingSend?.fingerprint !== fingerprint)
             this.pendingSend = { fingerprint, id: crypto.randomUUID() };
         this.busy = true;
+        this.handoffBusy = extra.action === 'handoff';
         this.error = '';
-        this.http.post<any>(`${this.url}/sessions/${this.session.ticketId}/messages`, { ...payload, messageId: this.pendingSend.id }, { headers: this.headers() }).subscribe({ next: r => { this.busy = false; this.messages = r.messages; this.ticket = r.ticket; this.inputText = ''; this.selectedImageDataUrl = ''; this.selectedFileName = ''; this.pendingSend = null; if (r.authRequired) {
+        this.http.post<any>(`${this.url}/sessions/${this.session.ticketId}/messages`, { ...payload, messageId: this.pendingSend.id }, { headers: this.headers() }).subscribe({ next: r => { this.busy = false; this.handoffBusy = false; this.messages = r.messages; this.ticket = r.ticket; if (this.guestContactFormDismissed && this.ticket?.contactRequired) this.cancelHandoff(); this.inputText = ''; this.selectedImageDataUrl = ''; this.selectedFileName = ''; this.pendingSend = null; if (r.authRequired) {
                 this.showOrderAccess = true;
                 this.otpNotice = 'Xác minh SĐT người đặt để xem dữ liệu đơn riêng.';
             } if (r.orderData) {
@@ -203,6 +255,18 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
             } this.cdr.markForCheck(); }, error: e => this.fail(e) });
     }
     quick(text: string) { this.sendMessage({ chatInput: text }); }
+    requestStaff() {
+        if (this.busy || !this.session)
+            return;
+        // Khách vãng lai thấy form ngay; request phía sau vẫn lưu yêu cầu và lịch sử chat.
+        if (this.isGuest && this.ticket && !this.ticket.phone) {
+            this.guestContactFormDismissed = false;
+            this.guestContactFormOpen = true;
+            this.showOrderAccess = false;
+            this.cdr.markForCheck();
+        }
+        this.sendMessage({ chatInput: 'Gặp nhân viên', action: 'handoff' });
+    }
     selectImage(image: any) { this.sendMessage({ chatInput: 'Tôi muốn nhân viên tư vấn mẫu ảnh này.', selectedImageId: image.id, action: 'handoff' }); }
     onEnter(e: KeyboardEvent) { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
@@ -226,6 +290,6 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
     image(url: string) { return url?.startsWith('/') ? `${apiBaseUrl().replace(/\/api$/, '')}${url}` : url; }
     private mergeMessages(current: any[], incoming: any[]) { const byId = new Map(current.map(m => [m.id, m])); for (const message of incoming || []) byId.set(message.id, message); return [...byId.values()].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()); }
     newSession() { this.support.clear(); this.resetView(); }
-    private resetView() { this.session = null; this.ticket = null; this.messages = []; this.orderData = null; this.showOrderAccess = false; this.error = ''; this.contact = { name: '', phone: '', email: '' }; this.contactErrors = { name: '', phone: '' }; this.inputText = ''; this.selectedImageDataUrl = ''; this.pendingSend = null; }
-    private fail(e: any) { this.busy = false; this.error = e?.error?.message || 'Chưa thực hiện được, vui lòng thử lại.'; this.cdr.markForCheck(); }
+    private resetView() { this.session = null; this.ticket = null; this.messages = []; this.orderData = null; this.showOrderAccess = false; this.error = ''; this.contact = { name: '', phone: '', email: '' }; this.contactErrors = { name: '', phone: '' }; this.guestContactFormOpen = false; this.guestContactFormDismissed = false; this.handoffBusy = false; this.cancellingHandoff = false; this.inputText = ''; this.selectedImageDataUrl = ''; this.pendingSend = null; }
+    private fail(e: any) { this.busy = false; this.handoffBusy = false; this.error = e?.error?.message || 'Chưa thực hiện được, vui lòng thử lại.'; this.cdr.markForCheck(); }
 }

@@ -39,11 +39,25 @@ export async function currentProduct(productId: string) {
     const p = await (await getCollection<any>('SAN_PHAM')).findOne({ SAN_PHAM_ID: productId });
     if (!p || /da xoa|ngung|(^| )an$/.test(normalizeChatText(p.TRANG_THAI)))
         return null;
-    const [image, bom] = await Promise.all([(await getCollection<any>('HINH_ANH_SAN_PHAM')).findOne({ SAN_PHAM_ID: productId }, { sort: { LA_ANH_CHINH: -1, HINH_ANH_ID: 1 } }), getActiveBom(productId)]);
+    const [image, bom, topic] = await Promise.all([
+        (await getCollection<any>('HINH_ANH_SAN_PHAM')).findOne({ SAN_PHAM_ID: productId }, { sort: { LA_ANH_CHINH: -1, HINH_ANH_ID: 1 } }),
+        getActiveBom(productId),
+        p.CHU_DE_ID ? (await getCollection<any>('CHU_DE')).findOne({ CHU_DE_ID: p.CHU_DE_ID }) : null,
+    ]);
     const materials = await (await getCollection<any>('NGUYEN_VAT_LIEU')).find({ NGUYEN_VAT_LIEU_ID: { $in: bom.lines.map(l => l.NGUYEN_VAT_LIEU_ID) } }).toArray();
+    const materialMap = new Map(materials.map(material => [material.NGUYEN_VAT_LIEU_ID, material]));
+    const composition = bom.lines.map(line => {
+        const material = materialMap.get(line.NGUYEN_VAT_LIEU_ID);
+        return {
+            name: String(material?.TEN_NGUYEN_VAT_LIEU || line.NGUYEN_VAT_LIEU_ID || '').trim(),
+            quantity: Number(line.DINH_LUONG || 0),
+            unit: String(line.DON_VI_TINH || material?.DON_VI_TINH || '').trim(),
+            type: String(material?.LOAI_NGUYEN_VAT_LIEU || material?.LOAI || '').trim(),
+        };
+    }).filter(item => item.name && item.quantity > 0);
     const finished = finishedAvailableOf(p), buildable = computeBuildable(bom.lines, new Map(materials.map(m => [m.NGUYEN_VAT_LIEU_ID, m]))).buildable;
     const sale = Number(p.GIA_KHUYEN_MAI || 0), price = sale > 0 && sale < Number(p.GIA) ? sale : Number(p.GIA || 0);
-    return { id: p.SAN_PHAM_ID, name: p.TEN_SAN_PHAM, description: String(p.MO_TA || '').replace(/<[^>]*>/g, '').slice(0, 1200), price, image: image?.URL || null, finished, buildable, available: finished + buildable };
+    return { id: p.SAN_PHAM_ID, name: p.TEN_SAN_PHAM, description: String(p.MO_TA || '').replace(/<[^>]*>/g, '').slice(0, 1200), topic: String(topic?.TEN_CHU_DE || '').trim(), composition, price, image: image?.URL || null, finished, buildable, available: finished + buildable };
 }
 export async function selectLibraryImages(preferences: any) {
     const rows = await (await getCollection<any>('YEU_CAU_TAO_ANH')).find({ TRANG_THAI: 'Hoạt động', URL_ANH_KET_QUA: { $regex: '^https?://' } }).limit(300).toArray();
@@ -88,12 +102,12 @@ async function activeFlowerNames() {
 export async function planChatReply(body: any, history: any[] = []) {
     const text = String(body.chatInput || '').trim();
     const s = normalizeChatText(text);
-    const faqs = await (await getCollection<any>('CAU_HOI_CO_SAN')).find({ TRANG_THAI: 'Hoạt động' }, { projection: { _id: 0, CAU_HOI_ID: 1, CAU_HOI: 1, CAU_TRA_LOI: 1, DANH_MUC_CAU_HOI: 1 } }).limit(100).toArray();
     if (needsImmediateHandoff(text) || body.action === 'handoff' || body.selectedImageId || body.imageDataUrl)
         return { intent: 'handoff', reason: needsImmediateHandoff(text) ? 'Khách yêu cầu nhân viên hoặc bức xúc' : 'Khách cần tư vấn trực tiếp', reply: 'Mình đã chuyển nội dung đến nhân viên để kiểm tra và hỗ trợ bạn.', preferences: body.preferences || {} };
+    const faqs = await (await getCollection<any>('CAU_HOI_CO_SAN')).find({ TRANG_THAI: 'Hoạt động' }, { projection: { _id: 0, CAU_HOI_ID: 1, CAU_HOI: 1, CAU_TRA_LOI: 1, DANH_MUC_CAU_HOI: 1 } }).limit(100).toArray();
     const explicit = text.match(/\bSP\d+\b/i)?.[0]?.toUpperCase();
     let productId = explicit || String(body.productId || '');
-    const productQuery = /bo nay|mau nay|san pham nay|gia (bao nhieu|sao)|con (hang|khong)|het hang|doi mau/.test(s);
+    const productQuery = /bo nay|mau nay|san pham nay|gia (bao nhieu|sao)|con (hang|khong)|het hang|doi mau|bao nhieu (bong|canh|nhanh|hoa)|co (may|bao nhieu) (bong|canh|nhanh|hoa)|gom (nhung |cac )?(hoa|loai hoa)|thanh phan|tang (dip gi|ai)|phu hop.*(dip|tang)|y nghia/.test(s);
     let intent = privateOrderQuestion(s) ? 'order' : productId && productQuery ? 'product' : /xem (anh|mau)|tao (anh|bo|mot bo)|goi y.*(hoa|mau)|hoa.*(sinh nhat|tot nghiep)|bo hoa|hoa hong|tulip/.test(s) ? 'image' : 'faq';
     if (intent === 'faq' && history.some(m => m.ANH_GOI_Y?.length) && /^(mau |doi (sang )?|thay (sang )?)?(trang|do|vang|tim|hong|xanh|cam)( nhe| nha)?$/.test(s))
         intent = 'image';
@@ -134,8 +148,26 @@ export async function planChatReply(body: any, history: any[] = []) {
         const product = await currentProduct(productId);
         if (!product)
             return { intent: 'clarify', reply: 'Bạn gửi mã hoặc mở sản phẩm muốn hỏi để mình kiểm tra đúng mẫu nhé.' };
-        const extra = /doi mau|thay mau/.test(s) ? ' Nếu muốn đổi màu, bạn chọn Gặp nhân viên để shop kiểm tra phương án, chưa thể cam kết thay được ngay.' : product.description ? ` ${product.description}` : '';
-        return { intent, product, reply: `${product.name} có giá ${product.price.toLocaleString('vi-VN')}đ. ${product.available > 0 ? `Hiện khả dụng ${product.available} bó (${product.finished} bó sẵn, có thể cắm thêm ${product.buildable} bó).` : 'Hiện chưa đủ hàng khả dụng; nhân viên có thể tư vấn phương án khác.'} Tồn được kiểm tra lại lúc đặt, chưa cam kết lịch giao.${extra}` };
+        const asksComposition = /bao nhieu (bong|canh|nhanh|hoa)|co (may|bao nhieu) (bong|canh|nhanh|hoa)|gom (nhung |cac )?(hoa|loai hoa)|thanh phan/.test(s);
+        if (asksComposition) {
+            const flowerLines = product.composition.filter((item: any) => /canh|bong|nhanh|hoa/i.test(`${item.unit} ${item.type} ${item.name}`));
+            const lines = flowerLines.length ? flowerLines : product.composition;
+            return { intent, product, reply: lines.length
+                ? `${product.name} được thiết kế với ${lines.map((item: any) => `${item.quantity} ${item.unit || 'đơn vị'} ${item.name}`).join(', ')}. Thành phần thực tế có thể thay đổi khi shop tư vấn mẫu thay thế; nhân viên sẽ xác nhận lại trước khi lên đơn.`
+                : `Thông tin số lượng hoa cụ thể của ${product.name} chưa được khai báo rõ trong công thức. Bạn chọn Gặp nhân viên để shop xác nhận chính xác, mình không muốn đoán sai số bông.` };
+        }
+        const asksOccasion = /tang (dip gi|ai)|phu hop.*(dip|tang)|y nghia/.test(s);
+        if (asksOccasion) {
+            const meaning = product.description ? ` ${product.description}` : '';
+            return { intent, product, reply: product.topic
+                ? `${product.name} phù hợp với chủ đề ${product.topic}.${meaning} Nếu bạn cho mình biết người nhận và dịp cụ thể, mình có thể gợi ý thêm mẫu phù hợp.`
+                : `${product.name} có thể dùng cho nhiều dịp tùy thông điệp bạn muốn gửi.${meaning} Bạn cho mình biết tặng ai và dịp nào để mình tư vấn sát hơn nhé.` };
+        }
+        const availability = product.available > 0
+            ? 'Hiện hệ thống ghi nhận mẫu này vẫn có khả năng đáp ứng.'
+            : 'Hiện mẫu này chưa đủ hàng sẵn theo tồn kho.';
+        const extra = /doi mau|thay mau/.test(s) ? ' Nếu muốn đổi màu, bạn chọn Gặp nhân viên để shop kiểm tra phương án và báo lại trước khi lên đơn.' : '';
+        return { intent, product, reply: `${product.name} có giá ${product.price.toLocaleString('vi-VN')}đ. ${availability} Nếu đặt trước từ 24 giờ trở lên, shop có thời gian chuẩn bị theo lịch giao; nếu cần giao trong ngày, nhân viên sẽ kiểm tra tồn thực tế và xác nhận với bạn. Trường hợp cần gấp dưới 4 giờ, bạn vui lòng gọi 0909477488 để shop kiểm tra khả năng nhận đơn.${extra}` };
     }
     if (intent === 'image') {
         const preferences = imagePreferences(text, body.preferences);

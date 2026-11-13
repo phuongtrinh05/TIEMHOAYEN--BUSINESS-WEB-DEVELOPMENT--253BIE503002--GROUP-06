@@ -334,27 +334,38 @@
           <button type="button" class="test-chatbot-close" (click)="closeTestModal()" aria-label="Đóng"><i class="bi bi-x-lg"></i></button>
         </header>
 
-        <div class="test-chatbot-body">
-          <label for="test-question">Câu hỏi của khách</label>
-          <textarea id="test-question" [(ngModel)]="testText" placeholder="Ví dụ: Shop có giao hoa trong ngày không?" maxlength="1000"></textarea>
+        <div class="test-context-bar">
+          <label for="test-product"><i class="bi bi-box-seam"></i><span>Ngữ cảnh sản phẩm</span></label>
+          <input id="test-product" [(ngModel)]="testProduct" placeholder="Nhập mã, ví dụ SP0169">
+          <button type="button" (click)="clearTestChat()" [disabled]="testBusy || !testMessages.length"><i class="bi bi-arrow-counterclockwise"></i> Làm mới</button>
+        </div>
 
-          <label for="test-product">Mã sản phẩm <span>(không bắt buộc)</span></label>
-          <input id="test-product" [(ngModel)]="testProduct" placeholder="Ví dụ: SP1436">
-
-          <p class="test-chatbot-error" *ngIf="testError">{{ testError }}</p>
-
-          <div class="test-chatbot-result" *ngIf="testResult">
-            <div class="result-heading"><i class="bi bi-chat-heart"></i> Phản hồi chatbot</div>
-            <p>{{ testResult.reply || testResult.message || 'Chatbot chưa tạo được câu trả lời.' }}</p>
-            <small *ngIf="testResult.intent">Ý định nhận diện: {{ testResult.intent }}</small>
+        <div class="test-chatbot-body" #testChatScroll>
+          <div class="test-empty" *ngIf="!testMessages.length && !testBusy">
+            <span><i class="bi bi-stars"></i></span>
+            <strong>Thử trò chuyện với Hoa Yên AI</strong>
+            <p>Nhập câu hỏi giống cách khách hàng sẽ hỏi trên website.</p>
           </div>
+          <div class="test-message" *ngFor="let message of testMessages" [class.user]="message.role === 'user'" [class.bot]="message.role === 'bot'">
+            <span class="test-bot-avatar" *ngIf="message.role === 'bot'"><i class="bi bi-stars"></i></span>
+            <div class="test-message-bubble">
+              <p>{{ message.text }}</p>
+              <small *ngIf="message.intent">Nhận diện: {{ message.intent }}</small>
+            </div>
+          </div>
+          <div class="test-message bot" *ngIf="testBusy">
+            <span class="test-bot-avatar"><i class="bi bi-stars"></i></span>
+            <div class="test-message-bubble test-typing"><i></i><i></i><i></i></div>
+          </div>
+          <p class="test-chatbot-error" *ngIf="testError"><i class="bi bi-exclamation-circle"></i>{{ testError }}</p>
         </div>
 
         <footer class="test-chatbot-actions">
-          <button type="button" class="secondary" (click)="closeTestModal()">Đóng</button>
-          <button type="button" class="primary" [disabled]="testBusy || !testText.trim()" (click)="testChatbot()">
-            <span class="test-spinner" *ngIf="testBusy"></span>{{ testBusy ? 'Đang kiểm tra...' : 'Gửi thử' }}
+          <textarea id="test-question" [(ngModel)]="testText" (keydown)="onTestKeydown($event)" placeholder="Nhập câu hỏi để kiểm thử..." maxlength="1000" rows="1"></textarea>
+          <button type="button" class="primary" [disabled]="testBusy || !testText.trim()" (click)="testChatbot()" aria-label="Gửi câu hỏi thử">
+            <span class="test-spinner" *ngIf="testBusy"></span><i class="bi bi-arrow-up" *ngIf="!testBusy"></i>
           </button>
+          <small>Enter để gửi · Shift + Enter để xuống dòng</small>
         </footer>
       </section>
     </div>

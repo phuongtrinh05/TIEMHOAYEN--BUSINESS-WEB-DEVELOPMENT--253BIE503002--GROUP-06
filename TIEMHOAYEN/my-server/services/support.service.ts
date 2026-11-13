@@ -174,9 +174,15 @@ export async function sendSupport(id: string, body: any, actor: SupportActor) {
         ticket = await col.findOne({ _id: id });
         if (ticket.mode !== 'AI' && !(ticket.mode === 'WAITING' && !ticket.assignedTo))
             return readSupport(id, actor);
-        const history = await (await getCollection<any>(MESSAGES)).find({ HO_TRO_ID: id }).sort({ THOI_GIAN_GUI: -1 }).limit(10).toArray();
-        const plan: any = await planChatReply({ ...body, chatInput: text, productId: body.productId || ticket.productId, preferences: ticket.preferences }, history.reverse());
+        const directHandoff = needsImmediateHandoff(text) || body.action === 'handoff' || body.selectedImageId || body.imageDataUrl;
+        const history = directHandoff ? [] : await (await getCollection<any>(MESSAGES)).find({ HO_TRO_ID: id }).sort({ THOI_GIAN_GUI: -1 }).limit(10).toArray();
+        const plan: any = directHandoff
+            ? { intent: 'handoff', reason: needsImmediateHandoff(text) ? 'Khách yêu cầu nhân viên hoặc bức xúc' : 'Khách cần tư vấn trực tiếp', reply: 'Mình đã chuyển nội dung đến nhân viên để kiểm tra và hỗ trợ bạn.', preferences: ticket.preferences || {} }
+            : await planChatReply({ ...body, chatInput: text, productId: body.productId || ticket.productId, preferences: ticket.preferences }, history.reverse());
         const contactRequired = plan.intent === 'handoff' && !ticket.customerId && !ticket.phone;
+        if (contactRequired) {
+            plan.reply = 'Để nhân viên hỗ trợ bạn, vui lòng để lại thông tin liên hệ bên dưới nhé.';
+        }
         let authRequired = false, orderData: any = null;
         if (plan.intent === 'order') {
             try {
@@ -226,9 +232,22 @@ export async function updateSupportContact(id: string, body: any, actor: Support
     if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200))
         throw new InventoryError(400, 'Email chưa hợp lệ.');
     await (await getCollection<any>(SUPPORT_TICKETS)).updateOne({ _id: id, guestHash: ticket.guestHash }, {
-        $set: { name, phone, email, updatedAt: new Date() },
+        $set: { name, phone, email, mode: 'WAITING', status: 'Chưa xử lý', reason: ticket.reason || 'Khách gửi form yêu cầu hỗ trợ', priority: ticket.priority || 'normal', updatedAt: new Date() },
         $inc: { version: 1 },
         $push: { history: { at: new Date(), actor: 'customer', action: 'Bổ sung thông tin liên hệ' } },
+    } as any);
+    await addMessage(ticket, 'Mình đã chuyển nội dung đến nhân viên để kiểm tra và hỗ trợ bạn.', 'bot');
+    return readSupport(id, actor);
+}
+export async function cancelSupportHandoff(id: string, actor: SupportActor) {
+    const ticket = await supportOwner(id, actor);
+    if (ticket.assignedTo)
+        throw new InventoryError(409, 'Nhân viên đã tiếp nhận cuộc trò chuyện.');
+    const col = await getCollection<any>(SUPPORT_TICKETS);
+    await col.updateOne({ _id: id }, {
+        $set: { mode: 'AI', reason: null, status: 'Chưa xử lý', updatedAt: new Date() },
+        $inc: { version: 1 },
+        $push: { history: { at: new Date(), actor: 'customer', action: 'Khách hủy yêu cầu gặp nhân viên' } },
     } as any);
     return readSupport(id, actor);
 }

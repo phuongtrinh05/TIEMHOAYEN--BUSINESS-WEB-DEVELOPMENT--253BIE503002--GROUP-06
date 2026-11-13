@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { AfterViewChecked, ChangeDetectorRef, Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink, RouterLinkActive } from '@angular/router';
@@ -25,7 +25,9 @@ interface ChatbotItem {
     templateUrl: './chatbot-management.html',
     styleUrls: ['./chatbot-management.css']
 })
-export class ChatbotManagementComponent implements OnInit {
+export class ChatbotManagementComponent implements OnInit, AfterViewChecked {
+
+    @ViewChild('testChatScroll') private testChatScroll?: ElementRef<HTMLElement>;
 
     searchKeyword = '';
     selectedStatus = '';
@@ -46,6 +48,8 @@ export class ChatbotManagementComponent implements OnInit {
     testResult: any = null;
     testBusy = false;
     testError = '';
+    testMessages: Array<{ role: 'user' | 'bot'; text: string; intent?: string }> = [];
+    private testScrollPending = false;
 
     currentPage = 1;
     pageSize = 8;
@@ -82,7 +86,10 @@ export class ChatbotManagementComponent implements OnInit {
     openTestModal(): void {
         this.testResult = null;
         this.testError = '';
+        this.testText = '';
+        this.testMessages = [];
         this.isTestModalOpen = true;
+        this.testScrollPending = true;
     }
 
     closeTestModal(): void {
@@ -96,21 +103,48 @@ export class ChatbotManagementComponent implements OnInit {
         this.testBusy = true;
         this.testError = '';
         this.testResult = null;
+        this.testMessages.push({ role: 'user', text: chatInput });
+        this.testText = '';
+        this.testScrollPending = true;
         this.http.post<any>(`${apiBaseUrl()}/support/admin/test`, {
             chatInput,
             productId: this.testProduct.trim()
         }).subscribe({
             next: result => {
                 this.testResult = result;
+                this.testMessages.push({ role: 'bot', text: result.reply || result.message || 'Chatbot chưa tạo được câu trả lời.', intent: result.intent });
                 this.testBusy = false;
+                this.testScrollPending = true;
                 this.cdr.detectChanges();
             },
             error: error => {
                 this.testError = error?.error?.message || 'Chưa kiểm tra được chatbot. Vui lòng thử lại.';
                 this.testBusy = false;
+                this.testScrollPending = true;
                 this.cdr.detectChanges();
             }
         });
+    }
+
+    onTestKeydown(event: KeyboardEvent): void {
+        if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+            event.preventDefault();
+            this.testChatbot();
+        }
+    }
+
+    clearTestChat(): void {
+        if (this.testBusy) return;
+        this.testMessages = [];
+        this.testResult = null;
+        this.testError = '';
+    }
+
+    ngAfterViewChecked(): void {
+        if (!this.testScrollPending || !this.testChatScroll) return;
+        this.testScrollPending = false;
+        const element = this.testChatScroll.nativeElement;
+        element.scrollTop = element.scrollHeight;
     }
 
     ngOnInit(): void {
