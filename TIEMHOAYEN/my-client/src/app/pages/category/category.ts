@@ -1996,9 +1996,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     if (existingItem) {
       const currentQuantity = Number(existingItem.quantity || 1);
       const nextQuantity = currentQuantity + 1;
-      const maxQuantity = product.maxQuantity || Number.MAX_SAFE_INTEGER;
-
-      existingItem.quantity = Math.min(nextQuantity, maxQuantity);
+      existingItem.quantity = nextQuantity;
       existingItem.name = cartItem.name;
       existingItem.style = cartItem.style;
       existingItem.occasion = cartItem.occasion;

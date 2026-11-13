@@ -63,7 +63,7 @@ export const REQUEST_REASON = {
 } as const;
 const REASON_TEXT: Record<string, string> = {
   [REQUEST_REASON.custom]: 'Bó hoa thiết kế riêng cần nhân viên xác nhận khả năng thực hiện, nguyên liệu, giá và lịch giao.',
-  [REQUEST_REASON.materialShortage]: 'Lịch giao trong vòng 24 giờ nhưng shop chưa đủ hoa và nguyên liệu cho số lượng bạn chọn.',
+  [REQUEST_REASON.materialShortage]: 'Số lượng bạn chọn hiện vượt khả năng chuẩn bị cho lịch giao này. Shop đang kiểm tra phương án phù hợp.',
   [REQUEST_REASON.dataIncomplete]: 'Shop cần kiểm tra lại công thức hoặc nguồn hoa của mẫu trước khi xác nhận.',
 };
 export const customerReasonText = (codes: string[]) => codes.map(code => REASON_TEXT[code]).filter(Boolean);

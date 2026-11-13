@@ -241,13 +241,11 @@ export async function updateSupportContact(id: string, body: any, actor: Support
 }
 export async function cancelSupportHandoff(id: string, actor: SupportActor) {
     const ticket = await supportOwner(id, actor);
-    if (ticket.assignedTo)
-        throw new InventoryError(409, 'Nhân viên đã tiếp nhận cuộc trò chuyện.');
     const col = await getCollection<any>(SUPPORT_TICKETS);
     await col.updateOne({ _id: id }, {
-        $set: { mode: 'AI', reason: null, status: 'Chưa xử lý', updatedAt: new Date() },
+        $set: { mode: 'AI', reason: null, status: 'Chưa xử lý', assignedTo: null, assignedName: null, updatedAt: new Date() },
         $inc: { version: 1 },
-        $push: { history: { at: new Date(), actor: 'customer', action: 'Khách hủy yêu cầu gặp nhân viên' } },
+        $push: { history: { at: new Date(), actor: 'customer', action: ticket.assignedTo ? 'Khách chuyển lại trợ lý AI' : 'Khách hủy yêu cầu gặp nhân viên' } },
     } as any);
     return readSupport(id, actor);
 }

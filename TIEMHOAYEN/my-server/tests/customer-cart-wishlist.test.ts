@@ -49,9 +49,17 @@ test('cart and wishlist persist in MongoDB, reload on new login, and stay isolat
     assert.equal((await call('/cart/customer/KH_A', b)).status, 403);
     assert.equal((await call('/customers/KH_A/wishlist', b)).status, 403);
     assert.equal((await call('/cart/customer/KH_A')).status, 401);
-    assert.equal((await call('/cart/update', fresh, 'PUT', { customerId: 'KH_A', productId: 'SP_TEST', quantity: 3 })).status, 200);
-    assert.equal((await call('/cart/customer/KH_A', fresh)).data.items[0].SO_LUONG, 3);
-    assert.equal((await call('/cart/remove', fresh, 'DELETE', { customerId: 'KH_A', productId: 'SP_TEST' })).status, 200);
+    // Dòng giỏ hàng từ schema cũ chưa có LINE_KEY vẫn phải cập nhật được khi
+    // frontend mới gửi lineKey suy ra từ SAN_PHAM_ID.
+    await db.collection('GIO_HANG_CHI_TIET').updateOne(
+      { GIO_HANG_ID: cart!.GIO_HANG_ID, SAN_PHAM_ID: 'SP_TEST' },
+      { $unset: { LINE_KEY: '' } },
+    );
+    const shortageUpdate = await call('/cart/update', fresh, 'PUT', { customerId: 'KH_A', productId: 'SP_TEST', lineKey: 'SP_TEST', quantity: 25 });
+    assert.equal(shortageUpdate.status, 200);
+    assert.equal(shortageUpdate.data.availability?.decision, 'need_review');
+    assert.equal((await call('/cart/customer/KH_A', fresh)).data.items[0].SO_LUONG, 25);
+    assert.equal((await call('/cart/remove', fresh, 'DELETE', { customerId: 'KH_A', productId: 'SP_TEST', lineKey: 'SP_TEST' })).status, 200);
     assert.equal((await call('/customers/KH_A/wishlist/SP_TEST', fresh, 'DELETE')).status, 200);
     assert.equal((await call('/cart/customer/KH_A', fresh)).data.items.length, 0);
     assert.equal((await call('/customers/KH_A/wishlist', fresh)).data.total, 0);

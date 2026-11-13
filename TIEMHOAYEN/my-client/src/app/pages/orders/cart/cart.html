@@ -85,7 +85,7 @@
 
           <div class="col-qty">
             <div class="qty-control">
-              <button type="button" (click)="decreaseQty(item)" [disabled]="!item.purchasable">-</button>
+              <button type="button" (click)="decreaseQty(item)" [disabled]="!item.purchasable || isQuantityUpdating(item)">-</button>
               <input
                 type="number"
                 class="qty-input"
@@ -93,9 +93,11 @@
                 inputmode="numeric"
                 aria-label="Số lượng"
                 [value]="item.quantity"
-                [disabled]="!item.purchasable"
+                [disabled]="!item.purchasable || isQuantityUpdating(item)"
+                (focus)="selectQuantityInput($event)"
+                (keydown.enter)="commitQuantityInput(item, $event)"
                 (change)="onQuantityInput(item, $event)">
-              <button type="button" (click)="increaseQty(item)" [disabled]="!item.purchasable">+</button>
+              <button type="button" (click)="increaseQty(item)" [disabled]="!item.purchasable || isQuantityUpdating(item)">+</button>
             </div>
           </div>
 

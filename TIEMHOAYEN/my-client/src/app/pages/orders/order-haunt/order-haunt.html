@@ -277,9 +277,6 @@
               <ng-template #chooseSchedule><span>Tự xác định theo ngày giờ giao: trong 24 giờ là Giao nhanh, từ 24 giờ trở lên là Giao tiêu chuẩn.</span></ng-template>
             </p>
 
-            <p class="shipping-estimate">
-              Thời gian dự kiến: {{ shippingTimeEstimate }}
-            </p>
           </div>
 
           <!-- 3. Thời gian giao hàng -->
@@ -329,13 +326,9 @@
 
             <div class="form-group">
               <div class="time-input-wrap">
-                <select
-                  name="deliveryTime"
-                  class="form-input delivery-time-select"
-                  [(ngModel)]="formData.deliveryTime"
-                  (ngModelChange)="onDeliveryTimeChange()"
-                  required
-                  #deliveryTime="ngModel"
+                <select name="deliveryTime" class="form-input delivery-time-select"
+                  [(ngModel)]="formData.deliveryTime" (ngModelChange)="onDeliveryTimeChange()"
+                  required #deliveryTime="ngModel"
                   [class.is-invalid]="(deliveryTime.invalid && (deliveryTime.touched || orderForm.submitted)) || deliveryScheduleError">
                   <option value="" disabled>Chọn giờ giao (08:00–22:00)</option>
                   <option *ngFor="let slot of deliveryTimeOptions" [value]="slot">{{ slot }}{{ isUrgentSlot(slot) ? ' – cần gọi shop' : '' }}</option>
@@ -576,7 +569,7 @@
                   (change)="setItemQty(item, qtyInput.value, qtyInput)" (keydown.enter)="qtyInput.blur()">
                 <button type="button" aria-label="Tăng số lượng" [disabled]="item.qty >= itemMaxQty(item) || !!salesRequestId || isSubmitting" (click)="changeItemQty(item, 1)">+</button>
               </div>
-              <span class="qty-hint" *ngIf="deliveryWithin24h && item.qty >= itemMaxQty(item)">Giao trong 24 giờ: tối đa {{ itemMaxQty(item) }} theo tồn kho</span>
+              <span class="qty-hint" *ngIf="item.qty >= itemMaxQty(item)">Đơn hàng đã đạt giới hạn 99 sản phẩm</span>
             </div>
 
             <span class="order-item__price">
@@ -653,7 +646,7 @@
           <ul class="request-notice__reasons">
             <li *ngFor="let reason of quoteRequestReasons">{{ reason }}</li>
           </ul>
-          <p class="request-notice__note">Bạn chưa cần thanh toán. Shop sẽ liên hệ và gửi phương án.</p>
+          <p class="request-notice__note">Vui lòng chờ shop liên hệ để xác nhận phương án phù hợp. Nếu cần gấp, bạn có thể gọi <a [href]="'tel:' + shopPhone">{{ shopPhone }}</a> để được hỗ trợ nhanh hơn.</p>
         </div>
 
         <button

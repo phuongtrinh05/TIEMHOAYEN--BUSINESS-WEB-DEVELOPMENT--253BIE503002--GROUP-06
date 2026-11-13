@@ -537,9 +537,11 @@
 
 .item-price,
 .item-total {
-  font-size: 0.94rem;
+  font-size: 1.06rem;
   font-weight: 800;
   color: #111;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .summary-row > span:last-child:not(.discount-value),
@@ -613,6 +615,20 @@
 
 .cart-item .col-price {
   flex-direction: column;
+  position: relative;
+  justify-content: center;
+  min-height: 52px;
+}
+
+/* Giá hiện tại và thành tiền luôn nằm cùng đường ngang. Giá gốc được đặt
+   phía dưới nên không làm lệch tâm của cột đơn giá. */
+.cart-item .col-price .item-original-price {
+  position: absolute;
+  top: calc(50% + 14px);
+  left: 50%;
+  width: max-content;
+  margin-top: 0;
+  transform: translateX(-50%);
 }
 
 .btn-delete-all {
@@ -1026,6 +1042,8 @@
 
   .cart-item .col-price {
     grid-area: price;
+    position: static;
+    min-height: 0;
     flex-direction: row;
     align-items: baseline;
     justify-content: flex-start;
@@ -1033,7 +1051,9 @@
   }
 
   .item-original-price {
+    position: static !important;
     margin-top: 0;
+    transform: none !important;
   }
 
   .cart-item .col-qty {
@@ -1048,7 +1068,7 @@
 
   .item-price,
   .item-total {
-    font-size: clamp(0.82rem, 2.1vw, 0.92rem);
+    font-size: clamp(0.9rem, 2.2vw, 1rem);
     white-space: nowrap;
   }
 

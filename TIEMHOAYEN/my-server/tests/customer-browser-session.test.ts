@@ -13,6 +13,7 @@ test('switching customers revokes only the old session and persists matching new
   }
   const localStorage = new Storage(), sessionStorage = new Storage();
   const revoked: string[] = [];
+  let authChanged = 0;
   const api = {
     apiBaseUrl: () => 'https://example.test/api',
     currentOrderAccountKey: () => JSON.parse(localStorage.getItem('khachHang') || 'null')?.KHACH_HANG_ID || '',
@@ -23,7 +24,7 @@ test('switching customers revokes only the old session and persists matching new
   vm.runInNewContext(ts.transpileModule(readFileSync('../my-client/src/app/services/session-auth.ts', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText, { exports, require: () => api, localStorage, sessionStorage, Event: class {},
-    window: { dispatchEvent() {} }, fetch: (_url: string, options: any) => { revoked.push(options.headers['x-order-access']); return Promise.resolve({}); },
+    window: { dispatchEvent() { authChanged += 1; } }, fetch: (_url: string, options: any) => { revoked.push(options.headers['x-order-access']); return Promise.resolve({}); },
   });
   const oldToken = 'oa_' + 'a'.repeat(64), newToken = 'oa_' + 'b'.repeat(64);
   localStorage.setItem('token', oldToken);
@@ -38,6 +39,7 @@ test('switching customers revokes only the old session and persists matching new
   assert.equal(api.currentOrderAccountKey(), 'KH_NEW');
   assert.equal(exports.memberAccessToken(), newToken);
   assert.equal(api.orderAccessSession().accountKey, 'KH_NEW');
+  assert.equal(authChanged, 2, 'phải báo trạng thái đăng xuất cũ và đăng nhập mới');
   assert.equal(sessionStorage.getItem('checkoutOrderAccess:old'), null);
   assert.throws(() => exports.startMemberSession({ ...result, customer: { KHACH_HANG_ID: 'WRONG' } }));
   assert.equal(api.currentOrderAccountKey(), 'KH_NEW');

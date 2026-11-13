@@ -246,13 +246,21 @@ export const updateCartItem = async (req: Request, res: Response) => {
 
     const cartId = await getOrCreateCart(customerId);
     const detailCollection = await getCollection<any>('GIO_HANG_CHI_TIET');
-    const otherLines = await cartTotalQuantity(cartId, (row: any) => row.LINE_KEY === lineKey || (!req.body.lineKey && row.SAN_PHAM_ID === productId));
+    // Dữ liệu giỏ hàng cũ chỉ có SAN_PHAM_ID, chưa có LINE_KEY. Frontend vẫn
+    // ánh xạ LINE_KEY = SAN_PHAM_ID để hiển thị, nên phải nhận diện cả dòng cũ;
+    // nếu không updateOne(upsert) sẽ cố chèn thêm và vướng unique index.
+    const isTargetLine = (row: any) => row.LINE_KEY === lineKey ||
+      (row.SAN_PHAM_ID === productId && (row.LINE_KEY === undefined || row.LINE_KEY === null || row.LINE_KEY === ''));
+    const otherLines = await cartTotalQuantity(cartId, isTargetLine);
     if (otherLines + quantity > MAX_CART_ITEMS) return res.status(400).json({ message: cartLimitMessage(otherLines), code: 'CART_LIMIT', maxItems: MAX_CART_ITEMS });
     await detailCollection.updateOne(
-      { GIO_HANG_ID: cartId, $or: [{ LINE_KEY: lineKey }, ...(!req.body.lineKey ? [{ SAN_PHAM_ID: productId }] : [])] },
+      { GIO_HANG_ID: cartId, $or: [
+        { LINE_KEY: lineKey },
+        { SAN_PHAM_ID: productId, $or: [{ LINE_KEY: { $exists: false } }, { LINE_KEY: null }, { LINE_KEY: '' }] },
+      ] },
       {
-        $set: { SO_LUONG: quantity },
-        $setOnInsert: { _id: { GIO_HANG_ID: cartId, LINE_KEY: lineKey }, SAN_PHAM_ID: productId, LINE_KEY: lineKey },
+        $set: { SO_LUONG: quantity, LINE_KEY: lineKey },
+        $setOnInsert: { _id: { GIO_HANG_ID: cartId, LINE_KEY: lineKey }, SAN_PHAM_ID: productId },
       },
       { upsert: true },
     );
@@ -276,7 +284,10 @@ export const removeCartItem = async (req: Request, res: Response) => {
 
     const cartId = await getOrCreateCart(customerId);
     const detailCollection = await getCollection<any>('GIO_HANG_CHI_TIET');
-    await detailCollection.deleteOne({ GIO_HANG_ID: cartId, $or: [{ LINE_KEY: lineKey }, ...(!req.body.lineKey ? [{ SAN_PHAM_ID: productId }] : [])] });
+    await detailCollection.deleteOne({ GIO_HANG_ID: cartId, $or: [
+      { LINE_KEY: lineKey },
+      { SAN_PHAM_ID: productId, $or: [{ LINE_KEY: { $exists: false } }, { LINE_KEY: null }, { LINE_KEY: '' }] },
+    ] });
 
     return res.status(200).json({ message: 'Đã xóa sản phẩm khỏi giỏ hàng.' });
   } catch (error: any) {

@@ -116,6 +116,10 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
             this.accountKey = account;
             this.resetView();
             this.support.clear();
+            // Dự phòng khi sự kiện đăng nhập xảy ra trước lúc widget được gắn vào
+            // DOM: chat đang mở phải tự tạo phiên của tài khoản mới.
+            if (this.isOpen && memberAccessToken())
+                this.start();
         } if (this.isOpen && this.session && !this.busy && !this.salesRequestId)
             this.read(true); if (!memberAccessToken() && !orderAccessSession())
             this.orderData = null; this.cdr.markForCheck(); }, 5000);
@@ -254,7 +258,33 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
                 this.showOrderAccess = true;
             } this.cdr.markForCheck(); }, error: e => this.fail(e) });
     }
-    quick(text: string) { this.sendMessage({ chatInput: text }); }
+    quick(text: string) {
+        // Các nút gợi ý thuộc trợ lý AI. Nếu một phiên cũ còn bị giữ bởi nhân
+        // viên, chuyển rõ ràng về AI rồi mới gửi để hai luồng thành viên/vãng
+        // lai dùng cùng một bộ FAQ và prompt.
+        if (this.ticket?.mode === 'HUMAN') {
+            this.returnToAssistant(text);
+            return;
+        }
+        this.sendMessage({ chatInput: text });
+    }
+    returnToAssistant(pendingText = '') {
+        if (this.busy || !this.session)
+            return;
+        this.busy = true;
+        this.error = '';
+        this.http.post<any>(`${this.url}/sessions/${this.session.ticketId}/cancel-handoff`, {}, { headers: this.headers() }).subscribe({
+            next: r => {
+                this.busy = false;
+                this.ticket = r.ticket;
+                this.messages = r.messages || [];
+                this.cdr.markForCheck();
+                if (pendingText)
+                    this.sendMessage({ chatInput: pendingText });
+            },
+            error: e => this.fail(e),
+        });
+    }
     requestStaff() {
         if (this.busy || !this.session)
             return;

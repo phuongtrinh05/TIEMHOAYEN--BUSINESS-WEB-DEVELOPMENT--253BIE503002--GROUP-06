@@ -128,6 +128,14 @@ else {
         const attempts = await Promise.allSettled(['A', 'B'].map(id => support.supportStaffAction(a.ticket.id, { action: 'claim', version: r.ticket.version }, { NHAN_VIEN_ID: id, VAI_TRO: 'CSKH' })));
         assert.equal(attempts.filter(r => r.status === 'fulfilled').length, 1);
     });
+    test('customer can return an assigned conversation to the AI assistant', async () => {
+        const a = await guest(), waiting = await send(a, 'gặp nhân viên');
+        const claimed = await support.supportStaffAction(a.ticket.id, { action: 'claim', version: waiting.ticket.version }, { NHAN_VIEN_ID: 'NV_AI_RETURN', TEN: 'Nhân viên test', VAI_TRO: 'CSKH' });
+        assert.equal(claimed.mode, 'HUMAN');
+        const returned = await support.cancelSupportHandoff(a.ticket.id, actor(a));
+        assert.equal(returned.ticket.mode, 'AI');
+        assert.equal(returned.ticket.assignedTo, null);
+    });
     test('members start without contact form or OTP and only see their own orders', async () => {
         const access = await import('../services/order-access.service.js');
         const member = { KHACH_HANG_ID: 'KH_MEMBER', TEN: 'Thành viên', SDT: '0912345678', TRANG_THAI: 'Hoạt động' };

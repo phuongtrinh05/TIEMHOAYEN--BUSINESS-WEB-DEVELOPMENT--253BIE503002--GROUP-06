@@ -729,15 +729,30 @@ export class CartComponent implements OnInit {
     input.value = String(item.quantity);
   }
 
+  selectQuantityInput(event: Event): void {
+    (event.target as HTMLInputElement).select();
+  }
+
+  commitQuantityInput(item: CartItem, event: Event): void {
+    event.preventDefault();
+    const input = event.target as HTMLInputElement;
+    this.onQuantityInput(item, event);
+    input.blur();
+  }
+
+  private readonly updatingQuantityLines = new Set<string>();
+  isQuantityUpdating(item: CartItem): boolean {
+    return this.updatingQuantityLines.has(item.lineKey);
+  }
+
   private setQuantity(item: CartItem, requested: number): void {
     if (!item.purchasable) return;
 
     let next = Math.max(1, Math.floor(requested));
     const others = this.cartItems.filter(row => row !== item).reduce((sum, row) => sum + row.quantity, 0);
-    if (item.maxQuantity && next > item.maxQuantity) {
-      next = item.maxQuantity;
-      this.cartError = `"${item.name}" chỉ còn tối đa ${item.maxQuantity} sản phẩm.`;
-    } else if (others + next > MAX_CART_ITEMS) {
+    // Không chặn theo tồn khả dụng tại giỏ: số lượng vượt tồn sẽ được backend
+    // phân luồng thành Yêu cầu đặt hàng để Sales tư vấn, đúng nghiệp vụ thiếu hàng.
+    if (others + next > MAX_CART_ITEMS) {
       next = Math.max(1, MAX_CART_ITEMS - others);
       this.cartError = cartLimitMessage(others + item.quantity);
     } else {
@@ -792,11 +807,15 @@ export class CartComponent implements OnInit {
       return;
     }
 
+    this.updatingQuantityLines.add(item.lineKey);
     this.cartService.updateItem(customerId, item.id, item.quantity, item.lineKey).subscribe({
       next: () => {
+        this.updatingQuantityLines.delete(item.lineKey);
         this.dispatchCartChanged();
+        this.cdr.detectChanges();
       },
       error: (err: unknown) => {
+        this.updatingQuantityLines.delete(item.lineKey);
         console.error('Lỗi cập nhật số lượng database:', err);
         item.quantity = previousQuantity;
         this.saveCustomerCartCache();
@@ -1015,11 +1034,6 @@ export class CartComponent implements OnInit {
 
     if (existingItem && !existingItem.purchasable) {
       console.warn(`Sản phẩm "${product.name}" đã ngừng bán.`);
-      return;
-    }
-
-    if (existingItem?.maxQuantity && existingItem.quantity >= existingItem.maxQuantity) {
-      console.warn(`Số lượng "${product.name}" đã đạt tối đa`);
       return;
     }
 

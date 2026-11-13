@@ -1750,7 +1750,8 @@ textarea.address-modal-input.address-detail-textarea {
 /* Voucher dài luôn nằm gọn trong ô chọn và từng dòng danh sách. */
 .voucher-select-text{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}.voucher-item{min-width:0;max-width:100%;box-sizing:border-box}.voucher-item__info{min-width:0;max-width:100%;overflow:hidden}.voucher-item__title{display:-webkit-box;max-width:100%;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2}.voucher-item__desc{max-width:100%;overflow:hidden;overflow-wrap:anywhere;word-break:break-word}.btn-use-voucher{flex:none}
 
-.qty-stepper .qty-input{width:56px;text-align:center;border:1px solid #e5d4cc;border-radius:6px;padding:2px 4px;font:inherit}
+.qty-stepper button{box-sizing:border-box;width:20px;min-width:20px;height:28px;min-height:28px;flex:0 0 20px;padding:0;font-size:.78rem}
+.qty-stepper .qty-input{box-sizing:border-box;width:28px;min-width:28px;height:28px;min-height:28px;flex:0 0 28px;text-align:center;border:0;border-left:1px solid #e5d4cc;border-right:1px solid #e5d4cc;border-radius:0;padding:0 1px;background:#fff;color:#241b19;font:700 .8rem/1 var(--font-body)}
 
 .shipping-auto{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0 6px;font-size:14px}
 .shipping-auto i{color:#8b2f2f}

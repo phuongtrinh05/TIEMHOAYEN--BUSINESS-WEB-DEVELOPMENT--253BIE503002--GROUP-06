@@ -19,6 +19,7 @@ import {
   CreateOrderResponse,
 } from '../../../services/order.service';
 import { SalesRequestResultComponent } from '../sales-request-result/sales-request-result';
+import { MAX_CART_ITEMS } from '../../../services/cart-limit';
 
 export interface OrderItem {
   requiresReview?: boolean;
@@ -706,32 +707,30 @@ export class OrderRegistrantComponent implements OnInit {
     };
   }
 
-  /** Giới hạn tăng: tồn kho từ giỏ (nếu có), tối đa 99. Máy chủ vẫn kiểm tra lại khi báo giá/đặt hàng. */
-  /** Đã chọn lịch giao trong 24 giờ (Giao nhanh). Chưa chọn lịch thì chưa giới hạn. */
+  /** Lịch trong 24 giờ được dùng để phân luồng giao nhanh, không dùng để ép số lượng theo tồn. */
   get deliveryWithin24h(): boolean {
     const isoDate = this.toIsoDate(this.formData.deliveryDate);
     return /^\d{4}-\d{2}-\d{2}$/.test(isoDate) && !!this.formData.deliveryTime && isWithin24h(isoDate, this.formData.deliveryTime);
   }
 
-  /** Giao trong 24 giờ: tối đa bằng số lượng tồn khả thi (bó sẵn + cắm được từ NVL). Từ 24 giờ: không giới hạn. */
+  /** Mỗi đơn tối đa 99 sản phẩm; thiếu kho sẽ được máy chủ chuyển thành yêu cầu Sales. */
   itemMaxQty(item: OrderItem): number {
-    if (!this.deliveryWithin24h) return Number.MAX_SAFE_INTEGER;
-    // Ưu tiên tồn khả thi mới nhất từ báo giá của máy chủ; chưa có thì dùng số lưu trong giỏ.
-    const live = this.serverQuote?.items?.find(line => String(line.id) === String(item.id))?.availableQty;
-    const max = typeof live === 'number' ? live : item.maxQuantity;
-    return typeof max === 'number' && max >= 0 ? Math.max(1, max) : Number.MAX_SAFE_INTEGER;
+    const otherQuantity = this.orderItems
+      .filter(line => line.lineKey !== item.lineKey)
+      .reduce((sum, line) => sum + Math.max(0, Number(line.qty || 0)), 0);
+    return Math.max(1, MAX_CART_ITEMS - otherQuantity);
   }
 
   qtyLimitNotice = '';
 
-  /** Đổi sang lịch giao trong 24 giờ: hạ số lượng vượt tồn khả thi về mức tối đa. */
-  private clampQuantitiesToStock(): void {
+  /** Chỉ chuẩn hóa theo giới hạn tổng của giỏ; tuyệt đối không hạ theo tồn kho. */
+  private clampQuantitiesToCartLimit(): void {
     const clamped: string[] = [];
     for (const item of this.orderItems) {
       const max = this.itemMaxQty(item);
       if (item.qty > max) { item.qty = max; this.syncQtyToStorage(item); clamped.push(`${item.name} (tối đa ${max})`); }
     }
-    this.qtyLimitNotice = clamped.length ? `Giao trong 24 giờ chỉ đặt tối đa theo tồn kho hiện có: ${clamped.join(', ')}.` : '';
+    this.qtyLimitNotice = clamped.length ? `Mỗi đơn tối đa ${MAX_CART_ITEMS} sản phẩm: ${clamped.join(', ')}.` : '';
   }
 
   /** Hình thức giao không cho chọn: trong 24 giờ là Giao nhanh, từ 24 giờ trở lên là Giao tiêu chuẩn. */
@@ -754,7 +753,7 @@ export class OrderRegistrantComponent implements OnInit {
   changeItemQty(item: OrderItem, delta: number): void {
     if (this.salesRequestId || this.isSubmittingOrder) return;
     const next = Math.min(this.itemMaxQty(item), Math.max(1, item.qty + delta));
-    this.qtyLimitNotice = item.qty + delta > next && this.deliveryWithin24h ? `Giao trong 24 giờ chỉ đặt tối đa ${next} "${item.name}" theo tồn kho hiện có. Chọn lịch giao từ 24 giờ trở lên để đặt nhiều hơn.` : '';
+    this.qtyLimitNotice = item.qty + delta > next ? `Mỗi đơn tối đa ${MAX_CART_ITEMS} sản phẩm.` : '';
     if (next === item.qty) return;
     item.qty = next;
     this.submitOrderError = '';
@@ -1482,7 +1481,7 @@ export class OrderRegistrantComponent implements OnInit {
       next: quote => {
         if (version !== this.quoteVersion) return;
         this.serverQuote = quote;
-        if (this.deliveryWithin24h && this.orderItems.some(line => line.qty > this.itemMaxQty(line))) { this.clampQuantitiesToStock(); this.refreshServerQuote(); }
+        if (this.orderItems.some(line => line.qty > this.itemMaxQty(line))) { this.clampQuantitiesToCartLimit(); this.refreshServerQuote(); }
         if (quote.fulfillment?.mode === 'blocked') this.handleDeliveryErrorCode(quote.fulfillment);
         this.cdr.detectChanges();
       },
@@ -1853,7 +1852,6 @@ export class OrderRegistrantComponent implements OnInit {
   // ===== GIỜ GIAO: 08:00–22:00, khung 30 phút; dưới 4 giờ phải gọi shop =====
   urgentDeliveryPopup = false;
   readonly shopPhone = SHOP_PHONE;
-
   get deliveryTimeOptions(): string[] {
     const isoDate = this.toIsoDate(this.formData.deliveryDate);
     return deliveryTimeSlots(/^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? isoDate : '');
@@ -1912,7 +1910,7 @@ export class OrderRegistrantComponent implements OnInit {
     // Giao gấp dưới 4 giờ: hiện popup và bỏ giờ đã chọn để không đặt được.
     if (!this.validateDeliverySchedule() && this.urgentDeliveryPopup) this.formData.deliveryTime = '';
     this.syncShippingMethod();
-    this.clampQuantitiesToStock();
+    this.clampQuantitiesToCartLimit();
     this.refreshServerQuote();
   }
 

@@ -847,9 +847,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     if (existingItem) {
       const currentQuantity = Number(existingItem.quantity || 1);
 
-      existingItem.quantity = item.maxQuantity && item.maxQuantity > 0
-        ? Math.min(currentQuantity + 1, item.maxQuantity)
-        : currentQuantity + 1;
+      existingItem.quantity = currentQuantity + 1;
       existingItem.name = cartItem.name;
       existingItem.style = cartItem.style;
       existingItem.occasion = cartItem.occasion;
@@ -1248,9 +1246,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       const currentQuantity = Number(existingItem.quantity || existingItem.qty || 1);
       const nextQuantity = currentQuantity + this.quantity;
 
-      existingItem.quantity = this.product.quantity && this.product.quantity > 0
-        ? Math.min(nextQuantity, this.product.quantity)
-        : nextQuantity;
+      existingItem.quantity = nextQuantity;
       existingItem.qty = existingItem.quantity;
       existingItem.lineKey = lineKey;
       existingItem.name = cartItem.name;

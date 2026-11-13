@@ -13,6 +13,10 @@ export function startMemberSession(response: any): void {
   localStorage.setItem('khachHang', JSON.stringify(response.customer));
   localStorage.setItem('token', response.token);
   sessionStorage.setItem('orderLookupAccess', JSON.stringify({ ...access, accountKey: id }));
+  // endSession() vừa phát sự kiện cho trạng thái đã đăng xuất. Phải phát lại sau
+  // khi lưu xong danh tính mới để các component tồn tại xuyên trang (đặc biệt
+  // chatbot) mở đúng phiên thành viên thay vì đứng ở trạng thái đã reset.
+  window.dispatchEvent(new Event('auth-changed'));
 }
 
 /**
