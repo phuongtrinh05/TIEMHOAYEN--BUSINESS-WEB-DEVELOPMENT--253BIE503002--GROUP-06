@@ -890,3 +890,5 @@
   font-size: 0.75rem;
   color: #8a7466;
 }
+
+.after-sales-link{display:inline-flex;align-items:center;gap:8px;margin:0 0 18px;padding:10px 14px;border:1px solid #e6d4c9;border-radius:9px;background:#fff;color:#731919;text-decoration:none;font-weight:700}

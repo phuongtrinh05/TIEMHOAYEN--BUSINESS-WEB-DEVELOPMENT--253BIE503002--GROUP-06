@@ -429,7 +429,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   readonly genderOptions = ['Nam', 'Nữ', 'Khác'];
   savingProfile = false;
   profileError = '';
-  profileFieldErrors: { fullName?: string; birthDate?: string; gender?: string } = {};
+  profileFieldErrors: { fullName?: string; phone?: string; email?: string; birthDate?: string; gender?: string } = {};
 
   // ===== MODAL THÊM/SỬA ĐỊA CHỈ =====
   showAddAddressModal = false;
@@ -816,6 +816,8 @@ export class AccountComponent implements OnInit, OnDestroy {
   get hasProfileChanged(): boolean {
     return (
       this.editData.fullName.trim() !== this.userInfo.fullName ||
+      this.normalizePhone(this.editData.phone) !== this.normalizePhone(this.userInfo.phone) ||
+      this.editData.email.trim().toLowerCase() !== String(this.userInfo.email || '').trim().toLowerCase() ||
       this.toDisplayDate(this.editData.birthDate) !== this.toDisplayDate(this.userInfo.birthDate) ||
       this.editData.gender !== this.userInfo.gender
     );
@@ -872,7 +874,7 @@ export class AccountComponent implements OnInit, OnDestroy {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   }
 
-  clearProfileError(field: 'fullName' | 'birthDate' | 'gender'): void {
+  clearProfileError(field: 'fullName' | 'phone' | 'email' | 'birthDate' | 'gender'): void {
     delete this.profileFieldErrors[field];
     this.profileError = '';
   }
@@ -885,6 +887,11 @@ export class AccountComponent implements OnInit, OnDestroy {
     const fullName = this.editData.fullName.trim().replace(/\s+/g, ' ');
     if (!fullName) this.profileFieldErrors.fullName = 'Vui lòng nhập họ và tên.';
     else if (fullName.length > 100) this.profileFieldErrors.fullName = 'Họ và tên tối đa 100 ký tự.';
+
+    const phone = this.normalizePhone(this.editData.phone);
+    if (!/^0\d{9}$/.test(phone)) this.profileFieldErrors.phone = 'Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0.';
+    const email = this.editData.email.replace(/[\s\u200B-\u200D\uFEFF]+/g, '').toLowerCase();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) this.profileFieldErrors.email = 'Email không hợp lệ.';
 
     const birthDateError = this.birthDateError(this.editData.birthDate);
     if (birthDateError) this.profileFieldErrors.birthDate = birthDateError;
@@ -912,9 +919,10 @@ export class AccountComponent implements OnInit, OnDestroy {
 
     const khachHang = JSON.parse(saved);
 
-    // Email/SĐT không gửi lên: đổi các trường này cần xác minh riêng (KH20).
     const payload: Partial<Customer> = {
       TEN: fullName,
+      SDT: phone,
+      EMAIL: email || null,
       DOB: this.toIsoDate(this.toDisplayDate(this.editData.birthDate)) || null,
       ...(this.editData.gender ? { GIOI_TINH: this.editData.gender } : {}),
     };
@@ -943,7 +951,9 @@ export class AccountComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         this.savingProfile = false;
-        const message = typeof err?.error?.message === 'string' && err.error.message
+        const message = err?.name === 'TimeoutError'
+          ? 'Máy chủ đang mất kết nối dữ liệu. Vui lòng kiểm tra mạng rồi thử lại.'
+          : typeof err?.error?.message === 'string' && err.error.message
           ? err.error.message
           : err?.status === 0 || err?.status >= 500
             ? 'Chưa lưu được thông tin do lỗi kết nối hoặc hệ thống. Vui lòng thử lại.'
@@ -952,6 +962,8 @@ export class AccountComponent implements OnInit, OnDestroy {
               : 'Chưa lưu được thông tin. Vui lòng thử lại.';
         const field = String(err?.error?.field || '').toUpperCase();
         if (field === 'TEN' || field === 'FULLNAME' || field === 'NAME') this.profileFieldErrors.fullName = message;
+        else if (field === 'SDT' || field === 'PHONE') this.profileFieldErrors.phone = message;
+        else if (field === 'EMAIL') this.profileFieldErrors.email = message;
         else if (field === 'DOB' || field === 'BIRTHDATE') this.profileFieldErrors.birthDate = message;
         else if (field === 'GIOI_TINH' || field === 'GENDER') this.profileFieldErrors.gender = message;
         else this.profileError = message;

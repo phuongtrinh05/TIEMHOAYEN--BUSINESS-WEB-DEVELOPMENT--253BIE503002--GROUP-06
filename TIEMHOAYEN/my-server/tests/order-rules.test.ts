@@ -1,6 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+test('Không cho đặt thời điểm chuẩn bị trong quá khứ', async () => {
+  const { assertPrepTimeChangeAllowed } = await import('../services/inventory/stock.service.js');
+  await assert.rejects(
+    assertPrepTimeChangeAllowed({ DON_HANG_ID: 'PAST_T', TRANG_THAI: 'Chờ xử lý' }, new Date(Date.now() - 60_000)),
+    /sau thời điểm hiện tại/,
+  );
+});
+
+test('Admin được bỏ qua bước UI trung gian khi các điều kiện giao hàng đã đủ', async () => {
+  const { assertOrderTransitionForRole, allowedOrderStatuses } = await import('../services/admin-order.service.js');
+  const order = { TRANG_THAI: 'Chờ vận chuyển', PHUONG_THUC_THANH_TOAN: 'Chuyển khoản', TONG_TIEN: 200000, NHAN_VIEN_GIAO_HANG_ID: 'NV_GIAO' };
+  assert.doesNotThrow(() => assertOrderTransitionForRole(order, 'Đã giao', 200000, 'Admin'));
+  assert.throws(() => assertOrderTransitionForRole(order, 'Đã giao', 200000, 'Nhân viên giao hàng'), /bỏ qua bước/);
+  assert.equal(allowedOrderStatuses(order, 200000, 'Admin', true).includes('Đã giao'), true);
+});
+
 test('Hạn thanh toán: giao xa 24 giờ, giao gần trước giờ nhận 4 giờ', async () => {
   const { isUnpaidPastDeadline, orderPaymentDeadline } = await import('../services/unpaid-order-expiry.service.js');
   const created = new Date('2026-11-10T08:00:00+07:00');
@@ -90,6 +106,7 @@ test('Quy tắc hậu mãi: bằng chứng, mức hoàn gợi ý, duyệt lần 
   assert.equal(partial.amount, 54000, 'hỏng một phần: tối thiểu 30%');
   assert.equal(partial.minAmount, 54000);
   assert.equal(suggestRefund(order, details, items, 'missing_accessory', 390000).amount, 0, 'thiếu phụ kiện: giao bù');
+  assert.equal(suggestRefund(order, details, items, 'missing_item', 390000).amount, 180000, 'thiếu sản phẩm: hoàn giá trị sản phẩm còn thiếu sau giảm giá');
   assert.equal(suggestRefund(order, details, items, 'other', 390000).amount, 0);
   assert.equal(suggestRefund(order, details, items, 'damaged', 100000).amount, 100000, 'không vượt tiền đã thu');
 

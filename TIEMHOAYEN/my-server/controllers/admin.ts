@@ -3,7 +3,7 @@ import { emitAdminNotification } from '../services/analytics/notifications.servi
 import { restoreOrderPoints } from '../services/loyalty-policy.service.js';
 import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId, escapeRegex } from '../mongo.js';
-import { getAdminOrderDetailById, priceCheckout, slot24h, sumVerifiedPayments, summarizePayments, assertOrderTransition, allowedOrderStatuses, assertRoleCanSetOrderStatus, assertRoleCanDoOrderAction, paymentSucceeded } from '../services/admin-order.service.js';
+import { getAdminOrderDetailById, priceCheckout, slot24h, sumVerifiedPayments, summarizePayments, assertOrderTransition, assertOrderTransitionForRole, allowedOrderStatuses, assertRoleCanSetOrderStatus, assertRoleCanDoOrderAction, paymentSucceeded } from '../services/admin-order.service.js';
 import { createOrder } from './order.js';
 import { randomUUID } from 'node:crypto';
 import { finishedAvailableOf, InventoryError, nextCode, withTransaction } from '../services/inventory/helpers.js';
@@ -14,6 +14,7 @@ import { assertOrderReadyForMaterialExport, markOrderPreparationStarted, assertP
 import { invalidateAnalyticsCache } from '../services/analytics/cache.js';
 import { audit } from '../services/auth.service.js';
 import { derivePromotionStatus, ensureVoucherStorage, normalizeVoucherCode } from '../services/pricing-voucher.service.js';
+import { registerAutomaticCampaignAnnouncement, registerAutomaticVoucherAnnouncement } from '../services/marketing.service.js';
 const escapeAfterSalesSearch = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const toDate = (value: unknown): Date | null => {
@@ -1333,7 +1334,7 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
     const verified = sumVerifiedPayments(receipts);
     const delivering = ['Đã giao', 'Giao hàng thành công'].includes(status);
     // "Đã giao": phần khách còn phải trả do nhân viên giao hàng khai báo đã thu, chờ đối soát sau.
-    assertOrderTransition(current, status, delivering ? paidForDeliveryCheck(current, verified) : verified);
+    assertOrderTransitionForRole(current, status, delivering ? paidForDeliveryCheck(current, verified) : verified, actorRole);
     if (delivering) {
       const total = Number(current.TONG_TIEN || 0);
       const outstanding = total - verified - pendingCashTotal(receipts);
@@ -1495,7 +1496,7 @@ export const getAdminDashboard = async (_req: Request, res: Response) => {
 
 export const getAdminCampaigns = async (_req: Request, res: Response) => {
   try {
-    const campaigns = await (await getCollection<any>('CHIEN_DICH')).find({ DA_XOA: { $ne: true } }).sort({ CHIEN_DICH_ID: 1 }).toArray();
+    const campaigns = await (await getCollection<any>('CHIEN_DICH')).find({ DA_XOA: { $ne: true } }).sort({ NGAY_TAO: -1, CHIEN_DICH_ID: -1 }).toArray();
     return res.status(200).json({ total: campaigns.length, campaigns: campaigns.map((item, index) => ({
       id: index + 1, code: item.CHIEN_DICH_ID, name: item.TEN_CHIEN_DICH || '', description: item.MO_TA || '',
       startDate: item.NGAY_BAT_DAU, endDate: item.NGAY_KET_THUC, status: derivePromotionStatus(item),
@@ -1530,8 +1531,10 @@ export const createAdminCampaign = async (req: Request, res: Response) => {
       GIOI_HAN_TONG: Math.max(0, Number(req.body.totalLimit || 0)),
       GIOI_HAN_MOI_NGUOI: Math.max(0, Number(req.body.perUserLimit || 0)),
       DON_DAU_TIEN: req.body.firstOrderOnly === true,
+      NGAY_TAO: new Date(),
     };
     await (await getCollection<any>('CHIEN_DICH')).insertOne(campaign);
+    await registerAutomaticCampaignAnnouncement(campaign);
     return res.status(201).json({ message: 'Campaign created.', campaign });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot create campaign: ' + error.message });
@@ -1565,6 +1568,7 @@ export const updateAdminCampaign = async (req: Request, res: Response) => {
       { returnDocument: 'after' },
     );
     if (!result) return res.status(404).json({ message: 'Không tìm thấy chiến dịch.' });
+    await registerAutomaticCampaignAnnouncement(result);
     return res.status(200).json({ message: 'Campaign updated.', campaign: result });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot update campaign: ' + error.message });
@@ -1586,7 +1590,7 @@ export const deleteAdminCampaign = async (req: Request, res: Response) => {
 
 export const getAdminVouchers = async (_req: Request, res: Response) => {
   try {
-    const vouchers = await (await getCollection<any>('VOUCHER')).find({ DA_XOA: { $ne: true } }).sort({ VOUCHER_ID: 1 }).toArray();
+    const vouchers = await (await getCollection<any>('VOUCHER')).find({ DA_XOA: { $ne: true } }).sort({ NGAY_TAO: -1, VOUCHER_ID: -1 }).toArray();
     const customerIds = [...new Set(vouchers.map(item => item.KHACH_HANG_ID).filter(Boolean))];
     const customers = customerIds.length ? await (await getCollection<any>('KHACH_HANG')).find({ KHACH_HANG_ID: { $in: customerIds } }).toArray() : [];
     const customerNames = new Map(customers.map(item => [item.KHACH_HANG_ID, item.HO_TEN || item.TEN_KHACH_HANG || '']));
@@ -1671,6 +1675,7 @@ export const createAdminVoucher = async (req: Request, res: Response) => {
     // Các voucher sinh cùng một lần có chung mã nhóm để Marketing tự lấy
     // đúng voucher cá nhân của từng khách khi gửi hàng loạt.
     const issuanceGroupId = `VGRP_${randomUUID()}`;
+    const createdAt = new Date();
     const vouchers = recipients.map((customerId, index) => {
       const voucherId = `VC${String(firstNumber + index).padStart(4, '0')}`;
       return {
@@ -1683,14 +1688,13 @@ export const createAdminVoucher = async (req: Request, res: Response) => {
         DOI_TUONG: customerId ? 'Tài khoản được cấp' : body.audience || 'Tất cả', HANG_THANH_VIEN: Array.isArray(body.membershipTiers) ? body.membershipTiers : [],
         GIOI_HAN_TONG: Math.max(0, Number(body.totalLimit || (customerId ? 1 : 0))), GIOI_HAN_MOI_NGUOI: Math.max(0, Number(body.perUserLimit || (customerId ? 1 : 0))),
         DON_DAU_TIEN: body.firstOrderOnly === true, KICH_HOAT: body.active === true,
-        NGAY_BAT_DAU: start, NGAY_KET_THUC: end, DA_DUNG: false,
+        NGAY_BAT_DAU: start, NGAY_KET_THUC: end, DA_DUNG: false, NGAY_TAO: createdAt,
       };
     });
     await voucherCollection.insertMany(vouchers, { ordered: true });
     const personalVouchers = vouchers.filter(voucher => Boolean(voucher.KHACH_HANG_ID));
     if (personalVouchers.length) {
       const notificationCollection = await getCollection<any>('THONG_BAO');
-      const createdAt = new Date();
       await notificationCollection.bulkWrite(personalVouchers.map(voucher => {
         const notificationId = `TB_VOUCHER_${voucher.VOUCHER_ID}`;
         const voucherName = String(voucher.MA_VOUCHER || '').trim();
@@ -1719,6 +1723,7 @@ export const createAdminVoucher = async (req: Request, res: Response) => {
         };
       }), { ordered: true });
     }
+    await registerAutomaticVoucherAnnouncement(vouchers, createdAt);
     return res.status(201).json({ message: `Đã tạo ${vouchers.length} voucher.`, voucher: vouchers[0], vouchers });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot create voucher: ' + error.message });
@@ -1762,6 +1767,7 @@ export const updateAdminVoucher = async (req: Request, res: Response) => {
       { returnDocument: 'after' },
     );
     if (!result) return res.status(404).json({ message: 'Không tìm thấy voucher.' });
+    await registerAutomaticVoucherAnnouncement([result]);
     return res.status(200).json({ message: 'Voucher updated.', voucher: result });
   } catch (error: any) {
     return res.status(500).json({ message: 'Cannot update voucher: ' + error.message });
@@ -1782,9 +1788,9 @@ export const deleteAdminVoucher = async (req: Request, res: Response) => {
 };
 
 export const getAdminAfterSales = async (req: Request,res: Response) => {try{
-  const orderId=String(req.query.orderId||'').trim(), status=String(req.query.status||'').trim(), type=String(req.query.type||'').trim();
+  const orderId=String(req.query.orderId||'').trim(), status=String(req.query.status||'').trim(), type=String(req.query.type||'').trim(), issueType=String(req.query.issueType||'').trim();
   const assignedTo=String(req.query.assignedTo||'').trim(), search=String(req.query.search||'').trim().slice(0,100);
-  const filter:any={}; if(orderId)filter.orderId=orderId;if(status)filter.status=status;if(type)filter.type=type;if(assignedTo)filter.assignedTo=assignedTo;
+  const filter:any={}; if(orderId)filter.orderId=orderId;if(status)filter.status=status;if(type)filter.type=type;if(issueType)filter.issueType=issueType;if(assignedTo)filter.assignedTo=assignedTo;
   if(search){const safe=escapeAfterSalesSearch(search);filter.$or=[{requestId:{$regex:safe,$options:'i'}},{orderId:{$regex:safe,$options:'i'}},{'requester.name':{$regex:safe,$options:'i'}}];}
   if(req.query.from||req.query.to){filter.requestedAt={};if(req.query.from)filter.requestedAt.$gte=new Date(String(req.query.from));if(req.query.to)filter.requestedAt.$lte=new Date(String(req.query.to));}
   const page=Math.max(1,Number(req.query.page)||1),limit=Math.max(1,Math.min(50,Number(req.query.limit)||20));const collection=await getCollection<any>(AFTER_SALES);
@@ -1804,4 +1810,18 @@ export const getAdminAfterSales = async (req: Request,res: Response) => {try{
   const summary=allForSummary.reduce((acc:any,r:any)=>{const m=money(r);acc.totalApproved+=m.approvedRefund;acc.totalRefunded+=m.refundedAmount;return acc;},{count:allForSummary.length,totalApproved:0,totalRefunded:0});
   return res.json({requests,total,page,limit,summary});
 }catch{return res.status(500).json({message:'Chưa đọc được danh sách hậu mãi.'});}};
+export const createAdminRefundCase = async (req: Request,res: Response) => {try{
+  const orderId=String(req.body?.orderId||'').trim();
+  if(!orderId)return res.status(400).json({message:'Cần nhập mã đơn hàng.'});
+  const actor=String(res.locals.adminEmployee?.NHAN_VIEN_ID||'');
+  const requestId=await withTransaction(async session=>{
+    const order=await (await getCollection<any>('DON_HANG')).findOne({DON_HANG_ID:orderId},{session});
+    if(!order)throw new InventoryError(404,'Không tìm thấy đơn hàng.');
+    if(String(order.TRANG_THAI)!=='Đã hủy')throw new InventoryError(409,'Chỉ mở hồ sơ hoàn tiền cho đơn đã hủy.');
+    const id=await ensureCancelRefundCase(session,order,{reason:'CSKH mở hồ sơ hoàn tiền cho đơn hủy đã thu tiền',actor,source:'manual'});
+    if(!id)throw new InventoryError(409,'Đơn không còn khoản cần hoàn hoặc đã có hồ sơ hoàn tiền đang mở.');
+    return id;
+  });
+  return res.status(201).json({message:'Đã mở hồ sơ hoàn tiền.',requestId});
+}catch(e:any){return res.status(e instanceof InventoryError?e.status:500).json({message:e instanceof InventoryError?e.message:'Chưa mở được hồ sơ hoàn tiền.'});}};
 export const changeAdminAfterSales = async (req: Request,res: Response) => {try{return res.json({request:await afterSalesChange(String(req.params.requestId),req.body,String(res.locals.adminEmployee?.NHAN_VIEN_ID||''),res.locals.adminEmployee?.VAI_TRO)});}catch(e:any){return res.status(e instanceof InventoryError?e.status:e.code===11000?409:500).json({message:e instanceof InventoryError?e.message:'Chưa xử lý được. Hãy tải lại hồ sơ.'});}};

@@ -37,6 +37,7 @@ import { OrderDetail } from './pages/orders/order-detail/order-detail';
 
 import { CustomerChatComponent } from './pages/customer-service/customer-chat/customer-chat';
 import { SupportInbox } from './pages/customer-service/support-inbox/support-inbox';
+import { AfterSales } from './pages/customer-service/after-sales/after-sales';
 import { ChatbotManagementComponent } from './pages/customer-service/chatbot-management/chatbot-management';
 
 import { ArticleList } from './pages/content/article-list/article-list';
@@ -233,6 +234,12 @@ export const routes: Routes = [
     {
         path: 'customer-service/customer-chat',
         component: SupportInbox,
+        canActivate: [adminPermissionGuard],
+        data: { module: 'customerService' }
+    },
+    {
+        path: 'customer-service/after-sales',
+        component: AfterSales,
         canActivate: [adminPermissionGuard],
         data: { module: 'customerService' }
     },

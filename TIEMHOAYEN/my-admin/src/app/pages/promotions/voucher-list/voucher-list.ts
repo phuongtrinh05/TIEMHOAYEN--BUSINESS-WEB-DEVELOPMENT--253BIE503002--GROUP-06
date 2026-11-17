@@ -264,6 +264,11 @@ export class VoucherListComponent implements OnInit {
             return matchesKeyword && matchesDiscountType;
         });
 
+        // Thứ tự mặc định luôn là voucher mới nhất trước; mã VC được cấp tăng dần theo thời gian tạo.
+        this.filteredVouchers.sort((a, b) =>
+            b.code.localeCompare(a.code, 'vi', { numeric: true, sensitivity: 'base' })
+        );
+
         this.currentPage = 1;
     }
 

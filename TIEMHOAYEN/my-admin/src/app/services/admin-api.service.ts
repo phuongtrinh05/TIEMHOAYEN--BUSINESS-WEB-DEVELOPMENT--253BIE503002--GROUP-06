@@ -1155,6 +1155,7 @@ export class AdminApiService {
     return this.http.get(`${this.apiUrl}/after-sales`, { params });
   }
   changeAfterSales(id: string,body: any): Observable<any> { return this.http.patch(`${this.apiUrl}/after-sales/${encodeURIComponent(id)}`,body); }
+  openAfterSalesRefundCase(orderId: string): Observable<any> { return this.http.post(`${this.apiUrl}/after-sales/refund-case`,{orderId}); }
   getTransactions(): Observable<AdminTransactionsResponse> {
     return this.http.get<AdminTransactionsResponse>(`${this.apiUrl}/transactions`);
   }

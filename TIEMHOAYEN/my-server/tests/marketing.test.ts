@@ -82,6 +82,35 @@ else {
     assert.equal(row?.VOUCHER_ID_THUC_TE, 'VB2');
     assert.equal(row?.MA_VOUCHER_THUC_TE, 'TRIAN-002');
   });
+  test('automatic voucher email targets only opted-in owners after voucher and campaign activation', async () => {
+    const now = new Date();
+    await (await col('CHIEN_DICH')).insertOne({
+      CHIEN_DICH_ID: 'CAMP_EMAIL', TEN_CHIEN_DICH: 'Tri ân đúng khách', KICH_HOAT: true, DA_DUYET: true,
+      NGAY_BAT_DAU: new Date(now.getTime() - 60000), NGAY_KET_THUC: new Date(now.getTime() + 86400000),
+    });
+    await (await col('VOUCHER')).insertMany([
+      { VOUCHER_ID: 'VE1', MA_VOUCHER: 'EMAIL-001', NHOM_PHAT_HANH_ID: 'EMAIL-GRP', CHIEN_DICH_ID: 'CAMP_EMAIL', KHACH_HANG_ID: 'C1', KICH_HOAT: true, NGAY_BAT_DAU: new Date(now.getTime() - 60000), NGAY_KET_THUC: new Date(now.getTime() + 86400000), DA_DUNG: false },
+      { VOUCHER_ID: 'VE2', MA_VOUCHER: 'EMAIL-002', NHOM_PHAT_HANH_ID: 'EMAIL-GRP', CHIEN_DICH_ID: 'CAMP_EMAIL', KHACH_HANG_ID: 'C2', KICH_HOAT: true, NGAY_BAT_DAU: new Date(now.getTime() - 60000), NGAY_KET_THUC: new Date(now.getTime() + 86400000), DA_DUNG: false },
+      { VOUCHER_ID: 'VE3', MA_VOUCHER: 'EMAIL-003', NHOM_PHAT_HANH_ID: 'EMAIL-GRP', CHIEN_DICH_ID: 'CAMP_EMAIL', KHACH_HANG_ID: 'C3', KICH_HOAT: true, NGAY_BAT_DAU: new Date(now.getTime() - 60000), NGAY_KET_THUC: new Date(now.getTime() + 86400000), DA_DUNG: false },
+    ]);
+    const t = template('TVE', { MUC_DICH: 'Voucher', KENH_GUI: 'email', TIEU_DE: 'Voucher của {{ten_khach}}', NOI_DUNG: 'Mã {{ma_voucher}}' });
+    const c = config('CVE', 'TVE', { VOUCHER_ID: 'VE1', CHIEN_DICH_ID: 'CAMP_EMAIL' });
+    await (await col('MAU_TIN_NHAN')).insertOne(t); await (await col('CAU_HINH_GUI_TU_DONG')).insertOne(c);
+    await m.scheduleMarketing(now);
+    const rows = await (await col('LICH_SU_GUI')).find({ CAU_HINH_ID: 'CVE' }).sort({ KHACH_HANG_ID: 1 }).toArray();
+    assert.deepEqual(rows.map(row => row.KHACH_HANG_ID), ['C1', 'C3']);
+    assert.deepEqual(rows.map(row => row.MA_VOUCHER_THUC_TE), ['EMAIL-001', 'EMAIL-003']);
+    assert.ok(rows.every(row => row.CHIEN_DICH_ID_THUC_TE === 'CAMP_EMAIL'));
+    await (await col('CHIEN_DICH')).updateOne({ CHIEN_DICH_ID: 'CAMP_EMAIL' }, { $set: { KICH_HOAT: false } });
+    await (await col('CAU_HINH_GUI_TU_DONG')).insertOne(config('CVE_PAUSED', 'TVE', { VOUCHER_ID: 'VE1', CHIEN_DICH_ID: 'CAMP_EMAIL' }));
+    await m.scheduleMarketing(now);
+    assert.equal(await (await col('LICH_SU_GUI')).countDocuments({ CAU_HINH_ID: 'CVE_PAUSED' }), 0);
+
+    await (await col('VOUCHER')).insertOne({ VOUCHER_ID: 'VE_SHARED', MA_VOUCHER: 'PUBLIC', KHACH_HANG_ID: null, KICH_HOAT: true, NGAY_KET_THUC: new Date(now.getTime() + 86400000), DA_DUNG: false });
+    await (await col('CAU_HINH_GUI_TU_DONG')).insertOne(config('CVE_SHARED', 'TVE', { VOUCHER_ID: 'VE_SHARED' }));
+    await m.scheduleMarketing(now);
+    assert.equal(await (await col('LICH_SU_GUI')).countDocuments({ CAU_HINH_ID: 'CVE_SHARED' }), 2);
+  });
   test('shared voucher usage is counted instead of globally disabled after the first order', async () => {
     const pricing = await import('../services/pricing-voucher.service.js');
     const voucher = { VOUCHER_ID: 'VSHARED', MA_VOUCHER: 'SHARED', GIOI_HAN_TONG: 2, GIOI_HAN_MOI_NGUOI: 1, LUOT_DA_DUNG: 0, DA_DUNG: false };
@@ -147,12 +176,40 @@ else {
     const auth = await import('../services/order-access.service.js');
     const token = (await auth.createCustomerOrderAccess(c)).accessToken;
     const headers = { 'x-order-access': token };
-    assert.deepEqual((await request('/marketing/preferences', 'GET', undefined, headers)).data, { allowed: false, answered: false });
+    assert.deepEqual((await request('/marketing/preferences', 'GET', undefined, headers)).data, { allowed: false, answered: false, email: 'new@example.com', hasEmail: true });
     await request('/marketing/preferences', 'PUT', { allowed: false }, headers);
     const nextToken = (await auth.createCustomerOrderAccess(c)).accessToken;
-    assert.deepEqual((await request('/marketing/preferences', 'GET', undefined, { 'x-order-access': nextToken })).data, { allowed: false, answered: true });
+    assert.deepEqual((await request('/marketing/preferences', 'GET', undefined, { 'x-order-access': nextToken })).data, { allowed: false, answered: true, email: 'new@example.com', hasEmail: true });
     await request('/marketing/preferences', 'PUT', { allowed: true }, headers);
-    assert.deepEqual((await request('/marketing/preferences', 'GET', undefined, headers)).data, { allowed: true, answered: true });
+    assert.deepEqual((await request('/marketing/preferences', 'GET', undefined, headers)).data, { allowed: true, answered: true, email: 'new@example.com', hasEmail: true });
+  });
+  test('enabling offer notifications verifies and stores a unique email by OTP when the account has none', async () => {
+    const c: any = customer('NOEMAIL'); delete c.EMAIL; delete c.DONG_Y_NHAN_QUANG_CAO;
+    await (await col('KHACH_HANG')).insertOne(c);
+    const token = (await (await import('../services/order-access.service.js')).createCustomerOrderAccess(c)).accessToken;
+    const headers = { 'x-order-access': token };
+    assert.deepEqual((await request('/marketing/preferences', 'GET', undefined, headers)).data, { allowed: false, answered: false, email: null, hasEmail: false });
+    assert.equal((await request('/marketing/preferences', 'PUT', { allowed: true }, headers)).status, 409);
+    process.env.APPS_SCRIPT_MARKETING_URL = 'https://script.google.com/macros/s/test-deployment/exec';
+    process.env.APPS_SCRIPT_MARKETING_SECRET = 'test-marketing-secret-at-least-32-characters';
+    const original = globalThis.fetch; let sentBody = '';
+    globalThis.fetch = (async (_url: any, options: any) => {
+      sentBody = JSON.parse(JSON.parse(options.body).payload).body;
+      return new Response(JSON.stringify({ ok: true, code: 'SENT' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    try {
+      assert.equal((await request('/marketing/preferences/email-otp', 'POST', { email: 'c1@example.com' }, headers)).status, 409);
+      const requested = await request('/marketing/preferences/email-otp', 'POST', { email: 'new-mail@example.com' }, headers);
+      assert.equal(requested.status, 201);
+      const otp = sentBody.match(/\b\d{6}\b/)?.[0]; assert.ok(otp);
+      assert.equal((await request('/marketing/preferences/email-otp/verify', 'POST', { challengeId: requested.data.challengeId, otp: '000000' }, headers)).status, 400);
+      const enabled = await request('/marketing/preferences/email-otp/verify', 'POST', { challengeId: requested.data.challengeId, otp }, headers);
+      assert.deepEqual(enabled.data, { allowed: true, email: 'new-mail@example.com', hasEmail: true });
+      const saved = await (await col('KHACH_HANG')).findOne({ KHACH_HANG_ID: 'NOEMAIL' });
+      assert.equal(saved?.EMAIL, 'new-mail@example.com'); assert.equal(saved?.DONG_Y_NHAN_QUANG_CAO, true); assert.equal(saved?.EMAIL_DA_XAC_MINH, true);
+    } finally {
+      globalThis.fetch = original; delete process.env.APPS_SCRIPT_MARKETING_URL; delete process.env.APPS_SCRIPT_MARKETING_SECRET;
+    }
   });
   test('marketing notification content is private even if another customer id is supplied', async () => {
     const anonymous = await request('/notifications?customerId=C1', 'GET', undefined, {}); assert.equal(anonymous.data.notifications.length, 0);

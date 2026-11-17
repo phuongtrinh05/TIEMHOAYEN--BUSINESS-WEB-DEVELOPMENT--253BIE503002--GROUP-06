@@ -920,5 +920,13 @@ export const updateShippingInfo = async (req: Request, res: Response) => {
 };
 
 export const readAfterSales = async (req: Request,res: Response) => { try { return res.json({requests:await afterSalesRead(String(req.params.orderId))}); } catch(e:any){return res.status(e instanceof InventoryError?e.status:500).json({message:e instanceof InventoryError?e.message:'Chưa đọc được hồ sơ.'});} };
+export const uploadAfterSalesEvidence = (req: Request, res: Response) => {
+  const files = (Array.isArray(req.files) ? req.files : []) as Express.Multer.File[];
+  if (!files.length) return res.status(400).json({ message: 'Vui lòng chọn ít nhất một ảnh.' });
+  const publicBaseUrl = (process.env.PUBLIC_BASE_URL ?? `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  return res.status(201).json({
+    urls: files.map(file => `${publicBaseUrl}/uploads/after-sales/${file.filename}`),
+  });
+};
 export const createAfterSales = async (req: Request,res: Response) => { try { return res.status(201).json({request:await afterSalesCreate(String(req.params.orderId),req.body)}); } catch(e:any){return res.status(e instanceof InventoryError?e.status:e.code===11000?409:500).json({message:e instanceof InventoryError?e.message:'Chưa gửi được hồ sơ. Vui lòng tải lại trạng thái.'});} };
 export const supplementAfterSales = async (req: Request,res: Response) => { try { return res.json({request:await afterSalesSupplement(String(req.params.orderId),String(req.params.requestId),req.body)}); } catch(e:any){return res.status(e instanceof InventoryError?e.status:500).json({message:e instanceof InventoryError?e.message:'Chưa bổ sung được bằng chứng.'});} };

@@ -239,6 +239,11 @@ export class OrderService {
   }
 
   getAfterSales(orderId: string): Observable<any> { return this.http.get(`${this.apiUrl}/${encodeURIComponent(orderId)}/after-sales`); }
+  uploadAfterSalesEvidence(orderId: string, files: File[]): Observable<{ urls: string[] }> {
+    const formData = new FormData();
+    files.forEach(file => formData.append('images', file, file.name));
+    return this.http.post<{ urls: string[] }>(`${this.apiUrl}/${encodeURIComponent(orderId)}/after-sales/evidence`, formData);
+  }
   createAfterSales(orderId: string, body: any): Observable<any> { return this.http.post(`${this.apiUrl}/${encodeURIComponent(orderId)}/after-sales`,body); }
   supplementAfterSales(orderId: string, requestId: string, body: any): Observable<any> { return this.http.patch(`${this.apiUrl}/${encodeURIComponent(orderId)}/after-sales/${encodeURIComponent(requestId)}`,body); }
   getOrderDetail(orderId: string, phone = ''): Observable<OrderDetailResponse> {

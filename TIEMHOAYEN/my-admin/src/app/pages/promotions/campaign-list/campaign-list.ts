@@ -153,6 +153,11 @@ export class CampaignListComponent implements OnInit {
             return matchesKeyword && matchesStatus;
         });
 
+        // Thứ tự mặc định luôn là chiến dịch mới nhất trước; mã CD tăng dần theo thời gian tạo.
+        this.filteredCampaigns.sort((a, b) =>
+            b.code.localeCompare(a.code, 'vi', { numeric: true, sensitivity: 'base' })
+        );
+
         this.currentPage = 1;
     }
 

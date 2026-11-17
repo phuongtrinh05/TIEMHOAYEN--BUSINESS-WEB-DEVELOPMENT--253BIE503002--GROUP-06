@@ -225,6 +225,8 @@ const PORT = Number(process.env.PORT ?? 3000);
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') { startInventoryJobs(); startSalesRequestExpiryJob(); startUnpaidOrderExpiryJob(); startOrderAutoCompleteJob(); }
     if (process.env.INVENTORY_BOOTSTRAP_INDEXES !== 'false') await ensureNotificationIndexes();
     if (process.env.INVENTORY_BACKGROUND_JOBS !== 'false') startNotificationJobs();
+    if (process.env.MARKETING_BOOTSTRAP_INDEXES !== 'false') await ensureMarketingIndexes();
+    if (process.env.MARKETING_BACKGROUND_JOBS !== 'false') startMarketingJobs();
 
     app.listen(PORT, () => {
       console.log(`\nServer: http://localhost:${PORT}`);

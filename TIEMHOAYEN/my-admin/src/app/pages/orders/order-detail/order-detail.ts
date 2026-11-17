@@ -390,7 +390,12 @@ export class OrderDetail implements OnInit, OnDestroy {
       products: source.products ?? [],
       voucher: source.voucher ?? null,
     };
-    if (source.preparationAt) this.preparationInput = this.toLocalDateTimeInput(source.preparationAt);
+    if (source.preparationAt) {
+      const preparationAt = new Date(source.preparationAt);
+      this.preparationInput = Number.isFinite(preparationAt.getTime()) && preparationAt.getTime() > Date.now()
+        ? this.toLocalDateTimeInput(source.preparationAt)
+        : '';
+    } else this.preparationInput = '';
     this.ensureDefaultShipper();
     this.loadAfterSales();
   }
@@ -535,7 +540,8 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   get statusOptions(): OrderStatus[] {
-    return (this.order.allowedStatuses || []).map(s => this.toDetailOrderStatus(s));
+    const allowed = (this.order.allowedStatuses || []).map(s => this.toDetailOrderStatus(s));
+    return [...new Set([...BASE_STATUS_OPTIONS, ...allowed])];
   }
 
   get nextAllowedStatus(): OrderStatus | '' {
@@ -548,7 +554,14 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   isStatusOptionDisabled(status: OrderStatus): boolean {
     const canonical = status === 'Giao thành công' ? 'Đã giao' : status;
-    return !this.adminApi.can('orders', 'update') || !(this.order.allowedStatuses || []).includes(canonical);
+    return this.isStatusCompleted(status) || !this.adminApi.can('orders', 'update') || !(this.order.allowedStatuses || []).includes(canonical);
+  }
+
+  isStatusCompleted(status: OrderStatus): boolean {
+    const normalize = (value: OrderStatus) => value === 'Giao thành công' ? 'Giao thành công' : value;
+    const current = BASE_STATUS_OPTIONS.indexOf(normalize(this.order.orderStatus));
+    const target = BASE_STATUS_OPTIONS.indexOf(normalize(status));
+    return current >= 0 && target >= 0 && target <= current;
   }
 
   get isRefundFlow(): boolean {
@@ -813,10 +826,30 @@ export class OrderDetail implements OnInit, OnDestroy {
   preparationReason = '';
   preparationBusy = false;
   get canSetPreparation(): boolean { return this.adminApi.can('orders', 'update') && ['Đã xác nhận đơn hàng', 'Đã đặt hàng thành công', 'Chờ xử lý'].includes(this.order.orderStatus); }
+  get minimumPreparationInput(): string {
+    const date = new Date(Date.now() + 60_000);
+    date.setSeconds(0, 0);
+    const pad = (part: number) => String(part).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+  get preparationInputInvalid(): boolean {
+    if (!this.preparationInput) return true;
+    const at = new Date(this.preparationInput);
+    return !Number.isFinite(at.getTime()) || at.getTime() <= Date.now();
+  }
+  validatePreparationInput(): void {
+    if (!this.preparationInput) return;
+    const at = new Date(this.preparationInput);
+    if (!Number.isFinite(at.getTime()) || at.getTime() <= Date.now()) {
+      this.preparationInput = '';
+      this.showToast('Không được nhập thời điểm chuẩn bị trong quá khứ.', 'error');
+    }
+  }
   savePreparation(): void {
     if (this.preparationBusy) return;
     const at = new Date(this.preparationInput);
     if (!Number.isFinite(at.getTime())) { this.showToast('Nhập thời điểm T hợp lệ.', 'error'); return; }
+    if (at.getTime() <= Date.now()) { this.showToast('Thời điểm chuẩn bị phải sau thời điểm hiện tại.', 'error'); return; }
     if (!this.preparationReason.trim()) { this.showToast('Nhập lý do lập hoặc điều chỉnh lịch chuẩn bị.', 'error'); return; }
     this.preparationBusy = true;
     this.adminApi.updateOrderMetadata(this.order.id, { action: 'preparation', preparationAt: at.toISOString(), reason: this.preparationReason.trim() }).subscribe({ next: r => { this.preparationBusy = false; this.preparationReason = ''; this.applyApiOrderDetail(r.order); this.showToast('Đã lưu thời điểm chuẩn bị dự kiến T.'); this.cdr.detectChanges(); }, error: e => { this.preparationBusy = false; this.showToast(e?.error?.message || 'Chưa lưu được T.', 'error'); } });
@@ -958,7 +991,13 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   printOrder(): void {
-    window.print();
+    const popup = window.open('', '_blank', 'width=900,height=900');
+    if (!popup) { this.showToast('Trình duyệt đang chặn cửa sổ in.', 'error'); return; }
+    const safe = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[char] || char));
+    const money = (value: unknown) => `${Number(value || 0).toLocaleString('vi-VN')}đ`;
+    const rows = this.order.products.map((product, index) => `<tr><td>${index + 1}</td><td>${safe(product.name)}</td><td class="center">${product.qty}</td><td class="right">${money(product.price)}</td><td class="right">${money(product.qty * product.price)}</td></tr>`).join('');
+    popup.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Phiếu đơn hàng ${safe(this.order.id)}</title><style>@page{size:A4;margin:14mm}*{box-sizing:border-box}body{margin:0;color:#2d2421;font:13px Arial,sans-serif}.sheet{max-width:780px;margin:auto}.head{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #7b1f24;padding-bottom:14px}.brand h1{margin:0;color:#7b1f24;font:700 25px Georgia,serif}.brand p,.meta p{margin:5px 0}.meta{text-align:right}.title{text-align:center;margin:22px 0 15px}.title h2{margin:0;color:#7b1f24;font-size:22px}.title p{margin:6px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}.box{border:1px solid #d8cbc5;border-radius:8px;padding:12px}.box h3{margin:0 0 9px;color:#7b1f24;font-size:13px;text-transform:uppercase}.box p{margin:5px 0;line-height:1.45}table{width:100%;border-collapse:collapse;margin:14px 0}th,td{border:1px solid #d8cbc5;padding:9px}th{background:#f6ece7;color:#6e1c21}.center{text-align:center}.right{text-align:right}.totals{margin-left:auto;width:330px}.totals div{display:flex;justify-content:space-between;padding:5px 0}.totals .grand{border-top:2px solid #7b1f24;margin-top:5px;padding-top:9px;color:#7b1f24;font-size:16px;font-weight:bold}.notes{margin-top:18px;border-top:1px dashed #bda9a0;padding-top:12px}.sign{display:grid;grid-template-columns:1fr 1fr;text-align:center;margin-top:38px;gap:80px}.sign strong{display:block}.sign span{display:block;margin-top:65px;color:#777}@media print{button{display:none}}</style></head><body><main class="sheet"><header class="head"><div class="brand"><h1>TIỆM HOA YÊN</h1><p>Phiếu xác nhận và chuẩn bị đơn hàng</p></div><div class="meta"><p><b>Mã đơn:</b> ${safe(this.order.id)}</p><p><b>Ngày tạo:</b> ${safe(this.order.createdAt)} ${safe(this.order.createdTime)}</p><p><b>Trạng thái:</b> ${safe(this.order.orderStatus)}</p></div></header><section class="title"><h2>PHIẾU ĐƠN HÀNG</h2><p>Vui lòng kiểm tra đầy đủ thông tin trước khi chuẩn bị và giao hoa</p></section><section class="grid"><div class="box"><h3>Người đặt</h3><p><b>Họ tên:</b> ${safe(this.order.senderName)}</p><p><b>Điện thoại:</b> ${safe(this.order.senderPhone)}</p><p><b>Email:</b> ${safe(this.order.senderEmail || '—')}</p></div><div class="box"><h3>Người nhận</h3><p><b>Họ tên:</b> ${safe(this.order.receiverName)}</p><p><b>Điện thoại:</b> ${safe(this.order.receiverPhone)}</p><p><b>Địa chỉ:</b> ${safe(this.order.deliveryAddress)}</p><p><b>Giao lúc:</b> ${safe(this.order.deliveryDate)} · ${safe(this.order.deliverySlot)}</p></div></section><table><thead><tr><th>STT</th><th>Sản phẩm</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody></table><section class="totals"><div><span>Tạm tính</span><b>${money(this.computedSubtotal)}</b></div><div><span>Phí giao hàng</span><b>${money(this.order.shippingFee)}</b></div><div><span>Giảm voucher</span><b>-${money(this.computedVoucherDiscount)}</b></div><div><span>Giảm điểm</span><b>-${money(this.computedLoyaltyDiscount)}</b></div><div class="grand"><span>Tổng cộng</span><span>${money(this.computedGrandTotal)}</span></div><div><span>Đã thanh toán</span><b>${money(this.computedPaid)}</b></div><div><span>Còn lại</span><b>${money(this.computedRemaining)}</b></div></section><section class="notes"><p><b>Phương thức thanh toán:</b> ${safe(this.order.paymentMethod)}</p><p><b>Lời nhắn khách hàng:</b> ${safe(this.order.customerNote || 'Không có')}</p><p><b>Nội dung thiệp:</b> ${safe(this.order.cardMessage || 'Không có')}</p></section><section class="sign"><div><strong>Nhân viên lập phiếu</strong><span>Ký và ghi rõ họ tên</span></div><div><strong>Nhân viên chuẩn bị/giao hàng</strong><span>Ký và ghi rõ họ tên</span></div></section></main><script>window.onload=()=>{window.focus();window.print()}<\/script></body></html>`);
+    popup.document.close();
   }
 
   printCard(): void {
@@ -997,12 +1036,13 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   // ===== THU TIỀN KHI GIAO (phương án A) =====
-  readonly cashMethods = ['Tiền mặt', 'Chuyển khoản cho nhân viên giao hàng'];
+  readonly cashMethods = ['Tiền mặt', 'Chuyển khoản'];
   showCashPopup = false;
   cashTargetStatus: OrderStatus | '' = '';
   cashMethod = 'Tiền mặt';
   cashNote = '';
   cashProof = '';
+  cashProofUploading = false;
   cashConfirmed = false;
   cashError = '';
   get pendingCashAmount(): number { return Number(this.order.pendingCollection?.amount || 0); }
@@ -1017,10 +1057,26 @@ export class OrderDetail implements OnInit, OnDestroy {
     this.showCashPopup = true;
   }
   closeCashPopup(): void { this.showCashPopup = false; this.cashError = ''; this.selectedNextStatus = ''; }
+  async onCashProofSelected(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || this.cashProofUploading) return;
+    if (file.size > 5 * 1024 * 1024) { this.cashError = 'Ảnh chứng từ không được vượt quá 5MB.'; return; }
+    this.cashProofUploading = true; this.cashError = ''; this.cdr.detectChanges();
+    try {
+      const result = await firstValueFrom(this.adminApi.uploadHandoverImage(this.order.id, file));
+      this.cashProof = result?.url || '';
+      if (!this.cashProof) throw new Error('UPLOAD_EMPTY');
+    } catch (error: any) {
+      this.cashProof = '';
+      this.cashError = error?.error?.message || 'Chưa tải được ảnh chứng từ.';
+    } finally { this.cashProofUploading = false; this.cdr.detectChanges(); }
+  }
   confirmCashCollection(): void {
+    if (this.cashProofUploading) { this.cashError = 'Vui lòng chờ tải ảnh chứng từ xong.'; return; }
     if (!this.cashConfirmed) { this.cashError = 'Hãy xác nhận đã nhận đủ số tiền của khách.'; return; }
     const proof = this.cashProof.trim();
-    if (proof && !/^https?:\/\//i.test(proof)) { this.cashError = 'Liên kết ảnh chứng từ phải bắt đầu bằng http:// hoặc https://'; return; }
     const status = this.cashTargetStatus as OrderStatus;
     const payload = { amount: this.outstandingAtDelivery, method: this.cashMethod, note: this.cashNote.trim(), proof };
     this.showCashPopup = false;

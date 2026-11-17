@@ -7,6 +7,7 @@ const originalFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = originalFetch;
   delete process.env.APPS_SCRIPT_MARKETING_URL;
+  delete process.env.APPS_SCRIPT_MARKETING_DEPLOYMENT_ID;
   delete process.env.APPS_SCRIPT_MARKETING_SECRET;
 });
 
@@ -35,6 +36,19 @@ test('Apps Script marketing signs the exact payload and accepts SENT', async () 
   assert.equal(payload.requestId, requestId);
   assert.equal(envelope.signature, createHmac('sha256', secret).update(envelope.payload).digest('hex'));
   assert.equal(result, `apps-script:${requestId}:SENT`);
+});
+
+test('Apps Script marketing can build the Web App URL from a deployment id', async () => {
+  process.env.APPS_SCRIPT_MARKETING_DEPLOYMENT_ID = 'AKfycbzX3XiK7HbBrkazlK4BkMYHySfNxTqjUZ_8GdFwVs1Xj_KSTShIk-CV8zajE3s_nx6mpw';
+  process.env.APPS_SCRIPT_MARKETING_SECRET = 'x'.repeat(32);
+  let calledUrl = '';
+  globalThis.fetch = (async (url: any) => {
+    calledUrl = String(url);
+    return new Response(JSON.stringify({ ok: true, code: 'SENT' }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+  assert.equal(appsScriptMarketingReady(), true);
+  await sendAppsScriptMarketingEmail({ to: 'customer@example.com', subject: 'Ưu đãi', body: 'Xin chào bạn', requestId: 'd'.repeat(64) });
+  assert.equal(calledUrl, 'https://script.google.com/macros/s/' + process.env.APPS_SCRIPT_MARKETING_DEPLOYMENT_ID + '/exec');
 });
 
 test('Apps Script marketing only follows Google ContentService redirects', async () => {

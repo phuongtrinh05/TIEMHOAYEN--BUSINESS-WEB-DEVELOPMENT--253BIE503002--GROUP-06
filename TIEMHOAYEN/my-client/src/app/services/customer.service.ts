@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Observable, tap } from 'rxjs';
+import { Observable, tap, timeout } from 'rxjs';
 import { apiBaseUrl, getCustomerOrderAccessToken } from './api-config';
 
 export interface Customer {
@@ -88,7 +88,7 @@ export interface CustomerWishlistPage {
   providedIn: 'root',
 })
 export class CustomerService {
-  private readonly apiUrl = 'https://tiem-hoa-yen-api.onrender.com/api/customers';
+  private readonly apiUrl = apiBaseUrl() + '/customers';
 
   constructor(private http: HttpClient) {}
 
@@ -103,7 +103,7 @@ export class CustomerService {
     return this.http.put<{ message: string; customer: Customer }>(
       `${this.apiUrl}/${id}`,
       data
-    );
+    ).pipe(timeout(15000));
   }
 
   getAddresses(id: string): Observable<CustomerAddress[]> {

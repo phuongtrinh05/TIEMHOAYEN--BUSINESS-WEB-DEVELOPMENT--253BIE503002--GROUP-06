@@ -113,58 +113,106 @@ export class OrderDetail implements OnInit, OnDestroy {
   vouchers: OrderDetailVoucher[] = [];
   steps: any[] = [];
   afterSales: any[]=[]; afterSalesType='refund'; afterSalesIssueType='damaged'; afterSalesReasonCode='SHOP_FAULT'; afterSalesReason='';
-  afterSalesAccessory=''; afterSalesDetectedAt=''; afterSalesEvidence=''; afterSalesBusy=false; afterSalesMessage=''; afterSalesConfirming=false;
-  afterSalesQuantities: Record<string, number> = {}; private afterSalesIdempotencyKey='';
+  afterSalesAccessory=''; afterSalesDetectedAt=''; afterSalesBusy=false; afterSalesMessage=''; afterSalesConfirming=false;
+  afterSalesEvidenceFiles: File[] = [];
+  afterSalesEvidencePreviews: string[] = [];
+  showAfterSalesPopup=false;
+  private afterSalesIdempotencyKey='';
   zoomedImage = '';
   openImage(image: string): void { if (image) this.zoomedImage = image; }
   closeImage(): void { this.zoomedImage = ''; }
   loadAfterSales() { if(!this.order.id)return;this.orderService.getAfterSales(this.order.id).subscribe({next:r=>{this.afterSales=r.requests||[];this.cdr.markForCheck();},error:()=>{}}); }
   prepareAfterSales() {
-    const items=this.products.map(p=>({productId:p.id,quantity:Number(this.afterSalesQuantities[p.id]||0)})).filter(x=>x.quantity>0);
-    if(!items.length){this.afterSalesMessage='Vui lòng chọn ít nhất một sản phẩm và số lượng.';return;}
+    const items=this.products.map(p=>({productId:p.id,quantity:p.quantity})).filter(x=>x.quantity>0);
+    if(!items.length){this.afterSalesMessage='Đơn hàng không có sản phẩm để gửi yêu cầu hỗ trợ.';return;}
     if(!this.afterSalesReason.trim()){this.afterSalesMessage='Vui lòng mô tả chi tiết vấn đề cần hỗ trợ.';return;}
     if(this.afterSalesIssueType==='missing_accessory'&&!this.afterSalesAccessory.trim()){this.afterSalesMessage='Vui lòng chọn hoặc ghi rõ phụ kiện còn thiếu.';return;}
-    if(this.evidenceRequired&&!this.afterSalesEvidence.split('\n').some(s=>s.trim())){this.afterSalesMessage='Lỗi về hoa hoặc giao hàng cần ít nhất 1 ảnh/video bằng chứng.';return;}
+    if(this.evidenceRequired&&!this.afterSalesEvidenceFiles.length){this.afterSalesMessage='Vui lòng tải lên ít nhất 1 ảnh bằng chứng.';return;}
     this.afterSalesMessage='';this.afterSalesConfirming=true;
   }
   sendAfterSales() {
     if(this.afterSalesBusy)return;
-    const items=this.products.map(p=>({productId:p.id,quantity:Number(this.afterSalesQuantities[p.id]||0)})).filter(x=>x.quantity>0);
+    const items=this.products.map(p=>({productId:p.id,quantity:p.quantity})).filter(x=>x.quantity>0);
     if(!items.length||!this.afterSalesReason.trim())return;
     if(!this.afterSalesIdempotencyKey)this.afterSalesIdempotencyKey=crypto.randomUUID();
     this.afterSalesBusy=true;
+    if (!this.afterSalesEvidenceFiles.length) { this.createAfterSalesWithEvidence(items, []); return; }
+    this.orderService.uploadAfterSalesEvidence(this.order.id, this.afterSalesEvidenceFiles).subscribe({
+      next: result => this.createAfterSalesWithEvidence(items, result.urls || []),
+      error: error => { this.afterSalesBusy=false;this.afterSalesMessage=error?.error?.message||'Chưa tải được ảnh bằng chứng.';this.cdr.markForCheck(); },
+    });
+  }
+  private createAfterSalesWithEvidence(items: { productId: string; quantity: number }[], evidence: string[]): void {
     this.orderService.createAfterSales(this.order.id,{type:this.afterSalesType,issueType:this.afterSalesIssueType,reasonCode:this.afterSalesReasonCode,
       reason:this.afterSalesReason,description:this.afterSalesReason,accessory:this.afterSalesAccessory||null,
       detectedAt:this.afterSalesDetectedAt?new Date(this.afterSalesDetectedAt).toISOString():null,items,
-      evidence:this.afterSalesEvidence.split('\n').map(s=>s.trim()).filter(Boolean),idempotencyKey:this.afterSalesIdempotencyKey}).subscribe({
-      next:()=>{this.afterSalesBusy=false;this.afterSalesConfirming=false;this.afterSalesIdempotencyKey='';this.afterSalesMessage='Đã gửi yêu cầu hỗ trợ. Shop sẽ kiểm tra và phản hồi trong hồ sơ này.';this.loadAfterSales();this.cdr.markForCheck();},
+      evidence,idempotencyKey:this.afterSalesIdempotencyKey}).subscribe({
+      next:()=>{this.afterSalesBusy=false;this.afterSalesConfirming=false;this.afterSalesIdempotencyKey='';this.clearAfterSalesImages();this.afterSalesMessage='Đã gửi yêu cầu hỗ trợ. Shop sẽ kiểm tra và phản hồi trong hồ sơ này.';this.loadAfterSales();this.cdr.markForCheck();},
       error:e=>{this.afterSalesBusy=false;this.afterSalesMessage=e?.error?.message||'Chưa gửi được hồ sơ.';this.cdr.markForCheck();}});
   }
+  onAfterSalesImagesSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const selected = Array.from(input.files || []);
+    input.value = '';
+    const validTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    if (selected.some(file => !validTypes.has(file.type))) { this.afterSalesMessage='Chỉ chấp nhận ảnh JPG, PNG hoặc WEBP.';return; }
+    if (selected.some(file => file.size > 5 * 1024 * 1024)) { this.afterSalesMessage='Mỗi ảnh không được vượt quá 5 MB.';return; }
+    const remaining = 5 - this.afterSalesEvidenceFiles.length;
+    if (remaining <= 0) { this.afterSalesMessage='Chỉ được tải tối đa 5 ảnh.';return; }
+    const accepted = selected.slice(0, remaining);
+    this.afterSalesEvidenceFiles.push(...accepted);
+    this.afterSalesEvidencePreviews.push(...accepted.map(file => URL.createObjectURL(file)));
+    this.afterSalesMessage = selected.length > remaining ? 'Chỉ được tải tối đa 5 ảnh.' : '';
+  }
+  removeAfterSalesImage(index: number): void {
+    const preview = this.afterSalesEvidencePreviews[index];
+    if (preview) URL.revokeObjectURL(preview);
+    this.afterSalesEvidenceFiles.splice(index, 1);
+    this.afterSalesEvidencePreviews.splice(index, 1);
+    this.afterSalesMessage='';
+  }
+  private clearAfterSalesImages(): void {
+    this.afterSalesEvidencePreviews.forEach(preview => URL.revokeObjectURL(preview));
+    this.afterSalesEvidenceFiles=[];
+    this.afterSalesEvidencePreviews=[];
+  }
   /** Lỗi về hoa và giao hàng bắt buộc có ít nhất 1 ảnh/video (server cũng kiểm tra). */
-  get evidenceRequired(): boolean { return ['damaged','partial_damage','wrong_item','missing_accessory','wrong_address'].includes(this.afterSalesIssueType); }
+  get evidenceRequired(): boolean { return ['damaged','partial_damage','wrong_item','missing_item','missing_accessory','wrong_address'].includes(this.afterSalesIssueType); }
   afterSalesStatusLabel(status:string){return status==='Chờ Admin duyệt'?'Đang xem xét':status==='Chờ tiếp nhận'?'Đã gửi yêu cầu':status==='Cần bổ sung'?'Cần bổ sung thông tin':status==='Đã chấp nhận'?'Đã phê duyệt':status==='Bị từ chối'?'Đã từ chối':status==='Đã xử lý'?'Đã xử lý xong':status==='Đã hoàn tiền'?'Đã xử lý xong':status;}
+  canOpenOrderSupport(): boolean { return this.canRequestReturnRefund(); }
+  hasOrderActions(): boolean { return this.canReorder() || this.canRetryPayment() || this.canCancel() || this.canReview() || this.canOpenOrderSupport() || !!this.retryPaymentError || !!this.order.cancelReason || !!this.order.returnRefundReason || this.shouldShowRejectReason(); }
+  openAfterSalesPopup(): void {
+    if (!this.canOpenOrderSupport()) return;
+    this.showAfterSalesPopup = true;
+    this.loadAfterSales();
+    if (this.autoRefreshTimer !== null) { window.clearInterval(this.autoRefreshTimer); this.autoRefreshTimer = null; }
+    this.cdr.detectChanges();
+  }
+  closeAfterSalesPopup(): void {
+    if (this.afterSalesBusy) return;
+    this.showAfterSalesPopup = false;
+    this.afterSalesConfirming = false;
+    this.startAutoRefreshStatus();
+    this.cdr.detectChanges();
+  }
   supplementAfterSales(request: any): void {
     if (this.afterSalesBusy) return;
-    const evidence = this.afterSalesEvidence.split('\n').map(value => value.trim()).filter(Boolean);
-    if (!evidence.length) {
-      this.afterSalesMessage = 'Vui lòng bổ sung ít nhất một liên kết ảnh hoặc video.';
+    if (!this.afterSalesEvidenceFiles.length) {
+      this.afterSalesMessage = 'Vui lòng tải lên ít nhất một ảnh.';
+      return;
+    }
+    if ((request.evidence?.length || 0) + this.afterSalesEvidenceFiles.length > 5) {
+      this.afterSalesMessage = `Hồ sơ chỉ được có tối đa 5 ảnh. Hiện đã có ${request.evidence?.length || 0} ảnh.`;
       return;
     }
     this.afterSalesBusy = true;
     this.afterSalesMessage = '';
-    this.orderService.supplementAfterSales(this.order.id, request.requestId, { version: request.version, evidence }).subscribe({
-      next: () => {
-        this.afterSalesBusy = false;
-        this.afterSalesEvidence = '';
-        this.afterSalesMessage = 'Shop đã nhận bằng chứng bổ sung và sẽ tiếp tục xem xét.';
-        this.loadAfterSales();
-        this.cdr.markForCheck();
-      },
-      error: error => {
-        this.afterSalesBusy = false;
-        this.afterSalesMessage = error?.error?.message || 'Chưa bổ sung được bằng chứng.';
-        this.cdr.markForCheck();
-      },
+    this.orderService.uploadAfterSalesEvidence(this.order.id, this.afterSalesEvidenceFiles).subscribe({
+      next: upload => this.orderService.supplementAfterSales(this.order.id, request.requestId, { version: request.version, evidence: upload.urls || [] }).subscribe({
+        next: () => { this.afterSalesBusy=false;this.clearAfterSalesImages();this.afterSalesMessage='Shop đã nhận ảnh bổ sung và sẽ tiếp tục xem xét.';this.loadAfterSales();this.cdr.markForCheck(); },
+        error: error => { this.afterSalesBusy=false;this.afterSalesMessage=error?.error?.message||'Chưa bổ sung được bằng chứng.';this.cdr.markForCheck(); },
+      }),
+      error: error => { this.afterSalesBusy=false;this.afterSalesMessage=error?.error?.message||'Chưa tải được ảnh bằng chứng.';this.cdr.markForCheck(); },
     });
   }
 
@@ -177,6 +225,7 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.clearAfterSalesImages();
     if (this.autoRefreshTimer !== null) {
       window.clearInterval(this.autoRefreshTimer);
       this.autoRefreshTimer = null;
@@ -224,7 +273,6 @@ export class OrderDetail implements OnInit, OnDestroy {
       this.loadAfterSales();
       this.loadOrderSpin(this.order.id);
       this.products = this.mapProducts(res.products || []);
-      for (const product of this.products) if (!(product.id in this.afterSalesQuantities)) this.afterSalesQuantities[product.id] = 0;
       this.vouchers = this.mapVouchers(res.vouchers || []);
       this.steps = this.buildSteps(this.order.status).map(step => {
         const event = [...(this.order.history || [])].reverse().find(item => item.action !== 'assign-shipper' && this.normalizeStatus(item.to) === step.key);

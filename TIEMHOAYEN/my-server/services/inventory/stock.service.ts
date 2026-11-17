@@ -996,6 +996,7 @@ const orderMaterialsExported = async (orderId: string, session?: ClientSession) 
 export const assertPrepTimeChangeAllowed = async (order: any, neededAt: Date, session?: ClientSession) => {
   if (!order) throw new InventoryError(404, 'Không tìm thấy đơn hàng.');
   if (!Number.isFinite(neededAt.getTime())) throw new InventoryError(400, 'Thời điểm chuẩn bị T không hợp lệ.');
+  if (neededAt.getTime() <= Date.now()) throw new InventoryError(400, 'Thời điểm chuẩn bị phải sau thời điểm hiện tại.');
   if (CANCELLED_ORDER_STATUSES.includes(String(order.TRANG_THAI))) throw new InventoryError(409, 'Đơn đã hủy, không nhập hoặc đổi T được.');
   if (!PREP_T_EDITABLE_STATUSES.includes(String(order.TRANG_THAI))) throw new InventoryError(409, 'Đơn đã qua bước chuẩn bị, không đổi T được.');
   if (await orderMaterialsExported(String(order.DON_HANG_ID), session)) throw new InventoryError(409, 'Đơn đã xuất NVL, không đổi T được.');

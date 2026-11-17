@@ -1,6 +1,12 @@
 <div class="admin-layout">
   <div class="order-detail-page">
-    <section class="detail-card admin-after-sales">
+    <section class="detail-card after-sales-routing-card">
+      <div class="admin-after-sales-head"><div><span>CSKH · HẬU MÃI</span><h2>Hồ sơ hậu mãi</h2></div><b>{{afterSales.length}} hồ sơ</b></div>
+      <p>Việc tiếp nhận, duyệt phương án, nhận hàng trả và hoàn tiền được xử lý tại Chăm sóc khách hàng.</p>
+      <p *ngFor="let request of afterSales"><b>{{request.requestId}}</b> · {{request.status}}</p>
+      <a class="btn-icon-text" [routerLink]="['/customer-service/after-sales']" [queryParams]="{orderId:order.id}"><i class="bi bi-arrow-up-right-square"></i> Mở hồ sơ hậu mãi</a>
+    </section>
+    <section class="detail-card admin-after-sales" *ngIf="false">
       <div class="admin-after-sales-head">
         <div>
           <span>CSKH · HẬU MÃI</span>
@@ -11,7 +17,7 @@
       <p *ngIf="!afterSales.length">Chưa có hồ sơ hậu mãi cho đơn này.</p>
       <p *ngIf="order.supportDeadline" class="after-sales-sla">
         Hạn khách gửi yêu cầu hỗ trợ: {{ order.supportDeadline | date: 'dd/MM/yyyy HH:mm' }}
-        <span *ngIf="order.supportException"> · đã mở ngoại lệ: {{ order.supportException.reason }}</span>
+        <span *ngIf="order.supportException"> · đã mở ngoại lệ: {{ order.supportException?.reason }}</span>
       </p>
       <div class="support-exception" *ngIf="canOpenSupportException">
         <p><b>Đã quá hạn gửi hỗ trợ.</b> Nếu cần nhận yêu cầu của khách, mở thêm 1 giờ và ghi rõ lý do.</p>
@@ -160,7 +166,7 @@
         </div>
       </article>
     </section>
-    <section class="detail-card after-sales-followup" *ngIf="canEditNote && afterSales.length">
+    <section class="detail-card after-sales-followup" *ngIf="false">
       <h2>Bổ sung hồ sơ hậu mãi</h2>
       <div *ngFor="let request of afterSales">
         <div *ngIf="request.active && request.status === 'Đang xem xét'">
@@ -182,7 +188,7 @@
       </div>
     </section>
 
-    <section class="detail-card after-sales-return" *ngIf="canEditNote && afterSales.length">
+    <section class="detail-card after-sales-return" *ngIf="false">
       <ng-container *ngFor="let request of afterSales">
         <div
           *ngIf="
@@ -329,9 +335,9 @@
             <div><span>Xuất nguyên vật liệu</span><strong [class.is-success]="order.materialIssued">{{ order.materialIssued ? 'Đã xuất · ' + (order.materialExportId || '') : 'Chưa xuất kho' }}</strong></div>
           </div>
           <div *ngIf="canSetPreparation" class="preparation-form">
-            <label class="preparation-field"><span><i class="bi bi-calendar3"></i> Ngày giờ bắt đầu dự kiến</span><input type="datetime-local" [(ngModel)]="preparationInput" /></label>
+            <label class="preparation-field"><span><i class="bi bi-calendar3"></i> Ngày giờ bắt đầu dự kiến</span><input type="datetime-local" [(ngModel)]="preparationInput" [min]="minimumPreparationInput" (change)="validatePreparationInput()" /></label>
             <label class="preparation-field preparation-field--reason"><span><i class="bi bi-chat-left-text"></i> Lý do lập hoặc điều chỉnh T</span><input maxlength="500" [(ngModel)]="preparationReason" placeholder="Nhập lý do điều chỉnh" /></label>
-            <div class="preparation-actions"><button class="preparation-save" type="button" (click)="savePreparation()" [disabled]="preparationBusy"><i class="bi bi-calendar-check"></i>{{ preparationBusy ? 'Đang xử lý…' : (order.preparationAt ? 'Cập nhật T' : 'Lưu T dự kiến') }}</button><button class="preparation-start" type="button" (click)="startPreparation()" [disabled]="preparationBusy || !order.preparationAt"><i class="bi bi-play-fill"></i>Bắt đầu chuẩn bị</button></div>
+            <div class="preparation-actions"><button class="preparation-save" type="button" (click)="savePreparation()" [disabled]="preparationBusy || preparationInputInvalid"><i class="bi bi-calendar-check"></i>{{ preparationBusy ? 'Đang xử lý…' : (order.preparationAt ? 'Cập nhật T' : 'Lưu T dự kiến') }}</button><button class="preparation-start" type="button" (click)="startPreparation()" [disabled]="preparationBusy || !order.preparationAt"><i class="bi bi-play-fill"></i>Bắt đầu chuẩn bị</button></div>
           </div>
           <details class="preparation-history" *ngIf="order.preparationHistory?.length"><summary><span><i class="bi bi-clock-history"></i> Lịch sử điều chỉnh T</span><b>{{ order.preparationHistory?.length }}</b></summary><ol><li *ngFor="let item of order.preparationHistory"><span class="history-dot"></span><div><strong>{{ item.oldAt ? (item.oldAt | date: 'dd/MM/yyyy HH:mm') : 'Chưa đặt' }} <i class="bi bi-arrow-right"></i> {{ item.newAt | date: 'dd/MM/yyyy HH:mm' }}</strong><p>{{ item.reason || 'Không có ghi chú' }}</p><small>{{ item.actor || 'Nhân viên' }} · {{ item.at | date: 'dd/MM/yyyy HH:mm' }}</small></div></li></ol></details>
         </section>
@@ -442,18 +448,6 @@
 
                   <div class="status-update-panel" *ngIf="showStatusDropdown">
                     <div class="status-update-panel__title">Chọn trạng thái đơn hàng</div>
-                    <div class="status-next-step" *ngIf="order.nextStep?.reason"
-                      [class.status-next-step--blocked]="order.nextStep?.blocked">
-                      <i class="bi" [ngClass]="order.nextStep?.blocked ? 'bi-exclamation-triangle' : 'bi-info-circle'"></i>
-                      <div>
-                        <strong *ngIf="order.nextStep?.nextStatus">Bước tiếp theo: {{ order.nextStep?.nextStatus }}{{ order.nextStep?.blocked ? ' — chưa thể chuyển' : '' }}</strong>
-                        <p>{{ order.nextStep?.reason }}</p>
-                        <a *ngIf="order.nextStep?.action === 'payment'" routerLink="/transactions">Mở trang Thanh toán (tìm mã {{ order.id }})</a>
-                        <small *ngIf="order.nextStep?.action === 'cash-collection'">Chọn "Giao thành công" bên dưới, hệ thống sẽ hỏi số tiền đã thu.</small>
-                        <button *ngIf="order.nextStep?.action === 'assign-shipper' && canEditNote"
-                          type="button" class="status-assign-shipper" (click)="openShipperAssignment()">Phân công shipper</button>
-                      </div>
-                    </div>
                     <div class="status-update-panel__body">
                       <select class="status-update-select" [(ngModel)]="selectedNextStatus">
                         <option value="" disabled>Chọn trạng thái</option>
@@ -461,6 +455,7 @@
                           *ngFor="let status of statusOptions"
                           [ngValue]="status"
                           [disabled]="isStatusOptionDisabled(status)"
+                          [class.status-option--completed]="isStatusCompleted(status)"
                         >
                           {{ status }}
                         </option>
@@ -936,59 +931,38 @@
 
   <!-- POPUP THU TIỀN KHI GIAO -->
   <div class="popup-overlay" *ngIf="showCashPopup" (click)="closeCashPopup()">
-    <div class="popup-box" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="cash-popup-title">
+    <div class="popup-box popup-box--cash" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="cash-popup-title">
       <h3 class="popup-title" id="cash-popup-title">
         <span class="card-title__bar"></span>
-        Xác nhận đã giao và đã thu tiền
+        <span>Xác nhận đã giao và đã thu tiền<small>Kiểm tra số tiền và ghi nhận hình thức khách thanh toán</small></span>
         <button class="popup-close-btn" type="button" (click)="closeCashPopup()" aria-label="Đóng">
           <i class="bi bi-x-lg"></i>
         </button>
       </h3>
 
       <div class="popup-section-label">Thông tin đơn hàng</div>
-      <div class="popup-info-row">
-        <span class="popup-info-label">Mã đơn hàng</span>
-        <span class="popup-info-val">{{ order.id }}</span>
-      </div>
-      <div class="popup-info-row">
-        <span class="popup-info-label">Tổng tiền</span>
-        <span class="popup-info-val">{{ formatVND(order.total) }}</span>
-      </div>
-      <div class="popup-info-row">
-        <span class="popup-info-label">Shop đã xác minh</span>
-        <span class="popup-info-val">{{ formatVND(computedPaid) }}</span>
-      </div>
-      <div class="popup-info-row">
-        <span class="popup-info-label">Cần thu của khách khi giao</span>
-        <span class="popup-info-val popup-info-val--price">{{ formatVND(outstandingAtDelivery) }}</span>
+      <div class="popup-info-grid">
+        <div class="popup-info-row"><span class="popup-info-label">Mã đơn hàng</span><span class="popup-info-val">{{ order.id }}</span></div>
+        <div class="popup-info-row"><span class="popup-info-label">Tổng tiền</span><span class="popup-info-val">{{ formatVND(order.total) }}</span></div>
+        <div class="popup-info-row"><span class="popup-info-label">Shop đã xác minh</span><span class="popup-info-val">{{ formatVND(computedPaid) }}</span></div>
+        <div class="popup-info-row"><span class="popup-info-label">Cần thu của khách khi giao</span><span class="popup-info-val popup-info-val--price">{{ formatVND(outstandingAtDelivery) }}</span></div>
       </div>
 
-      <div class="popup-field-label">Hình thức khách trả</div>
-      <div class="popup-select-wrap">
-        <select class="popup-reason-select" [(ngModel)]="cashMethod">
-          <option *ngFor="let m of cashMethods" [value]="m">{{ m }}</option>
-        </select>
-        <i class="bi bi-chevron-down popup-select-chevron"></i>
+      <div class="cash-form-grid">
+        <fieldset class="cash-form-field cash-methods"><legend class="popup-field-label">Hình thức khách trả</legend><div class="cash-method-options"><label *ngFor="let m of cashMethods"><input type="radio" name="cashMethod" [value]="m" [(ngModel)]="cashMethod" /><i class="bi" [ngClass]="m==='Tiền mặt'?'bi-cash-stack':'bi-bank'"></i><span>{{m}}</span></label></div></fieldset>
+        <label class="cash-form-field"><span class="popup-field-label">Ảnh chứng từ <small>(không bắt buộc)</small></span><span class="proof-upload" [class.proof-upload--done]="cashProof"><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" (change)="onCashProofSelected($event)" [disabled]="cashProofUploading" /><i class="bi" [ngClass]="cashProof?'bi-check-circle-fill':'bi-cloud-arrow-up'"></i><span><b>{{cashProofUploading?'Đang tải ảnh…':cashProof?'Đã tải ảnh chứng từ':'Chọn ảnh chứng từ'}}</b><small>{{cashProof?'Bạn có thể chọn ảnh khác để thay thế':'JPG, PNG, WEBP hoặc GIF · tối đa 5MB'}}</small></span></span></label>
+        <label class="cash-form-field cash-form-field--wide"><span class="popup-field-label">Ghi chú (không bắt buộc)</span><textarea class="popup-reason-textarea" [(ngModel)]="cashNote" maxlength="500" rows="2" placeholder="Ví dụ: khách trả 2 tờ 500.000đ, đã thối lại 50.000đ"></textarea></label>
       </div>
-
-      <div class="popup-field-label">Ghi chú (không bắt buộc)</div>
-      <textarea class="popup-reason-textarea" [(ngModel)]="cashNote" maxlength="500" rows="2"
-        placeholder="Ví dụ: khách trả 2 tờ 500.000đ, đã thối lại 50.000đ"></textarea>
-
-      <div class="popup-field-label">Liên kết ảnh chứng từ (không bắt buộc)</div>
-      <input class="popup-reason-select popup-text-input" [(ngModel)]="cashProof" maxlength="2000"
-        placeholder="https://… (ảnh biên nhận hoặc ảnh chuyển khoản)" />
 
       <label class="popup-check">
         <input type="checkbox" [(ngModel)]="cashConfirmed" (ngModelChange)="cashError = ''" />
-        Tôi đã nhận đủ {{ formatVND(outstandingAtDelivery) }} của khách và sẽ nộp lại cho shop.
+        <span>Tôi xác nhận đã nhận đủ <b>{{ formatVND(outstandingAtDelivery) }}</b> của khách và sẽ nộp lại cho shop.</span>
       </label>
-      <p class="popup-hint">Khoản này chờ Nhân viên bán hàng đối soát ở trang Thanh toán. Đơn chỉ được hoàn thành sau khi đối soát xong.</p>
 
       <div class="popup-error-text" *ngIf="cashError">{{ cashError }}</div>
 
       <div class="popup-actions">
-        <button class="popup-btn-reject" type="button" (click)="confirmCashCollection()">Xác nhận đã giao</button>
+        <button class="popup-btn-reject" type="button" (click)="confirmCashCollection()" [disabled]="cashProofUploading"><i class="bi bi-check2-circle"></i>{{cashProofUploading?'Đang tải ảnh…':'Xác nhận đã giao'}}</button>
       </div>
     </div>
   </div>

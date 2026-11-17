@@ -122,11 +122,33 @@ async function member(req: Request) {
 }
 router.get('/preferences', handle(async (req, res) => {
   const c = await (await col('KHACH_HANG')).findOne({ KHACH_HANG_ID: await member(req) });
-  res.setHeader('Cache-Control', 'no-store'); res.json({ allowed: c?.DONG_Y_NHAN_QUANG_CAO === true, answered: typeof c?.DONG_Y_NHAN_QUANG_CAO === 'boolean' });
+  const email = c?.EMAIL_DA_XAC_MINH !== false && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(c?.EMAIL || '').trim()) ? String(c.EMAIL).trim().toLowerCase() : null;
+  res.setHeader('Cache-Control', 'no-store'); res.json({ allowed: c?.DONG_Y_NHAN_QUANG_CAO === true, answered: typeof c?.DONG_Y_NHAN_QUANG_CAO === 'boolean', email, hasEmail: Boolean(email) });
 }));
 router.put('/preferences', handle(async (req, res) => {
   if (typeof req.body.allowed !== 'boolean') fail('Tùy chọn nhận tin không hợp lệ.');
-  await m.consent(await member(req), req.body.allowed); res.json({ allowed: req.body.allowed });
+  const customerId = await member(req), customers = await col('KHACH_HANG');
+  const customer = await customers.findOne({ KHACH_HANG_ID: customerId });
+  if (!customer) fail('Không tìm thấy tài khoản khách hàng.', 404);
+  const email = customer.EMAIL_DA_XAC_MINH !== false ? String(customer.EMAIL || '').trim().toLowerCase() : '';
+  if (req.body.allowed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    fail('Tài khoản chưa có email. Vui lòng xác nhận email bằng mã OTP để bật nhận ưu đãi.', 409);
+  }
+  const now = new Date();
+  await customers.updateOne({ KHACH_HANG_ID: customerId }, { $set: {
+    DONG_Y_NHAN_QUANG_CAO: req.body.allowed,
+    ...(req.body.allowed ? { THOI_DIEM_DONG_Y: now } : { THOI_DIEM_NGUNG_NHAN: now }),
+    NGAY_CAP_NHAT: now,
+  } });
+  const hasEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  res.json({ allowed: req.body.allowed, email: hasEmail ? email : null, hasEmail });
+}));
+router.post('/preferences/email-otp', handle(async (req, res) => {
+  const result = await m.requestPreferenceEmailOtp(await member(req), req.body.email);
+  res.status(201).json({ ...result, message: 'Đã gửi mã OTP đến email của bạn.' });
+}));
+router.post('/preferences/email-otp/verify', handle(async (req, res) => {
+  res.json(await m.verifyPreferenceEmailOtp(await member(req), req.body.challengeId, req.body.otp));
 }));
 router.get('/unsubscribe', (req, res) => {
   const token = String(req.query.token || '');

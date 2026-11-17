@@ -524,11 +524,18 @@
             <input
               type="tel"
               id="edit-phone"
-              class="modal-input modal-input--readonly"
-              [value]="editData.phone"
-              readonly
-              aria-describedby="edit-contact-note"
+              name="phone"
+              class="modal-input"
+              [(ngModel)]="editData.phone"
+              (input)="onPhoneInput($event); clearProfileError('phone')"
+              required
+              inputmode="numeric"
+              autocomplete="tel"
+              maxlength="12"
+              [disabled]="savingProfile"
+              [class.is-invalid]="profileFieldErrors.phone"
             >
+            <span class="error-msg" *ngIf="profileFieldErrors.phone">{{ profileFieldErrors.phone }}</span>
           </div>
         </div>
 
@@ -539,20 +546,18 @@
             <input
               type="email"
               id="edit-email"
-              class="modal-input modal-input--readonly"
-              [value]="editData.email || 'Chưa cập nhật'"
-              readonly
-              aria-describedby="edit-contact-note"
+              name="email"
+              class="modal-input"
+              [(ngModel)]="editData.email"
+              (ngModelChange)="clearProfileError('email')"
+              autocomplete="email"
+              maxlength="254"
+              placeholder="Chưa cập nhật"
+              [disabled]="savingProfile"
+              [class.is-invalid]="profileFieldErrors.email"
             >
+            <span class="error-msg" *ngIf="profileFieldErrors.email">{{ profileFieldErrors.email }}</span>
           </div>
-        </div>
-
-        <div class="modal-field">
-          <span></span>
-          <p class="modal-note" id="edit-contact-note">
-            <i class="bi bi-info-circle"></i>
-            Liên hệ cửa hàng hoặc xác minh để đổi số điện thoại/email.
-          </p>
         </div>
 
         <div class="modal-field">

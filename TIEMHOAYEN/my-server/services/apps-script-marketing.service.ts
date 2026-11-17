@@ -8,17 +8,27 @@ type MarketingMail = {
 };
 
 const endpointPattern = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
+const deploymentIdPattern = /^[\w-]{20,200}$/;
 const emailPattern = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 const requestIdPattern = /^[A-Za-z0-9_-]{16,128}$/;
 
+const marketingEndpoint = (): string => {
+  const configuredUrl = process.env.APPS_SCRIPT_MARKETING_URL?.trim() || '';
+  if (configuredUrl) return configuredUrl;
+  const deploymentId = process.env.APPS_SCRIPT_MARKETING_DEPLOYMENT_ID?.trim() || '';
+  return deploymentIdPattern.test(deploymentId)
+    ? `https://script.google.com/macros/s/${deploymentId}/exec`
+    : '';
+};
+
 export function appsScriptMarketingReady(): boolean {
-  const endpoint = process.env.APPS_SCRIPT_MARKETING_URL?.trim() || '';
+  const endpoint = marketingEndpoint();
   const secret = process.env.APPS_SCRIPT_MARKETING_SECRET || '';
   return endpointPattern.test(endpoint) && secret.length >= 32;
 }
 
 export async function sendAppsScriptMarketingEmail(mail: MarketingMail): Promise<string> {
-  const endpoint = process.env.APPS_SCRIPT_MARKETING_URL?.trim() || '';
+  const endpoint = marketingEndpoint();
   const secret = process.env.APPS_SCRIPT_MARKETING_SECRET || '';
   if (!endpointPattern.test(endpoint) || secret.length < 32) throw new Error('APPS_SCRIPT_MARKETING_CONFIGURATION_INVALID');
   if (!emailPattern.test(mail.to) || !mail.subject.trim() || mail.subject.length > 200

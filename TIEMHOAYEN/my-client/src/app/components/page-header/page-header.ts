@@ -688,8 +688,10 @@ export class PageHeader implements OnInit, OnDestroy {
               ? res
               : [];
 
-        // Bấm vào thông báo = đã đọc và xoá khỏi danh sách: chỉ hiện thông báo chưa đọc.
-        this.notifications = items.map((item: any) => this.mapNotification(item)).filter((item: HeaderNotification) => !item.isRead);
+        // Giữ lại lịch sử thông báo đơn hàng và voucher sau khi khách đã đọc.
+        this.notifications = items
+          .map((item: any) => this.mapNotification(item))
+          .filter((item: HeaderNotification) => !item.isRead || this.shouldRetainReadNotification(item));
         this.isLoadingNotifications = false;
         this.cdr.detectChanges();
       },
@@ -797,6 +799,10 @@ export class PageHeader implements OnInit, OnDestroy {
 
   getNotificationIconClass(item: HeaderNotification): string {
     return `notification-icon-${item.type || 'system'}`;
+  }
+
+  private shouldRetainReadNotification(item: HeaderNotification): boolean {
+    return item.type === 'order' || item.type === 'promotion';
   }
 
   private getDefaultNotificationTitle(type: HeaderNotification['type'], orderCode: string): string {
@@ -1607,8 +1613,9 @@ export class PageHeader implements OnInit, OnDestroy {
 
   goToNotification(item: HeaderNotification): void {
     this.markNotificationRead(item);
-    // Xoá khỏi danh sách ngay khi bấm (xem như đã đọc).
-    this.notifications = this.notifications.filter(row => row.id !== item.id);
+    if (!this.shouldRetainReadNotification(item)) {
+      this.notifications = this.notifications.filter(row => row.id !== item.id);
+    }
     this.showNotifications = false;
     this.router.navigateByUrl(item.link);
   }

@@ -1,4 +1,4 @@
-import {getAdminAfterSales,changeAdminAfterSales} from '../controllers/admin.js';
+import {getAdminAfterSales,createAdminRefundCase,changeAdminAfterSales} from '../controllers/admin.js';
 import {
   addAdminCustomerNote, createAdminCustomerAddress, deleteAdminCustomerAddress, getAdminAddressOptions, getAdminCustomerDetail,
   getAdminCustomers, setAdminCustomerLock, setAdminReviewVisibility, setDefaultAdminCustomerAddress, updateAdminCustomer, updateAdminCustomerAddress,
@@ -85,8 +85,9 @@ router.get('/dashboard', requireAdminPermission('dashboard'), getAdminDashboard)
 router.get('/address-options', requireAdminPermission('customers'), getAdminAddressOptions);
 router.get('/staff-accounts', (req,res,next) => req.query.scope === 'delivery'
   ? requireAdminPermission('orders')(req,res,next) : requireAdminPermission('permissions')(req,res,next), getAdminStaffAccounts);
-router.get('/after-sales',requireAdminPermission('orders'),getAdminAfterSales);
-router.patch('/after-sales/:requestId',requireAdminPermission('orders','update'),(req,res,next)=>req.body.action==='refund' ? requireAdminPermission('payments','update')(req,res,next) : next(),changeAdminAfterSales);
+router.get('/after-sales',requireAdminPermission('customerService'),getAdminAfterSales);
+router.post('/after-sales/refund-case',requireAdminPermission('customerService','create'),createAdminRefundCase);
+router.patch('/after-sales/:requestId',requireAdminPermission('customerService','update'),(req,res,next)=>req.body.action==='refund' ? requireAdminPermission('payments','update')(req,res,next) : next(),changeAdminAfterSales);
 router.get('/orders', requireAdminPermission('orders'), getAdminOrders);
 router.get('/order-requests', requireSales, listRequests);
 router.get('/order-requests/unread-messages', requireSales, listUnreadRequestMessages);

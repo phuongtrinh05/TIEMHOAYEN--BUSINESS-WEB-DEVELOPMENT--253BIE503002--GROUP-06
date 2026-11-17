@@ -2,7 +2,7 @@
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { forkJoin, firstValueFrom, interval, Subscription } from 'rxjs';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -72,7 +72,8 @@ type SortOption =
   standalone: true,
   imports: [
     CommonModule,
-    FormsModule
+    FormsModule,
+    RouterLink
   ],
   templateUrl: './order-list.html',
   styleUrl: './order-list.css',
@@ -195,7 +196,6 @@ export class OrderList implements OnInit, OnDestroy {
         this.orderStatusFilter = statusParam as OrderStatusFilter;
       }
       this.loadOrders();
-      this.loadAfterSalesQueue();
       this.startLiveDatabaseRefresh();
     }
   }

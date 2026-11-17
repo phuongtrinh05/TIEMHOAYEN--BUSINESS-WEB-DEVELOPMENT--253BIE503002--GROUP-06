@@ -67,7 +67,7 @@ export function summarizePayments(payments: any[], totalPayable = 0, requiredDep
  * Nhân viên bán hàng/Admin đối chiếu tiền nộp và xác nhận ở trang Thanh toán.
  */
 export const CASH_PENDING_STATUS = 'Chờ đối soát';
-export const CASH_COLLECTION_METHODS = ['Tiền mặt', 'Chuyển khoản cho nhân viên giao hàng'];
+export const CASH_COLLECTION_METHODS = ['Tiền mặt', 'Chuyển khoản', 'Chuyển khoản cho nhân viên giao hàng'];
 /** Tiền bắt buộc đã xác minh trước khi giao: COD là tiền cọc, còn lại là toàn bộ đơn. */
 export const requiredBeforeDelivery = (order: any) => /cod/i.test(String(order?.PHUONG_THUC_THANH_TOAN)) ? Number(order?.TIEN_COC || 0) : Number(order?.TONG_TIEN || 0);
 /** Số tiền dùng để kiểm tra bước "Đã giao": phần còn lại (sau khi đủ cọc) sẽ do nhân viên giao hàng khai báo đã thu. */
@@ -123,6 +123,22 @@ export function assertOrderTransition(order: any, next: string, paid: number) {
   if (next === 'Hoàn thành' && paid < Number(order.TONG_TIEN || 0)) throw new InventoryError(409, 'Cần đối soát đủ tiền của đơn (kể cả khoản nhân viên giao hàng đã thu) ở trang Thanh toán trước khi hoàn thành.');
 }
 
+/** Admin được bỏ qua thao tác UI trung gian chỉ ở các chặng không làm mất kiểm soát nghiệp vụ. */
+export function assertOrderTransitionForRole(order: any, next: string, paid: number, role?: unknown) {
+  try { return assertOrderTransition(order, next, paid); }
+  catch (original) {
+    if (orderStaffKind(role) !== 'admin') throw original;
+    const current = String(order.TRANG_THAI || '');
+    const directShipping = next === 'Đang giao' && ['Đang chuẩn bị', 'Đang chuẩn bị hàng', 'Chờ vận chuyển', 'Giao không thành công'].includes(current);
+    const directDelivered = isDeliveredStatus(next) && current === 'Chờ vận chuyển';
+    if (!directShipping && !directDelivered) throw original;
+    const due = /cod/i.test(String(order.PHUONG_THUC_THANH_TOAN)) ? Number(order.TIEN_COC || 0) : Number(order.TONG_TIEN || 0);
+    if (paid < due || directDelivered && paid < Number(order.TONG_TIEN || 0)) throw original;
+    if (!String(order.NHAN_VIEN_GIAO_HANG_ID || order.NHAN_VIEN_GIAO_HANG?.id || '').trim()) throw new InventoryError(409, SHIPPER_REQUIRED_MESSAGE);
+    if (directShipping && ['Đang chuẩn bị', 'Đang chuẩn bị hàng'].includes(current) && !order.THOI_DIEM_BAT_DAU_THUC_TE) throw original;
+  }
+}
+
 const vnd = (value: number) => `${Math.max(0, Math.round(value)).toLocaleString('vi-VN')}đ`;
 const MAIN_NEXT_STATUS: Record<string, string> = {
   'Chờ thanh toán': 'Đã đặt hàng thành công', 'Thanh toán thất bại': 'Đã đặt hàng thành công', 'Đã xác nhận đơn hàng': 'Đã đặt hàng thành công',
@@ -142,7 +158,7 @@ export function orderNextStep(order: any, paid: number, pendingCash = 0): OrderN
   const total = Number(order?.TONG_TIEN || 0);
   const due = /cod/i.test(String(order?.PHUONG_THUC_THANH_TOAN)) ? Number(order?.TIEN_COC || 0) : total;
   if (current === 'Đã hủy' && paid > 0) return { nextStatus: null, blocked: false, action: 'refund',
-    reason: `Đơn đã hủy nhưng shop đã thu ${vnd(paid)}. Xử lý hoàn tiền trong hồ sơ hậu mãi: Nhân viên bán hàng tiếp nhận và duyệt số tiền, Admin xác nhận đã chuyển.` };
+    reason: `Đơn đã hủy nhưng shop đã thu ${vnd(paid)}. Xử lý tại Chăm sóc khách hàng: CSKH tiếp nhận và duyệt phương án, Admin xác nhận đã chuyển tiền.` };
   if (['Hoàn thành', 'Đã hủy'].includes(current)) return { nextStatus: null, blocked: false, reason: 'Đơn đã kết thúc, không còn bước tiếp theo.', action: 'none' };
   if (!nextStatus) return { nextStatus: null, blocked: true, reason: 'Đơn đang trong quy trình hoàn tiền/trả hàng. Xử lý tại mục Chăm sóc khách hàng (hậu mãi).', action: 'after-sales' };
   if (nextStatus === 'Đã đặt hàng thành công') {
@@ -232,7 +248,7 @@ export function allowedOrderStatuses(order: any, paid: number, role?: unknown, i
     if (role !== undefined && !roleCanSetOrderStatus(role, next)) return false;
     // "Đã giao": phần còn lại được nhân viên giao hàng khai báo khi chuyển trạng thái (chờ đối soát sau).
     const effectivePaid = isDeliveredStatus(next) ? paidForDeliveryCheck(order, paid) : paid;
-    try { assertOrderTransition(order, next, effectivePaid); return true; } catch { return false; }
+    try { assertOrderTransitionForRole(order, next, effectivePaid, role); return true; } catch { return false; }
   });
 }
 
@@ -772,7 +788,7 @@ export async function ensureCancelRefundCase(session: ClientSession, order: any,
   await emitAdminNotification({
     key: `REFUND_CANCELLED:${orderId}`, type: 'REFUND_REQUEST', group: 'Khiếu nại', priority: 'Cao',
     title: `Đơn hủy cần hoàn tiền — ${orderId}`, message: `Đơn đã hủy, cần hoàn ${vnd(paidAmount)} cho khách.`,
-    link: `/orders/order-detail/${orderId}`, module: 'orders', entityId: requestId, stateful: false,
+    link: `/customer-service/after-sales?requestId=${encodeURIComponent(requestId)}`, module: 'customerService', entityId: requestId, stateful: false,
   }, session);
   return requestId;
 }
@@ -814,7 +830,7 @@ export function supportDeadline(order: any): Date | null {
 /* ===== Quy tắc hậu mãi (THY-AFTER-SALES-2026-11) ===== */
 export const AFTER_SALES_SLA_MS = 60 * 60 * 1000; // tiếp nhận / quyết định / khách bổ sung: mỗi bước 1 giờ
 /** Lỗi về hoa và giao hàng: bắt buộc có ít nhất 1 ảnh/video. */
-export const EVIDENCE_REQUIRED_ISSUES = ['damaged', 'partial_damage', 'wrong_item', 'missing_accessory', 'wrong_address'];
+export const EVIDENCE_REQUIRED_ISSUES = ['damaged', 'partial_damage', 'wrong_item', 'missing_item', 'missing_accessory', 'wrong_address'];
 /** Lỗi do shop: hoàn 100% giá trị sản phẩm lỗi + phí ship. */
 export const SHOP_FAULT_ISSUES = ['damaged', 'wrong_item', 'wrong_address', 'shop_unable'];
 export const PARTIAL_DAMAGE_MIN_RATE = 0.3;
@@ -851,6 +867,9 @@ export function suggestRefund(order: any, details: any[], items: Array<{ product
   if (issueType === 'missing_accessory') {
     return { amount: 0, minAmount: 0, rate: 0, affectedValue, shipping: 0, basis: 'Thiếu phụ kiện: giao bù; nếu không giao bù được thì hoàn đúng giá phụ kiện.' };
   }
+  if (issueType === 'missing_item') {
+    return { amount: cap(affectedValue), minAmount: 0, rate: 1, affectedValue, shipping: 0, basis: 'Thiếu sản phẩm: ưu tiên giao bù; nếu khách chọn hoàn tiền hoặc shop không thể giao bù thì hoàn 100% giá trị sản phẩm còn thiếu sau giảm giá.' };
+  }
   if (issueType === 'overpayment') {
     return { amount: cap(paid - Number(order?.TONG_TIEN || 0)), minAmount: 0, rate: 0, affectedValue: 0, shipping: 0, basis: 'Thanh toán dư: hoàn phần thu vượt tổng đơn.' };
   }
@@ -880,7 +899,7 @@ export function afterSalesInput(body: any, details: any[]) {
   if (detectedAt && !Number.isFinite(detectedAt.getTime())) throw new InventoryError(400, 'Thời điểm phát hiện sự cố không hợp lệ.');
   const accessory = body.accessory ? String(body.accessory).trim().slice(0, 120) : null;
   const evidence = Array.isArray(body.evidence) ? body.evidence : [];
-  if (evidence.length > 10 || evidence.some((v: any) => typeof v !== 'string' || v.length > 2000 || !/^https?:\/\//.test(v) && !/^\/uploads\/[\w./-]+$/.test(v))) throw new InventoryError(400, 'Tối đa 10 liên kết bằng chứng ảnh/video hợp lệ.');
+  if (evidence.length > 5 || evidence.some((v: any) => typeof v !== 'string' || v.length > 2000 || !/^https?:\/\//.test(v) && !/^\/uploads\/[\w./-]+$/.test(v))) throw new InventoryError(400, 'Tối đa 5 ảnh bằng chứng hợp lệ.');
   if (EVIDENCE_REQUIRED_ISSUES.includes(issueType) && !evidence.length) throw new InventoryError(400, 'Lỗi về hoa hoặc giao hàng cần ít nhất 1 ảnh/video bằng chứng.');
   const media = evidence.map((url: string) => ({ url, type: /\.(mp4|webm|mov)(?:\?|$)/i.test(url) ? 'video' : 'image', uploadedAt: new Date(), uploadedBy: 'CUSTOMER' }));
   return { type:body.type, issueType, reasonCode, reason, description, detectedAt, accessory, items, evidence, media };
@@ -925,12 +944,12 @@ export async function afterSalesCreate(orderId: string, body: any) {
       status:AFTER_SALES_STATUS.submitted,active:true,version:0,assignedTo:null,requestedAt:now,deliveredAt:orderDeliveredAt(order),
       createdAt:now,updatedAt:now,history:[{action:'Khách gửi yêu cầu',from:null,to:AFTER_SALES_STATUS.submitted,actor:'CUSTOMER',at:now}]};
     await col.insertOne(row,{session});
-    await orderEvent(session,id+':created',row.customerId,orderId,'Đã nhận yêu cầu hậu mãi','Shop đã tiếp nhận yêu cầu; chưa có quyết định hoàn tiền.');
+    await orderEvent(session,id+':created',row.customerId,orderId,'Đã nhận yêu cầu hậu mãi','Shop đã tiếp nhận yêu cầu; chưa có phương án xử lý cuối cùng.');
     await emitAdminNotification({
       key:`AFTER_SALES_NEW:${id}`, type:'REFUND_REQUEST', group:'Khiếu nại', priority:'Cao',
       title:`Hồ sơ hậu mãi mới — ${orderId}`,
       message:`${row.requester.name} vừa gửi yêu cầu ${row.type}.`,
-      link:`/orders/order-detail/${orderId}`, module:'orders', entityId:id, stateful:false,
+      link:`/customer-service/after-sales?requestId=${encodeURIComponent(id)}`, module:'customerService', entityId:id, stateful:false,
     }, session);
     return row;
   });
@@ -948,6 +967,8 @@ export async function afterSalesChange(id: string, body: any, actor: string, act
     if(!actor) throw new InventoryError(401,'Cần xác thực nhân viên.');
     let reason=String(body.reason||'').trim();
     if(body.action==='claim') {
+      const roleKey=String(actorRole||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[đĐ]/g,'d').toLowerCase();
+      if(orderStaffKind(actorRole)!=='admin'&&!/cskh|cham soc khach hang/.test(roleKey)) throw new InventoryError(403,'Chỉ nhân viên CSKH hoặc Admin được tiếp nhận hồ sơ hậu mãi.');
       if(![AFTER_SALES_STATUS.submitted,'Chờ tiếp nhận'].includes(row.status)) throw new InventoryError(409,'Hồ sơ đã được tiếp nhận.');
       Object.assign(updates,{status:AFTER_SALES_STATUS.reviewing,assignedTo:actor,assignedAt:now,sla:{...(row.sla||{}),decideBy:new Date(now.getTime()+AFTER_SALES_SLA_MS)}});
     } else if (body.action === 'admin-approve' || body.action === 'admin-return') {
@@ -1069,9 +1090,9 @@ export async function afterSalesSupplement(orderId: string, requestId: string, b
     if (![AFTER_SALES_STATUS.needInfo,'Cần bổ sung'].includes(row.status) || row.active !== true) throw new InventoryError(409, 'Hồ sơ hiện không chờ bổ sung bằng chứng.');
     if (!Number.isInteger(body.version) || body.version !== row.version) throw new InventoryError(409, 'Hồ sơ đã thay đổi, vui lòng tải lại.');
     const evidence = Array.isArray(body.evidence) ? body.evidence : [];
-    if (!evidence.length || evidence.length > 10 || evidence.some((v: any) => typeof v !== 'string' || v.length > 2000 || !/^https?:\/\//.test(v) && !/^\/uploads\/[\w./-]+$/.test(v))) throw new InventoryError(400, 'Cần từ 1–10 liên kết ảnh/video hợp lệ.');
+    if (!evidence.length || evidence.length > 5 || evidence.some((v: any) => typeof v !== 'string' || v.length > 2000 || !/^https?:\/\//.test(v) && !/^\/uploads\/[\w./-]+$/.test(v))) throw new InventoryError(400, 'Cần từ 1–5 ảnh bằng chứng hợp lệ.');
     const now = new Date();
-    const merged = [...new Set([...(row.evidence || []), ...evidence])].slice(0, 10);
+    const merged = [...new Set([...(row.evidence || []), ...evidence])].slice(0, 5);
     const media = merged.map((url: string) => ({ url, type: /\.(mp4|webm|mov)(?:\?|$)/i.test(url) ? 'video' : 'image', uploadedAt: now, uploadedBy: 'CUSTOMER' }));
     const result = await col.findOneAndUpdate(
       { _id: requestId, orderId, version: row.version, status: { $in: [AFTER_SALES_STATUS.needInfo,'Cần bổ sung'] } },
@@ -1085,7 +1106,7 @@ export async function afterSalesSupplement(orderId: string, requestId: string, b
       key:`AFTER_SALES_SUPPLEMENT:${requestId}:${row.version + 1}`, type:'REFUND_REQUEST', group:'Khiếu nại', priority:'Cao',
       title:`Khách đã bổ sung hồ sơ — ${orderId}`,
       message:'Khách đã bổ sung bằng chứng và hồ sơ đang chờ nhân viên tiếp tục xem xét.',
-      link:`/orders/order-detail/${orderId}`, module:'orders', entityId:requestId, stateful:false,
+      link:`/customer-service/after-sales?requestId=${encodeURIComponent(requestId)}`, module:'customerService', entityId:requestId, stateful:false,
     }, session);
     return result;
   });

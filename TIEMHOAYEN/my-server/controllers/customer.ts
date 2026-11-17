@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getCollection, getNextPrefixedId } from '../mongo.js';
+import { escapeRegex, getCollection, getNextPrefixedId } from '../mongo.js';
 import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordHash.js';
 import { randomUUID } from 'node:crypto';
 import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
@@ -269,12 +269,20 @@ export const updateCustomerById = async (req: Request, res: Response) => {
     const customerCollection = await getCustomerCollection();
 
     const existing = await customerCollection.findOne({ KHACH_HANG_ID: id });
-    const same = (a: unknown, b: unknown) => String(a ?? '').trim() === String(b ?? '').trim();
-    if (existing && ((EMAIL !== undefined && !same(EMAIL, existing.EMAIL)) || (SDT !== undefined && !same(SDT, existing.SDT)))) {
-      return res.status(400).json({ message: 'Đổi email hoặc số điện thoại cần được xác minh riêng.' });
-    }
+    if (!existing) return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
     const name = String(TEN || '').trim().replace(/\s+/g, ' ');
     if (!name || name.length > 100) return res.status(400).json({ field: 'name', message: 'Vui lòng nhập họ tên (tối đa 100 ký tự).' });
+    const phone = String(SDT ?? existing.SDT ?? '').replace(/\D/g, '');
+    if (!/^0\d{9}$/.test(phone)) return res.status(400).json({ field: 'phone', message: 'Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0.' });
+    const email = String(EMAIL ?? existing.EMAIL ?? '').replace(/[\s\u200B-\u200D\uFEFF]+/g, '').toLowerCase();
+    if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)) return res.status(400).json({ field: 'email', message: 'Email không hợp lệ.' });
+    const [duplicatePhone, duplicateEmail] = await Promise.all([
+      customerCollection.findOne({ KHACH_HANG_ID: { $ne: id }, SDT: phone }, { projection: { _id: 1 } }),
+      email ? customerCollection.findOne({ KHACH_HANG_ID: { $ne: id }, EMAIL: { $regex: `^${escapeRegex(email)}$`, $options: 'i' } }, { projection: { _id: 1 } }) : null,
+    ]);
+    if (duplicatePhone) return res.status(409).json({ field: 'phone', message: 'Số điện thoại này đã được sử dụng.' });
+    if (duplicateEmail) return res.status(409).json({ field: 'email', message: 'Email này đã được sử dụng.' });
+    const emailChanged = email !== String(existing.EMAIL || '').trim().toLowerCase();
     const birthDate = DOB ? toDate(DOB) : null;
     if (DOB && (!birthDate || birthDate.getTime() > Date.now() || birthDate.getFullYear() < 1900)) return res.status(400).json({ field: 'birthDate', message: 'Ngày sinh không hợp lệ.' });
     if (GIOI_TINH !== undefined && GIOI_TINH !== null && GIOI_TINH !== '' && !GENDERS.includes(String(GIOI_TINH))) return res.status(400).json({ field: 'gender', message: 'Giới tính không hợp lệ.' });
@@ -283,6 +291,9 @@ export const updateCustomerById = async (req: Request, res: Response) => {
       {
         $set: {
           TEN: name,
+          SDT: phone,
+          EMAIL: email || null,
+          ...(emailChanged ? { EMAIL_DA_XAC_MINH: false, EMAIL_DA_XAC_MINH_LUC: null } : {}),
           DOB: birthDate,
           GIOI_TINH: GIOI_TINH || existing?.GIOI_TINH,
           NGAY_CAP_NHAT: new Date(),
@@ -295,7 +306,7 @@ export const updateCustomerById = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Không tìm thấy khách hàng.' });
     }
 
-    await audit(req, 'CAP_NHAT_HO_SO', id, { TRUOC: { TEN: existing?.TEN, DOB: existing?.DOB, GIOI_TINH: existing?.GIOI_TINH }, SAU: { TEN: name, DOB: birthDate, GIOI_TINH } });
+    await audit(req, 'CAP_NHAT_HO_SO', id, { TRUOC: { TEN: existing.TEN, SDT: existing.SDT, EMAIL: existing.EMAIL, DOB: existing.DOB, GIOI_TINH: existing.GIOI_TINH }, SAU: { TEN: name, SDT: phone, EMAIL: email || null, DOB: birthDate, GIOI_TINH } });
     return res.status(200).json({
       message: 'Cập nhật thông tin thành công.',
       customer: sanitizeCustomer(result),

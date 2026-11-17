@@ -30,6 +30,9 @@ const clientOptions = () => {
     ...(compressors.length ? { compressors: compressors as ('zlib' | 'zstd' | 'snappy' | 'none')[] } : {}),
     minPoolSize: Number(process.env.MONGO_MIN_POOL_SIZE || 3),
     maxIdleTimeMS: 10 * 60_000,
+    serverSelectionTimeoutMS: Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 8_000),
+    connectTimeoutMS: Number(process.env.MONGO_CONNECT_TIMEOUT_MS || 8_000),
+    socketTimeoutMS: Number(process.env.MONGO_SOCKET_TIMEOUT_MS || 15_000),
   };
 };
 
@@ -41,7 +44,8 @@ export const connectMongo = async (): Promise<Db> => {
   if (connecting) return connecting;
   connecting = (async () => {
     const c = new MongoClient(mongoUri, clientOptions());
-    await c.connect();
+    try { await c.connect(); }
+    catch (error) { await c.close().catch(() => {}); throw error; }
     client = c;
     database = c.db(mongoDatabase);
     console.log(`Đã kết nối thành công tới MongoDB database ${mongoDatabase}!`);
