@@ -1,0 +1,56 @@
+:host {
+  display: block;
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.promotion-tabs {
+  display: grid;
+  grid-template-columns: 112px 104px 176px 226px;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  padding: 5px;
+  overflow-x: auto;
+  border-radius: 10px;
+  background: #ffd4d7;
+  scrollbar-width: thin;
+}
+
+.promotion-tabs a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 42px;
+  padding: 0 14px;
+  border: 3px solid transparent;
+  border-radius: 7px;
+  color: #4d5968;
+  font: 15px "Nunito Sans", sans-serif;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color .2s ease, background-color .2s ease, box-shadow .2s ease;
+}
+
+.promotion-tabs a:hover {
+  color: #7f1717;
+  background: rgb(255 255 255 / 55%);
+}
+
+.promotion-tabs a.active {
+  border-color: #ffd4d7;
+  color: #7f1717;
+  background: #fff;
+  box-shadow: 0 4px 10px rgb(127 23 23 / 16%);
+  font-weight: 800;
+}
+
+.promotion-tabs a:focus-visible {
+  outline: 2px solid #7f1717;
+  outline-offset: -2px;
+}
+
+@media (max-width: 700px) {
+  :host { width: 100%; }
+  .promotion-tabs { width: 100%; }
+}

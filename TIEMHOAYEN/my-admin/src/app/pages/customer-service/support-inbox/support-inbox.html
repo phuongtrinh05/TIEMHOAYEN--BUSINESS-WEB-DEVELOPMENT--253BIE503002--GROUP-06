@@ -1,10 +1,6 @@
 <main class="support-page">
   <header class="toolbar">
-    <nav class="tabs" aria-label="Chăm sóc khách hàng">
-      <a class="active" routerLink="/customer-service/customer-chat">Hộp thư hỗ trợ <span>{{pending}}</span></a>
-      <a routerLink="/customer-service/after-sales">Hồ sơ hậu mãi</a>
-      <a routerLink="/customer-service/chatbot-management">Quản lý chatbot</a>
-    </nav>
+    <app-customer-service-tabs [active]="source==='Tư vấn đặt hoa'?'sales':'support'" [supportPending]="supportPending" [salesPending]="salesPending" />
   </header>
 
   @if(error){<p class="error" role="alert"><i class="bi bi-exclamation-circle"></i> {{error}}</p>}
@@ -15,7 +11,7 @@
       <label class="search"><i class="bi bi-search"></i><input [(ngModel)]="search" aria-label="Tìm hội thoại trong trang" placeholder="Tìm tên, SĐT hoặc mã…"></label>
       <div class="list-filters">
         <select aria-label="Trạng thái" [(ngModel)]="status" (ngModelChange)="page=1;load()"><option value="">Tất cả trạng thái</option>@for(s of ['Chưa xử lý','Đang xử lý','Đã xử lý'];track s){<option>{{s}}</option>}</select>
-        <select aria-label="Nguồn" [(ngModel)]="source" (ngModelChange)="page=1;load()"><option value="">Mọi nguồn</option><option>Chat</option><option>Form</option></select>
+        <select aria-label="Nguồn" [(ngModel)]="source" (ngModelChange)="page=1;load()"><option value="">Mọi nguồn</option><option>Chat</option><option>Form</option><option>Tư vấn đặt hoa</option></select>
       </div>
       <div class="ticket-list">
         @for(t of visibleTickets;track t.id){
@@ -32,16 +28,19 @@
       <section class="thread">
         <header class="thread-header">
           <span class="avatar">{{initials(t.name)}}</span>
-          <div class="thread-title"><h2>{{t.name}}</h2><p><span class="mode-dot" [class.waiting]="t.mode==='WAITING'"></span>{{modeLabel(t.mode)}} <span class="separator">·</span> {{t.phone||t.email}}</p></div>
+          <div class="thread-title"><h2>{{t.name}}</h2><p><span class="mode-dot" [class.waiting]="t.mode==='WAITING'"></span>{{t.type==='sales_request'?'Sales tư vấn đặt hoa':modeLabel(t.mode)}} <span class="separator">·</span> {{t.phone||t.email}}</p></div>
           <button class="icon-button" [class.pressed]="infoOpen" (click)="infoOpen=!infoOpen" aria-label="Thông tin hội thoại" title="Thông tin hội thoại"><i class="bi bi-layout-sidebar-reverse"></i></button>
         </header>
         <div class="conversation-bar"><span class="status" [class.waiting]="t.status==='Chưa xử lý'" [class.closed]="t.status==='Đã xử lý'">{{t.status}}</span><span class="assignee">{{t.assignedName||'Chưa có người phụ trách'}}</span>
           <div class="conversation-actions">
-            @if(t.mode==='WAITING'&&t.status!=='Đã xử lý'){<button class="primary compact" (click)="act('claim')" [disabled]="busy">Tiếp nhận</button>}
+            @if(t.type==='sales_request'){
+              @if(t.mode==='WAITING'&&t.status!=='Đã xử lý'){<button class="primary compact" (click)="act('claim')" [disabled]="busy">Sales tiếp nhận</button>}
+              <a class="outline compact request-link" [routerLink]="'/orders/requests'" [queryParams]="{requestId:t.requestId}">Mở hồ sơ yêu cầu <i class="bi bi-arrow-up-right"></i></a>
+            }@else if(t.mode==='WAITING'&&t.status!=='Đã xử lý'){<button class="primary compact" (click)="act('claim')" [disabled]="busy">Tiếp nhận</button>}
             @else if(t.status==='Đã xử lý'){<button class="outline compact" (click)="act('reopen')" [disabled]="busy||!canHandle">Mở lại</button>}
             @else if(t.mode==='AI'){<button class="outline compact" (click)="act('claim')" [disabled]="busy">Nhân viên tiếp nhận</button>}
             @else {<button class="outline compact" (click)="act('close')" [disabled]="busy||!canHandle">Kết thúc hỗ trợ</button>}
-            <details class="more-menu"><summary aria-label="Thao tác khác"><i class="bi bi-three-dots"></i></summary><div><button (click)="act('ai')" [disabled]="busy||!canHandle||t.status==='Đã xử lý'||t.mode==='AI'">Chuyển về AI</button><button (click)="act('close')" [disabled]="busy||!canHandle||t.status==='Đã xử lý'">Kết thúc hỗ trợ</button><a routerLink="/orders/requests">Mở yêu cầu Sales <i class="bi bi-arrow-up-right"></i></a></div></details>
+            @if(t.type!=='sales_request'){<details class="more-menu"><summary aria-label="Thao tác khác"><i class="bi bi-three-dots"></i></summary><div><button (click)="act('ai')" [disabled]="busy||!canHandle||t.status==='Đã xử lý'||t.mode==='AI'">Chuyển về AI</button><button (click)="act('close')" [disabled]="busy||!canHandle||t.status==='Đã xử lý'">Kết thúc hỗ trợ</button><a routerLink="/orders/requests">Mở yêu cầu Sales <i class="bi bi-arrow-up-right"></i></a></div></details>}
           </div>
         </div>
         @if(t.productId||t.selectedImageId){<div class="context-bar"><i class="bi bi-flower1"></i><div><strong>{{t.productId?'Sản phẩm đang trao đổi':'Mẫu ảnh khách chọn'}}</strong><span>{{t.productId||t.selectedImageId}}</span></div></div>}
@@ -55,20 +54,20 @@
           }
         </div>
         <footer class="composer">
-          @if(t.mode!=='HUMAN'||t.status!=='Đang xử lý'||!canHandle){<p class="composer-hint"><i class="bi bi-info-circle"></i> {{t.status==='Đã xử lý'?'Hỗ trợ đã kết thúc. Mở lại để tiếp tục trao đổi.':t.mode==='WAITING'?'Tiếp nhận hội thoại để trả lời khách.':t.mode==='AI'?'Trợ lý AI đang hỗ trợ khách.':'Hội thoại do nhân viên khác phụ trách.'}}</p>}
+          @if(t.mode!=='HUMAN'||t.status!=='Đang xử lý'||!canHandle){<p class="composer-hint"><i class="bi bi-info-circle"></i> {{t.status==='Đã xử lý'?(t.type==='sales_request'?'Yêu cầu đã kết thúc.':'Hỗ trợ đã kết thúc. Mở lại để tiếp tục trao đổi.'):t.mode==='WAITING'?(t.type==='sales_request'?'Sales cần tiếp nhận yêu cầu trước khi trả lời.':'Tiếp nhận hội thoại để trả lời khách.'):t.mode==='AI'?'Trợ lý AI đang hỗ trợ khách.':'Hội thoại do nhân viên khác phụ trách.'}}</p>}
           @if(replyImageDataUrl){<div class="reply-image-preview"><img [src]="replyImageDataUrl" alt="Ảnh chuẩn bị gửi"><span>{{replyImageName}}</span><button type="button" (click)="clearReplyImage()" aria-label="Bỏ ảnh"><i class="bi bi-x-lg"></i></button></div>}
-          <div class="composer-field"><label class="attach" [class.disabled]="!canHandle||t.mode!=='HUMAN'||t.status!=='Đang xử lý'" title="Gửi ảnh"><i class="bi bi-paperclip"></i><input type="file" accept="image/jpeg,image/png,image/webp" (change)="onReplyFileSelected($event)" [disabled]="!canHandle||t.mode!=='HUMAN'||t.status!=='Đang xử lý'"></label><textarea [(ngModel)]="reply" maxlength="2000" rows="2" aria-label="Phản hồi khách" placeholder="Nhập phản hồi cho khách…" [disabled]="!canHandle||t.mode!=='HUMAN'||t.status!=='Đang xử lý'"></textarea><button class="send" (click)="act('reply',reply)" [disabled]="busy||!canHandle||t.mode!=='HUMAN'||t.status!=='Đang xử lý'||(!reply.trim()&&!replyImageDataUrl)" aria-label="Gửi phản hồi"><i class="bi bi-send-fill"></i></button></div>
+          <div class="composer-field"><label class="attach" [class.disabled]="!canHandle||t.mode!=='HUMAN'||t.status!=='Đang xử lý'||t.type==='sales_request'" title="Gửi ảnh"><i class="bi bi-paperclip"></i><input type="file" accept="image/jpeg,image/png,image/webp" (change)="onReplyFileSelected($event)" [disabled]="!canHandle||t.mode!=='HUMAN'||t.status!=='Đang xử lý'||t.type==='sales_request'"></label><textarea [(ngModel)]="reply" maxlength="2000" rows="2" aria-label="Phản hồi khách" placeholder="Nhập phản hồi cho khách…" [disabled]="!canHandle||t.mode!=='HUMAN'||t.status!=='Đang xử lý'"></textarea><button class="send" (click)="act('reply',reply)" [disabled]="busy||!canHandle||t.mode!=='HUMAN'||t.status!=='Đang xử lý'||(t.type==='sales_request'?!reply.trim():(!reply.trim()&&!replyImageDataUrl))" aria-label="Gửi phản hồi"><i class="bi bi-send-fill"></i></button></div>
         </footer>
       </section>
 
       @if(infoOpen){<aside class="info">
         <div class="section-heading"><h2>Chi tiết hội thoại</h2><button class="icon-button" (click)="infoOpen=false" aria-label="Đóng chi tiết"><i class="bi bi-x-lg"></i></button></div>
         <div class="customer-profile"><span class="avatar profile-avatar">{{initials(t.name)}}</span><h3>{{t.name}}</h3><span class="badge">{{t.customerId?'Thành viên':'Khách vãng lai'}}</span></div>
-        <dl><dt>Số điện thoại</dt><dd>@if(t.phone){<a [href]="'tel:'+t.phone">{{t.phone}}</a>}@else{Chưa cung cấp}</dd><dt>Email</dt><dd>{{t.email||'Chưa cung cấp'}}</dd><dt>Mã hỗ trợ</dt><dd class="ticket-id">{{t.id}}</dd><dt>Nguồn</dt><dd>{{t.source}}</dd></dl>
-        <label>Người phụ trách<select [(ngModel)]="targetStaff"><option value="">{{t.assignedName||'Chọn nhân viên'}}</option>@for(e of staff;track e.id){<option [value]="e.id">{{e.name}}</option>}</select></label><button class="outline full-width" (click)="act('assign')" [disabled]="busy||!canHandle||!targetStaff||t.status==='Đã xử lý'">Chuyển người phụ trách</button>
-        <details open><summary>Ghi chú nội bộ <i class="bi bi-chevron-down"></i></summary><textarea [(ngModel)]="note" maxlength="2000" rows="3" aria-label="Ghi chú nội bộ" placeholder="Chỉ nhân viên được xem…"></textarea><button class="outline full-width" (click)="act('note',note)" [disabled]="busy||!canHandle||!note.trim()">Lưu ghi chú</button>@for(n of t.notes||[];track $index){<div class="note"><p>{{n.text}}</p><small>{{n.actor}} · {{n.at|date:'dd/MM HH:mm'}}</small></div>}</details>
+        <dl><dt>Số điện thoại</dt><dd>@if(t.phone){<a [href]="'tel:'+t.phone">{{t.phone}}</a>}@else{Chưa cung cấp}</dd><dt>Email</dt><dd>{{t.email||'Chưa cung cấp'}}</dd><dt>{{t.type==='sales_request'?'Mã yêu cầu':'Mã hỗ trợ'}}</dt><dd class="ticket-id">{{t.requestId||t.id}}</dd><dt>Nguồn</dt><dd>{{t.source}}</dd>@if(t.type==='sales_request'){<dt>Trạng thái yêu cầu</dt><dd>{{t.requestStatus}}</dd>}</dl>
+        @if(t.type==='sales_request'){<a class="outline full-width request-link" [routerLink]="'/orders/requests'" [queryParams]="{requestId:t.requestId}">Mở hồ sơ nghiệp vụ <i class="bi bi-arrow-up-right"></i></a>}@else{<label>Người phụ trách<select [(ngModel)]="targetStaff"><option value="">{{t.assignedName||'Chọn nhân viên'}}</option>@for(e of staff;track e.id){<option [value]="e.id">{{e.name}}</option>}</select></label><button class="outline full-width" (click)="act('assign')" [disabled]="busy||!canHandle||!targetStaff||t.status==='Đã xử lý'">Chuyển người phụ trách</button>}
+        @if(t.type!=='sales_request'){<details open><summary>Ghi chú nội bộ <i class="bi bi-chevron-down"></i></summary><textarea [(ngModel)]="note" maxlength="2000" rows="3" aria-label="Ghi chú nội bộ" placeholder="Chỉ nhân viên được xem…"></textarea><button class="outline full-width" (click)="act('note',note)" [disabled]="busy||!canHandle||!note.trim()">Lưu ghi chú</button>@for(n of t.notes||[];track $index){<div class="note"><p>{{n.text}}</p><small>{{n.actor}} · {{n.at|date:'dd/MM HH:mm'}}</small></div>}</details>
         <details><summary>Lịch sử xử lý <i class="bi bi-chevron-down"></i></summary>@for(h of t.history||[];track $index){<div class="note"><p>{{h.action}} {{h.reason||''}}</p><small>{{h.actor}} · {{h.at|date:'dd/MM HH:mm'}}</small></div>}</details>
-        <details><summary>Đánh giá hỗ trợ <i class="bi bi-star"></i></summary>@for(r of t.ratings||[];track r.round){<div class="note"><strong class="rating">{{r.score}} / 5 ★</strong><p>{{r.comment||'Không có nhận xét'}}</p><small>Lần hỗ trợ {{r.round}}</small></div>}@empty{<p class="muted">Chưa có đánh giá.</p>}</details>
+        <details><summary>Đánh giá hỗ trợ <i class="bi bi-star"></i></summary>@for(r of t.ratings||[];track r.round){<div class="note"><strong class="rating">{{r.score}} / 5 ★</strong><p>{{r.comment||'Không có nhận xét'}}</p><small>Lần hỗ trợ {{r.round}}</small></div>}@empty{<p class="muted">Chưa có đánh giá.</p>}</details>}
       </aside>}
     } @else {<section class="empty-thread"><div class="empty-icon"><i class="bi bi-chat-heart"></i></div><h2>Mỗi cuộc trò chuyện, một sự quan tâm</h2><p>Chọn hội thoại bên trái để xem nội dung<br>và hỗ trợ khách hàng.</p><span>{{pending}} yêu cầu đang chờ tiếp nhận</span></section>}
   </div>

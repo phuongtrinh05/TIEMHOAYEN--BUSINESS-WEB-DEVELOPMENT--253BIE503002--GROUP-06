@@ -63,8 +63,8 @@
 }
 
 .section-card--compact .reward-body {
-  gap: 0;
-  padding: 20px 0 0;
+  gap: 20px;
+  padding: 8px 0 4px;
 }
 
 .section-card--compact .reward-icon {
@@ -487,9 +487,13 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 28px;
+  gap: 18px;
   width: 100%;
-  margin: 11px 0 0;
+  margin: 0;
+  padding: 16px 18px;
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
 }
 
 .reward-points {
@@ -620,34 +624,41 @@
 }
 
 .reward-body {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   flex: 1;
-  justify-content: flex-start;
-  gap: 18px;
-  min-height: 190px;
-  padding: 20px 0 0;
+  align-content: start;
+  gap: 20px;
+  min-height: 0;
+  padding: 8px 0 4px;
 }
 
 .reward-icon {
-  font-size: 48px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 50px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #fff3e7;
+  font-size: 27px;
   color: var(--accent-color);
 }
 
 .reward-points {
-  font-size: 18px;
+  font-size: 20px;
+  line-height: 1.25;
 }
 
 .reward-value {
-  margin-top: 3px;
-  font-size: 15px;
+  margin-top: 5px;
+  font-size: 14px;
   color: #888;
 }
 
 .btn-redeem {
-  width: min(360px, 66%);
-  height: 42px;
-  margin: auto auto 0;
+  width: min(360px, 100%);
+  min-height: 44px;
+  margin: 0 auto;
   padding: 0 18px;
 
   background: transparent;
@@ -662,6 +673,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
 
   cursor: pointer;
   transition: all 0.2s;
@@ -670,7 +682,13 @@
 
 .btn-redeem:hover {
   background: var(--primary-color);
-  color: var(--accent-color);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(127, 23, 23, 0.14);
+}
+
+.btn-redeem:active {
+  transform: translateY(0);
 }
 
 /* =========================

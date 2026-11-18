@@ -4,7 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { apiBaseUrl } from '../../../services/api-config';
-@Component({selector:'app-support-inbox',standalone:true,imports:[CommonModule,FormsModule,RouterLink],templateUrl:'./support-inbox.html',styleUrl:'./support-inbox.css'})
+import { CustomerServiceTabs } from '../customer-service-tabs/customer-service-tabs';
+@Component({selector:'app-support-inbox',standalone:true,imports:[CommonModule,FormsModule,RouterLink,CustomerServiceTabs],templateUrl:'./support-inbox.html',styleUrl:'./support-inbox.css'})
 export class SupportInbox implements OnInit, OnDestroy, AfterViewChecked {
     @ViewChild('messageList') private messageList?: ElementRef<HTMLElement>;
     private stickToBottom = true;
@@ -31,6 +32,8 @@ export class SupportInbox implements OnInit, OnDestroy, AfterViewChecked {
     page = 1;
     total = 0;
     pending = 0;
+    supportPending = 0;
+    salesPending = 0;
     status = '';
     source = '';
     search = '';
@@ -47,9 +50,18 @@ export class SupportInbox implements OnInit, OnDestroy, AfterViewChecked {
     modeLabel(mode: string) { return mode === 'AI' ? 'Trợ lý AI' : mode === 'WAITING' ? 'Chờ tiếp nhận' : 'Nhân viên hỗ trợ'; }
     private get url() { return `${apiBaseUrl()}/support/admin`; }
     get visibleTickets() { const k = this.search.trim().toLowerCase(); return this.tickets.filter(t => !k || `${t.name} ${t.phone} ${t.id}`.toLowerCase().includes(k)); }
-    get canHandle() { return this.active?.assignedTo === localStorage.getItem('adminEmployeeId') || localStorage.getItem('adminRole') === 'Admin'; }
-    ngOnInit() { if (typeof window === 'undefined')
-        return; this.load(); const id = this.route.snapshot.queryParamMap.get('ticketId'); if (id)
+    get canHandle() {
+        if (this.active?.type === 'sales_request') return this.active?.assignedTo === localStorage.getItem('adminEmployeeId');
+        return this.active?.assignedTo === localStorage.getItem('adminEmployeeId') || localStorage.getItem('adminRole') === 'Admin';
+    }
+    ngOnInit() { if (typeof window === 'undefined') return;
+      this.source = this.route.snapshot.queryParamMap.get('source') || '';
+      this.route.queryParamMap.subscribe(params => {
+        const nextSource = params.get('source') || '';
+        if (nextSource === this.source) return;
+        this.source = nextSource; this.page = 1; this.active = null; this.selectedId = ''; this.load();
+      });
+      this.load(); const id = this.route.snapshot.queryParamMap.get('ticketId'); if (id)
         this.open(id); this.http.get<any[]>(`${this.url}/staff`).subscribe({ next: r => { this.staff = r; this.cdr.markForCheck(); }, error: e => this.fail(e) }); this.timer = setInterval(() => { if (!document.hidden && !this.busy) {
         this.load();
         if (this.active)
@@ -57,7 +69,7 @@ export class SupportInbox implements OnInit, OnDestroy, AfterViewChecked {
     } }, 5000); }
     ngOnDestroy() { if (this.timer)
         clearInterval(this.timer); }
-    load() { this.http.get<any>(`${this.url}/tickets`, { params: new HttpParams().set('page', this.page).set('status', this.status).set('source', this.source) }).subscribe({ next: r => { this.tickets = r.tickets; this.total = r.total; this.pending = r.pending; this.cdr.markForCheck(); }, error: e => this.fail(e) }); }
+    load() { this.http.get<any>(`${this.url}/tickets`, { params: new HttpParams().set('page', this.page).set('status', this.status).set('source', this.source) }).subscribe({ next: r => { this.tickets = r.tickets; this.total = r.total; this.pending = r.pending; this.supportPending = Number(r.supportPending || 0); this.salesPending = Number(r.salesPending || 0); this.cdr.markForCheck(); }, error: e => this.fail(e) }); }
     open(id: string, quiet = false) { if (quiet && id !== this.selectedId) return; if (!quiet) { this.selectedId = id; this.stickToBottom = true;
         this.error = '';
         this.reply = '';

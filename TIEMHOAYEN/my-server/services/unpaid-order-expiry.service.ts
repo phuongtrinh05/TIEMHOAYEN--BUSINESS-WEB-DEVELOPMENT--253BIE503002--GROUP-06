@@ -55,6 +55,7 @@ export function orderPaymentDeadline(order: any): Date | null {
 /** Quy tắc: quá hạn thanh toán mà chưa thu đủ khoản trả trước thì đơn bị hủy. */
 export function isUnpaidPastDeadline(order: any, paid: number, now = new Date()): boolean {
   if (order?.HET_HAN_THANH_TOAN === true) return false;
+  if (order?.CHO_DOI_SOAT_THANH_TOAN_THU_CONG === true) return false;
   if (!UNPAID_ORDER_STATUSES.includes(String(order?.TRANG_THAI || ''))) return false;
   const deadline = orderPaymentDeadline(order);
   if (!deadline || deadline.getTime() > now.getTime()) return false;
@@ -71,7 +72,7 @@ export async function cancelUnpaidOrdersPastDelivery(now = new Date()) {
   // Lọc thô: đơn tạo trước 24 giờ hoặc có ngày giao ≤ ngày mai; hạn chính xác tính bằng orderPaymentDeadline.
   const tomorrow = new Date(now.getTime() + ORDER_PAYMENT_WINDOW_MS);
   const candidates = await orders.find(
-    { TRANG_THAI: { $in: UNPAID_ORDER_STATUSES }, HET_HAN_THANH_TOAN: { $ne: true }, $or: [{ NGAY_TAO: { $lte: new Date(now.getTime() - ORDER_PAYMENT_WINDOW_MS) } }, { NGAY_MUON_GIAO: { $ne: null, $lte: tomorrow } }] },
+    { TRANG_THAI: { $in: UNPAID_ORDER_STATUSES }, HET_HAN_THANH_TOAN: { $ne: true }, CHO_DOI_SOAT_THANH_TOAN_THU_CONG: { $ne: true }, $or: [{ NGAY_TAO: { $lte: new Date(now.getTime() - ORDER_PAYMENT_WINDOW_MS) } }, { NGAY_MUON_GIAO: { $ne: null, $lte: tomorrow } }] },
     { projection: { DON_HANG_ID: 1 } },
   ).limit(300).toArray();
   let cancelled = 0;

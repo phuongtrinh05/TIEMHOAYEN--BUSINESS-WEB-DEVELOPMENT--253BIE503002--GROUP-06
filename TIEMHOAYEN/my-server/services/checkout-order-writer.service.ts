@@ -71,9 +71,11 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
   const number = orderId.replace(/^YEN/, '');
   const paymentId = `TT${number}`.slice(0, 20);
   const transactionCode = `GD${number}`.slice(0, 100);
+  const manualPaymentReconciliation = payload.manualPaymentReconciliation === true;
   const suppliedDeadline = payload.paymentDeadlineAt ? new Date(payload.paymentDeadlineAt) : null;
-  const paymentDeadline = suppliedDeadline && Number.isFinite(suppliedDeadline.getTime()) && suppliedDeadline.getTime() > Date.now()
-    ? suppliedDeadline.toISOString() : new Date(Date.now() + INVENTORY_CONFIG.holdMinutes * 60_000).toISOString();
+  const paymentDeadline: string | null = manualPaymentReconciliation ? null
+    : suppliedDeadline && Number.isFinite(suppliedDeadline.getTime()) && suppliedDeadline.getTime() > Date.now()
+      ? suppliedDeadline.toISOString() : new Date(Date.now() + INVENTORY_CONFIG.holdMinutes * 60_000).toISOString();
   const subtotal = Math.max(0, Number(summary?.subtotal || 0));
   const shippingFee = Math.max(0, Number(summary?.shippingFee || 0));
   const depositAmount = payment?.method === 'cod' ? Math.max(0, Number(summary?.depositAmount || 0)) : 0;
@@ -91,7 +93,9 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
     ...(payload.staffOverride ? { CANH_BAO_TON_KHO_KHI_TAO: payload.staffOverride } : {}),
     MA_PHIEN_THANH_TOAN: payload.checkoutSessionId,
     TEN_NGUOI_DAT: String(sender.name), SDT_NGUOI_DAT: String(sender.phone), EMAIL_NGUOI_DAT: String(sender.email || ''),
-    KHACH_HANG_ID: payload.customerId || null, NGAY_TAO: new Date(), TRANG_THAI: orderStatus, HAN_THANH_TOAN: requiresPayment ? new Date(paymentDeadline) : null,
+    KHACH_HANG_ID: payload.customerId || null, NGAY_TAO: new Date(), TRANG_THAI: orderStatus,
+    HAN_THANH_TOAN: requiresPayment && paymentDeadline ? new Date(paymentDeadline) : null,
+    CHO_DOI_SOAT_THANH_TOAN_THU_CONG: manualPaymentReconciliation,
     TAM_TINH: subtotal, PHI_VAN_CHUYEN: shippingFee, TIEN_COC: depositAmount, TONG_TIEN: total,
     TINH_TIEN_SNAPSHOT: summary,
     KHONG_YEU_CAU_COC: payment?.method === 'cod' && depositAmount === 0,
@@ -125,7 +129,9 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
   }
   if (requiresPayment) await (await getCollection<any>('THANH_TOAN')).insertOne({
     _id: paymentId, THANH_TOAN_ID: paymentId, DON_HANG_ID: orderId, CONG_THANH_TOAN: paymentMethodName,
-    MA_GIAO_DICH: transactionCode, SO_TIEN: paymentAmount, TRANG_THAI_THANH_TOAN: paymentStatus, NGAY_THANH_TOAN: new Date(), HET_HAN_LUC: new Date(paymentDeadline),
+    MA_GIAO_DICH: transactionCode, SO_TIEN: paymentAmount, TRANG_THAI_THANH_TOAN: paymentStatus, NGAY_THANH_TOAN: new Date(),
+    HET_HAN_LUC: paymentDeadline ? new Date(paymentDeadline) : null,
+    DOI_SOAT_THU_CONG: manualPaymentReconciliation,
   }, { session });
   if (paymentAmount <= 0) {
     if (order.KHONG_GIU_TAM_NVL) await recordOrderDemand(orderId, {}, { id: 'PAYMENT', role: 'system' }, { paymentConfirmed: true }, session);
@@ -135,10 +141,13 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
     }
     await consumeCheckoutBenefits(session, order);
   }
-  await orderEvent(session,orderId+':created',payload.customerId||null,orderId,'Đã tạo đơn hàng',requiresPayment?'Đơn đã được tạo, đang chờ khoản thanh toán trước.':'Đã tiếp nhận đơn không yêu cầu trả trước; chưa ghi nhận đã thu tiền.');
+  await orderEvent(session,orderId+':created',payload.customerId||null,orderId,'Đã tạo đơn hàng',manualPaymentReconciliation
+    ? 'Đơn gấp đã được tạo; nhân viên sẽ đối soát khoản đã nhận tại mục Thanh toán.'
+    : requiresPayment?'Đơn đã được tạo, đang chờ khoản thanh toán trước.':'Đã tiếp nhận đơn không yêu cầu trả trước; chưa ghi nhận đã thu tiền.');
   const checkoutAccessToken = await createCheckoutAccess(orderId, session);
   return { message: requiresPayment ? 'Đã tạo đơn chờ thanh toán.' : 'Đã tiếp nhận đơn; không yêu cầu thanh toán trước.', checkoutAccessToken, orderId,
     paymentId: requiresPayment ? paymentId : '', transactionCode: requiresPayment ? transactionCode : '', requiresPayment,
     paymentAmount, paymentDeadline: requiresPayment ? paymentDeadline : null, orderStatus, paymentStatus, summary, items: payload.items,
-    paymentWindowSeconds: requiresPayment ? Math.max(0, Math.floor((new Date(paymentDeadline).getTime() - Date.now()) / 1000)) : 0 };
+    paymentWindowSeconds: requiresPayment && paymentDeadline ? Math.max(0, Math.floor((new Date(paymentDeadline).getTime() - Date.now()) / 1000)) : 0,
+    manualPaymentReconciliation };
 }

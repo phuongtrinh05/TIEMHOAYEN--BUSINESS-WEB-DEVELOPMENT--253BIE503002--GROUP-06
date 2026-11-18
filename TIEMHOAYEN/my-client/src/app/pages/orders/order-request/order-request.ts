@@ -19,6 +19,7 @@ export class OrderRequest implements OnInit, OnDestroy {
   private cdr = inject(ChangeDetectorRef);
   request: any; messages: any[] = []; error = ''; message = ''; confirmed = false; loading = false; busy = false;
   feedback = ''; showSchedule = false; requestedDate = ''; requestedTime = ''; cancelConfirmation = false;
+  messageError = ''; scheduleDateError = ''; scheduleTimeError = '';
   readOnly = false;
   private token = ''; private id = ''; private timer?: ReturnType<typeof setInterval>;
   private pendingMessage: { text: string; id: string } | null = null;
@@ -59,6 +60,23 @@ export class OrderRequest implements OnInit, OnDestroy {
     this.load(true);
   }
   get historyRoute() { return this.access.session?.authType === 'guest_lookup' ? '/order-list' : '/order-requests'; }
+  get linkedOrderId() { return String(this.request?.orderResult?.orderId || this.request?.orderId || ''); }
+  get hasCreatedOrder() { return !!this.linkedOrderId; }
+  get canContinueChat() {
+    if (this.readOnly || !this.request) return false;
+    const requestStatus = String(this.request.status || '').toLowerCase();
+    if (/đã từ chối|khách đã hủy|hết hạn/.test(requestStatus)) return false;
+    if (!this.hasCreatedOrder) return true;
+    const orderStatus = String(this.request.orderSummary?.status || '').toLowerCase();
+    return !/hoàn thành|giao hàng thành công|đã giao|đã hủy|hủy đơn/.test(orderStatus);
+  }
+  get requestStep() {
+    const status = String(this.request?.status || '').toLowerCase();
+    if (/đã lên đơn|chờ thanh toán|chờ khách thanh toán/.test(status)) return 4;
+    if (/chờ khách xác nhận|khách đã đồng ý/.test(status)) return 3;
+    if (/sales|đang xử lý|đang tư vấn|đã tiếp nhận/.test(status) || this.request?.assignedName || this.request?.quote) return 2;
+    return 1;
+  }
   get paymentRemainingLabel() {
     const end = new Date(this.request?.paymentDeadlineAt || this.request?.orderResult?.paymentDeadline || '').getTime();
     if (!Number.isFinite(end)) return '';
@@ -84,10 +102,12 @@ export class OrderRequest implements OnInit, OnDestroy {
   editSchedule() {
     const delivery = this.request.quote?.delivery || this.request.delivery;
     this.requestedDate = /^\d{2}\/\d{2}\/\d{4}$/.test(delivery.date || '') ? delivery.date.split('/').reverse().join('-') : delivery.date || '';
-    this.requestedTime = String(delivery.time || '').match(/\b\d{2}:\d{2}\b/)?.[0] || ''; this.showSchedule = !this.showSchedule;
+    this.requestedTime = String(delivery.time || '').match(/\b\d{2}:\d{2}\b/)?.[0] || '';
+    this.scheduleDateError = ''; this.scheduleTimeError = ''; this.showSchedule = !this.showSchedule;
   }
   change(action: string) {
     if (this.busy || (action === 'cancel' ? !this.canCancel || !this.cancelConfirmation : !this.canChange)) return;
+    if (action === 'reschedule' && !this.validateSchedule()) return;
     this.busy = true; this.error = ''; this.feedback = '';
     this.service.updateSalesRequest(this.id, this.token, { action, date: this.requestedDate, time: this.requestedTime }).subscribe({
       next: value => { this.request = value; this.busy = false; this.showSchedule = false; this.cancelConfirmation = false; this.confirmed = false;
@@ -112,7 +132,12 @@ export class OrderRequest implements OnInit, OnDestroy {
     this.service.getRequestMessages(this.id, this.token).subscribe({ next: value => { this.messages = value; this.cdr.markForCheck(); }, error: () => {} });
   }
   respond(action: string) {
-    if (this.busy || !this.request?.quote) return;
+    if (this.busy) return;
+    if (!this.request?.quote) { this.error = 'Shop chưa gửi phương án để bạn xác nhận.'; return; }
+    if (action === 'accept' && this.request.workflow?.scheduleExpired) {
+      this.error = 'Lịch giao trong phương án này đã hết hiệu lực. Vui lòng chọn “Tư vấn lại” để shop cập nhật lịch mới.';
+      this.cdr.markForCheck(); return;
+    }
     this.busy = true; this.error = '';
     this.service.respondSalesRequest(this.id, this.token, this.request.quote.id, action).subscribe({
       next: value => { this.request = value; this.busy = false; this.cdr.markForCheck(); },
@@ -126,17 +151,26 @@ export class OrderRequest implements OnInit, OnDestroy {
     this.send();
   }
   send() {
-    if (this.busy || !this.message.trim()) return;
+    if (this.busy || !this.canContinueChat) return;
+    if (!this.message.trim()) {
+      this.messageError = 'Bạn hãy nhập nội dung trước khi gửi.';
+      this.cdr.markForCheck();
+      if (typeof document !== 'undefined') document.getElementById('message')?.focus();
+      return;
+    }
     const content = this.message.trim();
     if (this.pendingMessage?.text !== content) this.pendingMessage = { text: content, id: crypto.randomUUID() };
-    this.busy = true; this.error = '';
+    this.busy = true; this.error = ''; this.messageError = '';
     this.service.sendRequestMessage(this.id, this.token, content, this.pendingMessage!.id).subscribe({
       next: () => { this.message = ''; this.pendingMessage = null; this.busy = false; this.load(); this.cdr.markForCheck(); },
       error: err => { this.error = err?.error?.message || 'Chưa gửi được tin nhắn.'; this.busy = false; this.cdr.markForCheck(); },
     });
   }
   checkout() {
-    if (!this.request?.checkoutData || !this.request?.orderResult) return;
+    if (!this.request?.checkoutData || !this.request?.orderResult) {
+      this.error = 'Đơn chưa sẵn sàng để thanh toán. Vui lòng cập nhật trạng thái hoặc liên hệ shop.';
+      this.cdr.markForCheck(); return;
+    }
     const data = this.request.checkoutData, created = this.request.orderResult;
     if (created.checkoutAccessToken) sessionStorage.setItem(`checkoutOrderAccess:${created.orderId}`, created.checkoutAccessToken);
     const source = data.customerId ? 'registrant' : 'guest';
@@ -145,5 +179,23 @@ export class OrderRequest implements OnInit, OnDestroy {
     localStorage.setItem('tiemHoaYenCreatedOrder', JSON.stringify({ ...created, source, customerId: data.customerId }));
     localStorage.setItem(source === 'guest' ? 'tiemHoaYenGuestOrder' : 'tiemHoaYenRegistrantOrder', JSON.stringify(stored));
     this.router.navigate(['/checkout']);
+  }
+
+  clearScheduleError(field: 'date' | 'time') {
+    if (field === 'date') this.scheduleDateError = '';
+    else this.scheduleTimeError = '';
+  }
+
+  private validateSchedule(): boolean {
+    this.scheduleDateError = this.requestedDate ? '' : 'Vui lòng chọn ngày giao.';
+    this.scheduleTimeError = this.requestedTime ? '' : 'Vui lòng chọn giờ giao.';
+    if (this.scheduleDateError || this.scheduleTimeError) { this.cdr.markForCheck(); return false; }
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(this.requestedTime)) this.scheduleTimeError = 'Giờ giao không hợp lệ.';
+    else if (this.requestedTime < '08:00' || this.requestedTime > '22:00') this.scheduleTimeError = 'Shop chỉ giao từ 08:00 đến 22:00.';
+    const deliveryAt = new Date(`${this.requestedDate}T${this.requestedTime}:00+07:00`);
+    if (!Number.isFinite(deliveryAt.getTime())) this.scheduleDateError = 'Ngày giao không hợp lệ.';
+    else if (deliveryAt.getTime() <= Date.now()) this.scheduleDateError = 'Ngày giờ giao phải ở tương lai.';
+    if (this.scheduleDateError || this.scheduleTimeError) { this.cdr.markForCheck(); return false; }
+    return true;
   }
 }

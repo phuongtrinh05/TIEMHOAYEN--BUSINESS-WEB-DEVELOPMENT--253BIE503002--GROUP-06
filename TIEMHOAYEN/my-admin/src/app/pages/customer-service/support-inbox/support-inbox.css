@@ -126,6 +126,7 @@ dd { margin:4px 0; overflow-wrap:anywhere; }
 .info label { display:block; font-size:11px; color:#9e8c97; margin-bottom:8px; }
 .info select { margin-top:7px; }
 .full-width { width:100%; }
+.request-link { display:inline-flex; align-items:center; justify-content:center; gap:6px; text-decoration:none; }
 .info details { border-top:1px solid var(--line); margin-top:18px; padding-top:14px; }
 .info summary { display:flex; justify-content:space-between; cursor:pointer; font-size:12px; font-weight:600; margin-bottom:12px; list-style:none; }
 .info textarea { margin-bottom:8px; font-size:12px; }

@@ -20,16 +20,6 @@
       Đặt ngày: {{ order.date }}
     </p>
 
-    <a *ngIf="order.requestId" class="request-origin-card" [routerLink]="['/order-request', order.requestId]">
-      <span class="request-origin-icon"><i class="bi bi-flower1"></i></span>
-      <span class="request-origin-copy">
-        <small>ĐƠN ĐƯỢC TẠO TỪ YÊU CẦU ĐẶT HOA</small>
-        <strong>#{{ order.requestId }}</strong>
-        <em>Xem lại yêu cầu ban đầu, phương án đã chốt và lịch sử tư vấn</em>
-      </span>
-      <span class="request-origin-arrow">Xem yêu cầu <i class="bi bi-arrow-right"></i></span>
-    </a>
-
     <div class="status-box">
       @for(step of steps; track $index){
       <div class="status-item" [class.done]="step.done" [class.current]="step.current"

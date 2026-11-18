@@ -1,19 +1,24 @@
 import type { Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'node:crypto';
 import { getCollection } from '../mongo.js';
 import { InventoryError } from '../services/inventory/helpers.js';
 import { hasPermission } from '../services/role-permission.service.js';
 import { currentProduct, planChatReply } from '../services/chatbot-brain.service.js';
 import { openChatImage } from '../services/chat-media.service.js';
 import { SUPPORT_TICKETS, cancelSupportHandoff, publicMessage, rateSupport, readSupport, sendSupport, startSupport, supportDto, supportOrders, supportStaffAction, supportStartRate, updateSupportContact } from '../services/support.service.js';
+import { MESSAGES as SALES_MESSAGES, SALES_CHAT_TYPES, sendMessage as sendSalesMessage } from '../services/sales-proposal.service.js';
+import { REQUESTS, REQUEST_STATUS, updateSalesRequest } from '../services/order-request.service.js';
+import { resolveRoleName } from '../services/role-permission.service.js';
 const actor = (req: Request) => ({ orderToken: String(req.headers['x-order-access'] || ''), guestToken: String(req.headers['x-support-token'] || '') });
 const fail = (res: Response, e: any) => res.status(e instanceof InventoryError ? e.status : 500).json({ message: e instanceof InventoryError ? e.message : 'Chưa xử lý được cuộc tư vấn. Vui lòng thử lại.' });
 export async function requireSupportStaff(req: Request, res: Response, next: NextFunction) {
     try {
         const employee = await (await getCollection<any>('NHAN_VIEN')).findOne({ NHAN_VIEN_ID: String(req.headers['x-admin-id'] || '') });
-        if (!employee || /khóa|ngừng|nghỉ|inactive/i.test(String(employee.TRANG_THAI || '')) || !hasPermission(employee.VAI_TRO, 'customerService', 'view'))
+        const sales = employee && ['Admin', 'Nhân viên bán hàng'].includes(resolveRoleName(employee.VAI_TRO));
+        if (!employee || /khóa|ngừng|nghỉ|inactive/i.test(String(employee.TRANG_THAI || '')) || (!hasPermission(employee.VAI_TRO, 'customerService', 'view') && !sales))
             throw new InventoryError(403, 'Bạn không có quyền xem hộp thư hỗ trợ.');
         const action = req.method === 'GET' ? 'view' : req.method === 'DELETE' ? 'delete' : req.method === 'POST' && req.baseUrl === '/api/faqs' ? 'create' : 'update';
-        if (!hasPermission(employee.VAI_TRO, 'customerService', action))
+        if (!hasPermission(employee.VAI_TRO, 'customerService', action) && !sales)
             throw new InventoryError(403, 'Bạn không có quyền xử lý hỗ trợ.');
         res.locals.supportEmployee = employee;
         next();
@@ -80,8 +85,43 @@ export async function list(req: Request, res: Response) {
             query.source = String(req.query.source);
         const page = Math.max(1, Math.min(100000, Math.floor(Number(req.query.page) || 1)));
         const col = await getCollection<any>(SUPPORT_TICKETS);
-        const [rows, total, pending] = await Promise.all([col.find(query).sort({ priority: -1, updatedAt: -1 }).skip((page - 1) * 30).limit(30).toArray(), col.countDocuments(query), col.countDocuments({ mode: 'WAITING', status: 'Chưa xử lý' })]);
-        res.json({ tickets: rows.map(t => supportDto(t, true)), total, pending, page });
+        const employee = res.locals.supportEmployee;
+        const role = resolveRoleName(employee?.VAI_TRO);
+        const maySeeGeneralSupport = role !== 'Nhân viên bán hàng';
+        const supportRows = maySeeGeneralSupport && req.query.source !== 'Tư vấn đặt hoa'
+            ? await col.find(query).sort({ priority: -1, updatedAt: -1 }).limit(300).toArray() : [];
+        const messageGroups = await (await getCollection<any>(SALES_MESSAGES)).aggregate([
+            { $match: { LOAI_TIN_NHAN: { $in: SALES_CHAT_TYPES } } },
+            { $sort: { THOI_GIAN_GUI: -1 } },
+            { $group: { _id: '$YEU_CAU_ID', updatedAt: { $first: '$THOI_GIAN_GUI' }, preview: { $first: { $ifNull: ['$NOI_DUNG_TRA_LOI', '$NOI_DUNG_CAU_HOI'] } } } },
+            { $limit: 300 },
+        ]).toArray();
+        const requestIds = messageGroups.map((row: any) => String(row._id || '')).filter(Boolean);
+        const requestQuery: any = { requestId: { $in: requestIds } };
+        if (role === 'Nhân viên bán hàng') requestQuery.$or = [{ assignedTo: employee.NHAN_VIEN_ID }, { assignedTo: { $in: [null, ''] } }];
+        const requestRows = requestIds.length ? await (await getCollection<any>(REQUESTS)).find(requestQuery).toArray() : [];
+        const lastByRequest = new Map(messageGroups.map((row: any) => [String(row._id), row]));
+        const closed = new Set([REQUEST_STATUS.converted, REQUEST_STATUS.rejected, REQUEST_STATUS.closed, REQUEST_STATUS.cancelled, REQUEST_STATUS.expired]);
+        const allSalesRows = requestRows.map((row: any) => ({
+            id: `sales:${row.requestId}`, type: 'sales_request', requestId: row.requestId,
+            name: row.sender?.name || 'Khách đặt hoa', phone: row.sender?.phone || '', email: row.sender?.email || '',
+            customerId: row.customerId || null, source: 'Tư vấn đặt hoa', reason: lastByRequest.get(String(row.requestId))?.preview || row.reviewReason || 'Trao đổi về yêu cầu đặt hoa',
+            status: closed.has(row.status) ? 'Đã xử lý' : row.assignedTo ? 'Đang xử lý' : 'Chưa xử lý',
+            mode: row.assignedTo ? 'HUMAN' : 'WAITING', assignedTo: row.assignedTo || null, assignedName: row.assignedName || null,
+            priority: row.routing?.urgency === 'urgent' ? 'urgent' : 'normal', createdAt: row.createdAt,
+            updatedAt: lastByRequest.get(String(row.requestId))?.updatedAt || row.updatedAt || row.createdAt,
+            version: Number(row.version || 0), requestStatus: row.status,
+        }));
+        const salesRows = req.query.source && req.query.source !== 'Tư vấn đặt hoa' ? [] : allSalesRows;
+        let combined = [...supportRows.map(t => supportDto(t, true)), ...salesRows];
+        if (req.query.status) combined = combined.filter((row: any) => row.status === String(req.query.status));
+        combined.sort((a: any, b: any) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+        const total = combined.length;
+        const rows = combined.slice((page - 1) * 30, page * 30);
+        const supportPending = maySeeGeneralSupport ? await col.countDocuments({ mode: 'WAITING', status: 'Chưa xử lý' }) : 0;
+        const salesPending = allSalesRows.filter((row: any) => row.status === 'Chưa xử lý').length;
+        const pending = supportPending + salesPending;
+        res.json({ tickets: rows, total, pending, supportPending, salesPending, page });
     }
     catch (e) {
         fail(res, e);
@@ -99,6 +139,24 @@ export async function summary(_req: Request, res: Response) {
 export async function detail(req: Request, res: Response) {
     try {
         res.setHeader('Cache-Control', 'no-store');
+        if (String(req.params.id).startsWith('sales:')) {
+            const requestId = String(req.params.id).slice(6);
+            const row = await (await getCollection<any>(REQUESTS)).findOne({ requestId });
+            if (!row) throw new InventoryError(404, 'Không tìm thấy yêu cầu đặt hoa.');
+            const employee = res.locals.supportEmployee;
+            if (resolveRoleName(employee?.VAI_TRO) === 'Nhân viên bán hàng' && row.assignedTo && row.assignedTo !== employee.NHAN_VIEN_ID) throw new InventoryError(403, 'Yêu cầu đang do Sales khác phụ trách.');
+            const closed = [REQUEST_STATUS.converted, REQUEST_STATUS.rejected, REQUEST_STATUS.closed, REQUEST_STATUS.cancelled, REQUEST_STATUS.expired].includes(row.status);
+            const ticket = { id: `sales:${requestId}`, type: 'sales_request', requestId, name: row.sender?.name || 'Khách đặt hoa', phone: row.sender?.phone || '', email: row.sender?.email || '', customerId: row.customerId || null,
+                source: 'Tư vấn đặt hoa', reason: row.reviewReason || 'Trao đổi về yêu cầu đặt hoa', status: closed ? 'Đã xử lý' : row.assignedTo ? 'Đang xử lý' : 'Chưa xử lý', mode: row.assignedTo ? 'HUMAN' : 'WAITING', assignedTo: row.assignedTo || null, assignedName: row.assignedName || null,
+                createdAt: row.createdAt, updatedAt: row.updatedAt, version: Number(row.version || 0), requestStatus: row.status };
+            const messageRows = await (await getCollection<any>(SALES_MESSAGES)).find({ YEU_CAU_ID: requestId, LOAI_TIN_NHAN: { $in: SALES_CHAT_TYPES } }).sort({ THOI_GIAN_GUI: 1, TIN_NHAN_ID: 1 }).limit(300).toArray();
+            const messages = messageRows.map((message: any) => {
+                const customer = message.LOAI_TIN_NHAN === SALES_CHAT_TYPES[0] || (!!message.NOI_DUNG_CAU_HOI && !message.NOI_DUNG_TRA_LOI);
+                return { id: message.TIN_NHAN_ID, role: customer ? 'user' : 'assistant', staff: !customer,
+                    text: message.NOI_DUNG_TRA_LOI || message.NOI_DUNG_CAU_HOI || '', at: message.THOI_GIAN_GUI };
+            });
+            return res.json({ ticket, messages, incremental: false });
+        }
         const t = await (await getCollection<any>(SUPPORT_TICKETS)).findOne({ _id: req.params.id });
         if (!t)
             throw new InventoryError(404, 'Không tìm thấy yêu cầu.');
@@ -112,7 +170,14 @@ export async function detail(req: Request, res: Response) {
     }
 }
 export async function action(req: Request, res: Response) { try {
-    res.json(await supportStaffAction(String(req.params.id), req.body, res.locals.supportEmployee));
+    const id = String(req.params.id);
+    if (id.startsWith('sales:')) {
+        const requestId = id.slice(6), action = String(req.body.action || '');
+        if (action === 'reply') return res.json(await sendSalesMessage(requestId, { text: req.body.text, messageId: randomUUID() }, { employee: res.locals.supportEmployee }));
+        if (action === 'claim') return res.json(await updateSalesRequest(requestId, { action: 'claim', version: Number(req.body.version || 0) }, res.locals.supportEmployee));
+        throw new InventoryError(400, 'Thao tác này thực hiện tại hồ sơ yêu cầu đặt hàng.');
+    }
+    res.json(await supportStaffAction(id, req.body, res.locals.supportEmployee));
 }
 catch (e) {
     fail(res, e);

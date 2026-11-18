@@ -1,14 +1,14 @@
 import { ChangeDetectorRef, Component, inject, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { apiBaseUrl } from '../../../services/api-config';
 
 @Component({ selector: 'app-order-requests', standalone: true, imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './order-requests.html', styleUrls: ['./order-requests.css', './order-requests-refinement.css'] })
 export class OrderRequests implements OnInit, OnDestroy {
-  private http = inject(HttpClient); private cdr = inject(ChangeDetectorRef); private route = inject(ActivatedRoute);
+  private http = inject(HttpClient); private cdr = inject(ChangeDetectorRef); private route = inject(ActivatedRoute); private router = inject(Router);
   statuses = ['Chờ xử lý', 'Sales đang xử lý', 'Chờ khách xác nhận', 'Chờ khách thanh toán', 'Đã lên đơn', 'Đã từ chối', 'Khách đã hủy', 'Hết hạn thanh toán'];
   employeeId = typeof localStorage !== 'undefined' ? localStorage.getItem('adminEmployeeId') : '';
   requests: any[] = []; active: any; options: any; draft: any; messages: any[] = [];
@@ -16,6 +16,7 @@ export class OrderRequests implements OnInit, OnDestroy {
   private draftBaseline = '';
   private replacementBaseline = '{}';
   workTab = 'stock'; chatOpen = false; showDecision = false; showOriginalConfirm = false;
+  urgentDealConfirmed = false; urgentDealNote = '';
   replacementChoice: Record<string, string> = {};
   proposalReplacementChoice: Record<string, string> = {};
   productOptionSearch: Record<number, string> = {};
@@ -30,6 +31,10 @@ export class OrderRequests implements OnInit, OnDestroy {
     return this.active?.status === 'Sales đang xử lý' && !this.active?.quote && !this.editing;
   }
   get canShowConfirmOriginal() { return this.active?.status === 'Sales đang xử lý' && !this.active?.quote; }
+  get isUrgentConfirmation() {
+    const minutes = Number(this.active?.workflow?.minutesUntilDelivery);
+    return Number.isFinite(minutes) && minutes <= 180;
+  }
   get proposalChanged() {
     if (!this.editing || !this.draft || !this.active) return false;
     return this.draftFingerprint(this.draft) !== this.draftBaseline;
@@ -99,6 +104,7 @@ export class OrderRequests implements OnInit, OnDestroy {
   }
   message = ''; channel = 'website'; search = ''; note = ''; editing = false;
   catalogLoaded = false; optionsLoading = false; optionsError = ''; sourcesLoading = false; sourcesLoaded = false;
+  optionsUpdatedAt: Date | null = null;
   total = 0; page = 1; status = ''; queueSearch = ''; appliedQueueSearch = ''; error = ''; loading = false; busy = false;
   private timer?: ReturnType<typeof setInterval>;
   private targetRequestId = '';
@@ -115,7 +121,12 @@ export class OrderRequests implements OnInit, OnDestroy {
     }
     this.load(); this.loadUnreadMessages();
     this.timer = setInterval(() => {
-      if (!document.hidden && !this.busy && !this.editing) { this.load(true); this.loadUnreadMessages(); }
+      if (!document.hidden && !this.busy && !this.editing) {
+        this.load(true); this.loadUnreadMessages();
+        // Danh sách yêu cầu và tồn kho là hai nguồn dữ liệu riêng. Khi đang mở
+        // một yêu cầu, tải lại cả khả dụng hiện tại để phản ánh phiếu nhập vừa ghi nhận.
+        if (this.active && this.workTab === 'stock') this.loadOptions(false);
+      }
     }, 15000);
   }
   ngOnDestroy() { if (this.timer) clearInterval(this.timer); }
@@ -141,7 +152,12 @@ export class OrderRequests implements OnInit, OnDestroy {
     });
   }
   private fail(err: any) { this.error = err?.error?.message || 'Chưa lưu được thao tác. Vui lòng thử lại.'; this.busy = false; this.cdr.markForCheck(); }
-  open(row: any) { this.workTab = 'stock'; this.chatOpen = false; this.showDecision = false; this.showOriginalConfirm = false; this.replacementChoice = {}; this.proposalReplacementChoice = {}; this.approvedReplacements = {}; this.contact = { outcome: 'connected', note: '', followUpAt: '', readBackConfirmed: false }; this.active = row; this.editing = false; this.draft = null; this.pendingEdit = false; this.catalogLoaded = false; this.optionsLoading = false; this.optionsError = ''; this.sourcesLoading = false; this.sourcesLoaded = false; this.options = null; this.message = ''; this.note = ''; this.search = ''; this.messages = []; this.loadOptions(); }
+  open(row: any) { this.workTab = 'stock'; this.chatOpen = false; this.showDecision = false; this.showOriginalConfirm = false; this.urgentDealConfirmed = false; this.urgentDealNote = ''; this.replacementChoice = {}; this.proposalReplacementChoice = {}; this.approvedReplacements = {}; this.contact = { outcome: 'connected', note: '', followUpAt: '', readBackConfirmed: false }; this.active = row; this.editing = false; this.draft = null; this.pendingEdit = false; this.catalogLoaded = false; this.optionsLoading = false; this.optionsError = ''; this.sourcesLoading = false; this.sourcesLoaded = false; this.optionsUpdatedAt = null; this.options = null; this.message = ''; this.note = ''; this.search = ''; this.messages = []; this.loadOptions(); }
+  openOriginalConfirmation() {
+    if (!this.canConfirmOriginal) return;
+    this.showOriginalConfirm = true;
+    this.showDecision = false;
+  }
   selectWorkTab(tab: string) {
     this.workTab = tab;
     if (tab === 'proposal' && ['Sales đang xử lý','Chờ khách xác nhận'].includes(this.active?.status) && !this.editing) {
@@ -149,7 +165,7 @@ export class OrderRequests implements OnInit, OnDestroy {
       if (!this.catalogLoaded) { this.editing = true; this.loadOptions(true); } else if (this.options) this.edit();
     }
   }
-  openChat() { if (!this.active) return; this.chatOpen = true; this.loadMessages(); }
+  openChat() { if (!this.active) return; void this.router.navigate(['/customer-service/customer-chat'], { queryParams: { source: 'Tư vấn đặt hoa', ticketId: `sales:${this.active.requestId}` } }); }
   closeChat() { this.chatOpen = false; }
   toggleNotifications() {
     this.notificationsOpen = !this.notificationsOpen;
@@ -229,12 +245,15 @@ export class OrderRequests implements OnInit, OnDestroy {
   }
   confirmOriginal() {
     if (this.busy || !this.canConfirmOriginal) return;
+    if (this.isUrgentConfirmation && (!this.urgentDealConfirmed || !this.urgentDealNote.trim())) return;
     const summary = this.active.originalSummary || {};
     const body = { version: this.active.version,
       items: this.active.items.map((item: any) => ({ id: item.productId, qty: item.quantity, custom: false })),
       date: this.dateInput(this.active.delivery?.date), time: String(this.active.delivery?.time || '').match(/\b\d{2}:\d{2}\b/)?.[0] || '',
       shippingFee: Number(summary.shippingFee || 0), paymentMethod: 'cod', depositAmount: Number(summary.depositAmount || 0),
       substitutions: Object.values(this.approvedReplacements),
+      urgentOverride: this.isUrgentConfirmation && this.urgentDealConfirmed,
+      urgentConfirmationNote: this.isUrgentConfirmation ? this.urgentDealNote.trim() : '',
       note: 'Shop xác nhận có thể đáp ứng nguyên mẫu, số lượng, giá tham chiếu và lịch giao khách đã yêu cầu.' };
     this.busy = true; this.error = '';
     this.http.post(`${this.url}/${this.active.requestId}/confirm`, body).subscribe({
@@ -247,11 +266,15 @@ export class OrderRequests implements OnInit, OnDestroy {
     const id = this.active.requestId;
     this.optionsLoading = true; this.optionsError = '';
     this.http.get<any>(`${this.url}/${id}/options`, { params: { search: this.search, includeCatalog: String(includeCatalog), includeSources: 'false' } }).subscribe({
-      next: data => { if (this.active?.requestId === id) { data.suppliers = this.options?.suppliers || []; data.incomingOrders = this.options?.incomingOrders || []; this.options = data; this.catalogLoaded = !!data.catalogIncluded; this.syncQuoteReplacements();
+      next: data => { if (this.active?.requestId === id) { data.suppliers = this.options?.suppliers || []; data.incomingOrders = this.options?.incomingOrders || []; this.options = data; this.optionsUpdatedAt = new Date(); this.catalogLoaded = !!data.catalogIncluded; this.syncQuoteReplacements();
           if (this.pendingEdit) { this.pendingEdit = false; this.edit(); }
           if (this.workTab === 'proposal' && ['Sales đang xử lý','Chờ khách xác nhận'].includes(this.active.status) && (includeCatalog || !this.editing)) this.edit(); }
         this.optionsLoading = false; if (!this.sourcesLoaded) this.loadSources(id); this.cdr.markForCheck(); }, error: err => { this.optionsLoading = false; this.optionsError = err?.error?.message || 'Không tải được dữ liệu kho.'; this.cdr.markForCheck(); },
     });
+  }
+  refreshInventory() {
+    if (!this.active || this.optionsLoading) return;
+    this.loadOptions(false);
   }
   private loadSources(id: string) {
     if (this.sourcesLoading || this.sourcesLoaded) return;

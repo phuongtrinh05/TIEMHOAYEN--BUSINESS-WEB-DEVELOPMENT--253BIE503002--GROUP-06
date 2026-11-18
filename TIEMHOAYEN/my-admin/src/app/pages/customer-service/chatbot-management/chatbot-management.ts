@@ -2,10 +2,10 @@ import { CommonModule } from '@angular/common';
 import { AfterViewChecked, ChangeDetectorRef, Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
-import { RouterLink, RouterLinkActive } from '@angular/router';
 import { finalize, forkJoin, timeout } from 'rxjs';
 import { AdminApiService, AdminFAQPayload, AdminFAQRow } from '../../../services/admin-api.service';
 import { apiBaseUrl } from '../../../services/api-config';
+import { CustomerServiceTabs } from '../customer-service-tabs/customer-service-tabs';
 
 interface ChatbotItem {
     askedCount?: number;
@@ -21,7 +21,7 @@ interface ChatbotItem {
 @Component({
     selector: 'app-chatbot-management',
     standalone: true,
-    imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive],
+    imports: [CommonModule, FormsModule, CustomerServiceTabs],
     templateUrl: './chatbot-management.html',
     styleUrls: ['./chatbot-management.css']
 })

@@ -1,11 +1,11 @@
 import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { apiBaseUrl } from '../../../services/api-config';
+import { PromotionTabs } from '../promotion-tabs/promotion-tabs';
 
-@Component({ selector: 'app-marketing', standalone: true, imports: [CommonModule, FormsModule, RouterLink], templateUrl: './marketing.html', styleUrls: ['./marketing.css', './marketing-tabs.css'] })
+@Component({ selector: 'app-marketing', standalone: true, imports: [CommonModule, FormsModule, PromotionTabs], templateUrl: './marketing.html', styleUrl: './marketing.css' })
 export class Marketing implements OnInit {
   private http = inject(HttpClient);
   private cdr = inject(ChangeDetectorRef);

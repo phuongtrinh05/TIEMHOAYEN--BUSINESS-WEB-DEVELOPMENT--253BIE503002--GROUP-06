@@ -95,6 +95,7 @@ export class OrderList implements OnInit, OnDestroy {
   canCancelRequest(request:any){return !['Đã lên đơn','Đã từ chối','Đã tư vấn','Khách đã hủy','Hết hạn thanh toán'].includes(String(request?.status||''))}
   canConfirmRequest(request:any){return String(request?.status||'')==='Chờ khách xác nhận'&&!!request?.quote?.id}
   requestStatusLabel(status:any){const value=String(status||'');if(['Khách đã hủy','Hết hạn thanh toán'].includes(value))return'Đã hủy yêu cầu';if(value==='Chờ khách xác nhận')return'Chờ xác nhận';return value}
+  requestNextAction(request:any){const status=String(request?.status||'');if(status==='Chờ khách xác nhận')return'Shop đã gửi phương án — bạn vui lòng kiểm tra';if(status==='Sales đang xử lý')return'Sales đang kiểm tra nguồn hoa và lịch giao';return'Đã gửi đến shop — đang chờ tiếp nhận'}
   readonly requestStatusTone = requestStatusTone;
   linkedOrderId(request:any){return String(request?.linkedOrder?.DON_HANG_ID||request?.orderId||request?.orderResult?.orderId||'')}
   hasLinkedOrder(request:any){return request?.status==='Đã lên đơn'&&!!this.linkedOrderId(request)}
@@ -132,9 +133,11 @@ export class OrderList implements OnInit, OnDestroy {
         if (!quiet) this.busy = false;
         if (this.access.session?.accessToken !== token) return;
         this.allOrders = result.orders || [];
-        this.allRequests = result.requests || [];
+        // Phòng thủ với server cũ/cache: tab này chỉ là hàng đợi yêu cầu đang mở.
+        const activeRequestStatuses = new Set(['Chờ xử lý','Chờ Sales tiếp nhận','Sales đang xử lý','Chờ khách xác nhận','Khách đã đồng ý']);
+        this.allRequests = (result.requests || []).filter((request: any) => activeRequestStatuses.has(String(request?.status || '').trim()));
         this.statuses = result.statuses || [];
-        this.counts = result.counts || {};
+        this.counts = { ...(result.counts || {}), requests: this.allRequests.length };
         this.applyLocalView();
       },
       error: error => {

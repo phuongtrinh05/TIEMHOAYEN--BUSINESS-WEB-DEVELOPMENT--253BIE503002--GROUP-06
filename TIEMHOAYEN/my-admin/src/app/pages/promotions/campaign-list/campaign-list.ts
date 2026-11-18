@@ -1,8 +1,8 @@
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AdminApiService, AdminCampaign } from '../../../services/admin-api.service';
+import { PromotionTabs } from '../promotion-tabs/promotion-tabs';
 
 interface CampaignItem {
     id: number;
@@ -28,8 +28,7 @@ interface CampaignItem {
     imports: [
         CommonModule,
         FormsModule,
-        RouterLink,
-        RouterLinkActive
+        PromotionTabs
     ],
     templateUrl: './campaign-list.html',
     styleUrls: ['./campaign-list.css']

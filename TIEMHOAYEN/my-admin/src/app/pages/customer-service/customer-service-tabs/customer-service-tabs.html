@@ -1,0 +1,6 @@
+<nav class="customer-service-tabs" aria-label="Chức năng chăm sóc khách hàng">
+  <a routerLink="/customer-service/customer-chat" [class.active]="active==='support'">Hộp thư hỗ trợ @if(supportPending){<span>{{supportPending}}</span>}</a>
+  <a routerLink="/customer-service/customer-chat" [queryParams]="{source:'Tư vấn đặt hoa'}" [class.active]="active==='sales'">Tư vấn đặt hoa @if(salesPending){<span>{{salesPending}}</span>}</a>
+  <a routerLink="/customer-service/after-sales" [class.active]="active==='after-sales'">Hồ sơ hậu mãi @if(afterSalesCount){<span>{{afterSalesCount}}</span>}</a>
+  <a routerLink="/customer-service/chatbot-management" [class.active]="active==='chatbot'">Quản lý chatbot</a>
+</nav>

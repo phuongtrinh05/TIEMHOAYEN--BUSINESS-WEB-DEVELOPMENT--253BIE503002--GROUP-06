@@ -1,10 +1,10 @@
 import {Component,OnInit,inject,signal,PLATFORM_ID} from '@angular/core';
 import {CommonModule,isPlatformBrowser} from '@angular/common';
 import {FormsModule} from '@angular/forms';
-import {RouterLink} from '@angular/router';
 import {HttpClient,HttpParams} from '@angular/common/http';
 import {apiBaseUrl} from '../../../services/api-config';
-@Component({selector:'app-lucky-wheel-admin',standalone:true,imports:[CommonModule,FormsModule,RouterLink],templateUrl:'./lucky-wheel.html',styleUrl:'./lucky-wheel.css'})
+import {PromotionTabs} from '../promotion-tabs/promotion-tabs';
+@Component({selector:'app-lucky-wheel-admin',standalone:true,imports:[CommonModule,FormsModule,PromotionTabs],templateUrl:'./lucky-wheel.html',styleUrl:'./lucky-wheel.css'})
 export class LuckyWheelAdmin implements OnInit{
   private http=inject(HttpClient);private browser=isPlatformBrowser(inject(PLATFORM_ID));private base=apiBaseUrl()+'/lucky/admin';
   data=signal<any>(null);error=signal('');notice=signal('');busy=signal(false);tab='programs';form:any=null;modalError=signal('');revoke:any=null;reason='';

@@ -51,6 +51,7 @@
 .converted-request{border-color:#b9d8c1;background:linear-gradient(135deg,#fff 0%,#fbfffc 100%)}
 .linked-order-card{display:flex;align-items:center;gap:11px;max-width:480px;margin-top:13px;padding:11px 13px;border:1px solid #b9d8c1;border-radius:13px;background:#f0f8f2;color:#245d36;text-decoration:none;transition:.2s ease}
 .linked-order-card:hover{border-color:#438456;box-shadow:0 7px 18px rgba(36,93,54,.11);transform:translateY(-1px)}
+.source-request-link{display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#8a4a3e;font-size:12px;font-weight:800;text-decoration:none}.source-request-link:hover{text-decoration:underline}
 .linked-order-icon{display:grid;place-items:center;flex:0 0 34px;height:34px;border-radius:50%;background:#2f7544;color:#fff;font-weight:900}.linked-order-card>span:nth-child(2){display:grid;gap:1px;min-width:0}.linked-order-card small{font-size:9px;font-weight:900;letter-spacing:.11em}.linked-order-card strong{font-size:14px}.linked-order-card i{font-size:11px;font-style:normal;color:#5e7966}.linked-order-card>b{margin-left:auto;font-size:18px}
 .customer-request-card .open-order-detail{display:inline-flex;align-items:center;justify-content:center;padding:11px 17px;border-radius:999px;background:#2f7544;color:#fff;text-decoration:none;white-space:nowrap;font:900 13px 'Nunito Sans',sans-serif}.customer-request-card .request-source-link{color:#731919;font-size:12px;font-weight:800;text-decoration:underline;text-underline-offset:3px}
 .source-request-badge{margin-left:auto;padding:5px 9px;border:1px solid #e4c5b1;border-radius:999px;background:#fff8f5;color:#731919;text-decoration:none;font-size:11px;font-weight:800}.source-request-badge:hover{background:#f6e8df}
@@ -66,3 +67,22 @@
 .request-copy{padding-right:8px}
 .customer-request-card h3{margin:8px 0 5px;font-size:20px}
 .customer-request-card p{margin:4px 0;font-size:13px}
+
+/* Hàng đợi yêu cầu đang mở: gọn, rõ bước tiếp theo, không mang dáng thẻ đơn hàng. */
+.request-results .customer-request-card{grid-template-columns:92px minmax(0,1fr) 190px;gap:18px;padding:18px;border-radius:16px;box-shadow:0 7px 20px rgba(115,25,25,.06)}
+.request-results .request-photo{width:92px;height:92px;border-radius:12px}
+.request-results .request-head{gap:9px}
+.request-results .request-head>b{font-size:13px;letter-spacing:.03em}
+.request-results .request-status{padding:4px 8px;border-radius:7px;font-size:11px}
+.request-results .customer-request-card h3{margin:6px 0;color:#482c28;font:800 18px/1.3 'Nunito Sans',sans-serif}
+.request-schedule{display:flex;align-items:center;gap:7px;color:#806d67!important}
+.request-schedule i{color:#9b6557}.request-schedule span{font-size:12px}.request-schedule strong{color:#4c3530;font-size:12px}
+.request-next{display:flex;align-items:center;gap:7px;margin-top:9px;padding:8px 10px;border-radius:8px;color:#765b31;background:#fff7e5;font-size:12px}
+.request-next i{color:#9d6b28}.request-next span{flex:1}.request-next b{color:#731919;white-space:nowrap}
+.request-results .request-actions{align-self:center;align-items:stretch;justify-content:center;gap:8px}
+.request-results .request-actions button{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:40px;border-radius:9px;font-size:12px}
+.request-results .open-consultation{border-color:#731919!important;background:#731919!important;color:#fff!important}
+.request-results .cancel-request{border:0!important;background:transparent!important;color:#9a6f68!important;font-weight:700!important}
+.request-results .cancel-request:hover{color:#a51f25!important;background:#fff2f2!important}
+@media(max-width:900px){.request-results .customer-request-card{grid-template-columns:82px minmax(0,1fr);grid-template-areas:'photo copy' 'actions actions'}.request-results .request-photo{width:82px;height:82px}.request-results .request-actions{display:grid;grid-template-columns:1fr auto}.request-results .cancel-request{width:auto}}
+@media(max-width:560px){.request-results .customer-request-card{grid-template-columns:68px minmax(0,1fr);padding:13px;gap:12px}.request-results .request-photo{width:68px;height:68px}.request-results .request-actions{grid-template-columns:1fr}.request-schedule{align-items:flex-start;flex-wrap:wrap}.request-next{align-items:flex-start}.request-next b{display:none}}

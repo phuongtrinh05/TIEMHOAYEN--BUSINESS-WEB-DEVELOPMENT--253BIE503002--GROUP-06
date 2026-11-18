@@ -3,8 +3,9 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AdminApiService } from '../../../services/admin-api.service';
+import { CustomerServiceTabs } from '../customer-service-tabs/customer-service-tabs';
 
-@Component({ selector:'app-after-sales', standalone:true, imports:[CommonModule,FormsModule,RouterLink], templateUrl:'./after-sales.html', styleUrl:'./after-sales.css' })
+@Component({ selector:'app-after-sales', standalone:true, imports:[CommonModule,FormsModule,RouterLink,CustomerServiceTabs], templateUrl:'./after-sales.html', styleUrl:'./after-sales.css' })
 export class AfterSales implements OnInit {
   private api=inject(AdminApiService); private route=inject(ActivatedRoute); private cdr=inject(ChangeDetectorRef);
   rows:any[]=[]; selected:any=null; loading=false; busy=false; error=''; search=''; status=''; type=''; issueType=''; total=0;

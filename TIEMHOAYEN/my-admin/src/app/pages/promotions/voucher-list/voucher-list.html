@@ -2,24 +2,7 @@
     <div class="promotion-card">
 
         <div class="promotion-toolbar">
-            <div class="promotion-tabs">
-                <a
-                    routerLink="/promotions"
-                    routerLinkActive="active"
-                    [routerLinkActiveOptions]="{ exact: true }"
-                >
-                    Chiến dịch
-                </a>
-
-                <a
-                    routerLink="/promotions/vouchers"
-                    routerLinkActive="active"
-                >
-                    Voucher
-                </a>
-                <a routerLink="/promotions/lucky-wheel">Vòng quay may mắn</a>
-                <a routerLink="/promotions/marketing" routerLinkActive="active">Tin nhắn &amp; Email tự động</a>
-            </div>
+            <app-promotion-tabs></app-promotion-tabs>
 
             <div class="toolbar-right">
                 <div class="search-box">

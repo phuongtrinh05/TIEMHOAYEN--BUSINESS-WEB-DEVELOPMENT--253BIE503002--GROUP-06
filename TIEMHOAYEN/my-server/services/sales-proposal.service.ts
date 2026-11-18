@@ -71,11 +71,16 @@ function deliveryAt(date: unknown, time: unknown) {
 }
 const SALES_PAYMENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PREPARATION_LEAD_MS = 3 * 60 * 60 * 1000;
-function salesPaymentDeadline(delivery: any, acceptedAt: Date) {
+function salesPaymentDeadline(delivery: any, acceptedAt: Date, urgentOverride = false) {
   const scheduledAt = deliveryAt(delivery?.date, delivery?.time);
   const preparationCutoff = scheduledAt.getTime() - PREPARATION_LEAD_MS;
   const deadlineMs = Math.min(acceptedAt.getTime() + SALES_PAYMENT_WINDOW_MS, preparationCutoff);
-  if (deadlineMs <= acceptedAt.getTime()) throw new InventoryError(409, 'Lịch giao đã quá gần thời điểm chuẩn bị; cần đổi lịch hoặc xử lý như đơn gấp thay vì xác nhận thanh toán tự động.');
+  if (deadlineMs <= acceptedAt.getTime()) {
+    if (!urgentOverride) throw new InventoryError(409, 'Lịch giao đã quá gần thời điểm chuẩn bị; cần đổi lịch hoặc xác nhận xử lý đơn gấp sau khi đã thống nhất với khách.');
+    // Giá trị chỉ dùng để hoàn tất phép kiểm tra. Đơn gấp do Sales xác nhận sẽ
+    // chuyển sang đối soát thanh toán thủ công và không dùng mốc này để tự hủy.
+    return acceptedAt;
+  }
   return new Date(deadlineMs);
 }
 async function snapshotItem(raw: any, index: number, session: ClientSession) {
@@ -201,6 +206,9 @@ export async function propose(id: string, body: any, employee: any) {
     if (!method) throw new InventoryError(400, 'Chọn chuyển khoản toàn bộ hoặc cọc rồi thanh toán khi nhận hàng.');
     const depositAmount = method === 'cod' ? depositByPolicy(subtotal, total, items) : 0;
     const confirmOriginal = body.confirmOriginal === true;
+    const urgentOverride = confirmOriginal && body.urgentOverride === true;
+    const urgentConfirmationNote = urgentOverride ? optionalText(body.urgentConfirmationNote) : '';
+    if (urgentOverride && !urgentConfirmationNote) throw new InventoryError(400, 'Đơn gấp cần ghi chú nội dung đã thống nhất với khách.');
     if (confirmOriginal) {
       if (row.status !== REQUEST_STATUS.processing || row.quote) throw new InventoryError(409, 'Chỉ xác nhận trực tiếp khi yêu cầu chưa có phương án thay đổi.');
       const originalItems = new Map((row.items || []).map((item: any) => [String(item.productId), Number(item.quantity)]));
@@ -218,7 +226,8 @@ export async function propose(id: string, body: any, employee: any) {
       giftCard: row.giftCard || null,
       summary: { subtotal, shippingFee, cardFee, total, depositAmount, loyaltyDiscount: 0, loyaltyPoints: 0 },
       payment: { method, methodName: method === 'cod' ? 'Đặt cọc theo chính sách, còn lại COD' : 'Chuyển khoản', amountToPay: method === 'cod' ? depositAmount : total },
-      note: optionalText(body.note), discountNote: 'Giá phương án này chưa áp dụng voucher hoặc điểm của yêu cầu cũ.' };
+      note: optionalText(body.note), urgentOverride, urgentConfirmationNote,
+      discountNote: 'Giá phương án này chưa áp dụng voucher hoặc điểm của yêu cầu cũ.' };
     await (await getCollection<any>(REQUESTS)).updateOne({ _id: id, version: row.version }, {
       $set: { quote, status: REQUEST_STATUS.quoted,
         acceptedQuoteId: null, acceptedAt: null, customerAcceptedAt: null,
@@ -245,7 +254,8 @@ export async function confirmOriginalRequest(id: string, body: any, employee: an
   const acceptedAt = new Date();
   const accepted = await requests.findOneAndUpdate({ _id: id, version: proposed.version, status: REQUEST_STATUS.quoted, 'quote.id': quote.id }, {
     $set: { status: REQUEST_STATUS.accepted, acceptedQuoteId: quote.id, acceptedAt, customerAcceptedAt: null,
-      acceptance: { via: 'sales_direct_confirmation', quoteId: quote.id, actor: employee.NHAN_VIEN_ID, at: acceptedAt }, updatedAt: acceptedAt },
+      acceptance: { via: 'sales_direct_confirmation', quoteId: quote.id, actor: employee.NHAN_VIEN_ID, at: acceptedAt,
+        urgentOverride: quote.urgentOverride === true, urgentConfirmationNote: quote.urgentConfirmationNote || null }, updatedAt: acceptedAt },
     $inc: { version: 1 },
     $push: { history: { id: randomUUID(), at: acceptedAt, actor: employee.NHAN_VIEN_ID, action: 'Sales xác nhận yêu cầu', quoteId: quote.id } },
   } as any, { returnDocument: 'after', includeResultMetadata: false });
@@ -344,21 +354,27 @@ export async function convertProposal(id: string, body: any, employee: any) {
     await assertReservedStockUsable(session, orderId, new Date(row.quote.deliveryAt).toISOString(), true);
     // Khách có tối đa 24 giờ (và không muộn hơn mốc chuẩn bị) để thanh toán đơn đã xác nhận.
     const paymentDeadlineAt = row.paymentDeadlineAt && new Date(row.paymentDeadlineAt).getTime() > Date.now()
-      ? row.paymentDeadlineAt : salesPaymentDeadline(row.quote.delivery, new Date());
+      ? row.paymentDeadlineAt : salesPaymentDeadline(row.quote.delivery, new Date(), row.quote.urgentOverride === true);
+    const urgentOrder = row.quote.urgentOverride === true;
     const checkoutData = { customerId: row.customerId, sender: row.sender, receiver: row.receiver, flags: row.flags, giftCard: row.quote.giftCard || row.giftCard || null,
       delivery: row.quote.delivery, summary: row.quote.summary, payment: row.quote.payment, items,
-      checkoutSessionId: paymentSessionId, paymentDeadlineAt };
+      checkoutSessionId: paymentSessionId, paymentDeadlineAt: urgentOrder ? null : paymentDeadlineAt,
+      manualPaymentReconciliation: urgentOrder, adminNote: urgentOrder ? row.quote.urgentConfirmationNote : '' };
     const result = { kind: 'order', ...await writeCheckoutOrder(session, orderId, checkoutData, { requestId: id, quote: row.quote, pendingOrderStatus: SALES_CONFIRMED_ORDER_STATUS }) };
     // Đơn đã xác nhận giữ NVL tới hạn thanh toán của khách, không phải hạn 5 phút của mã QR thường.
     if (result.requiresPayment) await (await getCollection<any>('GIU_TON')).updateMany(
       { DON_HANG_ID: orderId, TRANG_THAI: RESERVATION_STATUS.temporary },
-      { $set: { HET_HAN_LUC: new Date(paymentDeadlineAt) } }, { session });
+      urgentOrder ? { $set: { HET_HAN_LUC: null } } : { $set: { HET_HAN_LUC: new Date(paymentDeadlineAt) } }, { session });
     await (await getCollection<any>(MESSAGES)).updateMany({ YEU_CAU_ID: id, LOAI_TIN_NHAN: { $in: SALES_CHAT_TYPES } }, { $set: { DON_HANG_ID: orderId } }, { session });
     const requestStatus = result.requiresPayment ? REQUEST_STATUS.pendingPayment : REQUEST_STATUS.converted;
     await (await getCollection<any>(REQUESTS)).updateOne({ _id: id, version: row.version }, {
-      $set: { orderId, orderResult: result, checkoutData, status: requestStatus, paymentDeadlineAt: result.requiresPayment ? paymentDeadlineAt : null, updatedAt: new Date() }, $inc: { version: 1 },
+      $set: { orderId, orderResult: result, checkoutData, status: requestStatus,
+        paymentDeadlineAt: result.requiresPayment && !urgentOrder ? paymentDeadlineAt : null,
+        urgentOrder: row.quote.urgentOverride === true, updatedAt: new Date() }, $inc: { version: 1 },
       $push: { history: { id: randomUUID(), at: new Date(), actor: employee.NHAN_VIEN_ID,
-        action: result.requiresPayment ? 'Xác nhận yêu cầu, tạo đơn "Đã xác nhận đơn hàng" chờ khách thanh toán' : 'Xác nhận yêu cầu và lên đơn', quoteId: row.quote.id, orderId } },
+        action: row.quote.urgentOverride === true ? 'Sales xác nhận xử lý đơn gấp và tạo đơn'
+          : result.requiresPayment ? 'Xác nhận yêu cầu, tạo đơn "Đã xác nhận đơn hàng" chờ khách thanh toán' : 'Xác nhận yêu cầu và lên đơn',
+        note: row.quote.urgentConfirmationNote || null, quoteId: row.quote.id, orderId } },
     } as any, { session });
     return result;
   });
@@ -573,6 +589,9 @@ export async function sendMessage(id: string, body: any, actor: { token?: string
     const repeated = await col.findOne({ _id: entry._id });
     if (!repeated || mapRequestMessage(repeated).text !== content || repeated.KENH_TRAO_DOI !== channel) throw new InventoryError(409, 'Mã tin nhắn bị trùng với nội dung khác.');
   }
+  // Tin nhắn nằm ở collection riêng. Chạm updatedAt của yêu cầu để change
+  // stream phía khách nhận tín hiệu và tải hội thoại ngay, không chờ polling.
+  await (await getCollection<any>(REQUESTS)).updateOne({ _id: id }, { $set: { updatedAt: new Date() } });
   return mapRequestMessage(existing || entry);
 }
 

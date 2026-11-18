@@ -19,6 +19,19 @@
 .routing-reason-grid>div{display:flex;flex-direction:column;gap:2px}
 .routing-reason-grid small{color:#7b6a64}
 .routing-reason-title{margin:10px 0 6px;font-weight:600;font-size:13px}
+.snapshot-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px}
+.snapshot-heading .routing-reason-title{margin:0}
+.snapshot-heading span{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border-radius:7px;color:#876f67;background:#f4efec;font-size:11px;font-weight:700;white-space:nowrap}
+.snapshot-explanation{margin:6px 0;color:#735f59;font-size:12px}
+.live-stock-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:16px 0 9px;padding:12px 14px;border:1px solid #dfcdc4;border-radius:10px;background:#fff}
+.live-stock-heading>div{display:grid;gap:2px}
+.live-stock-heading span{color:#9b6557;font-size:10px;font-weight:900;letter-spacing:.13em}
+.live-stock-heading strong{color:#4d302b;font-size:15px}
+.live-stock-heading small{color:#8b7770;font-size:11px}
+.live-stock-heading button{display:inline-flex;align-items:center;gap:7px;margin:0;white-space:nowrap}
+.live-stock-heading .spin{animation:stock-spin .8s linear infinite}
+@keyframes stock-spin{to{transform:rotate(360deg)}}
+@media(max-width:760px){.snapshot-heading,.live-stock-heading{align-items:flex-start;flex-direction:column}.snapshot-heading span{white-space:normal}.live-stock-heading button{width:100%;justify-content:center}}
 .routing-reason-card td small{display:block;color:#7b6a64}
 .routing-reason-card .shortage{color:#b42318;font-weight:600}
 .custom-design-snapshot{display:flex;gap:12px;margin-top:10px;padding:10px;border-radius:10px;background:#fff;border:1px dashed #e6c3b4}

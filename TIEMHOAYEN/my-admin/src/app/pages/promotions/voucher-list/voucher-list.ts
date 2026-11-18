@@ -1,8 +1,8 @@
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AdminApiService, AdminCategory, AdminCustomer, AdminVoucher } from '../../../services/admin-api.service';
+import { PromotionTabs } from '../promotion-tabs/promotion-tabs';
 
 interface VoucherItem {
     id: number;
@@ -47,8 +47,7 @@ interface CustomerOption {
     imports: [
         CommonModule,
         FormsModule,
-        RouterLink,
-        RouterLinkActive
+        PromotionTabs
     ],
     templateUrl: './voucher-list.html',
     styleUrls: ['./voucher-list.css']

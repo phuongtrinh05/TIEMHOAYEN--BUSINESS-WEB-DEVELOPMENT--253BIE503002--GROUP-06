@@ -32,7 +32,6 @@ h3{
     font-size:13px;
     margin-bottom:18px;
 }
-.request-origin-card{display:flex;align-items:center;gap:14px;margin:0 0 20px;padding:15px 17px;border:1px solid #d9b382;border-radius:17px;background:linear-gradient(110deg,#fff8f5,#fffdf8);color:#731919;text-decoration:none;box-shadow:0 5px 18px rgba(115,25,25,.07);transition:.2s ease}.request-origin-card:hover{transform:translateY(-1px);box-shadow:0 9px 24px rgba(115,25,25,.12)}.request-origin-icon{display:grid;place-items:center;flex:0 0 42px;height:42px;border-radius:50%;background:#f4e5df;font-size:19px}.request-origin-copy{display:grid;gap:2px;min-width:0}.request-origin-copy small{font-size:10px;font-weight:900;letter-spacing:.12em;color:#9c6b58}.request-origin-copy strong{font-family:'Playfair Display',serif;font-size:17px}.request-origin-copy em{font-size:12px;font-style:normal;color:#826b63}.request-origin-arrow{display:flex;align-items:center;gap:7px;margin-left:auto;white-space:nowrap;font-size:13px;font-weight:900}@media(max-width:640px){.request-origin-card{align-items:flex-start}.request-origin-arrow{display:none}.request-origin-copy em{line-height:1.45}}
 
 .status-box,
 .shipping-card,

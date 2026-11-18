@@ -66,18 +66,17 @@ export async function lookupHistory(req: Request, res: Response) {
     const group = ['shipping','completed','returns','cancelled'].includes(String(req.query.group || '')) ? String(req.query.group) : '';
     const deliveryDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : '';
     const ownedOrders = await ownedOrderQuery(access);
-    // Đơn tạo từ tư vấn vẫn nằm ở tab Yêu cầu đặt hàng trong lúc chờ thanh
-    // toán. Chỉ đưa sang luồng đơn hàng bình thường sau khi đã thu tiền.
-    const salesOrderVisibility = access.orderId ? {} : { $or: [
-      { YEU_CAU_DAT_HANG_ID: { $exists: false } },
-      { YEU_CAU_DAT_HANG_ID: null },
-      { TRANG_THAI: { $nin: ['Chờ thanh toán', 'Đã hủy'] } },
-    ] };
-    const baseQuery: any = access.orderId ? ownedOrders : { $and: [ownedOrders, salesOrderVisibility] };
+    // Ngay khi yêu cầu đã tạo được DON_HANG, đơn phải xuất hiện ở luồng đơn
+    // hàng (kể cả đang chờ thanh toán), không tiếp tục núp trong tab yêu cầu.
+    const baseQuery: any = ownedOrders;
     const ordersCollection = await getCollection<any>('DON_HANG');
     const detailsCollection = await getCollection<any>('DON_HANG_CHI_TIET');
     const requestsCollection = await getCollection<any>('YEU_CAU_DAT_HANG');
-    const baseRequestQuery = ownedRequestQuery(access);
+    // Tab Yêu cầu là hàng đợi đang cần xử lý, không phải kho lịch sử. Yêu cầu
+    // đã tạo đơn, bị hủy, bị từ chối hoặc đã kết thúc đều rời khỏi tab này.
+    const baseRequestQuery = { $and: [ownedRequestQuery(access), { status: { $in: [
+      'Chờ xử lý', 'Chờ Sales tiếp nhận', 'Sales đang xử lý', 'Chờ khách xác nhận', 'Khách đã đồng ý',
+    ] } }] };
     // These datasets are independent. Start them together instead of waiting for
     // the order list before counting Sales requests.
     const [allOrderStates, allRequestCount] = await Promise.all([
@@ -118,7 +117,7 @@ export async function lookupHistory(req: Request, res: Response) {
       ] });
     }
     const query: any = filteredParts.length === 1 ? filteredParts[0] : { $and: filteredParts };
-    const requestParts: any[] = [ownedRequestQuery(access)];
+    const requestParts: any[] = [baseRequestQuery];
     if (status) requestParts.push({ status });
     if (search) {
       const pattern = new RegExp(escapeRegex(search), 'i');
