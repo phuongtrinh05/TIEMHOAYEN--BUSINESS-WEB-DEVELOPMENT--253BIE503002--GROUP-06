@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
 import { getProductSellableStockMap, sellableStockFields } from '../services/inventory/availability.service.js';
+import { getCachedRows, getPrimaryImages } from '../services/read-cache.service.js';
 
 const PUBLIC_PRODUCT_FILTER = { TRANG_THAI: 'Đang bán' };
 const PUBLIC_CATEGORY_FILTER = { AN: { $ne: true }, TRANG_THAI: { $nin: ['Ẩn', 'Đang ẩn', 'Đã xóa'] } };
@@ -14,26 +15,7 @@ const uniqueJoin = (values: unknown[]): string | null => {
   return normalized.length > 0 ? normalized.join('|') : null;
 };
 
-const sortPrimaryImages = (left: any, right: any): number => {
-  if (Boolean(left.LA_ANH_CHINH) !== Boolean(right.LA_ANH_CHINH)) {
-    return Boolean(left.LA_ANH_CHINH) ? -1 : 1;
-  }
-  return String(left.HINH_ANH_ID || '').localeCompare(String(right.HINH_ANH_ID || ''), 'vi');
-};
-
-const getPrimaryImageMap = async (productIds: string[]) => {
-  const imageCollection = await getCollection<any>('HINH_ANH_SAN_PHAM');
-  const images = await imageCollection.find({ SAN_PHAM_ID: { $in: productIds } }).toArray();
-  const imageMap = new Map<string, any>();
-
-  for (const image of images.sort(sortPrimaryImages)) {
-    if (!imageMap.has(image.SAN_PHAM_ID)) {
-      imageMap.set(image.SAN_PHAM_ID, image);
-    }
-  }
-
-  return imageMap;
-};
+const getPrimaryImageMap = (productIds: string[]) => getPrimaryImages(productIds);
 
 const buildNameListMap = async (
   relationCollectionName: string,
@@ -42,12 +24,12 @@ const buildNameListMap = async (
   nameField: string,
   productIds: string[],
 ) => {
-  const relationCollection = await getCollection<any>(relationCollectionName);
-  const lookupCollection = await getCollection<any>(lookupCollectionName);
-  const [relations, lookups] = await Promise.all([
-    relationCollection.find({ SAN_PHAM_ID: { $in: productIds } }).toArray(),
-    lookupCollection.find(PUBLIC_CATEGORY_FILTER).toArray(),
+  const wanted = new Set(productIds);
+  const [allRelations, lookups] = await Promise.all([
+    getCachedRows<any>(relationCollectionName),
+    getCachedRows<any>(lookupCollectionName, PUBLIC_CATEGORY_FILTER),
   ]);
+  const relations = allRelations.filter((relation) => wanted.has(relation.SAN_PHAM_ID));
   const lookupMap = new Map(lookups.map((item) => [item[relationIdField], item[nameField]]));
   const valueMap = new Map<string, string[]>();
 
@@ -63,9 +45,8 @@ const buildNameListMap = async (
 
 const enrichProducts = async (products: any[], extraByProduct = new Map<string, any>()) => {
   const productIds = products.map((product) => product.SAN_PHAM_ID).filter(Boolean);
-  const topicCollection = await getCollection<any>('CHU_DE');
   const [topics, imageMap, flowerListMap, targetListMap, colorListMap, stockMap] = await Promise.all([
-    topicCollection.find({}).toArray(),
+    getCachedRows<any>('CHU_DE'),
     getPrimaryImageMap(productIds),
     buildNameListMap('HOA_TUOI_SAN_PHAM', 'HOA_TUOI', 'HOA_TUOI_ID', 'TEN_HOA_TUOI', productIds),
     buildNameListMap('DOI_TUONG_SAN_PHAM', 'DOI_TUONG', 'DOI_TUONG_ID', 'TEN_DOI_TUONG', productIds),
