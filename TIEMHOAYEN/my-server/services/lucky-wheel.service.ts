@@ -244,8 +244,10 @@ export async function getLuckyWallet(customerId:string,query:any={}){
   const now=new Date();
   const mapped=latestSpins.map(s=>{const p=programs.find(p=>p.id===s.programId);const expiresAt=p?spinDeadline(s,p):s.baseExpiresAt;return {...s,expiresAt,status:s.status==='Chưa quay'&&expiresAt<=now?'Hết hạn':s.status,paused:p&&effectiveStatus(p)==='Tạm dừng',program:p?publicProgram({...p,prizes:s.rules.prizes||p.prizes,terms:s.rules.terms||p.terms,rewardDays:s.rules.rewardDays,minimumOrder:s.rules.minimumOrder}):null};});
   const rewardPage=Math.max(1,Number(query.rewardPage)||1),historyPage=Math.max(1,Number(query.historyPage)||1);
-  const rewardFilter:any={customerId,...(query.availableOnly==='true'?{status:REWARD_STATUS.available}:{})};
-  const rewardSize=query.availableOnly==='true'?200:6;
+  // availableOnly: chỉ thưởng dùng được (trang thanh toán). activeOnly: thưởng còn hiệu lực gồm cả chờ kích hoạt (kho voucher tài khoản).
+  const statusFilter=query.availableOnly==='true'?{status:REWARD_STATUS.available}:query.activeOnly==='true'?{status:{$in:[REWARD_STATUS.waiting,REWARD_STATUS.available,REWARD_STATUS.held]}}:{};
+  const rewardFilter:any={customerId,...statusFilter};
+  const rewardSize=query.availableOnly==='true'||query.activeOnly==='true'?200:6;
   const latestRewards=await (await col(LUCKY.reward)).find(rewardFilter).sort({issuedAt:-1}).skip((rewardPage-1)*rewardSize).limit(rewardSize).toArray();
   for(const r of latestRewards){
     if(r.status===REWARD_STATUS.available&&r.expiresAt<=now){await (await col(LUCKY.reward)).updateOne({_id:r._id,status:r.status},{$set:{status:REWARD_STATUS.expired}});r.status=REWARD_STATUS.expired;}

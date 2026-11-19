@@ -8,7 +8,9 @@ import { PageFooter } from '../../components/page-footer/page-footer';
 import { CustomerService, Customer, CustomerAddress, CustomerOrder, CustomerVoucher, CustomerWishlistItem } from '../../services/customer.service';
 import { CartService } from '../../services/cart.service';
 import { endSession } from '../../services/session-auth';
-import { Subscription } from 'rxjs';
+import { Subscription, forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
+import { LuckyWheelService } from '../../services/lucky-wheel.service';
 import { AccountChangePassword } from './change-password/change-password';
 import { ACCOUNT_SECTIONS, AccountSection, DEFAULT_ACCOUNT_SECTION, resolveAccountSection } from './account-sections';
 
@@ -67,6 +69,11 @@ interface Voucher {
   description: string;
   condition: string;
   expiry: string;
+  /** Nhãn hiển thị thay mã ở ô bên trái (voucher từ Vòng quay may mắn). */
+  badge?: string;
+  /** false: voucher chưa dùng được (chờ kích hoạt / đang giữ chỗ) → hiện trạng thái thay nút "Sử dụng". */
+  usable?: boolean;
+  statusLabel?: string;
 }
 
 type MemberRank = 'Đồng' | 'Bạc' | 'Vàng' | 'Kim cương';
@@ -108,6 +115,7 @@ interface WardOption extends Ward {
 })
 export class AccountComponent implements OnInit, OnDestroy {
   private readonly platformId = inject(PLATFORM_ID);
+  private readonly luckyWheel = inject(LuckyWheelService);
   private readonly cartStorageKey = 'tiemHoaYenCart';
   private readonly wishlistChangedHandler = (event: Event) => {
     const detail = (event as CustomEvent<{ favorite?: boolean }>).detail;
@@ -663,9 +671,12 @@ export class AccountComponent implements OnInit, OnDestroy {
 
     const khachHang = JSON.parse(saved);
 
-    this.customerService.getVouchers(khachHang.KHACH_HANG_ID).subscribe({
-      next: (data: CustomerVoucher[]) => {
-        this.vouchers = data.map(item => {
+    // Voucher tài khoản + voucher nhận từ Vòng quay may mắn (còn hiệu lực) hiển thị chung một kho.
+    // Lỗi tải voucher vòng quay không làm mất danh sách voucher thường.
+    const luckyRewards$ = this.luckyWheel.wallet({ activeOnly: 'true' }).pipe(catchError(() => of({ rewards: [] })));
+    forkJoin({ data: this.customerService.getVouchers(khachHang.KHACH_HANG_ID), lucky: luckyRewards$ }).subscribe({
+      next: ({ data, lucky }: { data: CustomerVoucher[]; lucky: any }) => {
+        const accountVouchers: Voucher[] = data.map(item => {
           const value = Number(item.GIA_TRI_GIAM || 0);
 
           return {
@@ -680,6 +691,13 @@ export class AccountComponent implements OnInit, OnDestroy {
               : '',
           };
         });
+        const luckyVouchers: Voucher[] = (lucky?.rewards || []).map((reward: any) => this.toLuckyVoucher(reward));
+        // Voucher vòng quay dùng được xếp trước, chờ kích hoạt xếp sau voucher thường.
+        this.vouchers = [
+          ...luckyVouchers.filter(v => v.usable),
+          ...accountVouchers,
+          ...luckyVouchers.filter(v => !v.usable),
+        ];
 
         this.cdr.detectChanges();
       },
@@ -1678,6 +1696,24 @@ export class AccountComponent implements OnInit, OnDestroy {
         console.error('Lỗi xóa địa chỉ:', err);
       }
     });
+  }
+
+  private toLuckyVoucher(reward: any): Voucher {
+    const prize = reward?.prize || {};
+    const minimum = Number(reward?.minimumOrder || 0);
+    const conditions = ['Vòng quay may mắn', `Đơn từ ${minimum.toLocaleString('vi-VN')}đ`];
+    if (prize.kind === 'percent' && Number(prize.maxDiscount) > 0) conditions.push(`giảm tối đa ${Number(prize.maxDiscount).toLocaleString('vi-VN')}đ`);
+    const usable = reward?.status === 'Có thể dùng';
+    if (reward?.status === 'Chờ kích hoạt' && reward?.sourceOrderId) conditions.push(`dùng được khi đơn #${reward.sourceOrderId} hoàn thành`);
+    return {
+      code: String(reward?.code || ''),
+      description: String(prize.name || 'Phần thưởng vòng quay'),
+      condition: conditions.join(' · '),
+      expiry: reward?.expiresAt ? new Date(reward.expiresAt).toLocaleDateString('vi-VN') : '',
+      badge: 'VÒNG QUAY',
+      usable,
+      statusLabel: usable ? '' : String(reward?.status || ''),
+    };
   }
 
   useVoucher(_code: string): void {

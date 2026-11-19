@@ -2291,3 +2291,9 @@ textarea.address-modal-input.address-detail-textarea {
   }
 }
 
+
+/* Voucher từ Vòng quay may mắn trong kho voucher tài khoản */
+.voucher-code.voucher-code-lucky{flex-direction:column;gap:4px;font-size:12px;letter-spacing:.08em}
+.voucher-code.voucher-code-lucky i{font-size:22px;letter-spacing:0}
+.voucher-lucky-code{font-size:12px;font-weight:600;letter-spacing:.04em;color:#731919;margin:2px 0;overflow-wrap:anywhere}
+.voucher-status{display:inline-block;padding:5px 10px;border-radius:6px;background:#fff0d9;color:#96661e;font-size:12px;white-space:nowrap}
