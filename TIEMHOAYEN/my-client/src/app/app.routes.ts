@@ -18,7 +18,7 @@ import { ErrorPageComponent } from './pages/page-not-found/error-page';
 import { BlogComponent } from './pages/blog/blog';
 import { BlogDetailComponent } from './pages/blog-detail/blog-detail';
 import { CategoryComponent } from './pages/category/category';
-import { Design3d } from './pages/design3d/design3d';
+// Design3d nạp lười: trang này kéo theo three.js, không cần tải sẵn ở mọi trang.
 
 // =========================
 // AUTH
@@ -115,7 +115,7 @@ export const routes: Routes = [
   },
   {
     path: 'design3d',
-    component: Design3d,
+    loadComponent: () => import('./pages/design3d/design3d').then(m => m.Design3d),
     title: 'Thiết kế 3D - Tiệm Hoa Yên',
   },
   {
