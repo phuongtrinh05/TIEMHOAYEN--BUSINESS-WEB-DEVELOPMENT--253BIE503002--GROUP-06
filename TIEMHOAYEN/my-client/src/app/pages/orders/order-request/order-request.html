@@ -8,7 +8,7 @@
       <i class="bi bi-chevron-right" aria-hidden="true"></i>
       <span>{{request?.requestId || 'Chi tiết'}}</span>
     </nav>
-    <h1>{{hasCreatedOrder ? 'Lịch sử yêu cầu đặt hàng' : 'Chi tiết yêu cầu đặt hàng'}}</h1>
+    <h1>Chi tiết yêu cầu đặt hàng</h1>
   </header>
   }
   @if (error) { <p role="alert" class="error">{{error}}</p> }
@@ -16,22 +16,18 @@
   @if (request) {
     @if (!compact) {
     <section class="request-overview">
-      <div class="request-heading"><div><span class="eyebrow">YÊU CẦU ĐẶT HOA</span><h2>{{request.items?.[0]?.name || 'Yêu cầu của bạn'}}</h2><p class="request-code">Mã {{request.requestId}}</p></div><div class="request-heading-actions"><span class="status-pill request-status" [attr.data-tone]="requestStatusTone(request.status)">{{request.status === 'Khách đã hủy' ? 'Đã hủy yêu cầu' : (request.workflow?.customerStatus || request.status)}}</span>@if(canCancel){<button class="danger-outline cancel-top" (click)="confirmCancel()" [disabled]="busy">Hủy yêu cầu</button>}</div></div>
-      <div class="request-progress" aria-label="Tiến trình yêu cầu">
-        <div [class.done]="requestStep>=1"><span>1</span><strong>Đã gửi</strong></div>
-        <div [class.done]="requestStep>=2"><span>2</span><strong>Shop tư vấn</strong></div>
-        <div [class.done]="requestStep>=3"><span>3</span><strong>Bạn xác nhận</strong></div>
-        <div [class.done]="requestStep>=4"><span>4</span><strong>Tạo đơn</strong></div>
-      </div>
+      <div class="request-heading"><div><span class="eyebrow">YÊU CẦU ĐẶT HOA</span><h2>{{request.items?.[0]?.name || 'Yêu cầu của bạn'}}</h2><p class="request-code">Mã {{request.requestId}}</p></div><div class="request-heading-actions"><span class="status-pill request-status" [attr.data-tone]="stage.tone">{{stage.label}}</span>@if(canCancel){<button class="danger-outline cancel-top" (click)="confirmCancel()" [disabled]="busy">Hủy yêu cầu</button>}</div></div>
+      @if(requestStep > 0){<ol class="request-progress steps-5" aria-label="Tiến trình yêu cầu">
+        @for(label of requestSteps;track label;let i=$index){<li [class.done]="requestStep>i+1 || (requestStep===5 && i===4)" [class.current]="requestStep===i+1 && requestStep<5" [attr.aria-current]="requestStep===i+1 ? 'step' : null"><span>{{i+1}}</span><strong>{{label}}</strong></li>}
+      </ol>}
+      <p class="stage-hint" [attr.data-tone]="stage.tone" role="status"><i class="bi" [class.bi-info-circle]="!stage.terminal" [class.bi-flag]="stage.terminal" aria-hidden="true"></i><span><strong>{{stage.label}}.</strong> {{stage.hint}}</span></p>
       @if(hasCreatedOrder){<div class="converted-request-summary"><div class="converted-product">@for(item of request.items;track item.productId){<img [src]="image(item.image)" [alt]="item.name"><div><strong>{{item.name}}</strong><span>{{item.quantity}} bó · Giao {{request.delivery?.date}} {{request.delivery?.time}}</span>@if(request.quote?.summary?.total ?? request.originalTotal;as total){<b>{{total | number:'1.0-0'}}đ</b>}<small>{{request.orderSummary?.status || 'Đã tạo đơn hàng'}} · Thanh toán: {{request.orderSummary?.paymentStatus || 'Chưa cập nhật'}}</small></div>}</div><a [routerLink]="['/order-detail',linkedOrderId]">Xem đơn hàng <i class="bi bi-arrow-right"></i></a></div>}
       @if(!hasCreatedOrder && request.requestUpdatedByProposal){<p class="not-an-order"><strong>Yêu cầu đơn hàng đã được sửa.</strong> Vui lòng kiểm tra lại và xác nhận.</p>}
-      @if(!hasCreatedOrder && request.status!=='Đã lên đơn'){<p class="not-an-order"><i class="bi bi-clock-history" aria-hidden="true"></i><span><strong>Đang chờ shop tư vấn.</strong> Bạn chưa cần thanh toán ở bước này.</span></p>}
       @if (!hasCreatedOrder && privateLink) { <p>Giữ liên kết riêng để mở lại yêu cầu này. Người có liên kết có thể xem và phản hồi yêu cầu.</p><button class="secondary" (click)="copyPrivateLink()">Sao chép liên kết riêng</button> }
-      @if (!hasCreatedOrder && !request.orderResult && request.status !== 'Đã từ chối' && request.status !== 'Đã tư vấn' && request.status !== 'Khách đã hủy') {
+      @if (!hasCreatedOrder && !request.orderResult && !stage.terminal) {
       <details class="review-notice">
         <summary>Vì sao shop cần kiểm tra yêu cầu này?</summary>
         @if (request.reasons?.length) { <ul class="request-reasons">@for (reason of request.reasons; track reason) { <li>{{reason}}</li> }</ul> } @else { <p>{{request.reviewReason}}</p> }
-        <p>{{request.workflow?.instruction}}</p>
         @if (request.workflow?.urgency === 'urgent') { <a routerLink="/contact">Liên hệ shop nếu bạn cần ngay</a> }
       </details>
       }
@@ -54,7 +50,7 @@
     </section>
     }
     @if (!hasCreatedOrder && request.quote; as q) {
-      <section class="proposal"><span class="tag">PHƯƠNG ÁN {{q.revision}}</span><h2>Mẫu và giá Sales đề xuất</h2>
+      <section class="proposal"><span class="tag">PHƯƠNG ÁN {{q.revision}}</span><h2>Mẫu và giá shop đề xuất</h2>
         @for (item of q.items; track item.id) {
           <div class="product"><img [src]="image(item.image)" [alt]="item.name"><div><h3>{{item.name}}</h3>
           <p>{{item.qty}} bó × {{item.price | number:'1.0-0'}}đ</p>
@@ -70,23 +66,22 @@
         <p>Thanh toán trước: <strong>{{q.payment.amountToPay | number:'1.0-0'}}đ</strong> · Còn lại: {{q.summary.total-q.payment.amountToPay | number:'1.0-0'}}đ</p>
         <p>Giao lúc {{q.delivery.time}}, ngày {{q.delivery.date}} · {{q.payment.methodName}}</p>
         @if(q.note){<p class="message">{{q.note}}</p>}<small>{{q.discountNote}}</small>
-        @if (request.status === 'Chờ khách xác nhận' && !readOnly) {
+        @if (stage.awaitingConfirmation && !readOnly) {
           <button (click)="respond('accept')" [disabled]="busy">Xác nhận phương án</button>
           <button class="secondary" (click)="respond('decline')" [disabled]="busy">Tôi muốn tư vấn lại</button>
           <p><small>Sau khi bạn đồng ý, hệ thống kiểm tra lại tồn và tạo đơn ở trạng thái Đã xác nhận đơn hàng. Bạn thanh toán trong 24 giờ để đơn được đặt thành công; quá hạn đơn tự hủy.</small></p>
         }
-        @if (request.status === 'Khách đã đồng ý') { <p>Bạn đã đồng ý. Hệ thống đang kiểm tra tồn và chuẩn bị phiên thanh toán.</p> }
-        @if (request.orderResult) { @if(['Chờ thanh toán','Chờ khách thanh toán'].includes(request.status)){<p>Đơn <strong>{{request.orderResult.orderId}}</strong> đang chờ thanh toán.</p>@if(!readOnly){<button (click)="checkout()">Thanh toán đơn hàng</button>}}@else{<p>Đã lên đơn <strong>{{request.orderResult.orderId}}</strong>.</p><a [routerLink]="['/order-detail',request.orderResult.orderId]">Theo dõi đơn hàng</a>}
+        @if (request.orderResult) { @if(stage.key === 'payment'){<p>Đơn <strong>{{request.orderResult.orderId}}</strong> đang chờ thanh toán.</p>@if(!readOnly){<button (click)="checkout()">Thanh toán đơn hàng</button>}}@else{<p>Đã lên đơn <strong>{{request.orderResult.orderId}}</strong>.</p><a [routerLink]="['/order-detail',request.orderResult.orderId]">Theo dõi đơn hàng</a>}
         }
       </section>
     }
     <section class="chat-shell" id="trao-doi" [class.read-only-history]="!canContinueChat">@if(!compact){<div class="chat-title"><div class="shop-avatar"><i class="bi bi-chat-heart" aria-hidden="true"></i></div><div><h2>{{canContinueChat ? (hasCreatedOrder ? 'Trao đổi về đơn hàng' : 'Trao đổi với shop') : 'Lịch sử trao đổi'}}</h2><p>{{canContinueChat ? (hasCreatedOrder ? 'Bạn vẫn có thể nhắn shop trước khi giao xong.' : 'Shop sẽ phản hồi tại cuộc trò chuyện này.') : 'Cuộc trao đổi đã kết thúc và được lưu để xem lại.'}}</p></div></div>}
       @if(compact){<div class="chat-request-summary">
-        <div class="compact-summary-head"><span>Yêu cầu đặt hoa</span><div class="request-heading-actions"><span class="status-pill request-status" [attr.data-tone]="requestStatusTone(request.status)">{{request.status === 'Khách đã hủy' ? 'Đã hủy' : (request.workflow?.customerStatus || request.status)}}</span></div></div>
+        <div class="compact-summary-head"><span>Yêu cầu đặt hoa</span><div class="request-heading-actions"><span class="status-pill request-status" [attr.data-tone]="stage.tone">{{stage.label}}</span></div></div>
         @if(request.requestUpdatedByProposal){<p class="not-an-order"><strong>Yêu cầu đơn hàng đã được sửa.</strong> Vui lòng kiểm tra lại và xác nhận.</p>}
         @if(request.quote; as currentQuote){@for(item of currentQuote.items;track item.id){<div class="requested-item"><img [src]="image(item.image)" [alt]="item.name"><p><strong>{{item.name}}</strong><span>{{item.qty}} bó · {{currentQuote.delivery?.date}} {{currentQuote.delivery?.time}}</span><b>{{item.price | number:'1.0-0'}}đ/bó</b></p></div>}<p class="compact-quote-total"><span>Tổng dự kiến</span><strong>{{currentQuote.summary?.total | number:'1.0-0'}}đ</strong></p>}@else{@for(item of request.items;track item.productId){<div class="requested-item"><img [src]="image(item.image)" [alt]="item.name"><p><strong>{{item.name}}</strong><span>{{item.quantity}} bó · {{request.delivery?.date}} {{request.delivery?.time}}</span></p></div>}}
-        @if(['Chờ thanh toán','Chờ khách thanh toán'].includes(request.status)){<p class="compact-action-note"><i class="bi bi-credit-card" aria-hidden="true"></i>Đơn đã được tạo và đang chờ thanh toán.</p>}
-        @if(request.status === 'Chờ khách xác nhận' && request.quote && !readOnly){<div class="compact-confirm-actions"><button (click)="respond('accept')" [disabled]="busy">Xác nhận phương án</button><button class="secondary" (click)="respond('decline')" [disabled]="busy">Tư vấn lại</button></div>}
+        <p class="compact-action-note"><i class="bi" [class.bi-credit-card]="stage.key==='payment'" [class.bi-info-circle]="stage.key!=='payment'" aria-hidden="true"></i>{{stage.hint}}</p>
+        @if(stage.awaitingConfirmation && !readOnly){<div class="compact-confirm-actions"><button (click)="respond('accept')" [disabled]="busy">Xác nhận phương án</button><button class="secondary" (click)="respond('decline')" [disabled]="busy">Tư vấn lại</button></div>}
       </div>}
       <div class="chat" aria-live="polite">
         @for (m of messages; track m.id) { <div class="bubble" [class.mine]="m.senderType==='customer'" [class.system]="m.senderType==='system'">

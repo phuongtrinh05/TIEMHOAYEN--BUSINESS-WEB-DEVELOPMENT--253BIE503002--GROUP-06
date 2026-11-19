@@ -369,7 +369,7 @@ export async function updateSalesRequest(id: string, body: any, employee: any) {
   if (claim || body.action === 'reject') {
     const { orderEvent } = await import('./admin-order.service.js');
     await orderEvent(undefined, `${id}:${body.action}:${updated.version}`, updated.customerId || null, null,
-      claim ? 'Sales đã tiếp nhận yêu cầu' : 'Shop đã từ chối yêu cầu',
+      claim ? 'Shop đã tiếp nhận yêu cầu' : 'Shop đã từ chối yêu cầu',
       claim ? 'Nhân viên đang kiểm tra khả năng đáp ứng và sẽ liên hệ với bạn.' : note,
       `/order-request/${id}`);
   }

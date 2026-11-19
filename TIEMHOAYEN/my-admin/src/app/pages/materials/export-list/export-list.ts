@@ -6,7 +6,6 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
-import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
 import {
   InvBomProduct,
   InvDocument,
@@ -39,7 +38,7 @@ const TYPE_HELP: Record<string, string> = {
 @Component({
   selector: 'app-export-list',
   standalone: true,
-  imports: [InventoryDialogComponent, InventoryReversalComponent, CommonModule, FormsModule, InventoryTabsComponent, InventoryPagerComponent],
+  imports: [InventoryDialogComponent, InventoryReversalComponent, CommonModule, FormsModule, InventoryPagerComponent],
   templateUrl: './export-list.html',
   styleUrls: ['../inventory.css', './export-list.css'],
 })

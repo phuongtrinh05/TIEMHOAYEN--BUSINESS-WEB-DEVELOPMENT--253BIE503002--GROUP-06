@@ -17,17 +17,24 @@
                 routerLinkActive="active"
                 class="menu-item"
                 [class.active]="isItemActive(item)"
+                [class.group-active]="isGroupActive(item)"
                 [class.disabled]="!canView(item.module)"
                 [attr.aria-disabled]="!canView(item.module)"
                 (click)="openMenu(item, $event)">
                 <i class="bi" [ngClass]="item.icon"></i>
                 <span>{{ item.label }}</span>
+                <button *ngIf="item.children?.length && !isCollapsed" type="button" class="submenu-toggle"
+                    [attr.aria-expanded]="isGroupOpen(item)" [attr.aria-label]="(isGroupOpen(item) ? 'Thu gọn ' : 'Mở ') + item.label"
+                    (click)="toggleGroup(item, $event)">
+                    <i class="bi" [ngClass]="isGroupOpen(item) ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+                </button>
             </a>
-            <div class="submenu" *ngIf="item.children?.length && !isCollapsed">
+            <div class="submenu" *ngIf="item.children?.length && !isCollapsed && isGroupOpen(item)">
                 <a
                     *ngFor="let child of item.children"
                     [routerLink]="canView(child.module) ? child.route : null"
                     routerLinkActive="active"
+                    [routerLinkActiveOptions]="{ exact: !!child.exact }"
                     class="submenu-item"
                     [class.active]="isItemActive(child)"
                     [class.disabled]="!canView(child.module)"

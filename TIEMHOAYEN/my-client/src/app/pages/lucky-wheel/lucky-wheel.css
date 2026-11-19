@@ -16,3 +16,9 @@
 @media(max-width:650px){.embedded{padding:16px}.embedded-heading{gap:11px;padding-bottom:12px;margin-bottom:8px}.paid-icon{width:36px;height:36px;font-size:19px}.embedded-heading h1{font-size:20px}.embedded .wheel-layout{grid-template-columns:1fr;gap:4px}.embedded .wheel{width:min(100%,250px,36dvh)}.embedded .wheel-stage{padding:10px 0 8px}.embedded .spin-card{padding:16px}}
 
 a.secondary{display:block;text-align:center;text-decoration:none}
+
+/* Nút giữa vòng quay: đứng yên (không xoay theo bánh xe), bấm để quay. */
+.wheel-box{position:relative;width:min(100%,460px)}.wheel-box .wheel{width:100%!important;max-width:none!important;overflow:hidden}.embedded .wheel-box{width:min(100%,300px,44dvh)}
+button.wheel-center{z-index:1;padding:0;font:inherit;cursor:default;transition:transform .2s,box-shadow .2s}button.wheel-center:disabled{opacity:1}button.wheel-center.ready{cursor:pointer;box-shadow:0 0 0 4px #73191922,0 4px 14px #73191926}button.wheel-center.ready:hover{transform:scale(1.05);box-shadow:0 0 0 6px #73191930,0 6px 18px #73191930}button.wheel-center:focus-visible{outline:3px solid #731919;outline-offset:3px}button.wheel-center span{font-weight:600}
+.result-dialog{position:relative}.result-close{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:50%;border:1px solid #e9dfd9;background:#fff;color:#8b7770;display:grid;place-items:center;font-size:14px}.result-close:hover{color:#731919;border-color:#731919}
+@media(max-width:650px){.embedded .wheel-box{width:min(100%,250px,36dvh)}}

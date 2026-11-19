@@ -8,6 +8,7 @@ import { createOrder } from './order.js';
 import { randomUUID } from 'node:crypto';
 import { finishedAvailableOf, InventoryError, nextCode, withTransaction } from '../services/inventory/helpers.js';
 import { computeBuildable } from '../services/inventory/availability.service.js';
+import { getCachedActiveBomMap, getPrimaryImages } from '../services/read-cache.service.js';
 import { createBomVersion, getActiveBom, getActiveBomMap } from '../services/inventory/bom.service.js';
 import { syncCheckoutInventory, changeCheckoutPayment } from '../services/checkout-payment.service.js';
 import { assertOrderReadyForMaterialExport, markOrderPreparationStarted, assertPrepTimeChangeAllowed, createExport, releaseReservations, shipFinishedGoodsForOrder, suggestExportLines, syncOrderPrepTime } from '../services/inventory/stock.service.js';
@@ -147,20 +148,7 @@ const sanitizeEmployee = (employee: any) => {
   return safeEmployee;
 };
 
-const getPrimaryImageMap = async (productIds: string[]) => {
-  const imageCollection = await getCollection<any>('HINH_ANH_SAN_PHAM');
-  const images = await imageCollection.find({ SAN_PHAM_ID: { $in: productIds } }).toArray();
-  const imageMap = new Map<string, any>();
-
-  for (const image of images.sort((left, right) => {
-    if (Boolean(left.LA_ANH_CHINH) !== Boolean(right.LA_ANH_CHINH)) return Boolean(left.LA_ANH_CHINH) ? -1 : 1;
-    return String(left.HINH_ANH_ID || '').localeCompare(String(right.HINH_ANH_ID || ''), 'vi');
-  })) {
-    if (!imageMap.has(image.SAN_PHAM_ID)) imageMap.set(image.SAN_PHAM_ID, image);
-  }
-
-  return imageMap;
-};
+const getPrimaryImageMap = (productIds: string[]) => getPrimaryImages(productIds);
 
 const mapAdminProduct = (row: any, image?: any, avgRating = 0, stock?: { finished: number; buildable: number }) => ({
   id: row.SAN_PHAM_ID,
@@ -187,9 +175,12 @@ const mapAdminProduct = (row: any, image?: any, avgRating = 0, stock?: { finishe
   selected: false,
 });
 
-const getLatestPaymentByOrderIds = async (orderIds: string[]) => {
-  const paymentCollection = await getCollection<any>('THANH_TOAN');
-  const payments = await paymentCollection.find({ DON_HANG_ID: { $in: orderIds } }).toArray();
+/** preloaded: danh sách thanh toán đã đọc sẵn (sẽ được lọc theo orderIds) để khỏi đọc DB thêm lượt nữa. */
+const getLatestPaymentByOrderIds = async (orderIds: string[], preloaded?: any[]) => {
+  const wanted = new Set(orderIds);
+  const payments = preloaded
+    ? preloaded.filter((payment) => wanted.has(payment.DON_HANG_ID))
+    : await (await getCollection<any>('THANH_TOAN')).find({ DON_HANG_ID: { $in: orderIds } }).toArray();
   const grouped = new Map<string, any[]>();
 
   for (const payment of payments) {
@@ -263,27 +254,34 @@ export const getAdminStaffAccounts = async (req: Request, res: Response) => {
 
 export const getAdminOrders = async (req: Request, res: Response) => {
   try {
-    const orderCollection = await getCollection<any>('DON_HANG');
-    const ordersRaw = await orderCollection.find({}, { projection: {
-      DON_HANG_ID: 1, KHACH_HANG_ID: 1, TEN_NGUOI_DAT: 1, TEN_NGUOI_NHAN: 1,
-      NGAY_MUON_GIAO: 1, KHUNG_GIO_MUON_GIAO: 1, TIEN_COC: 1, TONG_TIEN: 1,
-      PHUONG_THUC_THANH_TOAN: 1, NHAN_VIEN_GIAO_HANG_ID: 1, 'NHAN_VIEN_GIAO_HANG.id': 1,
-      GHI_CHU_NOI_BO: 1, NGAY_TAO: 1, TRANG_THAI: 1,
-    } }).toArray();
-    const ids = ordersRaw.map(order => order.DON_HANG_ID);
-    const customerIds = [...new Set(ordersRaw.map(o => o.KHACH_HANG_ID).filter(Boolean))];
-    const [paymentMap, customers, details] = await Promise.all([
-      getLatestPaymentByOrderIds(ids),
-      getCollection<any>('KHACH_HANG').then(collection => collection.find({ KHACH_HANG_ID: { $in: customerIds } }, { projection: { KHACH_HANG_ID: 1, TEN: 1 } }).toArray()),
-      getCollection<any>('DON_HANG_CHI_TIET').then(collection => collection.find({ DON_HANG_ID: { $in: ids } }, { projection: {
+    // Danh sách lấy MỌI đơn nên đọc thẳng toàn bộ các bảng liên quan trong MỘT lượt song song,
+    // rồi lọc trong bộ nhớ (trước đây 3–4 lượt nối tiếp, mỗi lượt ~250ms khi DB ở Atlas).
+    const [ordersRaw, allPayments, allCustomers, allDetails, allAfterSales] = await Promise.all([
+      getCollection<any>('DON_HANG').then(collection => collection.find({}, { projection: {
+        DON_HANG_ID: 1, KHACH_HANG_ID: 1, TEN_NGUOI_DAT: 1, TEN_NGUOI_NHAN: 1,
+        NGAY_MUON_GIAO: 1, KHUNG_GIO_MUON_GIAO: 1, TIEN_COC: 1, TONG_TIEN: 1,
+        PHUONG_THUC_THANH_TOAN: 1, NHAN_VIEN_GIAO_HANG_ID: 1, 'NHAN_VIEN_GIAO_HANG.id': 1,
+        GHI_CHU_NOI_BO: 1, NGAY_TAO: 1, TRANG_THAI: 1,
+      } }).toArray()),
+      getCollection<any>('THANH_TOAN').then(collection => collection.find({}).toArray()),
+      getCollection<any>('KHACH_HANG').then(collection => collection.find({}, { projection: { KHACH_HANG_ID: 1, TEN: 1 } }).toArray()),
+      getCollection<any>('DON_HANG_CHI_TIET').then(collection => collection.find({}, { projection: {
         DON_HANG_ID: 1, SAN_PHAM_ID: 1, TEN_SAN_PHAM_SNAPSHOT: 1, SO_LUONG: 1,
       } }).toArray()),
+      getCollection<any>(AFTER_SALES).then(collection => collection.find({}, { projection: { _id: 0, orderId: 1, requestId: 1, status: 1, active: 1, createdAt: 1 } }).sort({ createdAt: -1 }).toArray()),
     ]);
-    const products = await (await getCollection<any>('SAN_PHAM')).find({ SAN_PHAM_ID: { $in: details.map(i => i.SAN_PHAM_ID) } }, { projection: { SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1 } }).toArray();
+    const ids = ordersRaw.map(order => order.DON_HANG_ID);
+    const orderIdSet = new Set(ids);
+    const customerIdSet = new Set(ordersRaw.map(o => o.KHACH_HANG_ID).filter(Boolean));
     // Hồ sơ hoàn tiền của đơn đã hủy: hiện ở tab "Cần hoàn tiền".
-    const cancelledIds = ordersRaw.filter(o => normalizeOrderStatus(o.TRANG_THAI) === 'Đã hủy').map(o => o.DON_HANG_ID);
-    const refundCases = cancelledIds.length ? await (await getCollection<any>(AFTER_SALES)).find({ orderId: { $in: cancelledIds } },
-      { projection: { _id: 0, orderId: 1, requestId: 1, status: 1, active: 1, createdAt: 1 } }).sort({ createdAt: -1 }).toArray() : [];
+    const cancelledIdSet = new Set(ordersRaw.filter(o => normalizeOrderStatus(o.TRANG_THAI) === 'Đã hủy').map(o => o.DON_HANG_ID));
+    const paymentMap = await getLatestPaymentByOrderIds(ids, allPayments);
+    const customers = allCustomers.filter(customer => customerIdSet.has(customer.KHACH_HANG_ID));
+    const details = allDetails.filter(detail => orderIdSet.has(detail.DON_HANG_ID));
+    const refundCases = allAfterSales.filter(row => cancelledIdSet.has(row.orderId));
+    // Chỉ tra tên sản phẩm cho dòng thiếu tên lưu sẵn (TEN_SAN_PHAM_SNAPSHOT).
+    const missingNameIds = [...new Set(details.filter(i => !i.TEN_SAN_PHAM_SNAPSHOT).map(i => i.SAN_PHAM_ID))];
+    const products = missingNameIds.length ? await (await getCollection<any>('SAN_PHAM')).find({ SAN_PHAM_ID: { $in: missingNameIds } }, { projection: { SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1 } }).toArray() : [];
     const refundCaseByOrder = new Map<string, any>();
     for (const row of refundCases) if (!refundCaseByOrder.has(row.orderId)) refundCaseByOrder.set(row.orderId, row);
     const productNames = new Map(products.map(p => [p.SAN_PHAM_ID, p.TEN_SAN_PHAM]));
@@ -594,7 +592,7 @@ export const getAdminProducts = async (req: Request, res: Response) => {
       getPrimaryImageMap(productIds),
       reviewCollection.find({}).toArray(),
       materialCollection.find({}).toArray(),
-      getActiveBomMap(productIds),
+      getCachedActiveBomMap(productIds),
     ]);
     const materialsById = new Map(materials.map((material) => [material.NGUYEN_VAT_LIEU_ID, material]));
     const ratingMap = new Map<string, number>();

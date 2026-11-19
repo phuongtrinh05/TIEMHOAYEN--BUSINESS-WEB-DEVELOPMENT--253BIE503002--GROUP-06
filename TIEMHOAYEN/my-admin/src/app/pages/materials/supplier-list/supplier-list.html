@@ -1,6 +1,5 @@
 <div class="inv-page">
   <div class="inv-card">
-    <app-inventory-tabs />
 
 <div class="inv-toolbar inv-list-tools"><div class="grow"><input class="inv-input" placeholder="Tìm mã, tên, SĐT, email, người đại diện…" [(ngModel)]="search" (ngModelChange)="refilter()"></div><button class="inv-btn" type="button" [class.inv-filter-active]="filtersOpen || statusFilter" [attr.aria-expanded]="filtersOpen" (click)="filtersOpen = !filtersOpen"><i class="bi bi-funnel"></i> Bộ lọc</button><button class="inv-btn" type="button" title="Tải lại" aria-label="Tải lại" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button><button class="inv-btn inv-add-btn" type="button" (click)="openCreate()" title="Thêm nhà cung cấp" aria-label="Thêm nhà cung cấp"><i class="bi bi-plus-circle" aria-hidden="true"></i></button><button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button></div>
 @if (filtersOpen) { <div class="inv-toolbar inv-filter-panel"><select class="inv-select" style="width:180px" [(ngModel)]="statusFilter" (ngModelChange)="refilter()">

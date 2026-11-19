@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
 import { getProductSellableStockMap, sellableStockFields } from '../services/inventory/availability.service.js';
+import { getCachedRows, getPrimaryImages } from '../services/read-cache.service.js';
 
 type SearchProductRow = {
   SAN_PHAM_ID: string;
@@ -171,23 +172,8 @@ const sortPrimaryImages = (a: any, b: any): number => {
 
 const getPrimaryImageMap = async (productIds: string[]): Promise<Map<string, string | null>> => {
   if (!productIds.length) return new Map();
-  const imageCollection = await getCollection('HINH_ANH_SAN_PHAM');
-  const images = await imageCollection.find({ SAN_PHAM_ID: { $in: productIds } }, {
-    projection: { _id: 0, SAN_PHAM_ID: 1, LA_ANH_CHINH: 1, HINH_ANH_ID: 1, URL: 1 },
-  }).toArray();
-  const grouped = new Map<string, any[]>();
-
-  images.forEach((image: any) => {
-    const productId = String(image.SAN_PHAM_ID || '');
-    grouped.set(productId, [...(grouped.get(productId) || []), image]);
-  });
-
-  return new Map(
-    Array.from(grouped.entries()).map(([productId, productImages]) => {
-      const [primaryImage] = productImages.sort(sortPrimaryImages);
-      return [productId, primaryImage?.URL || null];
-    }),
-  );
+  const images = await getPrimaryImages(productIds);
+  return new Map(Array.from(images.entries()).map(([productId, image]) => [productId, image.URL || null]));
 };
 
 const enrichProducts = async (products: any[], includeTopic = false): Promise<SearchProductRow[]> => {
@@ -195,8 +181,7 @@ const enrichProducts = async (products: any[], includeTopic = false): Promise<Se
   let topicMap = new Map<string, string>();
 
   if (includeTopic) {
-    const topicCollection = await getCollection('CHU_DE');
-    const topics = await topicCollection.find({}).toArray();
+    const topics = await getCachedRows('CHU_DE');
     topicMap = new Map(topics.map((topic: any) => [String(topic.CHU_DE_ID || ''), String(topic.TEN_CHU_DE || '')]));
   }
 

@@ -6,7 +6,6 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
-import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
 import {
   InvDocument,
   InvMaterial,
@@ -39,7 +38,7 @@ const toLocalInput = (d: Date | string | null | undefined) => {
 @Component({
   selector: 'app-import-list',
   standalone: true,
-  imports: [InventoryDialogComponent, InventoryReversalComponent, CommonModule, FormsModule, InventoryTabsComponent, InventoryPagerComponent],
+  imports: [InventoryDialogComponent, InventoryReversalComponent, CommonModule, FormsModule, InventoryPagerComponent],
   templateUrl: './import-list.html',
   styleUrls: ['../inventory.css', './import-list.css'],
 })

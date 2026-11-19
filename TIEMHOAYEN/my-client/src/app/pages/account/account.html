@@ -438,16 +438,23 @@
 
             <div class="voucher-list">
               <div class="voucher-item" *ngFor="let v of displayedVouchers">
-                <div class="voucher-code">{{ v.code }}</div>
+                <div class="voucher-code" [class.voucher-code-lucky]="v.badge">
+                  @if (v.badge) {<i class="bi bi-gift"></i><span>{{ v.badge }}</span>} @else {{{ v.code }}}
+                </div>
 
                 <div class="voucher-info">
                   <div class="voucher-desc">{{ v.description }}</div>
+                  @if (v.badge) {<div class="voucher-lucky-code">{{ v.code }}</div>}
                   <div class="voucher-condition">{{ v.condition }}</div>
                 </div>
 
                 <div class="voucher-right">
-                  <div class="voucher-expiry">HSD: {{ v.expiry }}</div>
-                  <button class="btn-use-voucher" type="button" (click)="useVoucher(v.code)">Sử dụng</button>
+                  @if (v.expiry) {<div class="voucher-expiry">HSD: {{ v.expiry }}</div>}
+                  @if (v.usable === false) {
+                    <span class="voucher-status">{{ v.statusLabel }}</span>
+                  } @else {
+                    <button class="btn-use-voucher" type="button" (click)="useVoucher(v.code)">Sử dụng</button>
+                  }
                 </div>
               </div>
             </div>

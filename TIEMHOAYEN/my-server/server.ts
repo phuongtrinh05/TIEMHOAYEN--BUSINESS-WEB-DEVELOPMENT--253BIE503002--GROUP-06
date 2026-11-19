@@ -9,6 +9,8 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { connectMongo } from './mongo.js';
 import { ensureSalesRequestIndexes } from './services/sales-proposal.service.js';
+import { compressJson } from './middleware/compressJson.js';
+import { invalidateReadCacheOnWrite } from './services/read-cache.service.js';
 
 import customerRoutes from './routes/customer.js';
 import employeeRoutes from './routes/employee.js';
@@ -98,6 +100,8 @@ app.use(cors({
   },
   credentials: true
 }));
+app.use(compressJson);
+app.use(invalidateReadCacheOnWrite);
 app.use(express.json({ limit: '8mb' }));
 app.use(attachVerifiedStaff);
 app.use('/api/support', supportRoutes);

@@ -7,6 +7,7 @@ import * as stock from '../services/inventory/stock.service.js';
 import * as bom from '../services/inventory/bom.service.js';
 import { checkProductAvailability, computeBuildable, getInventoryAlerts, getOrderInventory } from '../services/inventory/availability.service.js';
 import { finishedAvailableOf } from '../services/inventory/helpers.js';
+import { getCachedActiveBomMap } from '../services/read-cache.service.js';
 
 /** Bọc handler: lỗi nghiệp vụ trả đúng mã + chi tiết; lỗi khác trả 500. */
 const handle = (fn: (req: Request, res: Response) => Promise<unknown>, successStatus = 200) =>
@@ -85,35 +86,45 @@ export const deleteExport = handle((req) => stock.deleteDraftDocument('export', 
 /* ---------- BOM ---------- */
 export const listBomProducts = handle(async (req) => {
   const search = normalizeText(req.query.search || '');
-  const products = await (await col(COLLECTIONS.product)).find({}).project({ SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1, CHU_DE_ID: 1, KIEU_DANG: 1, GIA: 1, GIA_KHUYEN_MAI: 1, TRANG_THAI: 1, TON_THANH_PHAM: 1, TP_DANG_GIU: 1 }).sort({ SAN_PHAM_ID: 1 }).toArray();
   const categorySpecs = [
     ['topic', 'CHU_DE', 'CHU_DE_ID', 'TEN_CHU_DE', ''],
     ['target', 'DOI_TUONG', 'DOI_TUONG_ID', 'TEN_DOI_TUONG', 'DOI_TUONG_SAN_PHAM'],
     ['color', 'MAU_SAC', 'MAU_SAC_ID', 'TEN_MAU', 'MAU_SAC_SAN_PHAM'],
     ['collection', 'BO_SUU_TAP', 'BO_SUU_TAP_ID', 'TEN_BO_SUU_TAP', 'BO_SUU_TAP_SAN_PHAM'],
   ];
-  const categoryData = await Promise.all(categorySpecs.map(async ([key, collection, id, name, link]) => ({
-    key, id, name, values: await (await col(collection)).find({}).toArray(),
-    links: link ? await (await col(link)).find({}).toArray() : [],
-  })));
+  // Đọc song song mọi nguồn (trước đây tuần tự, mỗi lượt vài trăm ms khi DB ở Atlas).
+  const [products, categoryData, boms, materials] = await Promise.all([
+    col(COLLECTIONS.product).then((c) => c.find({}).project({ SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1, CHU_DE_ID: 1, KIEU_DANG: 1, GIA: 1, GIA_KHUYEN_MAI: 1, TRANG_THAI: 1, TON_THANH_PHAM: 1, TP_DANG_GIU: 1 }).sort({ SAN_PHAM_ID: 1 }).toArray()),
+    Promise.all(categorySpecs.map(async ([key, collection, id, name, link]) => {
+      const [values, links] = await Promise.all([
+        col(collection).then((c) => c.find({}).toArray()),
+        link ? col(link).then((c) => c.find({}).toArray()) : Promise.resolve([] as any[]),
+      ]);
+      // Tra cứu "sản phẩm|giá trị" bằng Set thay cho links.some() lồng trong từng sản phẩm (trước đây O(n²)).
+      const linked = new Set(links.map((l: any) => `${l.SAN_PHAM_ID}|${l[id]}`));
+      return { key, id, name, values, linked };
+    })),
+    col(COLLECTIONS.bom).then((c) => c.find({}).project({ SAN_PHAM_ID: 1, TRANG_THAI: 1, PHIEN_BAN: 1, BOM_ID: 1, CAN_RA_SOAT: 1 }).toArray()),
+    col(COLLECTIONS.material).then((c) => c.find({}).toArray()),
+  ]);
   const filtered = search ? products.filter((x: any) => normalizeText(`${x.SAN_PHAM_ID} ${x.TEN_SAN_PHAM}`).includes(search)) : products;
-  const boms = await (await col(COLLECTIONS.bom)).find({}).project({ SAN_PHAM_ID: 1, TRANG_THAI: 1, PHIEN_BAN: 1, BOM_ID: 1, CAN_RA_SOAT: 1 }).toArray();
-  const bomMap = await bom.getActiveBomMap(filtered.map((x: any) => x.SAN_PHAM_ID));
-  const materials = await (await col(COLLECTIONS.material)).find({}).toArray();
+  const bomMap = await getCachedActiveBomMap(filtered.map((x: any) => x.SAN_PHAM_ID));
   const byId = new Map(materials.map((m: any) => [m.NGUYEN_VAT_LIEU_ID, m]));
+  const bomsByProduct = new Map<string, any[]>();
+  for (const b of boms) bomsByProduct.set(b.SAN_PHAM_ID, [...(bomsByProduct.get(b.SAN_PHAM_ID) || []), b]);
   return {
     total: filtered.length,
     items: filtered.map((x: any) => {
-      const mine = boms.filter((b: any) => b.SAN_PHAM_ID === x.SAN_PHAM_ID);
+      const mine = bomsByProduct.get(x.SAN_PHAM_ID) || [];
       const active: any = mine.find((b: any) => b.TRANG_THAI === BOM_STATUS.active);
       const lines = bomMap.get(x.SAN_PHAM_ID) || [];
       const { buildable, bottleneck } = computeBuildable(lines, byId);
       return {
         ...x,
-        categories: Object.fromEntries(categoryData.map(c => [c.key, c.values.filter(v => c.key === 'topic'
+        categories: Object.fromEntries(categoryData.map(c => [c.key, c.values.filter((v: any) => c.key === 'topic'
           ? v[c.id] === x.CHU_DE_ID
-          : c.links.some(l => l.SAN_PHAM_ID === x.SAN_PHAM_ID && l[c.id] === v[c.id]))
-          .map(v => String(v[c.name] || v.TEN_MAU_SAC || v[c.id]))])),
+          : c.linked.has(`${x.SAN_PHAM_ID}|${v[c.id]}`))
+          .map((v: any) => String(v[c.name] || v.TEN_MAU_SAC || v[c.id]))])),
         activeBomId: active?.BOM_ID || null,
         activeVersion: active?.PHIEN_BAN || null,
         needsReview: Boolean(active?.CAN_RA_SOAT),
@@ -155,7 +166,9 @@ export const recordOrderDemand = handle((req) => stock.recordOrderDemand(p(req, 
 export const setOrderPrepTime = handle((req) => stock.setOrderPrepTime(p(req, 'orderId'), req.body.neededAt ?? req.body.prepStartAt, actorFromRequest(req), req.body.reason));
 /** "Đơn cần chuẩn bị": kèm dự báo thiếu NVL trước T cho đơn đang chờ giữ. */
 export const listPreparationOrders = handle(async () => {
-  const [rows, alerts] = await Promise.all([stock.listPreparationOrders(), getInventoryAlerts()]);
+  // Dùng chung một lượt đọc danh sách chuẩn bị (trước đây đọc 2 lần: ở đây và bên trong getInventoryAlerts).
+  const preparation = stock.listPreparationOrders();
+  const [rows, alerts] = await Promise.all([preparation, getInventoryAlerts(preparation)]);
   const forecast = new Map<string, any[]>();
   for (const f of alerts.forecastShortages) forecast.set(f.orderId, [...(forecast.get(f.orderId) || []), f]);
   return { holdReminderHours: stock.HOLD_REMINDER_HOURS, orders: rows.map((row) => ({ ...row, forecastShortages: row.materialState === 'WAITING' ? forecast.get(row.orderId) || [] : [] })) };

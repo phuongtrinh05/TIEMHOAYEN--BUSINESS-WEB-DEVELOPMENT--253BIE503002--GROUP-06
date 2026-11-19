@@ -14,6 +14,7 @@ import { availableOf, ceilQty, col, finishedAvailableOf, InventoryError, isSameV
 import { getActiveBom, getActiveBomMap, type BomLine } from './bom.service.js';
 import { classifyDeliverySchedule } from '../delivery-policy.service.js';
 import { HOLD_REMINDER_HOURS, listPreparationOrders } from './stock.service.js';
+import { getCachedActiveBomMap } from '../read-cache.service.js';
 
 /* ---------------------------------------------------------------------
  * D01.4 — công thức tồn
@@ -64,7 +65,8 @@ export const getProductSellableStockMap = async (products: any[]): Promise<Map<s
       _id: 0, NGUYEN_VAT_LIEU_ID: 1, TEN_NGUYEN_VAT_LIEU: 1, DON_VI_TINH: 1,
       TON_THUC: 1, TON_DANG_GIU: 1, TON_KHONG_DAT: 1, TRANG_THAI: 1,
     } }).toArray()),
-    getActiveBomMap(ids),
+    // BOM ít đổi → đọc từ bộ nhớ tạm; tồn NVL vẫn đọc mới mỗi lần.
+    getCachedActiveBomMap(ids),
   ]);
   const materialsById = new Map(materials.map((material: any) => [material.NGUYEN_VAT_LIEU_ID, material]));
   return new Map(products.map((product) => {
@@ -242,14 +244,17 @@ export const supplierOptionsFor = async (materialIds: string[], deadline: Date) 
  * D01.7 — Ba tầng cảnh báo
  * --------------------------------------------------------------------- */
 
-export const getInventoryAlerts = async () => {
+export const getInventoryAlerts = async (preparationRows?: ReturnType<typeof listPreparationOrders>) => {
+  // Danh sách chuẩn bị đơn không phụ thuộc phần còn lại → bắt đầu đọc ngay, song song.
+  const preparationPromise = preparationRows || listPreparationOrders();
+  preparationPromise.catch(() => {});
   // Đọc song song mọi nguồn (trước đây 6 lượt tuần tự → chậm khi DB ở xa như Atlas)
   const [materials, demandRows, pos, products, bomMap, sources] = await Promise.all([
     col(COLLECTIONS.material).then((c) => c.find({ TRANG_THAI: { $ne: MATERIAL_STATUS.hidden } }).toArray()),
     col(COLLECTIONS.demand).then((c) => c.find({ TRANG_THAI: DEMAND_STATUS.waiting }).sort({ THOI_DIEM_CAN_DUNG: 1, DON_HANG_ID: 1 }).toArray()),
     col(COLLECTIONS.purchaseOrder).then((c) => c.find({ TRANG_THAI: PO_STATUS.shipping }).toArray()),
     col(COLLECTIONS.product).then((c) => c.find({ TRANG_THAI: 'Đang bán' }).project({ SAN_PHAM_ID: 1, TEN_SAN_PHAM: 1, TON_THANH_PHAM: 1, TP_DANG_GIU: 1, KIEU_DANG: 1 }).toArray()),
-    getActiveBomMap(),
+    getCachedActiveBomMap(),
     col(COLLECTIONS.importDetail).then((c) => c.find({ LA_NGUON_NHAP: true, SL_CON_LAI: { $gt: 0 } }).toArray()),
   ]);
   const byId = new Map(materials.map((m: any) => [m.NGUYEN_VAT_LIEU_ID, m]));
@@ -326,7 +331,7 @@ export const getInventoryAlerts = async () => {
     .filter(Boolean);
 
   // Nhắc việc theo đơn: chưa có T, sắp tới T mà chưa giữ, đã quá T mà chưa xuất NVL.
-  const preparation = await listPreparationOrders();
+  const preparation = await preparationPromise;
   const brief = (r: any) => ({ orderId: r.orderId, deliveryAt: r.deliveryAt, prepAt: r.prepAt, stateLabel: r.stateLabel, hoursToT: r.hoursToT });
   const preparationAlerts = {
     holdReminderHours: HOLD_REMINDER_HOURS,

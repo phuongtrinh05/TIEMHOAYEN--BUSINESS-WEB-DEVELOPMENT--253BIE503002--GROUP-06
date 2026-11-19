@@ -4,7 +4,6 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
 import { exportInventoryCsv } from '../inventory-csv';
 import { InvAlerts, InvBomProduct, InvPrepOrder, InventoryApiService, inventoryErrorMessage } from '../../../services/inventory-api.service';
 import { AdminApiService } from '../../../services/admin-api.service';
@@ -26,7 +25,7 @@ const MOVEMENT_LABEL: Record<string, string> = {
 @Component({
   selector: 'app-stock-overview',
   standalone: true,
-  imports: [InventoryDialogComponent, CommonModule, FormsModule, InventoryTabsComponent, RouterLink],
+  imports: [InventoryDialogComponent, CommonModule, FormsModule, RouterLink],
   templateUrl: './stock-overview.html',
   styleUrls: ['../inventory.css'],
 })

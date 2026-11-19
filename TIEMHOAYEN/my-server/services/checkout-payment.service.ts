@@ -127,7 +127,9 @@ export async function syncCheckoutInventory(session: ClientSession, orderId: str
   if(order.KHONG_GIU_TAM_NVL) {
     if(success) {
       const latest=await (await getCollection<any>('THANH_TOAN')).find({DON_HANG_ID:orderId},{session}).sort({NGAY_THANH_TOAN:-1}).limit(1).next();
-      if(!latest || latest.TRANG_THAI_THANH_TOAN==='Thất bại' || Date.now()>new Date(latest.NGAY_THANH_TOAN).getTime()+INVENTORY_CONFIG.holdMinutes*60000)throw new InventoryError(410,'Phiên thanh toán đã hết hạn; cần tạo QR mới.');
+      // Đơn Sales đã xác nhận có hạn thanh toán riêng (HET_HAN_LUC, tới 24 giờ) hoặc đối soát thủ công; QR thường hết hạn theo holdMinutes.
+      const paymentExpiresAt=latest?.DOI_SOAT_THU_CONG?Infinity:latest?.HET_HAN_LUC?new Date(latest.HET_HAN_LUC).getTime():new Date(latest?.NGAY_THANH_TOAN).getTime()+INVENTORY_CONFIG.holdMinutes*60000;
+      if(!latest || latest.TRANG_THAI_THANH_TOAN==='Thất bại' || Date.now()>paymentExpiresAt)throw new InventoryError(410,'Phiên thanh toán đã hết hạn; cần tạo QR mới.');
       await recordOrderDemand(orderId,{}, {id:'PAYMENT',role:'system'}, {paymentConfirmed:true}, session);
       // Thanh toán hợp lệ → đơn chính thức, NVL được lập nhu cầu "Chờ giữ" theo T.
       await orders.updateOne({DON_HANG_ID:orderId},{$set:{TRANG_THAI:'Đã đặt hàng thành công',NGAY_CAP_NHAT:new Date()},

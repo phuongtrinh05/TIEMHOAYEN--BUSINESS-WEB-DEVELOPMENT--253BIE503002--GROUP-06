@@ -6,7 +6,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { apiBaseUrl } from '../../../services/api-config';
 
 @Component({ selector: 'app-order-requests', standalone: true, imports: [CommonModule, FormsModule, RouterLink],
-  templateUrl: './order-requests.html', styleUrls: ['./order-requests.css', './order-requests-refinement.css'] })
+  templateUrl: './order-requests.html', styleUrls: ['./order-requests.css', './order-requests-refinement.css', './order-requests-layout.css'] })
 export class OrderRequests implements OnInit, OnDestroy {
   private http = inject(HttpClient); private cdr = inject(ChangeDetectorRef); private route = inject(ActivatedRoute); private router = inject(Router);
   statuses = ['Chờ xử lý', 'Sales đang xử lý', 'Chờ khách xác nhận', 'Chờ khách thanh toán', 'Đã lên đơn', 'Đã từ chối', 'Khách đã hủy', 'Hết hạn thanh toán'];
@@ -26,9 +26,49 @@ export class OrderRequests implements OnInit, OnDestroy {
   contact = { outcome: 'connected', note: '', followUpAt: '', readBackConfirmed: false };
   readonly closedStatuses = ['Đã lên đơn', 'Đã từ chối', 'Đã tư vấn', 'Khách đã hủy'];
   allCount = 0; waitingCount = 0; urgentCount = 0;
+  /** 3 tab hàng đợi: việc shop cần làm / đang chờ khách / đã kết thúc. */
+  readonly groupTabs = [
+    { key: 'todo', label: 'Cần xử lý', hint: 'Mới gửi, đang tư vấn' },
+    { key: 'customer', label: 'Chờ khách', hint: 'Chờ xác nhận, chờ thanh toán' },
+    { key: 'done', label: 'Đã xong', hint: 'Đã lên đơn, từ chối, hủy' },
+  ] as const;
+  group: 'todo' | 'customer' | 'done' = 'todo';
+  groupCounts: Record<string, number> = { todo: 0, customer: 0, done: 0 };
+  setGroup(key: 'todo' | 'customer' | 'done') {
+    if (this.group === key && !this.status) return;
+    this.group = key; this.status = ''; this.page = 1; this.active = null; this.load();
+  }
+  /** Yêu cầu đang ở bước shop có thể gửi phương án hoặc chốt đơn. */
+  get canDecide() { return ['Sales đang xử lý', 'Chờ khách xác nhận'].includes(String(this.active?.status || '')); }
+  /**
+   * Chốt theo đúng yêu cầu gốc khách đã đặt thì không cần khách xác nhận lại.
+   * Còn khi đã có phương án (hoặc đang sửa khác yêu cầu gốc) thì shop chỉ được chốt thay khách
+   * khi đã thống nhất qua điện thoại và ghi lại nội dung.
+   */
+  get needsPhoneAgreement() { return !!this.active?.quote || (this.editing && this.requiresCustomerProposal); }
+  get closingSummary(): { lines: { name: string; qty: number }[]; date: string; time: string; total: number } {
+    const r = this.active;
+    if (this.editing && this.draft) return {
+      lines: this.draft.items.map((item: any) => ({ name: item.custom ? (item.name || 'Bó phối mới') : (this.draftProduct(item)?.name || item.name || item.id), qty: Number(item.qty || 0) })),
+      date: this.draft.date, time: this.draft.time, total: this.draftTotal };
+    if (r?.quote) return { lines: r.quote.items.map((item: any) => ({ name: item.name, qty: Number(item.qty || 0) })),
+      date: r.quote.delivery?.date, time: r.quote.delivery?.time, total: Number(r.quote.summary?.total || 0) };
+    return { lines: (r?.items || []).map((item: any) => ({ name: item.name, qty: Number(item.quantity || 0) })),
+      date: r?.delivery?.date, time: r?.delivery?.time, total: Number(r?.originalSummary?.total || 0) };
+  }
+  /** Chỉ để nhắc: NVL đang thiếu theo số liệu trên hệ thống. KHÔNG khóa nút chốt (kho có thể chưa cập nhật kịp). */
+  get stockShortages(): string[] {
+    if (this.editing) return [];
+    return this.originals.flatMap((p: any) => (p.requirements || [])
+      .filter((m: any) => Number(m.missing || 0) > 0 && !this.appliedReplacement(p, m))
+      .map((m: any) => `${m.name} thiếu ${m.missing} ${m.unit || ''}`.trim()));
+  }
+  get closeDealBlocked() {
+    return (this.needsPhoneAgreement || this.isUrgentConfirmation) && (!this.urgentDealConfirmed || !this.urgentDealNote.trim());
+  }
   canOpen(row: any) { return row?.assignedTo === this.employeeId; }
   get canConfirmOriginal() {
-    return this.active?.status === 'Sales đang xử lý' && !this.active?.quote && !this.editing;
+    return this.active?.status === 'Sales đang xử lý' && !this.active?.quote;
   }
   get canShowConfirmOriginal() { return this.active?.status === 'Sales đang xử lý' && !this.active?.quote; }
   get isUrgentConfirmation() {
@@ -136,8 +176,8 @@ export class OrderRequests implements OnInit, OnDestroy {
   load(quiet = false) {
     if (this.loading) return;
     this.loading = true; if (!quiet) this.error = '';
-    this.http.get<any>(this.url, { params: new HttpParams().set('page', this.page).set('status', this.status).set('search', this.appliedQueueSearch) }).subscribe({
-      next: data => { this.requests = data.requests; this.total = data.total; this.allCount = Number(data.summary?.total ?? data.total ?? 0); this.waitingCount = Number(data.summary?.waiting || 0); this.urgentCount = Number(data.summary?.urgent || 0); this.loading = false;
+    this.http.get<any>(this.url, { params: new HttpParams().set('page', this.page).set('status', this.status).set('group', this.status ? '' : this.group).set('search', this.appliedQueueSearch) }).subscribe({
+      next: data => { this.requests = data.requests; this.total = data.total; this.allCount = Number(data.summary?.total ?? data.total ?? 0); this.waitingCount = Number(data.summary?.waiting || 0); this.urgentCount = Number(data.summary?.urgent || 0); this.groupCounts = { todo: 0, customer: 0, done: 0, ...(data.summary?.groups || {}) }; this.loading = false;
         if (this.targetRequestId && !this.active) {
           const target = this.requests.find(r => r.requestId === this.targetRequestId);
           if (target) {
@@ -153,10 +193,34 @@ export class OrderRequests implements OnInit, OnDestroy {
   }
   private fail(err: any) { this.error = err?.error?.message || 'Chưa lưu được thao tác. Vui lòng thử lại.'; this.busy = false; this.cdr.markForCheck(); }
   open(row: any) { this.workTab = 'stock'; this.chatOpen = false; this.showDecision = false; this.showOriginalConfirm = false; this.urgentDealConfirmed = false; this.urgentDealNote = ''; this.replacementChoice = {}; this.proposalReplacementChoice = {}; this.approvedReplacements = {}; this.contact = { outcome: 'connected', note: '', followUpAt: '', readBackConfirmed: false }; this.active = row; this.editing = false; this.draft = null; this.pendingEdit = false; this.catalogLoaded = false; this.optionsLoading = false; this.optionsError = ''; this.sourcesLoading = false; this.sourcesLoaded = false; this.optionsUpdatedAt = null; this.options = null; this.message = ''; this.note = ''; this.search = ''; this.messages = []; this.loadOptions(); }
+  /** Ngày phương án lưu dạng yyyy-mm-dd, ngày gốc dạng dd/mm/yyyy: luôn hiển thị dd/mm/yyyy. */
+  displayDate(value: string) { return /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('/') : value || ''; }
+  get totalPages() { return Math.max(1, Math.ceil(Number(this.total || 0) / 20)); }
+  closeDetail() { this.active = null; this.editing = false; this.draft = null; this.showOriginalConfirm = false; this.showDecision = false; }
   openOriginalConfirmation() {
-    if (!this.canConfirmOriginal) return;
+    if (!this.canDecide) return;
     this.showOriginalConfirm = true;
     this.showDecision = false;
+    this.urgentDealConfirmed = false;
+  }
+  /** "Chốt luôn": theo yêu cầu gốc, hoặc thay khách khi đã thống nhất qua điện thoại. */
+  closeDeal() {
+    if (this.busy || !this.active || !this.canDecide || this.closeDealBlocked) return;
+    if (!this.needsPhoneAgreement) { this.confirmOriginal(); return; }
+    const note = this.urgentDealNote.trim();
+    const body = { ...(this.editing && this.draft ? this.draft : this.buildDraft()), version: this.active.version,
+      substitutions: Object.values(this.approvedReplacements),
+      agreedByPhone: true, agreementNote: note,
+      urgentOverride: this.isUrgentConfirmation, urgentConfirmationNote: this.isUrgentConfirmation ? note : '' };
+    this.busy = true; this.error = '';
+    this.http.post(`${this.url}/${this.active.requestId}/confirm`, body).subscribe({
+      next: () => this.afterDealClosed(), error: err => this.fail(err),
+    });
+  }
+  private afterDealClosed() {
+    this.busy = false; this.showOriginalConfirm = false; this.editing = false; this.draft = null;
+    this.urgentDealConfirmed = false; this.urgentDealNote = '';
+    this.workTab = 'stock'; this.status = ''; this.load(); this.cdr.markForCheck();
   }
   selectWorkTab(tab: string) {
     this.workTab = tab;
@@ -257,7 +321,7 @@ export class OrderRequests implements OnInit, OnDestroy {
       note: 'Shop xác nhận có thể đáp ứng nguyên mẫu, số lượng, giá tham chiếu và lịch giao khách đã yêu cầu.' };
     this.busy = true; this.error = '';
     this.http.post(`${this.url}/${this.active.requestId}/confirm`, body).subscribe({
-      next: () => { this.busy = false; this.showOriginalConfirm = false; this.workTab = 'stock'; this.status = ''; this.load(); this.cdr.markForCheck(); },
+      next: () => this.afterDealClosed(),
       error: err => this.fail(err),
     });
   }
@@ -328,15 +392,19 @@ export class OrderRequests implements OnInit, OnDestroy {
     this.productOptionSearch = {};
     this.materialOptionSearch = {};
     this.replacementOptionSearch = {};
+    this.draft = this.buildDraft();
+    this.draftBaseline = this.draftFingerprint(this.draft);
+    this.replacementBaseline = JSON.stringify(this.approvedReplacements);
+    this.workTab = 'stock'; this.editing = true;
+  }
+  /** Bản nháp phương án từ phương án hiện tại, hoặc từ yêu cầu gốc nếu chưa có phương án. */
+  private buildDraft() {
     const q = this.active.quote;
-    this.draft = { items: q ? q.items.map((item: any) => ({ ...item, materials: item.custom ? item.bom.materials.map((m: any) => ({ ...m })) : [], designFee: item.bom?.designFee || 0, extraFee: item.bom?.extraFee || 0 }))
+    return { items: q ? q.items.map((item: any) => ({ ...item, materials: item.custom ? item.bom.materials.map((m: any) => ({ ...m })) : [], designFee: item.bom?.designFee || 0, extraFee: item.bom?.extraFee || 0 }))
       : this.active.items.map((i: any) => i.designId ? {id:i.productId,qty:i.quantity,custom:true,designId:i.designId,name:i.name,image:i.image,imageDescription:'Thiết kế 3D khách gửi; cần xác nhận khả năng thực hiện',materials:i.bom.materials.map((m:any)=>({...m})),designFee:i.bom.designFee || 0,extraFee:i.bom.extraFee || 0} : { id: i.productId, qty: i.quantity, custom: false }),
       date: this.dateInput(q?.delivery.date || this.active.delivery?.date), time: String(q?.delivery.time || this.active.delivery?.time || '').match(/\b\d{2}:\d{2}\b/)?.[0] || '',
       shippingFee: q?.summary.shippingFee ?? this.active.originalSummary?.shippingFee ?? 0,
       paymentMethod: q?.payment.method || 'bank', depositAmount: q?.summary.depositAmount || 0, note: q?.note || '' };
-    this.draftBaseline = this.draftFingerprint(this.draft);
-    this.replacementBaseline = JSON.stringify(this.approvedReplacements);
-    this.workTab = 'stock'; this.editing = true;
   }
   cancelEdit() {
     this.approvedReplacements = JSON.parse(this.replacementBaseline || '{}');
@@ -413,14 +481,18 @@ export class OrderRequests implements OnInit, OnDestroy {
     const form = new FormData(); form.append('image', file); this.busy = true; this.error = '';
     this.http.post<any>(`${this.url}/${this.active.requestId}/image`, form).subscribe({ next: data => { item.image = data.url; this.busy = false; this.cdr.markForCheck(); }, error: err => this.fail(err) });
   }
+  /** Không gửi lại khi phương án khách đang xem chưa có gì thay đổi. */
+  get canSendProposal() {
+    if (!this.canDecide) return false;
+    if (this.editing) return !!this.draft?.items?.length && (this.active.status === 'Sales đang xử lý' || this.requiresCustomerProposal);
+    return this.active.status === 'Sales đang xử lý';
+  }
+  /** "Gửi phương án cho khách": khách xem và tự bấm xác nhận trên web rồi thanh toán. */
   propose() {
-    if (this.busy || !this.active) return;
-    // Merely opening the proposal workspace is not a commercial change. If
-    // product, quantity, delivery and fee are untouched, follow the normal
-    // direct-confirmation flow instead of asking the customer to reconfirm.
-    if (!this.requiresCustomerProposal) { this.confirmOriginal(); return; }
-    this.busy = true; this.error = '';
-    this.http.post<any>(`${this.url}/${this.active.requestId}/proposal`, { ...this.draft, version: this.active.version,
+    if (this.busy || !this.active || !this.canSendProposal) return;
+    const draft = this.editing && this.draft ? this.draft : this.buildDraft();
+    this.busy = true; this.error = ''; this.showOriginalConfirm = false;
+    this.http.post<any>(`${this.url}/${this.active.requestId}/proposal`, { ...draft, version: this.active.version,
       substitutions: Object.values(this.approvedReplacements) }).subscribe({
       next: quote => {
         // Swap the editor back to the request card immediately. The returned

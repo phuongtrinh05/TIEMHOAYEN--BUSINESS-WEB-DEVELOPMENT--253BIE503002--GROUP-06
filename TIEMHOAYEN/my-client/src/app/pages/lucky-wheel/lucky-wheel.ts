@@ -1,4 +1,4 @@
-import {Component,OnInit,OnDestroy,Input,Output,EventEmitter,inject,signal,PLATFORM_ID} from '@angular/core';
+import {Component,OnInit,OnDestroy,Input,Output,EventEmitter,HostListener,inject,signal,PLATFORM_ID} from '@angular/core';
 import {CommonModule,isPlatformBrowser} from '@angular/common';
 import {RouterLink,ActivatedRoute} from '@angular/router';
 import {LuckyWheelService} from '../../services/lucky-wheel.service';
@@ -22,6 +22,11 @@ export class LuckyWheel implements OnInit,OnDestroy{
   get availableSpins(){return (this.data()?.spins||[]).filter((s:any)=>s.status==='Chưa quay'&&!s.paused&&(!this.embedded||s.id===this.initialSpinId));}
   get pendingCount(){return (this.data()?.spins||[]).filter((s:any)=>s.status==='Chưa quay'&&(!this.embedded||s.id===this.initialSpinId)).length;}
   get prizes(){return this.program?.prizes||[];}
+  /** Dùng chung cho nút "Quay ngay" và nút giữa vòng quay. */
+  get canSpin(){return this.member&&!!this.selectedSpin&&!this.busy()&&this.availableSpins.length>0;}
+  /** Đóng hộp kết quả; lượt kế tiếp (nếu còn) đã được chọn sẵn sau khi tải lại, bấm quay tiếp được ngay. */
+  closeResult(){this.result.set(null);if(!this.selectedSpin)this.selectedSpin=this.availableSpins[0]?.id||'';}
+  @HostListener('document:keydown.escape') onEscape(){if(!this.embedded&&this.result())this.closeResult();}
   get wheelBackground(){const colors=['#f3cfc7','#fff2df','#e5b7ad','#f9e5df','#f1d9b6','#dca69a','#fbf1e8'];return 'conic-gradient('+colors.map((c,i)=>`${c} ${i*360/7}deg ${(i+1)*360/7}deg`).join(',')+')';}
   spin(){if(this.busy()||!this.selectedSpin)return;this.busy.set(true);this.spinning.set(true);this.error.set('');
     this.api.spin(this.selectedSpin).subscribe({next:r=>{const index=this.prizes.findIndex((p:any)=>p.id===r.prize.id);const target=(360-(index+.5)*360/7+360)%360;const current=this.rotation();this.rotation.set(current+1800+((target-current%360+360)%360));this.resultTimer=setTimeout(()=>{this.result.set(r);this.spinning.set(false);this.busy.set(false);this.selectedSpin='';this.load();},4200);},error:e=>{this.busy.set(false);this.spinning.set(false);this.error.set(e.error?.message||'Chưa nhận được kết quả. Bấm tải lại để xem kết quả đã lưu.');this.load(false);}});

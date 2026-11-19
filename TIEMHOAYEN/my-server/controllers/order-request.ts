@@ -79,6 +79,14 @@ export async function listRequests(req: Request, res: Response) {
   try {
     const status = String(req.query.status || '');
     if (status && !Object.values(REQUEST_STATUS).includes(status as any)) throw new InventoryError(400, 'Trạng thái không hợp lệ.');
+    // 3 tab của Admin: việc shop cần làm / đang chờ khách / đã kết thúc.
+    const REQUEST_GROUPS: Record<string, string[]> = {
+      todo: [...WAITING_STATUSES, REQUEST_STATUS.processing, REQUEST_STATUS.accepted],
+      customer: [REQUEST_STATUS.quoted, REQUEST_STATUS.pendingPayment, 'Chờ thanh toán'],
+      done: [REQUEST_STATUS.converted, REQUEST_STATUS.rejected, REQUEST_STATUS.closed, REQUEST_STATUS.cancelled, REQUEST_STATUS.expired],
+    };
+    const group = String(req.query.group || '');
+    if (group && !REQUEST_GROUPS[group]) throw new InventoryError(400, 'Nhóm yêu cầu không hợp lệ.');
     const search = String(req.query.search || '').trim().slice(0, 100);
     const requestedPage = Number(req.query.page);
     const page = Number.isFinite(requestedPage) ? Math.min(1000000, Math.max(1, Math.floor(requestedPage || 1))) : 1;
@@ -96,7 +104,7 @@ export async function listRequests(req: Request, res: Response) {
       : status === REQUEST_STATUS.processing
         ? { $in: [REQUEST_STATUS.processing, REQUEST_STATUS.accepted] }
         : status === REQUEST_STATUS.waiting ? { $in: WAITING_STATUSES }
-        : status } : {};
+        : status } : group ? { status: { $in: REQUEST_GROUPS[group] } } : {};
     const query = { ...statusQuery, ...searchQuery };
     // The queue used to download every complete request (quote history, checkout
     // snapshots, conversation metadata...) before slicing 20 rows. Atlas latency
@@ -108,7 +116,7 @@ export async function listRequests(req: Request, res: Response) {
     };
     const allRequests = await col.find(query, { projection: queueProjection }).toArray();
     const total = allRequests.length;
-    const summaryRows = status
+    const summaryRows = status || group
       ? await col.find(searchQuery, { projection: queueProjection }).toArray()
       : allRequests;
     // Waiting for payment is still an active Sales request. Keep it visible to
@@ -150,7 +158,7 @@ export async function listRequests(req: Request, res: Response) {
       const normalized = normalizeQueueStatus(document);
       return { ...normalized, workflow: priorityRow.workflow };
     });
-    const summaryEnriched = status ? summaryRows.map((row: any) => {
+    const summaryEnriched = status || group ? summaryRows.map((row: any) => {
       const normalized = normalizeQueueStatus(row);
       return { ...normalized, workflow: requestWorkflow(normalized) };
     }) : prioritized;
@@ -160,6 +168,8 @@ export async function listRequests(req: Request, res: Response) {
         total: summaryEnriched.length,
         waiting: summaryEnriched.filter((row: any) => row.status === REQUEST_STATUS.waiting).length,
         urgent: activeRows.filter((row: any) => row.workflow.urgency === 'urgent').length,
+        groups: Object.fromEntries(Object.entries(REQUEST_GROUPS).map(([key, statuses]) => [key,
+          summaryRows.filter((row: any) => statuses.includes(String(row.status))).length])),
       },
     });
   } catch (error) { failure(res, error); }

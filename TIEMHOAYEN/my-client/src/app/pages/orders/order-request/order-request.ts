@@ -6,6 +6,7 @@ import { OrderAccessService } from '../../../services/order-access.service';
 import { OrderService } from '../../../services/order.service';
 import { Subscription } from 'rxjs';
 import { requestStatusTone } from '../request-status-tone';
+import { REQUEST_STEPS, requestStage } from '../request-stage';
 
 @Component({ selector: 'app-order-request', standalone: true, imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './order-request.html', styleUrls: ['./order-request.css', './order-request-refinement.css', '../request-status-tone.css'] })
@@ -26,6 +27,9 @@ export class OrderRequest implements OnInit, OnDestroy {
   private requestEvents?: Subscription;
   private refreshPending = false;
   readonly requestStatusTone = requestStatusTone;
+  readonly requestSteps = REQUEST_STEPS;
+  /** Bước, nhãn, lời nhắn và quyền thao tác hiện tại — lấy từ bảng chung request-stage.ts. */
+  get stage() { return requestStage(this.request); }
   ngOnInit() {
     if (typeof localStorage === 'undefined') return;
     this.id = this.requestId || this.route.snapshot.paramMap.get('id') || '';
@@ -64,19 +68,12 @@ export class OrderRequest implements OnInit, OnDestroy {
   get hasCreatedOrder() { return !!this.linkedOrderId; }
   get canContinueChat() {
     if (this.readOnly || !this.request) return false;
-    const requestStatus = String(this.request.status || '').toLowerCase();
-    if (/đã từ chối|khách đã hủy|hết hạn/.test(requestStatus)) return false;
+    if (!this.stage.canChat) return false;
     if (!this.hasCreatedOrder) return true;
     const orderStatus = String(this.request.orderSummary?.status || '').toLowerCase();
     return !/hoàn thành|giao hàng thành công|đã giao|đã hủy|hủy đơn/.test(orderStatus);
   }
-  get requestStep() {
-    const status = String(this.request?.status || '').toLowerCase();
-    if (/đã lên đơn|chờ thanh toán|chờ khách thanh toán/.test(status)) return 4;
-    if (/chờ khách xác nhận|khách đã đồng ý/.test(status)) return 3;
-    if (/sales|đang xử lý|đang tư vấn|đã tiếp nhận/.test(status) || this.request?.assignedName || this.request?.quote) return 2;
-    return 1;
-  }
+  get requestStep() { return this.stage.step; }
   get paymentRemainingLabel() {
     const end = new Date(this.request?.paymentDeadlineAt || this.request?.orderResult?.paymentDeadline || '').getTime();
     if (!Number.isFinite(end)) return '';
@@ -97,8 +94,8 @@ export class OrderRequest implements OnInit, OnDestroy {
   copyPrivateLink() {
     if (this.privateLink) void navigator.clipboard.writeText(this.privateLink).then(() => { this.feedback = 'Đã sao chép liên kết riêng. Chỉ chia sẻ với người được phép xem yêu cầu.'; this.cdr.markForCheck(); }).catch(() => { this.error = 'Trình duyệt chưa cho phép sao chép. Bạn có thể mở lại yêu cầu từ liên kết riêng đã lưu.'; this.cdr.markForCheck(); });
   }
-  get canChange() { return !this.readOnly && this.request && !['Chờ thanh toán','Chờ khách thanh toán','Đã lên đơn','Đã từ chối','Đã tư vấn','Khách đã hủy','Hết hạn thanh toán'].includes(this.request.status); }
-  get canCancel() { return !this.readOnly && this.request && !['Đã lên đơn','Đã từ chối','Đã tư vấn','Khách đã hủy','Hết hạn thanh toán'].includes(this.request.status); }
+  get canChange() { return !this.readOnly && !!this.request && this.stage.canChange; }
+  get canCancel() { return !this.readOnly && !!this.request && this.stage.canCancel; }
   editSchedule() {
     const delivery = this.request.quote?.delivery || this.request.delivery;
     this.requestedDate = /^\d{2}\/\d{2}\/\d{4}$/.test(delivery.date || '') ? delivery.date.split('/').reverse().join('-') : delivery.date || '';
