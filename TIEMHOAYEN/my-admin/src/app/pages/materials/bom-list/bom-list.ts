@@ -2,7 +2,6 @@ import { InventoryDialogComponent } from '../inventory-dialog';
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
 import { exportInventoryCsv } from '../inventory-csv';
 import {
   InvBom,
@@ -22,7 +21,7 @@ interface EditLine { materialId: string; quantity: number; role: string; substit
 @Component({
   selector: 'app-bom-list',
   standalone: true,
-  imports: [InventoryDialogComponent, CommonModule, FormsModule, InventoryTabsComponent],
+  imports: [InventoryDialogComponent, CommonModule, FormsModule],
   templateUrl: './bom-list.html',
   styleUrls: ['../inventory.css'],
 })

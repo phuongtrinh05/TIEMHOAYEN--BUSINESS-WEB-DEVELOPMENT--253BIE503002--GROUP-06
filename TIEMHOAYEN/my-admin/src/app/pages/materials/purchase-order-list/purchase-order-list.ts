@@ -5,7 +5,6 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
 import {
   InvMaterial,
   InvPurchaseOrder,
@@ -30,7 +29,7 @@ const NEXT_STATUS: Record<string, string[]> = {
 @Component({
   selector: 'app-purchase-order-list',
   standalone: true,
-  imports: [InventoryDialogComponent, CommonModule, FormsModule, InventoryTabsComponent, InventoryPagerComponent],
+  imports: [InventoryDialogComponent, CommonModule, FormsModule, InventoryPagerComponent],
   templateUrl: './purchase-order-list.html',
   styleUrls: ['../inventory.css'],
 })

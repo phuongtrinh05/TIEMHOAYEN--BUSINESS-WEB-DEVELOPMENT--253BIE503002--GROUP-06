@@ -4,7 +4,6 @@ import { InventoryPagerComponent } from '../inventory-pager';
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
 import {
   InvMaterial,
   InvSupplier,
@@ -30,7 +29,7 @@ const EMPTY_LINK = {
 @Component({
   selector: 'app-supplier-list',
   standalone: true,
-  imports: [InventoryDialogComponent, CommonModule, FormsModule, InventoryTabsComponent, InventoryPagerComponent],
+  imports: [InventoryDialogComponent, CommonModule, FormsModule, InventoryPagerComponent],
   templateUrl: './supplier-list.html',
   styleUrls: ['../inventory.css', './supplier-list.css'],
 })

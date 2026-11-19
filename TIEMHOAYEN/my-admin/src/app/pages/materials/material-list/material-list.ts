@@ -4,7 +4,6 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { InventoryTabsComponent } from '../inventory-tabs/inventory-tabs';
 import {
   InvMaterial,
   InvMaterialDetail,
@@ -27,7 +26,7 @@ const EMPTY_FORM: MaterialForm = {
 @Component({
   selector: 'app-material-list',
   standalone: true,
-  imports: [InventoryPagerComponent, InventoryDialogComponent, CommonModule, FormsModule, InventoryTabsComponent],
+  imports: [InventoryPagerComponent, InventoryDialogComponent, CommonModule, FormsModule],
   templateUrl: './material-list.html',
   styleUrls: ['../inventory.css', './material-list.css'],
 })
