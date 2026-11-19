@@ -91,6 +91,8 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
     _id: orderId, DON_HANG_ID: orderId, KIEM_TRA_TON_KHO: true, KHONG_GIU_TAM_NVL: payload.inventoryMode === 'FUTURE_DEMAND',
     // Nhân viên tạo đơn dù thiếu NVL/dưới 24 giờ: lưu lý do để kho chủ động nhập hàng.
     ...(payload.staffOverride ? { CANH_BAO_TON_KHO_KHI_TAO: payload.staffOverride } : {}),
+    // Mốc chuẩn bị đã biết (đơn chờ hàng về do Sales chốt) → nhu cầu NVL lập sau thanh toán có sẵn T.
+    ...(payload.prepStartAt ? { THOI_DIEM_BAT_DAU_CHUAN_BI: new Date(payload.prepStartAt) } : {}),
     MA_PHIEN_THANH_TOAN: payload.checkoutSessionId,
     TEN_NGUOI_DAT: String(sender.name), SDT_NGUOI_DAT: String(sender.phone), EMAIL_NGUOI_DAT: String(sender.email || ''),
     KHACH_HANG_ID: payload.customerId || null, NGAY_TAO: new Date(), TRANG_THAI: orderStatus,

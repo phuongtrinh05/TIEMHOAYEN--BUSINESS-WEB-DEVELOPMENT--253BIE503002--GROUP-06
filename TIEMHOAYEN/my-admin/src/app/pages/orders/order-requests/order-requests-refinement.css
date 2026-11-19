@@ -43,3 +43,18 @@
 @media(max-width:700px){.message-notification{width:100%;margin-left:0}.message-notification-button{width:100%;min-height:48px}.message-notification-panel{left:0;right:auto}}
 .contact-customer-button{display:inline-flex;align-items:center;gap:6px}.contact-message-count{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;margin-left:3px;border:2px solid rgba(255,255,255,.9);border-radius:999px;background:#fff;color:#9b1c22;font-size:11px;line-height:1;box-shadow:0 2px 7px rgba(58,10,13,.25)}
 .searchable-select select,.material-select-group select{width:100%}.option-search{position:relative;display:block;margin:6px 0 7px}.option-search>i{position:absolute;z-index:1;left:12px;top:50%;transform:translateY(-50%);color:#9a7468;font-size:13px}.option-search>input{width:100%;min-height:40px;padding:9px 11px 9px 35px;border:1px solid #dfc9bd;border-radius:8px;background:#fff;color:#4d312c;box-sizing:border-box}.option-search>input:focus{border-color:#9b3a35;outline:0;box-shadow:0 0 0 3px rgba(115,25,25,.1)}.material-select-group{min-width:0}.inline-product-row .inline-custom-materials{grid-column:1/-1}.replacement-inline .option-search{grid-column:1/-1;margin:0}.replacement-inline .option-search>input{min-height:38px}.material-row{align-items:end}@media(max-width:620px){.material-row .material-select-group{grid-column:1/-1}}
+
+/* 3 tab hàng đợi + 2 nút quyết định (Gửi phương án / Chốt luôn) */
+.group-tabs{display:flex;gap:12px;flex-wrap:wrap}
+.summary-card.group-tab{cursor:pointer;font:inherit;text-align:left;color:inherit}
+.summary-card.group-tab span{display:flex;flex-direction:column;gap:2px}
+.summary-card.group-tab small{color:#8b7770;font-size:11px;font-weight:600}
+.summary-card.group-tab:hover{border-color:rgba(115,25,25,.4)}
+.summary-card.group-tab.active{background:#731919;border-color:#731919}
+.summary-card.group-tab.active:before{background:#d9b382}
+.summary-card.group-tab.active span,.summary-card.group-tab.active small,.summary-card.group-tab.active strong{color:#fff}
+.primary-actions .send-proposal,.edit-actions .send-proposal{background:#fff;color:#731919;border:1px solid #731919}
+.stage-note{display:flex;align-items:center;gap:8px;margin:12px 0;padding:10px 14px;border:1px solid #edc786;border-radius:10px;background:#fff8ed;color:#6b4a1f}
+@media(max-width:620px){.group-tabs{flex-direction:column}}
+
+.confirm-box .stock-warning{display:flex;gap:8px;align-items:flex-start;margin:0 0 12px;padding:9px 12px;border-radius:8px;background:#eef4ff;border:1px solid #c9d8f2;color:#2f4a73;font-size:13px}

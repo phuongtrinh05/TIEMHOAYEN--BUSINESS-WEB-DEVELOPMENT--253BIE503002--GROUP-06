@@ -2,9 +2,9 @@ import {depositByPolicy, orderEvent} from './admin-order.service.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { ClientSession } from 'mongodb';
 import { escapeRegex, getCollection } from '../mongo.js';
-import { availableOf, finishedAvailableOf, InventoryError, withTransaction } from './inventory/helpers.js';
+import { availableOf, ceilQty, finishedAvailableOf, InventoryError, roundQty, withTransaction } from './inventory/helpers.js';
 import { COLLECTIONS, MATERIAL_STATUS, PO_STATUS, RESERVATION_STATUS } from './inventory/constants.js';
-import { computeBuildable, supplierOptionsFor } from './inventory/availability.service.js';
+import { computeBuildable, incomingByMaterial, pendingDemandByMaterial, supplierOptionsFor } from './inventory/availability.service.js';
 import { getActiveBom, getActiveBomMap } from './inventory/bom.service.js';
 import { REQUESTS, REQUEST_STATUS, publicRequest, assertReservedStockUsable, SALES_CONFIRMED_ORDER_STATUS } from './order-request.service.js';
 import { assertWithinShopHours, classifyDeliverySchedule } from './delivery-policy.service.js';
@@ -71,6 +71,55 @@ function deliveryAt(date: unknown, time: unknown) {
 }
 const SALES_PAYMENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PREPARATION_LEAD_MS = 3 * 60 * 60 * 1000;
+/**
+ * Quyết định giữ tồn khi Sales chốt đơn:
+ * - Tồn hiện tại đủ → giữ ngay (HOLD_NOW) như trước.
+ * - Thiếu, nhưng PO "Đang giao" về kịp trước giờ chuẩn bị (đã trừ nhu cầu các đơn khác cần trước mốc đó)
+ *   → vẫn tạo đơn, không giữ ngay (FUTURE_DEMAND); sau thanh toán đơn có nhu cầu "Chờ giữ" và kho giữ khi hàng về.
+ * - Kể cả hàng sắp về cũng không đủ → VẪN cho chốt. Sales/Admin chịu trách nhiệm quyết định (vd. kho đã báo hàng về
+ *   nhưng chưa nhập lên hệ thống). Đơn chờ hàng như trên và lưu cảnh báo thiếu để kho thấy và nhập/giữ hàng.
+ *   Hệ thống không chặn nút chốt vì số liệu tồn chưa cập nhật kịp.
+ */
+async function planOrderStock(items: any[], neededAt: Date, session: ClientSession) {
+  const usesMaterialSnapshot = (item: any) => item.custom || item.bom?.useMaterialSnapshot === true;
+  const products = await getCollection<any>('SAN_PHAM');
+  // nowNeeds: dùng thành phẩm có sẵn trước (đúng như khi giữ ngay).
+  // fullNeeds: toàn bộ theo BOM — đúng lượng nhu cầu sẽ được lập nếu chờ hàng về.
+  const nowNeeds = new Map<string, number>(), fullNeeds = new Map<string, number>();
+  const add = (map: Map<string, number>, id: string, qty: number) => map.set(id, roundQty((map.get(id) || 0) + qty));
+  let finishedMissing = false;
+  for (const item of items) {
+    const qty = Number(item.qty || 0);
+    if (usesMaterialSnapshot(item)) {
+      for (const line of item.bom?.materials || []) { const q = ceilQty(Number(line.quantity) * qty); add(nowNeeds, line.materialId, q); add(fullNeeds, line.materialId, q); }
+      continue;
+    }
+    const product = await products.findOne({ SAN_PHAM_ID: item.id }, { session });
+    const { lines } = await getActiveBom(item.id, session);
+    const toMake = qty - Math.min(qty, Math.floor(finishedAvailableOf(product)));
+    if (!lines.length) { if (toMake > 0) finishedMissing = true; continue; }
+    for (const line of lines) {
+      if (toMake > 0) add(nowNeeds, line.NGUYEN_VAT_LIEU_ID, ceilQty(line.DINH_LUONG * toMake));
+      add(fullNeeds, line.NGUYEN_VAT_LIEU_ID, ceilQty(line.DINH_LUONG * qty));
+    }
+  }
+  const missingBom = finishedMissing ? [{ materialId: '', name: 'Sản phẩm chưa có BOM và hết thành phẩm', unit: '', required: 0, available: 0, incoming: 0, otherDemand: 0, projected: 0, missing: 0 }] : [];
+  const ids = [...new Set([...nowNeeds.keys(), ...fullNeeds.keys()])];
+  const materials = ids.length ? await (await getCollection<any>('NGUYEN_VAT_LIEU')).find({ NGUYEN_VAT_LIEU_ID: { $in: ids } }, { session }).toArray() : [];
+  const byId = new Map(materials.map((m: any) => [m.NGUYEN_VAT_LIEU_ID, m]));
+  const shortNow = [...nowNeeds].some(([id, qty]) => !byId.get(id) || availableOf(byId.get(id)) + 1e-9 < qty);
+  if (!shortNow && !finishedMissing) return { mode: 'HOLD_NOW' as const, shortages: [], uncovered: [] };
+  const [incoming, demand] = await Promise.all([incomingByMaterial(neededAt), pendingDemandByMaterial(neededAt)]);
+  const forecast = [...fullNeeds].map(([id, required]) => {
+    const m: any = byId.get(id);
+    const available = availableOf(m);
+    const projected = roundQty(available + (incoming.get(id) || 0) - (demand.get(id) || 0));
+    return { materialId: id, name: m?.TEN_NGUYEN_VAT_LIEU || id, unit: m?.DON_VI_TINH || '', required, available,
+      incoming: incoming.get(id) || 0, otherDemand: demand.get(id) || 0, projected, missing: roundQty(Math.max(0, required - projected)) };
+  });
+  const uncovered = [...missingBom, ...forecast.filter(f => f.missing > 1e-9)];
+  return { mode: 'FUTURE_DEMAND' as const, shortages: [...missingBom, ...forecast.filter(f => f.available + 1e-9 < f.required)], uncovered };
+}
 function salesPaymentDeadline(delivery: any, acceptedAt: Date, urgentOverride = false) {
   const scheduledAt = deliveryAt(delivery?.date, delivery?.time);
   const preparationCutoff = scheduledAt.getTime() - PREPARATION_LEAD_MS;
@@ -206,10 +255,17 @@ export async function propose(id: string, body: any, employee: any) {
     if (!method) throw new InventoryError(400, 'Chọn chuyển khoản toàn bộ hoặc cọc rồi thanh toán khi nhận hàng.');
     const depositAmount = method === 'cod' ? depositByPolicy(subtotal, total, items) : 0;
     const confirmOriginal = body.confirmOriginal === true;
+    // "Chốt luôn": Sales đã thống nhất với khách qua điện thoại nên được tạo đơn cho phương án đã sửa
+    // (hoặc phương án đang chờ khách bấm xác nhận) mà không cần khách bấm trên web. Bắt buộc ghi lại nội dung đã thống nhất.
+    const agreedByPhone = confirmOriginal && body.agreedByPhone === true;
+    const agreementNote = agreedByPhone ? optionalText(body.agreementNote) : '';
+    if (agreedByPhone && !agreementNote) throw new InventoryError(400, 'Ghi lại nội dung đã thống nhất với khách trước khi chốt đơn.');
     const urgentOverride = confirmOriginal && body.urgentOverride === true;
-    const urgentConfirmationNote = urgentOverride ? optionalText(body.urgentConfirmationNote) : '';
+    const urgentConfirmationNote = urgentOverride ? optionalText(body.urgentConfirmationNote) || agreementNote : '';
     if (urgentOverride && !urgentConfirmationNote) throw new InventoryError(400, 'Đơn gấp cần ghi chú nội dung đã thống nhất với khách.');
-    if (confirmOriginal) {
+    if (agreedByPhone) {
+      if (![REQUEST_STATUS.processing, REQUEST_STATUS.quoted].includes(row.status)) throw new InventoryError(409, 'Yêu cầu không còn ở bước có thể chốt đơn.');
+    } else if (confirmOriginal) {
       if (row.status !== REQUEST_STATUS.processing || row.quote) throw new InventoryError(409, 'Chỉ xác nhận trực tiếp khi yêu cầu chưa có phương án thay đổi.');
       const originalItems = new Map((row.items || []).map((item: any) => [String(item.productId), Number(item.quantity)]));
       if (items.some(item => item.custom || originalItems.get(String(item.id)) !== Number(item.qty)) || items.length !== originalItems.size) {
@@ -227,13 +283,15 @@ export async function propose(id: string, body: any, employee: any) {
       summary: { subtotal, shippingFee, cardFee, total, depositAmount, loyaltyDiscount: 0, loyaltyPoints: 0 },
       payment: { method, methodName: method === 'cod' ? 'Đặt cọc theo chính sách, còn lại COD' : 'Chuyển khoản', amountToPay: method === 'cod' ? depositAmount : total },
       note: optionalText(body.note), urgentOverride, urgentConfirmationNote,
+      agreedByPhone, agreementNote,
       discountNote: 'Giá phương án này chưa áp dụng voucher hoặc điểm của yêu cầu cũ.' };
     await (await getCollection<any>(REQUESTS)).updateOne({ _id: id, version: row.version }, {
       $set: { quote, status: REQUEST_STATUS.quoted,
         acceptedQuoteId: null, acceptedAt: null, customerAcceptedAt: null,
         paymentDeadlineAt: null, acceptance: null, updatedAt: new Date() },
       $inc: { version: 1 }, $push: { quoteHistory: quote, history: { id: randomUUID(), at: new Date(), actor: employee.NHAN_VIEN_ID,
-        action: confirmOriginal ? (quote.items.some((item: any) => item.bom?.substitutions?.length) ? 'Sales gửi yêu cầu gốc với NVL thay thế theo BOM để khách xác nhận' : 'Sales gửi yêu cầu gốc để khách xác nhận') : `Gửi phương án phiên bản ${quote.revision}`, quoteId: quote.id } },
+        action: agreedByPhone ? 'Sales chốt phương án đã thống nhất với khách qua điện thoại'
+          : confirmOriginal ? (quote.items.some((item: any) => item.bom?.substitutions?.length) ? 'Sales gửi yêu cầu gốc với NVL thay thế theo BOM để khách xác nhận' : 'Sales gửi yêu cầu gốc để khách xác nhận') : `Gửi phương án phiên bản ${quote.revision}`, quoteId: quote.id } },
     } as any, { session });
     // Xác nhận ngay sẽ tạo đơn ở bước kế tiếp (thông báo tạo đơn gửi riêng); chỉ bản thảo mới cần khách xác nhận.
     if (!confirmOriginal) await orderEvent(session,quote.id+':sent',row.customerId||null,null,'Phương án đặt hoa mới',
@@ -247,17 +305,22 @@ export async function propose(id: string, body: any, employee: any) {
  * trạng thái "Đã xác nhận đơn hàng", khách thanh toán trong hạn. Đổi mẫu/số lượng/giá/lịch thì phải gửi bản thảo.
  */
 export async function confirmOriginalRequest(id: string, body: any, employee: any) {
-  const quote = await propose(id, { ...body, confirmOriginal: true }, employee);
   const requests = await getCollection<any>(REQUESTS);
+  // Giữ trạng thái/phương án trước khi chốt để trả lại đúng như cũ nếu tạo đơn thất bại.
+  const before = await requests.findOne({ _id: id }, { projection: { status: 1, quote: 1 } });
+  const quote = await propose(id, { ...body, confirmOriginal: true }, employee);
   const proposed = await requests.findOne({ _id: id });
   if (!proposed) throw new InventoryError(404, 'Không tìm thấy yêu cầu.');
   const acceptedAt = new Date();
   const accepted = await requests.findOneAndUpdate({ _id: id, version: proposed.version, status: REQUEST_STATUS.quoted, 'quote.id': quote.id }, {
     $set: { status: REQUEST_STATUS.accepted, acceptedQuoteId: quote.id, acceptedAt, customerAcceptedAt: null,
-      acceptance: { via: 'sales_direct_confirmation', quoteId: quote.id, actor: employee.NHAN_VIEN_ID, at: acceptedAt,
+      acceptance: { via: quote.agreedByPhone ? 'sales_phone_agreement' : 'sales_direct_confirmation', quoteId: quote.id, actor: employee.NHAN_VIEN_ID, at: acceptedAt,
+        agreementNote: quote.agreementNote || null,
         urgentOverride: quote.urgentOverride === true, urgentConfirmationNote: quote.urgentConfirmationNote || null }, updatedAt: acceptedAt },
     $inc: { version: 1 },
-    $push: { history: { id: randomUUID(), at: acceptedAt, actor: employee.NHAN_VIEN_ID, action: 'Sales xác nhận yêu cầu', quoteId: quote.id } },
+    $push: { history: { id: randomUUID(), at: acceptedAt, actor: employee.NHAN_VIEN_ID,
+      action: quote.agreedByPhone ? 'Sales chốt đơn thay khách (đã thống nhất qua điện thoại)' : 'Sales xác nhận yêu cầu',
+      note: quote.agreementNote || null, quoteId: quote.id } },
   } as any, { returnDocument: 'after', includeResultMetadata: false });
   if (!accepted) throw new InventoryError(409, 'Yêu cầu vừa thay đổi. Vui lòng tải lại.');
   try {
@@ -265,7 +328,7 @@ export async function confirmOriginalRequest(id: string, body: any, employee: an
   } catch (error: any) {
     // Không tạo được đơn (vd. thiếu NVL): trả yêu cầu về đúng trạng thái trước khi bấm để Sales xử lý tiếp.
     await requests.updateOne({ _id: id, version: accepted.version, status: REQUEST_STATUS.accepted, 'quote.id': quote.id }, {
-      $set: { status: REQUEST_STATUS.processing, quote: null, acceptedQuoteId: null, acceptedAt: null, acceptance: null, updatedAt: new Date() },
+      $set: { status: before?.status === REQUEST_STATUS.quoted ? REQUEST_STATUS.quoted : REQUEST_STATUS.processing, quote: before?.quote || null, acceptedQuoteId: null, acceptedAt: null, acceptance: null, updatedAt: new Date() },
       $pull: { quoteHistory: { id: quote.id } },
       $inc: { version: 1 },
       $push: { history: { id: randomUUID(), at: new Date(), actor: employee.NHAN_VIEN_ID, action: 'Xác nhận yêu cầu không thành công', note: String(error?.message || '') } },
@@ -331,6 +394,9 @@ export async function convertProposal(id: string, body: any, employee: any) {
     const paymentSessionId = `sales-${row.quote.id}`;
     const ctx = { orderId, paymentSessionId, status: RESERVATION_STATUS.temporary, actor: { id: employee.NHAN_VIEN_ID, role: 'sales' } };
     const items = row.quote.items.map((item: any) => ({ ...item, id: item.custom ? `SPYC_${row.quote.id}_${item.id}` : item.id }));
+    const prepStartAt = new Date(new Date(row.quote.deliveryAt).getTime() - PREPARATION_LEAD_MS);
+    const stockPlan = await planOrderStock(items, prepStartAt, session);
+    const waitForIncoming = stockPlan.mode === 'FUTURE_DEMAND';
     const customItems = items.filter((item: any) => item.custom);
     for (const item of customItems) {
       const bomId = `BOMYC_${row.quote.id}_${item.id}`;
@@ -350,8 +416,10 @@ export async function convertProposal(id: string, body: any, employee: any) {
       }), { session });
       item.bom = { ...item.bom, bomId, type: bomType };
     }
-    await reserveOrderLines(session, items, ctx);
-    await assertReservedStockUsable(session, orderId, new Date(row.quote.deliveryAt).toISOString(), true);
+    if (!waitForIncoming) {
+      await reserveOrderLines(session, items, ctx);
+      await assertReservedStockUsable(session, orderId, new Date(row.quote.deliveryAt).toISOString(), true);
+    }
     // Khách có tối đa 24 giờ (và không muộn hơn mốc chuẩn bị) để thanh toán đơn đã xác nhận.
     const paymentDeadlineAt = row.paymentDeadlineAt && new Date(row.paymentDeadlineAt).getTime() > Date.now()
       ? row.paymentDeadlineAt : salesPaymentDeadline(row.quote.delivery, new Date(), row.quote.urgentOverride === true);
@@ -359,7 +427,11 @@ export async function convertProposal(id: string, body: any, employee: any) {
     const checkoutData = { customerId: row.customerId, sender: row.sender, receiver: row.receiver, flags: row.flags, giftCard: row.quote.giftCard || row.giftCard || null,
       delivery: row.quote.delivery, summary: row.quote.summary, payment: row.quote.payment, items,
       checkoutSessionId: paymentSessionId, paymentDeadlineAt: urgentOrder ? null : paymentDeadlineAt,
-      manualPaymentReconciliation: urgentOrder, adminNote: urgentOrder ? row.quote.urgentConfirmationNote : '' };
+      manualPaymentReconciliation: urgentOrder, adminNote: urgentOrder ? row.quote.urgentConfirmationNote : '',
+      // Chờ hàng về: không giữ NVL ngay; thanh toán xong lập nhu cầu "Chờ giữ" theo giờ chuẩn bị.
+      ...(waitForIncoming ? { inventoryMode: 'FUTURE_DEMAND', prepStartAt,
+        staffOverride: { reason: stockPlan.uncovered.length ? 'Sales chốt đơn khi hệ thống còn thiếu NVL (chưa có hàng nhập đủ trên hệ thống)' : 'Sales chốt đơn chờ hàng về',
+          at: new Date(), actor: employee.NHAN_VIEN_ID, shortages: stockPlan.shortages } } : {}) };
     const result = { kind: 'order', ...await writeCheckoutOrder(session, orderId, checkoutData, { requestId: id, quote: row.quote, pendingOrderStatus: SALES_CONFIRMED_ORDER_STATUS }) };
     // Đơn đã xác nhận giữ NVL tới hạn thanh toán của khách, không phải hạn 5 phút của mã QR thường.
     if (result.requiresPayment) await (await getCollection<any>('GIU_TON')).updateMany(
@@ -374,7 +446,9 @@ export async function convertProposal(id: string, body: any, employee: any) {
       $push: { history: { id: randomUUID(), at: new Date(), actor: employee.NHAN_VIEN_ID,
         action: row.quote.urgentOverride === true ? 'Sales xác nhận xử lý đơn gấp và tạo đơn'
           : result.requiresPayment ? 'Xác nhận yêu cầu, tạo đơn "Đã xác nhận đơn hàng" chờ khách thanh toán' : 'Xác nhận yêu cầu và lên đơn',
-        note: row.quote.urgentConfirmationNote || null, quoteId: row.quote.id, orderId } },
+        note: [row.quote.urgentConfirmationNote,
+          waitForIncoming ? `${stockPlan.uncovered.length ? 'Chốt khi hệ thống còn thiếu NVL, kho cần nhập/cập nhật' : 'Chờ hàng về'} trước ${prepStartAt.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}: ${stockPlan.shortages.map(s => s.materialId ? `${s.name} (cần ${s.required}, hiện có ${s.available}, sắp về ${s.incoming} ${s.unit})` : s.name).join('; ')}` : '']
+          .filter(Boolean).join(' · ') || null, quoteId: row.quote.id, orderId } },
     } as any, { session });
     return result;
   });
