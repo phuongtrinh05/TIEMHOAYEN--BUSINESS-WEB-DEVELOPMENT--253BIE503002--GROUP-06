@@ -7,6 +7,7 @@ import { currentOrderAccountKey } from '../../../services/api-config';
 import { OrderService } from '../../../services/order.service';
 import { Subscription } from 'rxjs';
 import { requestStatusTone } from '../request-status-tone';
+import { requestStage } from '../request-stage';
 
 type LookupTab = 'all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
 
@@ -92,10 +93,11 @@ export class OrderList implements OnInit, OnDestroy {
   tabCount(tab:LookupTab){return Number(this.counts?.[tab]||0)}
   clearFilters(){this.search='';this.status='';this.date='';this.page=1;this.applyLocalView()}
   goToPage(next:number){if(next<1||next>this.totalPages||next===this.page)return;this.page=next;this.applyLocalView()}
-  canCancelRequest(request:any){return !['Đã lên đơn','Đã từ chối','Đã tư vấn','Khách đã hủy','Hết hạn thanh toán'].includes(String(request?.status||''))}
-  canConfirmRequest(request:any){return String(request?.status||'')==='Chờ khách xác nhận'&&!!request?.quote?.id}
-  requestStatusLabel(status:any){const value=String(status||'');if(['Khách đã hủy','Hết hạn thanh toán'].includes(value))return'Đã hủy yêu cầu';if(value==='Chờ khách xác nhận')return'Chờ xác nhận';return value}
-  requestNextAction(request:any){const status=String(request?.status||'');if(status==='Chờ khách xác nhận')return'Shop đã gửi phương án — bạn vui lòng kiểm tra';if(status==='Sales đang xử lý')return'Sales đang kiểm tra nguồn hoa và lịch giao';return'Đã gửi đến shop — đang chờ tiếp nhận'}
+  // Nhãn, lời nhắn và quyền thao tác lấy từ bảng chung request-stage.ts.
+  canCancelRequest(request:any){return requestStage(request).canCancel}
+  canConfirmRequest(request:any){return requestStage(request).awaitingConfirmation&&!!request?.quote?.id}
+  requestStatusLabel(request:any){return requestStage(request).label}
+  requestNextAction(request:any){return requestStage(request).hint}
   readonly requestStatusTone = requestStatusTone;
   linkedOrderId(request:any){return String(request?.linkedOrder?.DON_HANG_ID||request?.orderId||request?.orderResult?.orderId||'')}
   hasLinkedOrder(request:any){return request?.status==='Đã lên đơn'&&!!this.linkedOrderId(request)}

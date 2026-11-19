@@ -407,7 +407,7 @@ export const createOrder = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Đơn hàng chưa có sản phẩm.' });
     }
     if (!String(sender?.name || '').trim() || !/^\+?\d[\d\s.-]{7,19}$/.test(String(sender?.phone || ''))) {
-      return res.status(400).json({ message: 'Cần tên và số điện thoại người đặt để Sales liên hệ khi thiếu hàng.' });
+      return res.status(400).json({ message: 'Cần tên và số điện thoại người đặt để shop liên hệ khi thiếu hàng.' });
     }
 
     const paymentMethod = String(payment?.method || '').trim();

@@ -4,3 +4,4 @@
 .request-status[data-tone='success'] { background: #f4e5df; color: #731919; }
 .request-status[data-tone='danger'] { background: #fae2e2; color: #9d2424; }
 .status-pill.request-status { border-color: transparent; }
+.request-status[data-tone='neutral'] { background: #eeeae7; color: #5f5049; }
