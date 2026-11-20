@@ -276,6 +276,8 @@
   gap: 6px;
   align-items: flex-start;
   margin: 6px 0 10px;
+  /* Thẳng hàng với tiêu đề và các dòng Phương thức / Số tiền bên dưới. */
+  padding: 0 24px;
   font-size: 0.82rem;
   line-height: 1.4;
   color: #7a6a5c;
@@ -698,6 +700,7 @@
     font-size: 0.95rem;
   }
 
+  .payment-deadline-note,
   .payment-method-summary,
   .payment-amount-box,
   .payment-qr,
