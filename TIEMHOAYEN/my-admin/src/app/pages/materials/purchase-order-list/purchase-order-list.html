@@ -6,6 +6,7 @@
         <option value="">Mọi trạng thái</option>
         @for (s of ['Nháp','Chờ NCC xác nhận','Đang giao','Giao thành công','Đã hủy']; track s) { <option [value]="s">{{ s }}</option> }
       </select><button class="inv-btn inv-clear-filter" type="button" (click)="statusFilter = ''; refilter()">Xóa bộ lọc</button></div> }
+    @if (poFilter()) { <div class="inv-toolbar inv-po-focus"><span><i class="bi bi-funnel-fill"></i> Đang xem đơn đặt mua <b>{{ poFilter() }}</b></span><button class="inv-btn" type="button" (click)="clearPoFilter()"><i class="bi bi-x-lg"></i> Xem tất cả</button></div> }
     @if (error()) { <div class="inv-alert error">{{ error() }}</div> }
 
     <div class="inv-table-wrap">

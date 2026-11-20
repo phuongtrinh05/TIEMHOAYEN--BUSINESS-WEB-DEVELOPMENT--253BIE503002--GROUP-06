@@ -54,7 +54,10 @@ export class PurchaseOrderListComponent implements OnInit {
 
   statusFilter = '';
   private readonly tick = signal(0);
-  readonly filtered = computed(() => { this.tick(); return this.orders().filter((o) => !this.statusFilter || o.TRANG_THAI === this.statusFilter); });
+  /** Mở từ trang khác với ?po=<mã> (vd. thẻ "Đơn nguyên vật liệu sắp về") → chỉ hiện đúng PO đó. */
+  readonly poFilter = signal('');
+  readonly filtered = computed(() => { this.tick(); const po = this.poFilter(); return this.orders().filter((o) => (!po || o.PO_ID === po) && (!this.statusFilter || o.TRANG_THAI === this.statusFilter)); });
+  clearPoFilter(): void { this.poFilter.set(''); this.router.navigate([], { relativeTo: this.route, queryParams: { po: null }, queryParamsHandling: 'merge', replaceUrl: true }); this.refilter(); }
 
   readonly formOpen = signal(false);
   readonly saving = signal(false);
@@ -68,6 +71,7 @@ export class PurchaseOrderListComponent implements OnInit {
     this.api.materials().subscribe({ next: (r) => this.materials.set(r.materials), error: () => {} });
     this.load();
     const q = this.route.snapshot.queryParamMap;
+    this.poFilter.set(q.get('po') || '');
     if (q.get('new')) {
       this.openCreate();
       const m = q.get('material');

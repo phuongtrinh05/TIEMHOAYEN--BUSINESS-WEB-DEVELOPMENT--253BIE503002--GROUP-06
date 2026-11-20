@@ -4,6 +4,7 @@ import { InventoryPagerComponent } from '../inventory-pager';
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import {
   InvMaterial,
   InvSupplier,
@@ -72,7 +73,12 @@ export class SupplierListComponent implements OnInit {
   editingLinkId: string | null = null;
   readonly linkError = signal('');
 
+  private readonly route = inject(ActivatedRoute);
+  /** Mã NCC cần mở sẵn khi vào từ trang khác (?supplier=<mã>), dùng một lần. */
+  private pendingSupplierId = '';
+
   ngOnInit(): void {
+    this.pendingSupplierId = this.route.snapshot.queryParamMap.get('supplier') || '';
     this.api.materials().subscribe({ next: (r) => this.materials.set(r.materials), error: () => {} });
     this.load();
   }
@@ -80,7 +86,12 @@ export class SupplierListComponent implements OnInit {
   load(): void { this.listPage.set(1);
     this.loading.set(true);
     this.api.suppliers().subscribe({
-      next: (r) => { this.suppliers.set(r.suppliers); if (r.statuses?.length) this.statuses.set(r.statuses); this.loading.set(false); },
+      next: (r) => {
+        this.suppliers.set(r.suppliers); if (r.statuses?.length) this.statuses.set(r.statuses); this.loading.set(false);
+        const target = this.pendingSupplierId && r.suppliers.find((s) => s.NHA_CUNG_CAP_ID === this.pendingSupplierId);
+        this.pendingSupplierId = '';
+        if (target) this.open(target, 'materials');
+      },
       error: (e) => { this.error.set(inventoryErrorMessage(e)); this.loading.set(false); },
     });
   }

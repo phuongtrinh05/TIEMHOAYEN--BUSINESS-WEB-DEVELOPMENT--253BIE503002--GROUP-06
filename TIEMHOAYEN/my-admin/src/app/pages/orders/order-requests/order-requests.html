@@ -27,11 +27,12 @@
   <div class="workspace" [class.has-detail]="!!active"><aside><div class="queue">@for (r of requests; track r.requestId) {
     <article class="rq-row" [class.selected]="active?.requestId === r.requestId">
       <div class="rq-col-id"><div class="rq-id-line"><strong>{{r.requestId}}</strong><span class="priority-tags">@if(r.workflow?.isEmergency){<span class="priority-pill" data-severity="CRITICAL" [title]="r.workflow?.priorityReasons?.join(' · ') || ''">Khẩn cấp</span>}@if(r.workflow?.isLargeOrder){<span class="priority-pill" data-severity="ATTENTION" [title]="r.workflow?.priorityReasons?.join(' · ') || ''">Đơn lớn</span>}</span></div><h4>{{r.sender?.name || 'Khách đặt hoa'}}</h4></div>
-      <div class="rq-col-info"><small>Lịch giao</small><b><i class="bi bi-calendar3"></i> {{r.delivery?.date}} · {{slotLabel(r.delivery?.time)}}</b></div>
+      <div class="rq-col-info"><small>Lịch giao</small><b><i class="bi bi-calendar3"></i> {{r.delivery?.date}}</b><small><i class="bi bi-clock"></i> {{slotLabel(r.delivery?.time) || 'Chưa chốt giờ'}}</small></div>
       <div class="rq-col-info"><small>Phụ trách</small><b>{{r.assignedName || 'Chưa có'}}</b><small>Gửi {{r.createdAt | date:'dd/MM HH:mm'}}</small></div>
       <div class="rq-col-status">@if(r.status && statuses.includes(r.status)){<span class="status-pill" [attr.data-tone]="statusTone(r.status)">{{r.status}}</span>}</div>
       <div class="queue-actions">@if (r.status === statuses[0]) { <button (click)="update(r,'claim')" [disabled]="busy">Tiếp nhận</button> }
-      @if (canOpen(r) && r.status !== 'Đã lên đơn') { <button class="secondary" (click)="open(r)">Mở xử lý <i class="bi bi-arrow-right"></i></button> }
+      @if (canOpen(r) && r.status !== 'Đã lên đơn') { <button class="secondary" (click)="open(r)">{{isClosedRequest(r) ? 'Xem lại' : 'Mở xử lý'}} <i class="bi bi-arrow-right"></i></button> }
+      @else if (r.status !== statuses[0] && r.status !== 'Đã lên đơn' && !canOpen(r)) { <span class="rq-owner-note" [title]="(r.assignedName || 'Nhân viên khác') + ' đang xử lý'">{{r.assignedName || 'Người khác'}} đang xử lý</span> }
       @if (r.status === 'Đã lên đơn' && (r.orderResult?.orderId || r.orderId)) { <a class="secondary order-link" [routerLink]="['/orders/order-detail', r.orderResult?.orderId || r.orderId]">Xem đơn <i class="bi bi-arrow-right"></i></a> }</div>
     </article>
   }</div>
@@ -116,11 +117,11 @@
             <div class="source-group">
               <div class="source-group-title"><div><i class="bi bi-box-seam"></i><h4>Đơn nguyên vật liệu sắp về</h4></div>@if(options.incomingOrders?.length){<span>{{options.incomingOrders.length}} nguồn</span>}</div>
               @if(options.incomingOrders?.length){<div class="source-card-grid">@for(order of options.incomingOrders;track order.orderId+':'+order.materialId){
-                <article class="source-card incoming-order"><div class="source-card-icon"><i class="bi bi-box2-heart"></i></div><div class="source-card-main"><b>{{order.materialName}}</b><small>{{order.materialId}} · Đơn {{order.orderId}}</small><span>Còn nhận <strong>{{order.quantity|number:'1.0-3'}}</strong></span></div><div class="source-card-meta"><small>Dự kiến nhận</small><b>{{order.expectedAt|date:'dd/MM/yyyy HH:mm'}}</b><span class="source-status success">{{order.status}}</span></div></article>
+                <a class="source-card incoming-order" [routerLink]="['/materials/purchase-orders']" [queryParams]="{ po: order.orderId }" [title]="'Xem đơn đặt mua ' + order.orderId"><div class="source-card-icon"><i class="bi bi-box2-heart"></i></div><div class="source-card-main"><b>{{order.materialName}}</b><small>{{order.materialId}} · Đơn {{order.orderId}}</small><span>Còn nhận <strong>{{order.quantity|number:'1.0-3'}}</strong></span></div><div class="source-card-meta"><small>Dự kiến nhận</small><b>{{order.expectedAt|date:'dd/MM/yyyy HH:mm'}}</b><span class="source-status success">{{order.status}}</span></div><i class="bi bi-chevron-right source-card-go" aria-hidden="true"></i></a>
               }</div>}@else{<div class="supplier-empty compact"><i class="bi bi-box-seam"></i><span>Chưa có đơn nguyên vật liệu sắp về.</span></div>}
             </div>
             @if(options.suppliers?.length){<div class="source-group forecast"><div class="source-group-title"><div><i class="bi bi-shop"></i><h4>Nguồn nhập dự kiến</h4></div><span>{{options.suppliers.length}} nguồn</span></div><div class="source-card-grid">@for(s of options.suppliers; track $index){
-              <article class="source-card"><div class="source-card-icon"><i class="bi bi-flower1"></i></div><div class="source-card-main"><b>{{s.materialName}}</b><small>{{s.supplierName}}</small><span>{{s.materialId}}</span></div><div class="source-card-meta"><small>Dự kiến nhận</small><b>{{s.estimatedArrival|date:'dd/MM/yyyy HH:mm'}}</b><span class="source-status" [class.success]="s.canArriveInTime">{{s.canArriveInTime?'Có thể kịp lịch giao':'Chưa kịp lịch giao'}}</span></div></article>
+              <a class="source-card" [routerLink]="['/materials/suppliers']" [queryParams]="{ supplier: s.supplierId }" [title]="'Xem nhà cung cấp ' + s.supplierName"><div class="source-card-icon"><i class="bi bi-flower1"></i></div><div class="source-card-main"><b>{{s.materialName}}</b><small>{{s.supplierName}}</small><span>{{s.materialId}}</span></div><div class="source-card-meta"><small>Dự kiến nhận</small><b>{{s.estimatedArrival|date:'dd/MM/yyyy HH:mm'}}</b><span class="source-status" [class.success]="s.canArriveInTime">{{s.canArriveInTime?'Có thể kịp lịch giao':'Chưa kịp lịch giao'}}</span></div><i class="bi bi-chevron-right source-card-go" aria-hidden="true"></i></a>
             }</div></div>}
           }
         </section>
