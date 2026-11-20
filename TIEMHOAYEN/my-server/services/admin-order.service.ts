@@ -1,9 +1,10 @@
 import { getCollection } from '../mongo.js';
 import type { ClientSession } from 'mongodb';
 import { InventoryError, withTransaction } from './inventory/helpers.js';
+import { INVENTORY_CONFIG } from './inventory/constants.js';
 import { receiveReturnedFinishedGoods } from './inventory/stock.service.js';
 import { emitAdminNotification } from './analytics/notifications.service.js';
-import { assertWithinShopHours } from './delivery-policy.service.js';
+import { assertDeliverySlotStart, assertWithinShopHours } from './delivery-policy.service.js';
 
 import { slot24h } from './time-format.js';
 import { evaluateVoucher, loadVoucherContext } from './voucher-policy.service.js';
@@ -287,6 +288,8 @@ export function shippingMethodFor(deliveryAt: string | Date, now = new Date()): 
 /** Mirrors the existing storefront tariff; no new deposit/cutoff policy is introduced. */
 export async function priceCheckout(payload: any, session?: ClientSession, collections: typeof getCollection = getCollection) {
   const delivery = validateCheckoutDelivery(payload.delivery);
+  // Đơn mới chọn một giờ (đầu khung 30 phút): cả khung phải kết thúc trước 22:00.
+  if (delivery.deliveryStartAt === delivery.deliveryAt) assertDeliverySlotStart(delivery.deliveryStartAt);
   if (String(delivery.message || '').length > 2000 || String(delivery.noteShop || '').length > 2000 || String(payload.adminNote || '').length > 2000) throw new InventoryError(400, 'Nội dung thiệp hoặc ghi chú tối đa 2.000 ký tự.');
   const items: any[] = [];
   const merged = new Map<string, number>();
@@ -395,6 +398,9 @@ export interface AdminOrderDetailDto {
   snapshotAvailable: boolean;
   allowedStatuses: string[];
   nextStep: OrderNextStep;
+  paymentDeadline: string | null;
+  qrExpired: boolean;
+  paymentExpired: { reason: string; at: any } | null;
   history: any[];
   preparationAt: string | null;
   preparationStartedAt: string | null;
@@ -666,9 +672,15 @@ export const getAdminOrderDetailById = async (orderId: string, role?: unknown): 
         : minutesToT <= 180 ? { level: 'high', label: 'Ưu tiên cao', minutesToT }
           : minutesToT <= 1440 ? { level: 'soon', label: 'Sắp đến lịch', minutesToT }
             : { level: 'normal', label: 'Bình thường', minutesToT };
+  const unpaidRules = await import('./unpaid-order-expiry.service.js');
   return {
     allowedStatuses: allowedOrderStatuses(order, paymentSummary.netCollected, role, true),
     nextStep: orderNextStep(order, paymentSummary.netCollected, pendingCashTotal(payments)),
+    // Hạn thanh toán của đơn, QR hiện tại đã hết hạn chưa, và lý do nếu đơn đã quá hạn thanh toán.
+    paymentDeadline: unpaidRules.orderPaymentDeadline(order)?.toISOString() || null,
+    qrExpired: unpaidRules.UNPAID_ORDER_STATUSES.includes(String(order.TRANG_THAI)) && paymentSummary.netCollected < unpaidRules.requiredPrepayment(order)
+      && !payments.some((p: any) => p.TRANG_THAI_THANH_TOAN === 'Chờ thanh toán' && new Date(p.NGAY_THANH_TOAN).getTime() + INVENTORY_CONFIG.holdMinutes * 60_000 > Date.now()),
+    paymentExpired: unpaidRules.expiredPaymentInfo(order),
     pendingCollection: { amount: pendingCashTotal(payments), items: pendingCashRows(payments) },
     snapshotAvailable: !!order.TINH_TIEN_SNAPSHOT && items.every(item => !!item.TEN_SAN_PHAM_SNAPSHOT),
     history: order.LICH_SU_TRANG_THAI || [],

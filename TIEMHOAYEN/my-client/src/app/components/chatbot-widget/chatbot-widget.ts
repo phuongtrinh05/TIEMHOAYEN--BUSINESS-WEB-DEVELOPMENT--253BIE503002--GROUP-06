@@ -54,7 +54,7 @@ export class ChatbotWidget implements OnInit, OnDestroy, AfterViewChecked {
     rating = 0;
     formatOrderTotal(value: unknown) {
         const total = Number(value);
-        return Number.isFinite(total) ? total.toLocaleString('vi-VN', { maximumFractionDigits: 0 }) : '—';
+        return Number.isFinite(total) ? total.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—';
     }
     ratingNotice = '';
     /** Sản phẩm khách đang xem (kiểu Shopee): hiện thẻ trong chat để gửi nhanh cho shop. */

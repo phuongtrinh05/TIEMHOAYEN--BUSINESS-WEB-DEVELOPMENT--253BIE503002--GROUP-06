@@ -29,12 +29,15 @@ export const getSuggestedMaterials = async (req: Request, res: Response) => {
   try {
     const productCollection = await getCollection('SAN_PHAM');
     const imageCollection = await getCollection('HINH_ANH_SAN_PHAM');
+    // Thiệp đã chọn ở bước "Thiệp tặng" khi đặt hàng nên không gợi ý mua kèm nữa.
+    // Dữ liệu chưa có danh mục riêng cho thiệp, nên nhận diện theo tên sản phẩm bắt đầu bằng "Thiệp".
     const candidates = await productCollection.find({
       TRANG_THAI: 'Đang bán',
+      TEN_SAN_PHAM: { $not: /^\s*thi[eệ]p/i },
       $or: [
         { KIEU_DANG: 'Sản phẩm mua kèm' },
         { KIEU_DANG: 'Phụ kiện' },
-        { TEN_SAN_PHAM: { $in: ['Gấu bông', 'Nến thơm', 'Thiệp', 'Túi quà cao cấp'] } },
+        { TEN_SAN_PHAM: { $in: ['Gấu bông', 'Nến thơm', 'Túi quà cao cấp'] } },
         { MO_TA: /SẢN PHẨM MUA KÈM/i },
         { MO_TA: /SAN PHAM MUA KEM/i },
       ],
@@ -43,8 +46,7 @@ export const getSuggestedMaterials = async (req: Request, res: Response) => {
     const order = new Map([
       ['Gấu bông', 1],
       ['Nến thơm', 2],
-      ['Thiệp', 3],
-      ['Túi quà cao cấp', 4],
+      ['Túi quà cao cấp', 3],
     ]);
     const sorted = candidates
       .sort((a: any, b: any) => {

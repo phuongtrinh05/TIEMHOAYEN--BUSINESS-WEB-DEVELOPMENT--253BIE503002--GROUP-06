@@ -33,8 +33,8 @@ export class LuckyWheel implements OnInit,OnDestroy{
   }
   get rewards(){return this.data()?.rewards||[];}
   get history(){return this.data()?.history||[];}
-  /** Tiền định dạng Việt Nam: 150.000 */
-  money(v:unknown){const n=Number(v);return Number.isFinite(n)?n.toLocaleString('vi-VN',{maximumFractionDigits:0}):'0';}
+  /** Tiền có dấu phẩy ngăn hàng nghìn: 150,000 */
+  money(v:unknown){const n=Number(v);return Number.isFinite(n)?n.toLocaleString('en-US',{maximumFractionDigits:0}):'0';}
   pages(total:number,size:number){return Math.max(1,Math.ceil((total||0)/size));}
   spinLabel(s:any){return `${s.orderId} · hạn ${new Date(s.expiresAt).toLocaleDateString('vi-VN')}`;}
 }

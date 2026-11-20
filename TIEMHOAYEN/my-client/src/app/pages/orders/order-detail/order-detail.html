@@ -90,7 +90,7 @@
             <div class="shipping-icon"><i class="bi bi-clock"></i></div>
             <div class="shipping-content">
               <span class="shipping-label">Khung giờ giao:</span>
-              <span class="shipping-value">{{ order.deliveryTime || 'Chưa chọn' }}</span>
+              <span class="shipping-value">{{ order.deliveryTime ? slotLabel(order.deliveryTime) : 'Chưa chọn' }}</span>
             </div>
           </div>
 
@@ -418,6 +418,10 @@
             </button>
 
 
+            <div class="order-reason-box" *ngIf="order.paymentExpiredReason && !order.cancelReason">
+              <strong>Lý do:</strong>
+              <span>{{ order.paymentExpiredReason }}<ng-container *ngIf="order.paymentExpiredAt"> ({{ order.paymentExpiredAt | date:'HH:mm dd/MM/yyyy' }})</ng-container></span>
+            </div>
             <div class="order-reason-box" *ngIf="order.cancelReason">
               <strong>Lý do hủy:</strong>
               <span>{{ order.cancelReason }}</span>

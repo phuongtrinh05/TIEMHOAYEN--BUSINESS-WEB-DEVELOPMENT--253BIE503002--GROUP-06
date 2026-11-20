@@ -1,3 +1,4 @@
+import { deliverySlotLabel } from '../../../services/pricing.service';
 import { apiBaseUrl, currentOrderAccountKey, orderAccessSession, setTransientGuestLookupSession, orderLookupRoute } from '../../../services/api-config';
 import { memberAccessToken } from '../../../services/session-auth';
 import { LuckyOrderSpin } from '../../../components/lucky-order-spin/lucky-order-spin';
@@ -87,6 +88,7 @@ interface CheckoutOrderView {
   styleUrl: './checkout.css',
 })
 export class CheckoutComponent implements OnInit, OnDestroy {
+  readonly slotLabel = deliverySlotLabel;
   private readonly platformId = inject(PLATFORM_ID);
   private readonly router = inject(Router);
   private readonly orderService = inject(OrderService);
@@ -120,6 +122,8 @@ export class CheckoutComponent implements OnInit, OnDestroy {
   /** Hạn thanh toán của đơn (24 giờ hoặc trước giờ nhận 4 giờ); quá hạn đơn bị hủy. */
   orderPaymentDeadline: string | null = null;
   orderCancelledForPayment = false;
+  /** Còn dưới 4 giờ trước giờ giao: không tạo được QR mới. */
+  retryBlockedMessage = '';
   luckyCheckPending = false;
   isRetryingPayment = false;
 
@@ -762,7 +766,11 @@ export class CheckoutComponent implements OnInit, OnDestroy {
           this.checkPaymentStatus(); this.startPaymentPolling();
         }
         const message = err?.error?.message || 'Không thể tạo lại mã thanh toán. Vui lòng thử lại.';
-        if (err?.error?.code === 'ORDER_PAYMENT_EXPIRED') {
+        if (err?.error?.code === 'ORDER_PAYMENT_TOO_LATE') {
+          // Không còn đủ 4 giờ trước giờ giao: ẩn nút tạo lại, hướng dẫn liên hệ shop.
+          this.retryBlockedMessage = message;
+          this.qrError = '';
+        } else if (err?.error?.code === 'ORDER_PAYMENT_EXPIRED') {
           // Quá hạn thanh toán của đơn: chuyển sang báo thất bại.
           this.orderCancelledForPayment = true;
           this.qrExpired = false;

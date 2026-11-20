@@ -1,3 +1,4 @@
+import { deliverySlotLabel } from '../../../shared/date-time';
 import { ChangeDetectorRef, Component, inject, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -8,6 +9,7 @@ import { apiBaseUrl } from '../../../services/api-config';
 @Component({ selector: 'app-order-requests', standalone: true, imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './order-requests.html', styleUrls: ['./order-requests.css', './order-requests-refinement.css', './order-requests-layout.css'] })
 export class OrderRequests implements OnInit, OnDestroy {
+  readonly slotLabel = deliverySlotLabel;
   private http = inject(HttpClient); private cdr = inject(ChangeDetectorRef); private route = inject(ActivatedRoute); private router = inject(Router);
   statuses = ['Chờ xử lý', 'Sales đang xử lý', 'Chờ khách xác nhận', 'Chờ khách thanh toán', 'Đã lên đơn', 'Đã từ chối', 'Khách đã hủy', 'Hết hạn thanh toán'];
   employeeId = typeof localStorage !== 'undefined' ? localStorage.getItem('adminEmployeeId') : '';

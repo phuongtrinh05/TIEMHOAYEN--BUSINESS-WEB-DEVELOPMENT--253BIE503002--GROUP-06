@@ -1124,7 +1124,7 @@ private startBestSellerProductAutoSlide(): void {
       return '0đ';
     }
 
-    return value.toLocaleString('vi-VN') + 'đ';
+    return value.toLocaleString('en-US') + 'đ';
   }
 
   private formatBlogDate(date: string | null | undefined): string {

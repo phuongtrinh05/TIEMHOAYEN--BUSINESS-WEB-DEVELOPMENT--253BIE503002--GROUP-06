@@ -1,3 +1,4 @@
+import { deliverySlotLabel } from '../../../shared/date-time';
 import { formatDateTime24 } from '../../../shared/date-time';
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -45,7 +46,7 @@ export interface Shipper {
 
 export interface IOrderDetail {
   snapshotAvailable?: boolean;
-  allowedStatuses?: string[]; nextStep?: { nextStatus: string | null; blocked: boolean; reason: string; action: string }; history?: any[]; preparationHistory?: any[]; preparationAt?: string | null; preparationStartedAt?: string | null; preparationStartedBy?: string | null; materialIssued?: boolean; materialExportId?: string | null; preparationPriority?: { level: string; label: string; minutesToT: number | null };
+  allowedStatuses?: string[]; nextStep?: { nextStatus: string | null; blocked: boolean; reason: string; action: string }; paymentDeadline?: string | null; qrExpired?: boolean; paymentExpired?: { reason: string; at: any } | null; history?: any[]; preparationHistory?: any[]; preparationAt?: string | null; preparationStartedAt?: string | null; preparationStartedBy?: string | null; materialIssued?: boolean; materialExportId?: string | null; preparationPriority?: { level: string; label: string; minutesToT: number | null };
   id: string;
   requestId?: string | null;
   orderVersion?: string | null;
@@ -179,6 +180,7 @@ const STEP_CONFIG: Record<OrderStatus, { icon: string }> = {
   styleUrls: ['./order-detail.css', './order-detail-refinement.css'],
 })
 export class OrderDetail implements OnInit, OnDestroy {
+  readonly slotLabel = deliverySlotLabel;
   constructor(
     private readonly route: ActivatedRoute,
     private readonly adminApi: AdminApiService,

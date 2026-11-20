@@ -1,3 +1,4 @@
+import { expiredPaymentInfo } from '../services/unpaid-order-expiry.service.js';
 import type { Request, Response, NextFunction } from 'express';
 import { InventoryError } from '../services/inventory/helpers.js';
 import { authorizeCheckout, authorizeOrder, createCheckoutLookupAccess, lookupAccess, ownedOrderQuery, ownedRequestQuery, phonePattern, requestOrderOtp, revokeOrderAccess, verifyOrderOtp } from '../services/order-access.service.js';
@@ -8,7 +9,7 @@ const customerOrderGroup = (status: unknown, hasAfterSales = false) => {
   if (hasAfterSales) return 'returns';
   const value = String(status || '').toLowerCase();
   if (/chấp nhận hoàn tiền|đã hoàn tiền|hoàn tiền|trả hàng|đổi hàng/.test(value)) return 'returns';
-  if (/đã hủy|hủy đơn/.test(value)) return 'cancelled';
+  if (/đã hủy|hủy đơn|thanh toán thất bại/.test(value)) return 'cancelled';
   if (/hoàn thành|đã giao|giao thành công/.test(value)) return 'completed';
   if (/đã đặt hàng thành công|đang chuẩn bị|chờ giao hàng|chờ vận chuyển|đang giao/.test(value)) return 'shipping';
   return 'all';
@@ -93,7 +94,7 @@ export async function lookupHistory(req: Request, res: Response) {
       { TRANG_THAI: { $regex: 'hoàn tiền|trả hàng|đổi hàng', $options: 'i' } },
       ...(afterSalesOrderIds.length ? [{ DON_HANG_ID: { $in: afterSalesOrderIds } }] : []),
     ] });
-    if (group === 'cancelled') filteredParts.push({ TRANG_THAI: { $regex: 'đã hủy|hủy đơn', $options: 'i' } });
+    if (group === 'cancelled') filteredParts.push({ TRANG_THAI: { $regex: 'đã hủy|hủy đơn|thanh toán thất bại', $options: 'i' } });
     if (status) filteredParts.push({ TRANG_THAI: status });
     if (deliveryDate) {
       const from = new Date(`${deliveryDate}T00:00:00.000+07:00`);
@@ -134,7 +135,7 @@ export async function lookupHistory(req: Request, res: Response) {
     }
     const requestQuery = { $and: requestParts };
     const [orders, totalOrders, requests, totalRequests] = await Promise.all([
-      scope !== 'requests' ? ordersCollection.find(query,{projection:{_id:0,DON_HANG_ID:1,YEU_CAU_DAT_HANG_ID:1,NGAY_TAO:1,TRANG_THAI:1,TONG_TIEN:1,TIEN_COC:1,NGAY_MUON_GIAO:1,KHUNG_GIO_MUON_GIAO:1,TEN_NGUOI_DAT:1,TEN_NGUOI_NHAN:1,DIA_CHI_GIAO_HANG:1}}).sort({NGAY_TAO:-1}).skip((page-1)*pageSize).limit(pageSize).toArray() : [],
+      scope !== 'requests' ? ordersCollection.find(query,{projection:{_id:0,DON_HANG_ID:1,YEU_CAU_DAT_HANG_ID:1,NGAY_TAO:1,TRANG_THAI:1,TONG_TIEN:1,TIEN_COC:1,NGAY_MUON_GIAO:1,KHUNG_GIO_MUON_GIAO:1,TEN_NGUOI_DAT:1,TEN_NGUOI_NHAN:1,DIA_CHI_GIAO_HANG:1,LY_DO_HUY:1,NGAY_HUY:1,HET_HAN_THANH_TOAN:1,NGAY_HET_HAN_THANH_TOAN:1}}).sort({NGAY_TAO:-1}).skip((page-1)*pageSize).limit(pageSize).toArray() : [],
       scope !== 'requests' ? ordersCollection.countDocuments(query) : 0,
       scope !== 'orders' ? requestsCollection.find(requestQuery,{projection:{_id:0,requestId:1,status:1,items:1,delivery:1,createdAt:1,orderId:1,reviewReason:1,routing:1,quote:1}}).sort({createdAt:-1}).skip((page-1)*pageSize).limit(pageSize).toArray() : [],
       scope !== 'orders' ? requestsCollection.countDocuments(requestQuery) : 0,
@@ -162,6 +163,7 @@ export async function lookupHistory(req: Request, res: Response) {
       const paid = Math.max(0, sumVerifiedPayments(orderPayments));
       const itemRows = detailsByOrder.get(order.DON_HANG_ID) || [];
       return { ...order, items: itemRows, uiGroup: customerOrderGroup(order.TRANG_THAI, afterMap.has(order.DON_HANG_ID)),
+        paymentExpired: expiredPaymentInfo(order),
         paymentSummary: { deposit: Number(order.TIEN_COC || 0), paid, remaining: Math.max(0, Number(order.TONG_TIEN || 0) - paid) },
         afterSales: afterMap.get(order.DON_HANG_ID) || null };
     });

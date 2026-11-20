@@ -294,7 +294,7 @@
               </td>
 
               <td class="cell-id">{{ order.id }}</td>
-              <td>{{order.senderName || displayCustomerId(order)}}<br>{{order.receiverName}}</td><td><span *ngFor="let p of order.products">{{p.name}} × {{p.qty}}<br></span>{{order.deliveryDate}} {{order.deliverySlot}}</td>
+              <td>{{order.senderName || displayCustomerId(order)}}<br>{{order.receiverName}}</td><td><span *ngFor="let p of order.products">{{p.name}} × {{p.qty}}<br></span>{{order.deliveryDate}} {{slotLabel(order.deliverySlot)}}</td>
               <td>{{ order.createdAt }}</td>
               <td class="cell-total">{{formatCurrency(order.total)}}<br>Cọc: {{formatCurrency(order.deposit || 0)}}</td><td>{{formatCurrency(order.paid || 0)}}<br>Còn: {{formatCurrency(order.remaining || 0)}}<span class="order-flag order-flag--pending" *ngIf="(order.pendingCash || 0) > 0">Chờ đối soát {{formatCurrency(order.pendingCash || 0)}}</span><span class="order-flag order-flag--refund" *ngIf="(order.refundDue || 0) > 0">Cần hoàn {{formatCurrency(order.refundDue || 0)}}</span></td>
 

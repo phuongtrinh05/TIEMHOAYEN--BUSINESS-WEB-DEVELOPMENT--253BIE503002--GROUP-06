@@ -65,6 +65,13 @@ export function assertWithinShopHours(start: Date | string, end?: Date | string)
   if (!isWithinShopHours(start, end)) throw new InventoryError(400, OUTSIDE_HOURS_MESSAGE, { code: OUTSIDE_HOURS_CODE });
 }
 
+/** Khách/Sales chọn khung giao 30 phút; chỉ lưu giờ bắt đầu nên giờ bắt đầu từ 08:00 đến 21:30 (khung cuối 21:30–22:00). */
+export const DELIVERY_SLOT_MINUTES = 30;
+export function assertDeliverySlotStart(start: Date | string) {
+  const startAt = new Date(start);
+  assertWithinShopHours(startAt, new Date(startAt.getTime() + DELIVERY_SLOT_MINUTES * 60_000));
+}
+
 /**
  * Phân loại lịch giao. Không giữ tồn, không cam kết vận chuyển.
  * `deliveryStartAt` là đầu khung giờ (nếu khách chọn một khoảng); thời gian còn lại tính từ đầu khung.

@@ -156,10 +156,8 @@ export const ownedRequestQuery = (access: any) => access.authType === 'member' ?
   // account; after OTP verification both belong to the same lookup scope.
   : { 'sender.phone': phonePattern(access.phone) };
 export async function ownedOrderQuery(access: any): Promise<any> {
-  // Đơn thanh toán thất bại đã quá hạn chỉ còn trong Admin, khách không thấy nữa.
-  const { HIDE_EXPIRED_PAYMENT_FROM_CUSTOMER } = await import('./unpaid-order-expiry.service.js');
-  const scope = await ownedOrderScope(access);
-  return ('$nor' in scope || 'HET_HAN_THANH_TOAN' in scope) ? { $and: [scope, HIDE_EXPIRED_PAYMENT_FROM_CUSTOMER] } : { ...scope, ...HIDE_EXPIRED_PAYMENT_FROM_CUSTOMER };
+  // Khách vẫn thấy đơn quá hạn thanh toán ("Thanh toán thất bại" kèm lý do "Quá hạn thanh toán").
+  return ownedOrderScope(access);
 }
 async function ownedOrderScope(access: any): Promise<any> {
   if (access.kind === 'request') {

@@ -1757,37 +1757,23 @@ textarea.address-modal-input.address-detail-textarea {
 .shipping-auto i{color:#8b2f2f}
 .qty-limit-notice{margin:8px 0 0;color:#a15c00;font-size:13px}
 
-/* Ô tăng/giảm số lượng trong Thông tin đơn hàng: gọn hơn */
-.qty-stepper{margin-top:6px;border-radius:6px}
-.qty-stepper button{width:20px;min-width:20px;height:22px;min-height:22px;flex:0 0 20px;font-size:.72rem}
-.qty-stepper .qty-input{width:24px;min-width:24px;height:22px;min-height:22px;flex:0 0 24px;font-size:.72rem}
+/* Ô số lượng gọn hơn. */
+.qty-stepper{border-radius:6px}
+.qty-stepper button{width:22px;min-width:22px;height:24px;min-height:24px;flex:0 0 22px;font-size:.75rem}
+.qty-stepper .qty-input{width:26px;min-width:26px;height:24px;min-height:24px;flex:0 0 26px;font-size:.75rem}
+/* Cảnh báo cần shop xác nhận: một lý do thì hiện một dòng. */
+.request-notice__reason{margin:0 0 4px}
+.pricing-row--policy .pricing-policy-note{flex:1;text-align:left;font-weight:600}
+/* Ô nội dung thiệp cùng hàng với câu hỏi cách viết thiệp. */
+.gift-card-writing__message{margin-top:14px}
+.gift-card-writing__message .form-textarea{display:block;width:100%;box-sizing:border-box;padding:14px 16px;line-height:1.5}
+@media(min-width:769px){
+  .gift-card-writing.has-message{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:14px;align-items:stretch}
+  .gift-card-writing.has-message .gift-card-writing__message{margin:0;display:flex;flex-direction:column}
+  .gift-card-writing.has-message .gift-card-writing__message .form-textarea{flex:1;resize:vertical}
+}
 
 /* Giá sản phẩm nằm ngang hàng với ô số lượng */
 .or-item{align-items:end}
 .or-item__img{align-self:center}
-.or-item__price{align-self:end;line-height:22px}
-
-/* Chính sách thanh toán: nhãn bên trái, nội dung 2 dòng canh phải */
-.pricing-row--policy{flex-wrap:nowrap;gap:8px}
-.pricing-row--policy > span:first-child{flex:0 0 auto;white-space:nowrap}
-.pricing-row--policy .pricing-value{flex:1 1 auto;min-width:0;white-space:pre-line;text-align:right;line-height:1.4;font-size:.8rem}
-
-
-/* Ô chọn giờ giao: cùng kiểu với ô Tỉnh/Quận/Phường */
-.time-dd{position:relative}
-.time-dd__btn{display:flex;align-items:center;justify-content:space-between;width:100%;height:42px;padding:0 12px 0 14px;box-sizing:border-box;background:#fff;border:1.5px solid #D9D9D9;border-radius:8px;font-family:var(--font-body);font-size:.95rem;text-align:left;cursor:pointer;transition:border-color .2s}
-.time-dd__btn:hover,.time-dd__btn:focus{border-color:var(--accent-color);outline:none}
-.time-dd__btn.is-invalid{border-color:var(--color-scarlet-red)}
-.time-dd__btn span{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#999}
-.time-dd__btn.has-value span{color:var(--text-color);font-weight:500}
-.time-dd__arrow{flex-shrink:0;margin-left:8px;font-size:16px;color:var(--primary-color);text-shadow:0 0 .4px currentColor,0 0 .4px currentColor;transition:transform .2s}
-.time-dd__arrow.rotated{transform:rotate(180deg)}
-.time-dd__list{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:100;max-height:220px;overflow-y:auto;padding:6px 0;border-radius:12px;background:#fff;box-shadow:0 8px 32px rgba(115,25,25,.14)}
-.time-dd__opt{display:block;width:100%;padding:9px 16px;border:none;background:#fff;color:#1f1f1f;font-family:var(--font-body);font-size:.88rem;font-weight:500;text-align:left;cursor:pointer}
-.time-dd__opt small{color:#a15c00;font-size:.78rem}
-.time-dd__opt:hover,.time-dd__opt.active{background:#f0e6d8}
-.time-dd__opt.active{color:var(--primary-color);font-weight:700}
-.time-dd__empty{margin:0;padding:9px 16px;color:#888;font-size:.85rem}
-/* Danh sách giờ hẹp bằng một ô Tỉnh/Quận/Phường, dòng thấp hơn */
-.time-dd__list{right:auto;width:calc(66.6% - 8px);min-width:180px;max-height:240px}
-.time-dd__opt{padding:7px 16px}
+.or-item__price{align-self:end;line-height:24px}

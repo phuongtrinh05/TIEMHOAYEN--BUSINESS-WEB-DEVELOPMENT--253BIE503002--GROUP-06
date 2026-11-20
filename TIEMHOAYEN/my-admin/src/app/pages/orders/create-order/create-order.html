@@ -495,7 +495,7 @@
                   [disabled]="!form.deliveryDate"
                 >
                   <option value="" disabled>{{ form.deliveryDate ? 'Chọn giờ (08:00–22:00)' : 'Chọn ngày giao trước' }}</option>
-                  <option *ngFor="let slot of deliverySlots" [value]="slot">{{ slot }}{{ isUrgentSlot(slot) ? ' · đơn gấp' : '' }}</option>
+                  <option *ngFor="let slot of deliverySlots" [value]="slot">{{ slotLabel(slot) }}{{ isUrgentSlot(slot) ? ' · đơn gấp' : '' }}</option>
                 </select>
                 <i class="bi bi-chevron-down form-select-chevron"></i>
               </div>

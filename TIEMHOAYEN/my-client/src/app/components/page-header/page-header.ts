@@ -661,7 +661,7 @@ export class PageHeader implements OnInit, OnDestroy {
   }
 
   formatCartPrice(value: number): string {
-    return (value || 0).toLocaleString('vi-VN') + 'đ';
+    return (value || 0).toLocaleString('en-US') + 'đ';
   }
 
 
@@ -1435,7 +1435,7 @@ export class PageHeader implements OnInit, OnDestroy {
       return '0đ';
     }
 
-    return numberValue.toLocaleString('vi-VN') + 'đ';
+    return numberValue.toLocaleString('en-US') + 'đ';
   }
 
   private normalizeImageUrl(url: string | null | undefined): string {

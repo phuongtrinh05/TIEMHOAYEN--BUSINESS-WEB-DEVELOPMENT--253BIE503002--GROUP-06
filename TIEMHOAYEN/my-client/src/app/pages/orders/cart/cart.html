@@ -67,9 +67,6 @@
                  (click)="goToProductDetail(item)"
                  (keydown.enter)="goToProductDetail(item)">{{ item.name }}</p><p *ngIf="item.designId" class="item-meta">{{item.requiresReview ? 'Cần shop duyệt · Giá tạm tính' : 'Mẫu đã được duyệt'}}</p>
               <p class="item-meta">Kiểu dáng: {{ item.style }}</p>
-              <p class="item-meta item-topic">
-                Chủ đề: <span>{{ getCartTopicLabel(item) }}</span>
-              </p>
               <span class="cart-status-badge" *ngIf="!item.purchasable">Ngừng bán</span>
               <p class="cart-line-warning" *ngIf="item.priceChanged">Giá sản phẩm đã được cập nhật theo giá hiện tại.</p>
             </div>

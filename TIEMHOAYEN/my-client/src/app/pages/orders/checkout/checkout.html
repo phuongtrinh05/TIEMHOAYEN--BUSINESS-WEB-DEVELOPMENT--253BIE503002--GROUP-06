@@ -114,7 +114,7 @@
             <div class="info-item">
               <span class="info-label">Giờ giao:</span>
               <span class="info-value" [class.info-value--empty]="!order.delivery.time">
-                {{ order.delivery.time || 'Chưa chọn' }}
+                {{ order.delivery.time ? slotLabel(order.delivery.time) : 'Chưa chọn' }}
               </span>
             </div>
 
@@ -179,12 +179,9 @@
           </strong>
         </div>
 
-        <p class="payment-deadline-note" *ngIf="showPaymentCountdown">
+        <p class="payment-deadline-note" *ngIf="showPaymentCountdown && orderPaymentDeadlineDate">
           <i class="bi bi-clock"></i>
-          <span>
-            Mỗi mã QR có hiệu lực 5 phút.
-            <ng-container *ngIf="orderPaymentDeadlineDate">Vui lòng thanh toán trước <b>{{ orderPaymentDeadlineDate | date:'dd/MM/yyyy HH:mm' }}</b>, quá hạn đơn sẽ tự hủy.</ng-container>
-          </span>
+          <span>Vui lòng thanh toán trước <b>{{ orderPaymentDeadlineDate | date:'dd/MM/yyyy HH:mm' }}</b>.</span>
         </p>
 
         <div class="payment-method-summary">
@@ -210,7 +207,7 @@
               class="payment-qr__img"
             />
             <button
-              *ngIf="qrExpired"
+              *ngIf="qrExpired && !retryBlockedMessage"
               type="button"
               class="payment-qr__refresh"
               (click)="refreshQr()"
@@ -220,7 +217,8 @@
               <i class="bi bi-arrow-clockwise" [class.is-spinning]="isRetryingPayment"></i>
             </button>
           </div>
-          <p class="payment-qr__hint" *ngIf="qrExpired && !qrError">Bấm nút xoay để tạo mã QR mới và thanh toán lại.</p>
+          <p class="payment-qr__hint" *ngIf="qrExpired && !qrError && !retryBlockedMessage">Bấm nút xoay để tạo mã QR mới và thanh toán lại.</p>
+          <p class="payment-qr__error" *ngIf="retryBlockedMessage" role="alert">{{ retryBlockedMessage }}</p>
           <p class="payment-qr__error" *ngIf="qrError" role="alert">{{ qrError }}</p>
         </div>
 
@@ -369,7 +367,7 @@
       </p>
 
       <p class="checkout-result-sub-message" *ngIf="isPaymentFailed">
-        Đơn hàng đã quá hạn thanh toán nên đã được hủy. Bạn có thể đặt lại đơn mới.
+        Đơn hàng đã quá hạn thanh toán nên không thể thanh toán tiếp (Thanh toán thất bại). Bạn có thể đặt lại đơn hoặc liên hệ shop 0909477488.
       </p>
 
       <p class="checkout-result-error" *ngIf="checkoutResultError">
@@ -388,6 +386,9 @@
       </div>
 
       <div class="checkout-result-actions" *ngIf="isPaymentFailed">
+        <button *ngIf="orderCancelledForPayment" type="button" class="checkout-result-action" (click)="viewOrderDetail()">
+          Xem đơn &amp; đặt lại
+        </button>
         <button
           *ngIf="!orderCancelledForPayment"
           type="button"

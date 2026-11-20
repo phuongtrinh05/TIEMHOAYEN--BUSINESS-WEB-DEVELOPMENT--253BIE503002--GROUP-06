@@ -1,3 +1,4 @@
+import { deliverySlotLabel } from '../../../services/pricing.service';
 import { apiBaseUrl, orderAccessSession, orderLookupRoute } from '../../../services/api-config';
 import { memberAccessToken } from '../../../services/session-auth';
 import { LuckyWheelService } from '../../../services/lucky-wheel.service';
@@ -52,6 +53,9 @@ interface OrderDetailView {
   total: number;
   hasEditedShipping: boolean;
   cancelReason: string;
+  paymentExpiredReason?: string;
+  paymentExpiredAt?: string | null;
+  paymentDeadline?: string | null;
   returnRefundReason: string;
   rejectReason: string;
   hasReviewed: boolean;
@@ -87,6 +91,7 @@ interface OrderDetailVoucher {
   styleUrl: './order-detail.css',
 })
 export class OrderDetail implements OnInit, OnDestroy {
+  readonly slotLabel = deliverySlotLabel;
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly orderService = inject(OrderService);
@@ -400,6 +405,9 @@ export class OrderDetail implements OnInit, OnDestroy {
       total,
       hasEditedShipping: !!row.DA_CHINH_SUA_GIAO_HANG,
       cancelReason: String(row.LY_DO_HUY || ''),
+      paymentExpiredReason: String(row.QUA_HAN_THANH_TOAN?.reason || ''),
+      paymentExpiredAt: row.QUA_HAN_THANH_TOAN?.at || null,
+      paymentDeadline: row.HAN_THANH_TOAN_DON || null,
       returnRefundReason: String(row.LY_DO_HOAN_TIEN_TRA_HANG || ''),
       rejectReason: String(row.LY_DO_TU_CHOI || ''),
       hasReviewed: Number(row.DA_DANH_GIA || 0) > 0,
@@ -1005,7 +1013,8 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   canReorder(): boolean {
     const status = this.normalizeStatus(this.order.status);
-    return status === 'completed' || status === 'cancelled';
+    // Đơn "Thanh toán thất bại" vì quá hạn thanh toán cũng được đặt lại.
+    return status === 'completed' || status === 'cancelled' || (status === 'payment_failed' && !!this.order.paymentExpiredReason);
   }
 
   async reorder(): Promise<void> {

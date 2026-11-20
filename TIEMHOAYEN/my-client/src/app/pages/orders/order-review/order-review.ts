@@ -870,7 +870,7 @@ export class OrderReview implements OnInit, OnDestroy {
   }
 
   formatPrice(value: number): string {
-    return `${Number(value || 0).toLocaleString('vi-VN')}đ`;
+    return `${Number(value || 0).toLocaleString('en-US')}đ`;
   }
 
   formatDate(value: string): string {

@@ -13,8 +13,8 @@ export const UNPAID_PAST_DELIVERY_REASON = 'Quá hạn thanh toán';
 export const PAYMENT_FAILED_STATUS = 'Thanh toán thất bại';
 
 /**
- * Khách KHÔNG còn thấy đơn đã thất bại thanh toán sau khi hết hạn (đơn xa: 24 giờ; đơn gần: theo giờ giao).
- * Gồm cả đơn cũ đã bị hủy tự động vì quá hạn thanh toán trước khi đổi quy tắc.
+ * (Không còn dùng để ẩn đơn khỏi khách.) Điều kiện nhận biết đơn quá hạn thanh toán:
+ * đơn "Thanh toán thất bại" có HET_HAN_THANH_TOAN, hoặc đơn cũ "Đã hủy" với lý do "Quá hạn thanh toán".
  */
 export const HIDE_EXPIRED_PAYMENT_FROM_CUSTOMER = {
   HET_HAN_THANH_TOAN: { $ne: true },
@@ -50,6 +50,18 @@ export function orderPaymentDeadline(order: any): Date | null {
   if (Number.isFinite(delivery) && isNearDeliveryOrder(order)) return new Date(delivery - PAY_BEFORE_DELIVERY_MS);
   if (Number.isFinite(created)) return new Date(created + ORDER_PAYMENT_WINDOW_MS);
   return Number.isFinite(delivery) ? new Date(delivery - PAY_BEFORE_DELIVERY_MS) : null;
+}
+
+/** Đơn đã kết thúc vì quá hạn thanh toán (quy tắc mới hoặc đơn cũ bị hủy tự động trước đây). */
+export function isExpiredPaymentOrder(order: any): boolean {
+  return order?.HET_HAN_THANH_TOAN === true
+    || (String(order?.TRANG_THAI || '') === 'Đã hủy' && String(order?.LY_DO_HUY || '') === UNPAID_PAST_DELIVERY_REASON);
+}
+
+/** Lý do hiển thị cho khách/Admin khi đơn quá hạn thanh toán. */
+export function expiredPaymentInfo(order: any) {
+  if (!isExpiredPaymentOrder(order)) return null;
+  return { reason: UNPAID_PAST_DELIVERY_REASON, at: order?.NGAY_HET_HAN_THANH_TOAN || order?.NGAY_HUY || null };
 }
 
 /** Quy tắc: quá hạn thanh toán mà chưa thu đủ khoản trả trước thì đơn bị hủy. */

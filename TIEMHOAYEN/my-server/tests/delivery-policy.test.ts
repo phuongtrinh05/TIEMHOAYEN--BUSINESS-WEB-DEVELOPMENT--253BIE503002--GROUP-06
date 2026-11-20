@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyDeliverySchedule, isWithinShopHours, URGENT_CONTACT_PHONE } from '../services/delivery-policy.service.js';
+import { assertDeliverySlotStart, classifyDeliverySchedule, isWithinShopHours, URGENT_CONTACT_PHONE } from '../services/delivery-policy.service.js';
 
 const now = new Date('2026-11-01T08:00:00+07:00');
 
@@ -39,4 +39,10 @@ test('past delivery is rejected; UTC-stored values compare in Vietnam time', () 
   // 2026-11-01T01:00Z = 08:00 giờ Việt Nam → trong giờ shop.
   assert.equal(isWithinShopHours('2026-11-01T01:00:00Z'), true);
   assert.equal(isWithinShopHours('2026-11-01T00:30:00Z'), false);
+});
+test('a 30-minute slot must start between 08:00 and 21:30', () => {
+  assert.doesNotThrow(() => assertDeliverySlotStart('2026-11-01T08:00:00+07:00'));
+  assert.doesNotThrow(() => assertDeliverySlotStart('2026-11-01T21:30:00+07:00'));
+  assert.throws(() => assertDeliverySlotStart('2026-11-01T22:00:00+07:00'), (error: any) => error.details.code === 'OUTSIDE_SHOP_HOURS');
+  assert.throws(() => assertDeliverySlotStart('2026-11-01T07:30:00+07:00'), (error: any) => error.details.code === 'OUTSIDE_SHOP_HOURS');
 });
