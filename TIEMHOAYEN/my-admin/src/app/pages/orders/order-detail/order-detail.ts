@@ -275,6 +275,7 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   // ===== EDIT MODE =====
   isEditing = false;
+  savingDelivery = false;
   editSnapshot: IOrderDetail | null = null;
 
   ngOnInit(): void {
@@ -479,7 +480,12 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   saveEdit(): void {
-    if (!this.canEditNote) return;
+    if (!this.canEdit || this.savingDelivery) return;
+    const slot = String(this.order.deliverySlot || '').trim().replace(/\s*[-–]\s*/g, '–');
+    if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(this.order.deliveryDate || '').trim())) { this.showToast('Ngày giao theo dạng dd/mm/yyyy.', 'error'); return; }
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d(?:–(?:[01]\d|2[0-3]):[0-5]\d)?$/.test(slot)) { this.showToast('Khung giờ theo dạng HH:mm hoặc HH:mm–HH:mm, trong 08:00–22:00.', 'error'); return; }
+    this.order.deliverySlot = slot;
+    this.savingDelivery = true;
     const parts = String(this.order.deliveryDate || '').split('/');
     const deliveryDate = parts.length === 3
       ? `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
@@ -494,13 +500,14 @@ export class OrderDetail implements OnInit, OnDestroy {
       deliverySlot: this.order.deliverySlot,
     }).subscribe({
       next: response => {
+        this.savingDelivery = false;
         this.applyApiOrderDetail(response.order);
         this.isEditing = false;
         this.editSnapshot = null;
         this.showToast('Đã lưu thông tin giao hàng.');
         this.cdr.detectChanges();
       },
-      error: error => this.showToast(error?.error?.message || 'Chưa lưu được thay đổi.', 'error'),
+      error: error => { this.savingDelivery = false; this.showToast(error?.error?.message || 'Chưa lưu được thay đổi.', 'error'); this.cdr.detectChanges(); },
     });
   }
 
@@ -586,8 +593,11 @@ export class OrderDetail implements OnInit, OnDestroy {
     return this.isPaidStatus(this.order.paymentStatus);
   }
 
+  /** Sửa thông tin giao hàng: có quyền cập nhật đơn và đơn chưa bắt đầu chuẩn bị (server kiểm tra lại). */
   get canEdit(): boolean {
-    return false; // Commercial and delivery snapshots require the agreed change workflow.
+    return this.adminApi.can('orders', 'update')
+      && ['Chờ thanh toán', 'Đã xác nhận đơn hàng', 'Chờ xử lý', 'Đã đặt hàng thành công'].includes(String(this.order.orderStatus))
+      && !this.order.preparationStartedAt;
   }
 
   isOrderDelivering(): boolean {
@@ -990,14 +1000,59 @@ export class OrderDetail implements OnInit, OnDestroy {
     history.back();
   }
 
+  /**
+   * In phiếu đơn hàng A4. In qua iframe ẩn trong chính trang (không mở cửa sổ mới) để không bị chặn popup
+   * và không in nhầm giao diện quản trị.
+   */
   printOrder(): void {
-    const popup = window.open('', '_blank', 'width=900,height=900');
-    if (!popup) { this.showToast('Trình duyệt đang chặn cửa sổ in.', 'error'); return; }
     const safe = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[char] || char));
     const money = (value: unknown) => `${Number(value || 0).toLocaleString('vi-VN')}đ`;
-    const rows = this.order.products.map((product, index) => `<tr><td>${index + 1}</td><td>${safe(product.name)}</td><td class="center">${product.qty}</td><td class="right">${money(product.price)}</td><td class="right">${money(product.qty * product.price)}</td></tr>`).join('');
-    popup.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Phiếu đơn hàng ${safe(this.order.id)}</title><style>@page{size:A4;margin:14mm}*{box-sizing:border-box}body{margin:0;color:#2d2421;font:13px Arial,sans-serif}.sheet{max-width:780px;margin:auto}.head{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #7b1f24;padding-bottom:14px}.brand h1{margin:0;color:#7b1f24;font:700 25px Georgia,serif}.brand p,.meta p{margin:5px 0}.meta{text-align:right}.title{text-align:center;margin:22px 0 15px}.title h2{margin:0;color:#7b1f24;font-size:22px}.title p{margin:6px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}.box{border:1px solid #d8cbc5;border-radius:8px;padding:12px}.box h3{margin:0 0 9px;color:#7b1f24;font-size:13px;text-transform:uppercase}.box p{margin:5px 0;line-height:1.45}table{width:100%;border-collapse:collapse;margin:14px 0}th,td{border:1px solid #d8cbc5;padding:9px}th{background:#f6ece7;color:#6e1c21}.center{text-align:center}.right{text-align:right}.totals{margin-left:auto;width:330px}.totals div{display:flex;justify-content:space-between;padding:5px 0}.totals .grand{border-top:2px solid #7b1f24;margin-top:5px;padding-top:9px;color:#7b1f24;font-size:16px;font-weight:bold}.notes{margin-top:18px;border-top:1px dashed #bda9a0;padding-top:12px}.sign{display:grid;grid-template-columns:1fr 1fr;text-align:center;margin-top:38px;gap:80px}.sign strong{display:block}.sign span{display:block;margin-top:65px;color:#777}@media print{button{display:none}}</style></head><body><main class="sheet"><header class="head"><div class="brand"><h1>TIỆM HOA YÊN</h1><p>Phiếu xác nhận và chuẩn bị đơn hàng</p></div><div class="meta"><p><b>Mã đơn:</b> ${safe(this.order.id)}</p><p><b>Ngày tạo:</b> ${safe(this.order.createdAt)} ${safe(this.order.createdTime)}</p><p><b>Trạng thái:</b> ${safe(this.order.orderStatus)}</p></div></header><section class="title"><h2>PHIẾU ĐƠN HÀNG</h2><p>Vui lòng kiểm tra đầy đủ thông tin trước khi chuẩn bị và giao hoa</p></section><section class="grid"><div class="box"><h3>Người đặt</h3><p><b>Họ tên:</b> ${safe(this.order.senderName)}</p><p><b>Điện thoại:</b> ${safe(this.order.senderPhone)}</p><p><b>Email:</b> ${safe(this.order.senderEmail || '—')}</p></div><div class="box"><h3>Người nhận</h3><p><b>Họ tên:</b> ${safe(this.order.receiverName)}</p><p><b>Điện thoại:</b> ${safe(this.order.receiverPhone)}</p><p><b>Địa chỉ:</b> ${safe(this.order.deliveryAddress)}</p><p><b>Giao lúc:</b> ${safe(this.order.deliveryDate)} · ${safe(this.order.deliverySlot)}</p></div></section><table><thead><tr><th>STT</th><th>Sản phẩm</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody></table><section class="totals"><div><span>Tạm tính</span><b>${money(this.computedSubtotal)}</b></div><div><span>Phí giao hàng</span><b>${money(this.order.shippingFee)}</b></div><div><span>Giảm voucher</span><b>-${money(this.computedVoucherDiscount)}</b></div><div><span>Giảm điểm</span><b>-${money(this.computedLoyaltyDiscount)}</b></div><div class="grand"><span>Tổng cộng</span><span>${money(this.computedGrandTotal)}</span></div><div><span>Đã thanh toán</span><b>${money(this.computedPaid)}</b></div><div><span>Còn lại</span><b>${money(this.computedRemaining)}</b></div></section><section class="notes"><p><b>Phương thức thanh toán:</b> ${safe(this.order.paymentMethod)}</p><p><b>Lời nhắn khách hàng:</b> ${safe(this.order.customerNote || 'Không có')}</p><p><b>Nội dung thiệp:</b> ${safe(this.order.cardMessage || 'Không có')}</p></section><section class="sign"><div><strong>Nhân viên lập phiếu</strong><span>Ký và ghi rõ họ tên</span></div><div><strong>Nhân viên chuẩn bị/giao hàng</strong><span>Ký và ghi rõ họ tên</span></div></section></main><script>window.onload=()=>{window.focus();window.print()}<\/script></body></html>`);
-    popup.document.close();
+    const o = this.order;
+    const rows = o.products.map((product, index) => `<tr><td class="center">${index + 1}</td><td>${safe(product.name)}</td><td class="center">${product.qty}</td><td class="right">${money(product.price)}</td><td class="right">${money(product.qty * product.price)}</td></tr>`).join('')
+      || '<tr><td colspan="5" class="center">Không có sản phẩm</td></tr>';
+    const printedAt = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false });
+    const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Phiếu đơn hàng ${safe(o.id)}</title><style>
+@page{size:A4;margin:12mm}*{box-sizing:border-box}body{margin:0;color:#2d2421;font:12.5px Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.sheet{max-width:186mm;margin:auto}.head{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #7b1f24;padding-bottom:10px}
+.brand h1{margin:0;color:#7b1f24;font:700 24px Georgia,serif;letter-spacing:1px}.brand p,.meta p{margin:3px 0}.meta{text-align:right}
+.title{text-align:center;margin:16px 0 12px}.title h2{margin:0;color:#7b1f24;font-size:20px;letter-spacing:1px}.title p{margin:4px 0 0;color:#6b5a54}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}.box{border:1px solid #d8cbc5;border-radius:6px;padding:10px;break-inside:avoid}
+.box h3{margin:0 0 6px;color:#7b1f24;font-size:12px;text-transform:uppercase}.box p{margin:3px 0;line-height:1.4}
+table{width:100%;border-collapse:collapse;margin:10px 0}th,td{border:1px solid #d8cbc5;padding:7px}th{background:#f6ece7;color:#6e1c21;font-size:12px}
+.center{text-align:center}.right{text-align:right}.bottom{display:grid;grid-template-columns:1fr 300px;gap:14px;align-items:start}
+.totals div{display:flex;justify-content:space-between;padding:3px 0}.totals .grand{border-top:2px solid #7b1f24;margin-top:4px;padding-top:7px;color:#7b1f24;font-size:15px;font-weight:bold}
+.notes p{margin:3px 0;line-height:1.4}.sign{display:grid;grid-template-columns:1fr 1fr 1fr;text-align:center;margin-top:26px;gap:20px;break-inside:avoid}
+.sign strong{display:block}.sign span{display:block;margin-top:58px;color:#888;font-size:11px}.foot{margin-top:18px;border-top:1px dashed #bda9a0;padding-top:6px;color:#8a7a74;font-size:11px;display:flex;justify-content:space-between}
+</style></head><body><main class="sheet">
+<header class="head"><div class="brand"><h1>TIỆM HOA YÊN</h1><p>Hotline: 0909 477 488</p></div><div class="meta"><p><b>Mã đơn:</b> ${safe(o.id)}</p><p><b>Ngày đặt:</b> ${safe(o.createdAt)} ${safe(o.createdTime)}</p><p><b>Trạng thái:</b> ${safe(o.orderStatus)}</p></div></header>
+<section class="title"><h2>PHIẾU ĐƠN HÀNG</h2><p>Kiểm tra đầy đủ thông tin trước khi chuẩn bị và giao hoa</p></section>
+<section class="grid"><div class="box"><h3>Người đặt</h3><p><b>Họ tên:</b> ${safe(o.senderName || '—')}</p><p><b>Điện thoại:</b> ${safe(o.senderPhone || '—')}</p><p><b>Email:</b> ${safe(o.senderEmail || '—')}</p></div>
+<div class="box"><h3>Người nhận</h3><p><b>Họ tên:</b> ${safe(o.receiverName || '—')}</p><p><b>Điện thoại:</b> ${safe(o.receiverPhone || '—')}</p><p><b>Địa chỉ:</b> ${safe(o.deliveryAddress || '—')}</p></div></section>
+<section class="grid"><div class="box"><h3>Giao hàng</h3><p><b>Ngày giao:</b> ${safe(o.deliveryDate || '—')}</p><p><b>Khung giờ:</b> ${safe(o.deliverySlot || '—')}</p><p><b>Nhân viên giao:</b> ${safe(o.shipperName || 'Chưa phân công')} ${o.shipperPhone ? '· ' + safe(o.shipperPhone) : ''}</p></div>
+<div class="box"><h3>Thanh toán</h3><p><b>Phương thức:</b> ${safe(o.paymentMethod || '—')}</p><p><b>Tình trạng:</b> ${safe(o.paymentStatus || '—')}</p><p><b>Còn phải thu khi giao:</b> ${money(this.computedRemaining)}</p></div></section>
+<table><thead><tr><th style="width:42px">STT</th><th>Sản phẩm</th><th style="width:52px">SL</th><th style="width:100px">Đơn giá</th><th style="width:110px">Thành tiền</th></tr></thead><tbody>${rows}</tbody></table>
+<section class="bottom"><div class="box notes"><h3>Ghi chú</h3><p><b>Lời nhắn khách:</b> ${safe(o.customerNote || 'Không có')}</p><p><b>Thiệp:</b> ${safe(o.cardTemplate || 'Không chọn')}</p><p><b>Nội dung thiệp:</b> ${safe(o.cardMessage || 'Không có')}</p></div>
+<div class="totals"><div><span>Tạm tính</span><b>${money(this.computedSubtotal)}</b></div><div><span>Phí giao hàng</span><b>${money(o.shippingFee)}</b></div><div><span>Giảm voucher</span><b>-${money(this.computedVoucherDiscount)}</b></div><div><span>Giảm điểm</span><b>-${money(this.computedLoyaltyDiscount)}</b></div><div class="grand"><span>Tổng cộng</span><span>${money(this.computedGrandTotal)}</span></div><div><span>Đã thanh toán</span><b>${money(this.computedPaid)}</b></div><div><span>Còn lại</span><b>${money(this.computedRemaining)}</b></div></div></section>
+<section class="sign"><div><strong>Nhân viên lập phiếu</strong><span>Ký, ghi rõ họ tên</span></div><div><strong>Nhân viên giao hàng</strong><span>Ký, ghi rõ họ tên</span></div><div><strong>Người nhận hàng</strong><span>Ký, ghi rõ họ tên</span></div></section>
+<footer class="foot"><span>Tiệm Hoa Yên · Phiếu đơn hàng ${safe(o.id)}</span><span>In lúc ${safe(printedAt)}</span></footer>
+</main></body></html>`;
+    document.getElementById('order-print-frame')?.remove();
+    const frame = document.createElement('iframe');
+    frame.id = 'order-print-frame';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+    document.body.appendChild(frame);
+    const doc = frame.contentDocument;
+    const view = frame.contentWindow;
+    if (!doc || !view) { frame.remove(); this.showToast('Chưa mở được bản in. Vui lòng thử lại.', 'error'); return; }
+    doc.open();
+    doc.write(html);
+    doc.close();
+    // Đợi trình duyệt dựng xong phiếu rồi mới gọi hộp thoại in.
+    setTimeout(() => {
+      try { view.focus(); view.print(); }
+      catch { this.showToast('Trình duyệt chưa in được phiếu. Vui lòng thử lại.', 'error'); }
+    }, 300);
   }
 
   printCard(): void {

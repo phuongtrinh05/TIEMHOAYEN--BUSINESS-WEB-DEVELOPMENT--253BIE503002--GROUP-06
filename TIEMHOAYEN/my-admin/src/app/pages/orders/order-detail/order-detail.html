@@ -303,19 +303,6 @@
         <button class="btn-icon-text" type="button" (click)="printOrder()">
           <i class="bi bi-printer"></i> In đơn hàng
         </button>
-        <ng-container *ngIf="!isEditing">
-          <button class="btn-icon-text" type="button" (click)="editOrder()" *ngIf="canEdit">
-            <i class="bi bi-pencil"></i> Chỉnh sửa
-          </button>
-        </ng-container>
-        <ng-container *ngIf="isEditing">
-          <button class="btn-icon-text btn-icon-text--cancel" type="button" (click)="cancelEdit()">
-            <i class="bi bi-x-lg"></i> Hủy
-          </button>
-          <button class="btn-icon-text btn-icon-text--save" type="button" (click)="saveEdit()">
-            <i class="bi bi-check-lg"></i> Lưu
-          </button>
-        </ng-container>
       </div>
     </div>
 
@@ -726,10 +713,15 @@
 
         <!-- THÔNG TIN GIAO HÀNG -->
         <div class="detail-card">
-          <h2 class="card-title">
-            <span class="card-title__bar"></span>
-            Thông tin giao hàng
-          </h2>
+          <div class="delivery-card-head">
+            <h2 class="card-title">
+              <span class="card-title__bar"></span>
+              Thông tin giao hàng
+            </h2>
+            <button class="btn-icon-text" type="button" (click)="editOrder()" *ngIf="canEdit && !isEditing">
+              <i class="bi bi-pencil"></i> Chỉnh sửa thông tin giao hàng
+            </button>
+          </div>
 
           <div class="delivery-info">
             <div class="delivery-row">
@@ -767,6 +759,7 @@
                 *ngIf="isEditing"
                 class="edit-input"
                 type="text"
+                placeholder="dd/mm/yyyy"
                 [(ngModel)]="order.deliveryDate"
               />
             </div>
@@ -778,6 +771,7 @@
                 *ngIf="isEditing"
                 class="edit-input"
                 type="text"
+                placeholder="HH:mm–HH:mm (08:00–22:00)"
                 [(ngModel)]="order.deliverySlot"
               />
             </div>
@@ -792,6 +786,14 @@
                 [(ngModel)]="order.deliveryAddress"
               />
             </div>
+          </div>
+          <div class="delivery-edit-actions" *ngIf="isEditing">
+            <button class="btn-icon-text btn-icon-text--cancel" type="button" (click)="cancelEdit()" [disabled]="savingDelivery">
+              <i class="bi bi-x-lg"></i> Hủy
+            </button>
+            <button class="btn-icon-text btn-icon-text--save" type="button" (click)="saveEdit()" [disabled]="savingDelivery">
+              <i class="bi bi-check-lg"></i> {{ savingDelivery ? 'Đang lưu…' : 'Lưu thông tin giao hàng' }}
+            </button>
           </div>
 
           <div class="shipper-select-wrap">

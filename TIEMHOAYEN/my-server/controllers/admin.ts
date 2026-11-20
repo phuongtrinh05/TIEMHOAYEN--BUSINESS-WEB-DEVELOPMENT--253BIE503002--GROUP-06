@@ -16,6 +16,8 @@ import { invalidateAnalyticsCache } from '../services/analytics/cache.js';
 import { audit } from '../services/auth.service.js';
 import { derivePromotionStatus, ensureVoucherStorage, normalizeVoucherCode } from '../services/pricing-voucher.service.js';
 import { registerAutomaticCampaignAnnouncement, registerAutomaticVoucherAnnouncement } from '../services/marketing.service.js';
+import { deliveryWindow } from '../services/shipping-edit-policy.service.js';
+import { isWithinShopHours } from '../services/delivery-policy.service.js';
 const escapeAfterSalesSearch = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const toDate = (value: unknown): Date | null => {
@@ -1296,9 +1298,11 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
         if (!receiverName || receiverName.length > 120) throw new InventoryError(400, 'Tên người nhận không hợp lệ.');
         if (!/^0\d{9}$/.test(receiverPhone)) throw new InventoryError(400, 'Số điện thoại người nhận phải gồm 10 chữ số và bắt đầu bằng 0.');
         if (!deliveryAddress || deliveryAddress.length > 500) throw new InventoryError(400, 'Địa chỉ giao hàng không hợp lệ.');
-        if (!deliveryDate || !deliverySlot || deliveryDate.getTime() < new Date(new Date().toISOString().slice(0, 10)).getTime()) {
-          throw new InventoryError(400, 'Ngày và giờ giao hàng không hợp lệ.');
-        }
+        // Nhân viên đổi lịch thay khách (kể cả lịch gấp sau khi đã kiểm tra hoa/người giao), nhưng vẫn phải là giờ tương lai trong 08:00–22:00.
+        const slotWindow = deliveryDate && deliverySlot ? deliveryWindow(deliveryDate.toISOString().slice(0, 10), deliverySlot) : null;
+        if (!slotWindow) throw new InventoryError(400, 'Ngày và giờ giao hàng không hợp lệ.');
+        if (slotWindow.start.getTime() <= Date.now()) throw new InventoryError(400, 'Thời gian giao đã qua. Vui lòng chọn lại.');
+        if (!isWithinShopHours(slotWindow.start, slotWindow.end)) throw new InventoryError(400, 'Shop chỉ giao hàng từ 08:00 đến 22:00.');
         changes.TEN_NGUOI_NHAN = receiverName;
         changes.SDT_NGUOI_NHAN = receiverPhone;
         changes.DIA_CHI_GIAO_HANG = deliveryAddress;

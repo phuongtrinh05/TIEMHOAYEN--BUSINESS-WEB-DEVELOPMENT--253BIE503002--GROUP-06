@@ -1,4 +1,4 @@
-import { apiBaseUrl, currentOrderAccountKey, orderAccessSession, setTransientGuestLookupSession } from '../../../services/api-config';
+import { apiBaseUrl, currentOrderAccountKey, orderAccessSession, setTransientGuestLookupSession, orderLookupRoute } from '../../../services/api-config';
 import { memberAccessToken } from '../../../services/session-auth';
 import { LuckyOrderSpin } from '../../../components/lucky-order-spin/lucky-order-spin';
 ﻿import { CommonModule, isPlatformBrowser } from '@angular/common';
@@ -156,13 +156,13 @@ export class CheckoutComponent implements OnInit, OnDestroy {
     }
 
     if (!sessionStorage.getItem(`checkoutOrderAccess:${createdOrder.orderId}`) && !orderAccessSession()) {
-      this.order = null; this.router.navigate(['/order-requests']); return;
+      this.order = null; this.router.navigate([orderLookupRoute()]); return;
     }
     const source = this.resolveCheckoutSource(createdOrder, registrantOrder, guestOrder);
     const storedOrder = source === 'guest' ? guestOrder : registrantOrder;
     const owner = String(createdOrder.customerId || storedOrder?.customerId || '');
     if (owner !== currentOrderAccountKey()) {
-      this.order = null; this.router.navigate(['/order-requests']); return;
+      this.order = null; this.router.navigate([orderLookupRoute()]); return;
     }
 
     if (!storedOrder) {
@@ -705,7 +705,7 @@ export class CheckoutComponent implements OnInit, OnDestroy {
         setTransientGuestLookupSession({ ...session, accountKey: currentOrderAccountKey() });
         this.router.navigate(['/order-detail', orderId]);
       })
-      .catch(() => this.router.navigate(['/order-requests'], { queryParams: { orderId } }));
+      .catch(() => this.router.navigate([orderLookupRoute()], { queryParams: orderLookupRoute() === '/order-list' ? { code: orderId } : { orderId } }));
   }
 
   /** Nút xoay trên QR mờ: tạo mã QR mới cho đơn đang chờ thanh toán. */

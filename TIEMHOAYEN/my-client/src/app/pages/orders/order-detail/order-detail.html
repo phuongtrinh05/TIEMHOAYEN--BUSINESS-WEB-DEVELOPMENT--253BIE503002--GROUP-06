@@ -105,6 +105,14 @@
 
         <ng-container *ngIf="isEditingShipping">
           <div class="edit-shipping-form">
+            <p class="edit-shipping-rule">
+              Mỗi đơn chỉ sửa thông tin giao hàng <b>một lần</b>. Đổi ngày/giờ trực tiếp khi lịch mới còn từ 24 giờ trở lên;
+              gấp hơn vui lòng liên hệ shop <a [href]="'tel:' + shopPhone">{{ shopPhone }}</a>.
+            </p>
+            <p class="edit-shipping-rule edit-shipping-rule--locked" *ngIf="scheduleLocked">
+              Đơn sắp đến giờ giao (dưới 4 giờ) nên ngày/giờ đã khóa. Cần đổi lịch vui lòng gọi <a [href]="'tel:' + shopPhone">{{ shopPhone }}</a>.
+            </p>
+
 
             <div class="edit-field">
               <label>Người nhận</label>
@@ -120,10 +128,10 @@
             <div class="edit-field">
               <label for="edit-delivery-date">Ngày giao hàng</label>
               <div class="delivery-date-control">
-                <input id="edit-delivery-date" type="text" [(ngModel)]="editShipping.deliveryDate" class="edit-input" placeholder="dd/mm/yy" maxlength="8"
+                <input id="edit-delivery-date" type="text" [(ngModel)]="editShipping.deliveryDate" class="edit-input" placeholder="dd/mm/yy" maxlength="8" [disabled]="scheduleLocked"
                   [attr.aria-invalid]="!!shippingDateError" (ngModelChange)="shippingDateError = ''">
                 <i class="bi bi-calendar-event delivery-date-icon" aria-hidden="true"></i>
-                <input type="date" class="delivery-date-picker" aria-label="Chọn ngày giao hàng trên lịch"
+                <input type="date" class="delivery-date-picker" aria-label="Chọn ngày giao hàng trên lịch" [disabled]="scheduleLocked"
                   [value]="toInputDate(editShipping.deliveryDate)" (change)="selectShippingDate($event)">
               </div>
               <small class="save-shipping-error" *ngIf="shippingDateError">{{ shippingDateError }}</small>
@@ -131,7 +139,7 @@
 
             <div class="edit-field">
               <label for="edit-delivery-time">Khung giờ giao</label>
-              <input id="edit-delivery-time" type="text" [(ngModel)]="editShipping.deliveryTime" class="edit-input" placeholder="HH:mm hoặc HH:mm–HH:mm"
+              <input id="edit-delivery-time" type="text" [(ngModel)]="editShipping.deliveryTime" class="edit-input" placeholder="HH:mm hoặc HH:mm–HH:mm (08:00–22:00)" [disabled]="scheduleLocked"
                 [attr.aria-invalid]="!!shippingTimeError" (ngModelChange)="shippingTimeError = ''">
               <small class="save-shipping-error" *ngIf="shippingTimeError">{{ shippingTimeError }}</small>
             </div>
@@ -409,10 +417,6 @@
               Viết đánh giá
             </button>
 
-            <button type="button" *ngIf="canOpenOrderSupport()" (click)="openAfterSalesPopup()">
-              <i class="bi bi-headset"></i>
-              {{ afterSales.length ? 'Theo dõi hỗ trợ đơn hàng' : 'Hỗ trợ đơn hàng' }}
-            </button>
 
             <div class="order-reason-box" *ngIf="order.cancelReason">
               <strong>Lý do hủy:</strong>
@@ -432,6 +436,16 @@
         </div>
       </div>
     </div>
+
+    <!-- Hỗ trợ đơn hàng: một hàng duy nhất ở cuối trang, chỉ gửi được trong 1 giờ sau khi giao thành công. -->
+    <section class="support-bar" *ngIf="showSupportBar()">
+      <div class="support-bar__text">
+        <i class="bi bi-headset" aria-hidden="true"></i>
+        <span *ngIf="canRequestReturnRefund() && !afterSales.length">Hoa có vấn đề? Gửi yêu cầu trong <b>{{ supportMinutesLeft() }} phút</b> tới.</span>
+        <span *ngIf="afterSales.length">Bạn đã gửi yêu cầu hỗ trợ cho đơn này.</span>
+      </div>
+      <button type="button" (click)="openAfterSalesPopup()">{{ afterSales.length ? 'Xem yêu cầu hỗ trợ' : 'Gửi yêu cầu hỗ trợ' }}</button>
+    </section>
   </ng-container>
 
   <div class="reason-modal-backdrop after-sales-modal-backdrop" *ngIf="showAfterSalesPopup" (click)="closeAfterSalesPopup()">
@@ -439,30 +453,29 @@
       <header class="after-sales-modal__header"><h2 id="after-sales-popup-title">Hỗ trợ đơn hàng</h2><button type="button" aria-label="Đóng" (click)="closeAfterSalesPopup()"><i class="bi bi-x-lg"></i></button></header>
       <div class="after-sales-modal__body">
         <article class="after-sales-case" *ngFor="let r of afterSales">
-          <div class="case-head"><div><small>MÃ HỒ SƠ</small><strong>{{r.requestId}}</strong></div><span [attr.data-status]="r.status">{{afterSalesStatusLabel(r.status)}}</span></div>
-          <p>{{r.description || r.reason}}</p><div class="case-items"><span *ngFor="let item of r.items">{{item.productId}} × {{item.quantity}}</span></div>
-          <div class="case-media" *ngIf="r.evidence?.length"><a *ngFor="let media of r.evidence" [href]="media" target="_blank" rel="noopener noreferrer">Xem bằng chứng</a></div>
+          <div class="case-head"><div><small>YÊU CẦU HỖ TRỢ</small><strong>{{r.createdAt || r.requestedAt | date:'dd/MM/yyyy HH:mm'}}</strong></div><span [attr.data-status]="r.status">{{afterSalesStatusLabel(r.status)}}</span></div>
+          <p>{{r.description || r.reason}}</p><div class="case-items"><span *ngFor="let item of r.items">{{productName(item.productId)}} × {{item.quantity}}</span></div>
+          <div class="case-media" *ngIf="r.evidence?.length"><a *ngFor="let media of r.evidence; let i=index" [href]="media" target="_blank" rel="noopener noreferrer">{{ isVideo(media) ? 'Xem video' : 'Xem ảnh' }} {{ i + 1 }}</a></div>
           <p class="need-info" *ngIf="r.additionalRequest"><b>Shop cần bạn bổ sung:</b> {{r.additionalRequest.reason}}</p>
           <p class="decision" *ngIf="r.decision"><b>Phương án xử lý:</b> {{r.decision.reason}}<span *ngIf="r.decision.maxRefund"> · Dự kiến hoàn {{r.decision.maxRefund|number:'1.0-0'}}đ</span></p>
           <p class="decision" *ngIf="r.decision?.deviationReason"><b>Lý do điều chỉnh mức hoàn:</b> {{r.decision.deviationReason}}</p>
           <p class="refund-success" *ngIf="r.refund?.status==='Succeeded'||r.refund"><b>Đã hoàn thực tế:</b> {{r.refund.amount|number:'1.0-0'}}đ · {{r.refund.at|date:'dd/MM/yyyy HH:mm'}}</p>
           <ol class="case-timeline"><li *ngFor="let h of r.history"><b>{{afterSalesStatusLabel(h.to || h.status || h.action)}}</b><small>{{h.at|date:'dd/MM/yyyy HH:mm'}}</small></li></ol>
           <div class="after-sales-supplement" *ngIf="r.status==='Cần bổ sung thông tin'||r.status==='Cần bổ sung'">
-            <input #supplementImageInput type="file" accept="image/jpeg,image/png,image/webp" multiple hidden (change)="onAfterSalesImagesSelected($event)">
+            <input #supplementImageInput type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" multiple hidden (change)="onAfterSalesImagesSelected($event)">
             <div class="evidence-upload-grid">
-              <figure class="evidence-preview" *ngFor="let preview of afterSalesEvidencePreviews; let i=index"><img [src]="preview" [alt]="'Ảnh bổ sung ' + (i + 1)"><button type="button" aria-label="Xóa ảnh" (click)="removeAfterSalesImage(i)"><i class="bi bi-x-lg"></i></button></figure>
-              <button type="button" class="evidence-upload-button" [disabled]="afterSalesEvidenceFiles.length >= 5 || afterSalesBusy" (click)="supplementImageInput.click()"><i class="bi bi-cloud-arrow-up"></i><span>{{afterSalesEvidenceFiles.length ? afterSalesEvidenceFiles.length + '/5 ảnh' : 'Tải ảnh lên'}}</span></button>
+              <figure class="evidence-preview" *ngFor="let preview of afterSalesEvidencePreviews; let i=index"><video *ngIf="isVideo(afterSalesEvidenceFiles[i])" [src]="preview" muted playsinline></video><img *ngIf="!isVideo(afterSalesEvidenceFiles[i])" [src]="preview" [alt]="'Ảnh bổ sung ' + (i + 1)"><button type="button" aria-label="Xóa ảnh" (click)="removeAfterSalesImage(i)"><i class="bi bi-x-lg"></i></button></figure>
+              <button type="button" class="evidence-upload-button" [disabled]="afterSalesEvidenceFiles.length >= 5 || afterSalesBusy" (click)="supplementImageInput.click()"><i class="bi bi-cloud-arrow-up"></i><span>{{afterSalesEvidenceFiles.length ? afterSalesEvidenceFiles.length + '/5 tệp' : 'Tải ảnh/video lên'}}</span></button>
             </div>
-            <small>Tối đa 5 ảnh JPG, PNG hoặc WEBP; mỗi ảnh không quá 5 MB.</small>
+            <small>Tối đa 5 tệp: ảnh JPG, PNG, WEBP (≤ 5 MB) hoặc video MP4, WEBM, MOV (≤ 30 MB).</small>
             <button type="button" class="supplement-submit" (click)="supplementAfterSales(r)" [disabled]="afterSalesBusy">{{afterSalesBusy?'Đang gửi…':'Gửi bổ sung'}}</button>
           </div>
         </article>
-        <p class="support-window-note" *ngIf="canRequestReturnRefund() && order.supportDeadline && !afterSales.some(r=>r.active)"><i class="bi bi-clock"></i> Bạn còn <b>{{supportMinutesLeft()}} phút</b> để gửi yêu cầu hỗ trợ.</p>
         <div class="support-form" *ngIf="canRequestReturnRefund() && !afterSales.some(r=>r.active)">
-          <div class="support-grid"><label>Vấn đề gặp phải<select [(ngModel)]="afterSalesIssueType"><option value="wrong_item">Giao sai mẫu đã xác nhận</option><option value="damaged">Hoa hư hỏng nghiêm trọng</option><option value="partial_damage">Hoa hỏng một phần</option><option value="missing_item">Thiếu sản phẩm trong đơn</option><option value="missing_accessory">Thiếu thiệp hoặc phụ kiện</option><option value="wrong_address">Giao sai địa chỉ do shop</option><option value="overpayment">Thanh toán dư</option><option value="other">Vấn đề khác</option></select></label><label>Hướng xử lý mong muốn<select [(ngModel)]="afterSalesType"><option value="exchange">Đổi hoặc giao bổ sung</option><option value="return">Trả lại sản phẩm</option><option value="refund">Đề nghị hoàn tiền</option></select></label><label>Thời điểm phát hiện<input type="datetime-local" [(ngModel)]="afterSalesDetectedAt"></label><label *ngIf="afterSalesIssueType==='missing_accessory'">Phụ kiện còn thiếu<input [(ngModel)]="afterSalesAccessory" maxlength="120" placeholder="Ví dụ: thiệp, nơ, hộp quà"></label></div>
+          <div class="support-grid"><label>Vấn đề gặp phải<select [(ngModel)]="afterSalesIssueType"><option value="wrong_item">Giao sai mẫu đã xác nhận</option><option value="damaged">Hoa hư hỏng nghiêm trọng</option><option value="partial_damage">Hoa hỏng một phần</option><option value="missing_item">Thiếu sản phẩm trong đơn</option><option value="missing_accessory">Thiếu thiệp hoặc phụ kiện</option><option value="wrong_address">Giao sai địa chỉ do shop</option><option value="overpayment">Thanh toán dư</option><option value="other">Vấn đề khác</option></select></label><label>Hướng xử lý mong muốn<select [(ngModel)]="afterSalesType"><option value="exchange">Đổi hoặc giao bổ sung</option><option value="return">Trả lại sản phẩm</option><option value="refund">Đề nghị hoàn tiền</option></select></label><label>Thời điểm phát hiện<input type="datetime-local" [(ngModel)]="afterSalesDetectedAt" [min]="detectedAtMin" [max]="detectedAtMax"></label><label *ngIf="afterSalesIssueType==='missing_accessory'">Phụ kiện còn thiếu<input [(ngModel)]="afterSalesAccessory" maxlength="120" placeholder="Ví dụ: thiệp, nơ, hộp quà"></label></div>
           <label class="full-field">Mô tả chi tiết<textarea [(ngModel)]="afterSalesReason" maxlength="2000" placeholder="Mô tả tình trạng thực tế và hỗ trợ bạn mong muốn"></textarea></label>
-          <div class="full-field evidence-field"><span>Ảnh bằng chứng <small>{{evidenceRequired ? '(bắt buộc)' : '(không bắt buộc)'}}</small></span><input #evidenceImageInput type="file" accept="image/jpeg,image/png,image/webp" multiple hidden (change)="onAfterSalesImagesSelected($event)"><div class="evidence-upload-grid"><figure class="evidence-preview" *ngFor="let preview of afterSalesEvidencePreviews; let i=index"><img [src]="preview" [alt]="'Ảnh bằng chứng ' + (i + 1)"><button type="button" aria-label="Xóa ảnh" (click)="removeAfterSalesImage(i)"><i class="bi bi-x-lg"></i></button></figure><button type="button" class="evidence-upload-button" [disabled]="afterSalesEvidenceFiles.length >= 5 || afterSalesBusy" (click)="evidenceImageInput.click()"><i class="bi bi-cloud-arrow-up"></i><span>{{afterSalesEvidenceFiles.length ? afterSalesEvidenceFiles.length + '/5 ảnh' : 'Tải ảnh lên'}}</span></button></div><small class="evidence-note">Tối đa 5 ảnh JPG, PNG hoặc WEBP; mỗi ảnh không quá 5 MB.</small></div>
-          <div class="request-summary" *ngIf="afterSalesConfirming"><h3>Kiểm tra trước khi gửi</h3><p>{{afterSalesReason}}</p><p>{{afterSalesEvidenceFiles.length}} ảnh bằng chứng đã chọn.</p><p>Shop sẽ xem xét bằng chứng và phản hồi; gửi hồ sơ chưa đồng nghĩa đã được hoàn tiền.</p><p>Lưu ý: điểm thưởng và voucher đã dùng cho đơn không được trả lại; shop chỉ hoàn số tiền bạn đã thanh toán.</p><button type="button" class="secondary-action" (click)="afterSalesConfirming=false">Quay lại</button><button type="button" (click)="sendAfterSales()" [disabled]="afterSalesBusy">{{afterSalesBusy?'Đang tải ảnh…':'Xác nhận gửi'}}</button></div><button *ngIf="!afterSalesConfirming" type="button" class="review-request-button" (click)="prepareAfterSales()">Xem lại yêu cầu</button>
+          <div class="full-field evidence-field"><span>Ảnh/video bằng chứng <small>{{evidenceRequired ? '(bắt buộc)' : '(không bắt buộc)'}}</small></span><input #evidenceImageInput type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" multiple hidden (change)="onAfterSalesImagesSelected($event)"><div class="evidence-upload-grid"><figure class="evidence-preview" *ngFor="let preview of afterSalesEvidencePreviews; let i=index"><video *ngIf="isVideo(afterSalesEvidenceFiles[i])" [src]="preview" muted playsinline></video><img *ngIf="!isVideo(afterSalesEvidenceFiles[i])" [src]="preview" [alt]="'Ảnh bằng chứng ' + (i + 1)"><button type="button" aria-label="Xóa ảnh" (click)="removeAfterSalesImage(i)"><i class="bi bi-x-lg"></i></button></figure><button type="button" class="evidence-upload-button" [disabled]="afterSalesEvidenceFiles.length >= 5 || afterSalesBusy" (click)="evidenceImageInput.click()"><i class="bi bi-cloud-arrow-up"></i><span>{{afterSalesEvidenceFiles.length ? afterSalesEvidenceFiles.length + '/5 tệp' : 'Tải ảnh/video lên'}}</span></button></div><small class="evidence-note">Tối đa 5 tệp: ảnh JPG, PNG, WEBP (≤ 5 MB) hoặc video MP4, WEBM, MOV (≤ 30 MB).</small></div>
+          <p class="support-policy-note">Điểm thưởng và voucher đã dùng không được trả lại; shop chỉ hoàn số tiền bạn đã thanh toán.</p><button type="button" class="review-request-button" (click)="sendAfterSales()" [disabled]="afterSalesBusy">{{afterSalesBusy?'Đang gửi…':'Gửi yêu cầu'}}</button>
         </div>
         <p class="after-sales-message" role="status">{{afterSalesMessage}}</p>
       </div>
@@ -494,6 +507,8 @@
           <input type="radio" name="cancelReason" [value]="reason" [(ngModel)]="selectedReason">
           <span>{{ reason }}</span>
         </label>
+        <textarea *ngIf="selectedReason === otherCancelOption" class="reason-other-input" [(ngModel)]="otherCancelReason" maxlength="300" rows="3"
+          placeholder="Nhập lý do hủy của bạn (5–300 ký tự)" aria-label="Lý do hủy khác"></textarea>
       </div>
 
       <div class="reason-list" *ngIf="reasonModalType === 'return-refund'">

@@ -1312,3 +1312,63 @@ h3{
   .evidence-preview,
   .evidence-upload-button { width: 88px; height: 88px; }
 }
+
+/* ===== Hỗ trợ đơn hàng: một hàng duy nhất ở cuối trang ===== */
+.support-bar {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  background: #FFFFFF;
+  border: 1px solid #ead7bd;
+  border-radius: 12px;
+}
+.support-bar__text { display: flex; align-items: center; gap: 10px; color: #4a3b36; font-size: 14px; }
+.support-bar__text i { color: #731919; font-size: 18px; }
+.support-bar button {
+  flex: none;
+  height: 38px;
+  padding: 0 18px;
+  background: #731919;
+  color: #FFFFFF;
+  border: 1px solid #731919;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.support-bar button:hover { background: #5c1414; }
+@media (max-width: 640px) {
+  .support-bar { flex-direction: column; align-items: stretch; }
+  .support-bar button { width: 100%; }
+}
+
+.support-policy-note { margin: 16px 0 0; font-size: 12.5px; color: #7a6a64; }
+.evidence-preview video { width: 100%; height: 100%; object-fit: cover; display: block; background: #2d2421; }
+
+.reason-other-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ead7bd;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 13.5px;
+  resize: vertical;
+}
+.reason-other-input:focus { outline: none; border-color: #731919; }
+
+.edit-shipping-rule {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #fbf6f1;
+  border: 1px solid #ead7bd;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #4a3b36;
+}
+.edit-shipping-rule a { color: #731919; font-weight: 600; }
+.edit-shipping-rule--locked { background: #fdf0ec; border-color: #e7b9a8; }
+.edit-input:disabled { background: #f3eeeb; color: #8b7d78; cursor: not-allowed; }

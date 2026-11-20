@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap } from 'rxjs';
-import { apiBaseUrl } from './api-config';
+import { apiBaseUrl, orderLookupRoute } from './api-config';
 import { OrderAccessService } from './order-access.service';
 import { SalesChatService } from './sales-chat.service';
 import { Router } from '@angular/router';
@@ -201,7 +201,7 @@ export class OrderService {
     return this.http.get(`${this.apiUrl}/requests/${encodeURIComponent(requestId)}`, { headers: { 'x-request-token': token } });
   }
   openSalesChat(requestId: string): void {
-    if (!this.access.session) { this.salesChat.assistant(); this.router.navigate(['/order-requests']); return; }
+    if (!this.access.session) { this.salesChat.assistant(); this.router.navigate([orderLookupRoute()]); return; }
     this.salesChat.open(requestId);
   }
   updateSalesRequest(id: string, token: string, body: any): Observable<any> {

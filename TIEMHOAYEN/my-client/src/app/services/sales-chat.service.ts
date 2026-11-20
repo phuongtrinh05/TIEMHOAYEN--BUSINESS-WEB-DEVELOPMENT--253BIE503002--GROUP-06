@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
-import { orderAccessSession } from './api-config';
+import { orderAccessSession, orderLookupRoute } from './api-config';
 import { Router } from '@angular/router';
 
 /** Opens the existing floating chat with a verified order-request context, including after refresh. */
@@ -19,7 +19,7 @@ export class SalesChatService {
     } catch { return ''; }
   }
   open(requestId: string) {
-    if (!orderAccessSession()) { this.assistant(); this.router.navigate(['/order-requests']); return; }
+    if (!orderAccessSession()) { this.assistant(); this.router.navigate([orderLookupRoute()]); return; }
     try { sessionStorage.setItem('tiemHoaYenActiveSalesChat', requestId); } catch {}
     this.selected.next(requestId);
   }

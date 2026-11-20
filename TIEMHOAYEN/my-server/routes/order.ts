@@ -24,22 +24,34 @@ import {
 
 const router = express.Router();
 const afterSalesUploadDir = 'uploads/after-sales';
+const EVIDENCE_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const EVIDENCE_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
+const EVIDENCE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const EVIDENCE_VIDEO_MAX_BYTES = 30 * 1024 * 1024;
 fs.mkdirSync(afterSalesUploadDir, { recursive: true });
 const evidenceUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, callback) => callback(null, afterSalesUploadDir),
     filename: (_req, file, callback) => {
-      const extensions: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+      const extensions: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov' };
       callback(null, `evidence-${Date.now()}-${Math.round(Math.random() * 1_000_000)}${extensions[file.mimetype] || path.extname(file.originalname).toLowerCase()}`);
     },
   }),
-  limits: { fileSize: 5 * 1024 * 1024, files: 5 },
-  fileFilter: (_req, file, callback) => callback(null, ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)),
+  // Ảnh tối đa 5 MB, video tối đa 30 MB (kiểm tra lại theo loại sau khi nhận).
+  limits: { fileSize: EVIDENCE_VIDEO_MAX_BYTES, files: 5 },
+  fileFilter: (_req, file, callback) => callback(null, [...EVIDENCE_IMAGE_TYPES, ...EVIDENCE_VIDEO_TYPES].includes(file.mimetype)),
 });
 
+const EVIDENCE_LIMIT_MESSAGE = 'Tối đa 5 tệp: ảnh JPG, PNG, WEBP (mỗi ảnh ≤ 5 MB) hoặc video MP4, WEBM, MOV (mỗi video ≤ 30 MB).';
 const receiveEvidence = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   evidenceUpload.array('images', 5)(req, res, error => {
-    if (error) return res.status(400).json({ message: 'Chỉ được tải tối đa 5 ảnh JPG, PNG hoặc WEBP; mỗi ảnh không quá 5 MB.' });
+    if (error) return res.status(400).json({ message: EVIDENCE_LIMIT_MESSAGE });
+    const files = (Array.isArray(req.files) ? req.files : []) as Express.Multer.File[];
+    const tooLarge = files.some(file => EVIDENCE_IMAGE_TYPES.includes(file.mimetype) && file.size > EVIDENCE_IMAGE_MAX_BYTES);
+    if (tooLarge) {
+      files.forEach(file => fs.rm(file.path, { force: true }, () => {}));
+      return res.status(400).json({ message: EVIDENCE_LIMIT_MESSAGE });
+    }
     next();
   });
 };

@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { reserveOrderLines } from '../services/order-stock.service.js';
 import { cancelUnpaidOrdersPastDelivery, orderPaymentDeadline } from '../services/unpaid-order-expiry.service.js';
 import { URGENT_CONTACT_PHONE as SHOP_PHONE } from '../services/delivery-policy.service.js';
+import { assertCustomerReschedule, rescheduleModeForOrder } from '../services/shipping-edit-policy.service.js';
 import { lookupAccess } from '../services/order-access.service.js';
 import { priceCheckout, sumVerifiedPayments, validateCheckoutDelivery, ensureCancelRefundCase, pendingCashTotal } from '../services/admin-order.service.js';
 import { getActiveBom } from '../services/inventory/bom.service.js';
@@ -40,6 +41,9 @@ const CANCEL_REASONS = [
   'Tôi muốn thêm/thay đổi mã giảm giá',
   'Tôi không còn muốn mua sản phẩm nữa',
 ];
+
+/** Lý do khác: client gửi "Lý do khác: <nội dung khách nhập>". */
+const OTHER_CANCEL_PREFIX = 'Lý do khác:';
 
 const RETURN_REFUND_REASONS = [
   'Hoa bị héo/dập/không còn tươi',
@@ -699,6 +703,7 @@ export const getOrderDetail = async (req: Request, res: Response) => {
       GHI_CHU: String(order.GHI_CHU || '').split(' | ')[0],
       DA_DANH_GIA: hasReview ? 1 : 0,
       HAN_GUI_HO_TRO: supportDeadline(order),
+      CHE_DO_DOI_LICH: rescheduleModeForOrder(order),
       KHUNG_GIO_MUON_GIAO: slot24h(order.KHUNG_GIO_MUON_GIAO),
       TEN_KHACH_HANG: order.AN_THONG_TIN ? null : order.TEN_NGUOI_DAT || customer?.TEN || null,
       SDT_KHACH_HANG: order.AN_THONG_TIN ? null : order.SDT_NGUOI_DAT || customer?.SDT || null,
@@ -809,8 +814,10 @@ export const cancelOrder = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Vui lòng chọn lý do hủy đơn hàng.' });
     }
 
-    if (!CANCEL_REASONS.includes(reason)) {
-      return res.status(400).json({ message: 'Lý do hủy đơn hàng không hợp lệ.' });
+    // "Lý do khác" phải kèm nội dung khách tự nhập (5–300 ký tự).
+    const otherReason = reason.startsWith(OTHER_CANCEL_PREFIX) ? reason.slice(OTHER_CANCEL_PREFIX.length).trim() : null;
+    if (otherReason !== null ? otherReason.length < 5 || otherReason.length > 300 : !CANCEL_REASONS.includes(reason)) {
+      return res.status(400).json({ message: otherReason !== null ? 'Vui lòng ghi rõ lý do hủy (5–300 ký tự).' : 'Lý do hủy đơn hàng không hợp lệ.' });
     }
 
     const orderCollection = await getCollection<any>('DON_HANG');
@@ -898,31 +905,48 @@ export const updateShippingInfo = async (req: Request, res: Response) => {
       });
     }
 
-    await orderCollection.updateOne(
-      { DON_HANG_ID: orderId },
+    const receiverName = String(receiver ?? order.TEN_NGUOI_NHAN ?? '').trim();
+    const receiverPhone = String(phone ?? order.SDT_NGUOI_NHAN ?? '').replace(/\s+/g, '');
+    const deliveryAddress = String(address ?? order.DIA_CHI_GIAO_HANG ?? '').trim();
+    if (!receiverName || receiverName.length > 100) return res.status(400).json({ message: 'Vui lòng nhập tên người nhận (tối đa 100 ký tự).' });
+    if (!/^0\d{9}$/.test(receiverPhone)) return res.status(400).json({ message: 'Số điện thoại người nhận phải gồm 10 chữ số, bắt đầu bằng 0.' });
+    if (!deliveryAddress || deliveryAddress.length > 500) return res.status(400).json({ message: 'Vui lòng nhập địa chỉ giao hàng.' });
+
+    // Đổi ngày/giờ: ≥ 24 giờ cập nhật thẳng; 4–24 giờ liên hệ shop; < 4 giờ khóa; ngoài 08:00–22:00 hoặc đã qua thì từ chối.
+    const schedule = assertCustomerReschedule(order, deliveryDate, deliveryTime);
+    const set: Record<string, unknown> = {
+      TEN_NGUOI_NHAN: receiverName,
+      SDT_NGUOI_NHAN: receiverPhone,
+      DIA_CHI_GIAO_HANG: deliveryAddress,
+      DA_CHINH_SUA_GIAO_HANG: true,
+      NGAY_CHINH_SUA_GIAO_HANG: new Date(),
+    };
+    if (schedule.changed) {
+      set.NGAY_MUON_GIAO = toSqlDate(schedule.day);
+      set.KHUNG_GIO_MUON_GIAO = schedule.slot;
+    }
+    // Điều kiện lặp lại trong bộ lọc để hai lần bấm cùng lúc không cùng được ghi.
+    const write = await orderCollection.updateOne(
+      { DON_HANG_ID: orderId, DA_CHINH_SUA_GIAO_HANG: { $ne: true }, TRANG_THAI: order.TRANG_THAI },
       {
-        $set: {
-          TEN_NGUOI_NHAN: receiver || null,
-          SDT_NGUOI_NHAN: phone || null,
-          DIA_CHI_GIAO_HANG: address || null,
-          NGAY_MUON_GIAO: toSqlDate(deliveryDate) || deliveryDate || null,
-          KHUNG_GIO_MUON_GIAO: deliveryTime ? slot24h(deliveryTime) : null,
-          DA_CHINH_SUA_GIAO_HANG: true,
-        },
-      },
+        $set: set,
+        $push: { LICH_SU_CHINH_SUA_GIAO_HANG: { at: new Date(), actor: 'customer', before: { receiver: order.TEN_NGUOI_NHAN || null, phone: order.SDT_NGUOI_NHAN || null, address: order.DIA_CHI_GIAO_HANG || null, date: order.NGAY_MUON_GIAO || null, slot: order.KHUNG_GIO_MUON_GIAO || null }, reason: schedule.changed ? 'Khách đổi thông tin và lịch giao' : 'Khách đổi thông tin giao hàng' } },
+      } as any,
     );
+    if (write.modifiedCount !== 1) return res.status(409).json({ message: 'Đơn vừa thay đổi hoặc đã được sửa thông tin giao hàng. Vui lòng tải lại trang.' });
 
     return res.status(200).json({ message: 'Cập nhật thông tin giao hàng thành công.' });
   } catch (error: any) {
     console.error('Lỗi updateShippingInfo:', error);
-    return res.status(error instanceof InventoryError?error.status:500).json({message:error instanceof InventoryError?error.message:'Chưa cập nhật được thông tin.'});
+    const details: any = error instanceof InventoryError ? error.details : null;
+    return res.status(error instanceof InventoryError?error.status:500).json({message:error instanceof InventoryError?error.message:'Chưa cập nhật được thông tin.', code: details?.code || null, phone: details?.phone || null});
   }
 };
 
 export const readAfterSales = async (req: Request,res: Response) => { try { return res.json({requests:await afterSalesRead(String(req.params.orderId))}); } catch(e:any){return res.status(e instanceof InventoryError?e.status:500).json({message:e instanceof InventoryError?e.message:'Chưa đọc được hồ sơ.'});} };
 export const uploadAfterSalesEvidence = (req: Request, res: Response) => {
   const files = (Array.isArray(req.files) ? req.files : []) as Express.Multer.File[];
-  if (!files.length) return res.status(400).json({ message: 'Vui lòng chọn ít nhất một ảnh.' });
+  if (!files.length) return res.status(400).json({ message: 'Vui lòng chọn ít nhất một ảnh hoặc video.' });
   const publicBaseUrl = (process.env.PUBLIC_BASE_URL ?? `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
   return res.status(201).json({
     urls: files.map(file => `${publicBaseUrl}/uploads/after-sales/${file.filename}`),

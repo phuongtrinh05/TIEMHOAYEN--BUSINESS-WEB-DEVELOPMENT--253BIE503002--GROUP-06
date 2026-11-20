@@ -899,7 +899,7 @@ export function afterSalesInput(body: any, details: any[]) {
   if (detectedAt && !Number.isFinite(detectedAt.getTime())) throw new InventoryError(400, 'Thời điểm phát hiện sự cố không hợp lệ.');
   const accessory = body.accessory ? String(body.accessory).trim().slice(0, 120) : null;
   const evidence = Array.isArray(body.evidence) ? body.evidence : [];
-  if (evidence.length > 5 || evidence.some((v: any) => typeof v !== 'string' || v.length > 2000 || !/^https?:\/\//.test(v) && !/^\/uploads\/[\w./-]+$/.test(v))) throw new InventoryError(400, 'Tối đa 5 ảnh bằng chứng hợp lệ.');
+  if (evidence.length > 5 || evidence.some((v: any) => typeof v !== 'string' || v.length > 2000 || !/^https?:\/\//.test(v) && !/^\/uploads\/[\w./-]+$/.test(v))) throw new InventoryError(400, 'Tối đa 5 ảnh/video bằng chứng hợp lệ.');
   if (EVIDENCE_REQUIRED_ISSUES.includes(issueType) && !evidence.length) throw new InventoryError(400, 'Lỗi về hoa hoặc giao hàng cần ít nhất 1 ảnh/video bằng chứng.');
   const media = evidence.map((url: string) => ({ url, type: /\.(mp4|webm|mov)(?:\?|$)/i.test(url) ? 'video' : 'image', uploadedAt: new Date(), uploadedBy: 'CUSTOMER' }));
   return { type:body.type, issueType, reasonCode, reason, description, detectedAt, accessory, items, evidence, media };
@@ -921,6 +921,11 @@ export async function afterSalesCreate(orderId: string, body: any) {
     if (!deadline || Date.now() > deadline.getTime()) throw new InventoryError(409, 'Đã quá 1 giờ kể từ lúc giao hàng thành công nên không thể gửi yêu cầu hỗ trợ cho đơn này. Vui lòng liên hệ shop qua chat nếu cần.');
     const details = await (await getCollection<any>('DON_HANG_CHI_TIET')).find({DON_HANG_ID:orderId},{session}).toArray();
     const input = afterSalesInput(body,details);
+    // Thời điểm phát hiện phải nằm trong khoảng từ lúc giao thành công đến hiện tại (cho lệch đồng hồ 5 phút).
+    const deliveredAt = orderDeliveredAt(order);
+    if (input.detectedAt && ((deliveredAt && input.detectedAt.getTime() < deliveredAt.getTime() - 60_000) || input.detectedAt.getTime() > Date.now() + 5 * 60_000)) {
+      throw new InventoryError(400, 'Thời điểm phát hiện phải sau lúc nhận hàng và không muộn hơn hiện tại.');
+    }
     const col = await getCollection<any>(AFTER_SALES);
     const idempotencyKey = String(body.idempotencyKey || '').trim().slice(0, 100);
     if (idempotencyKey) { const repeated = await col.findOne({ orderId, idempotencyKey }, { session }); if (repeated) return repeated; }
@@ -1090,7 +1095,7 @@ export async function afterSalesSupplement(orderId: string, requestId: string, b
     if (![AFTER_SALES_STATUS.needInfo,'Cần bổ sung'].includes(row.status) || row.active !== true) throw new InventoryError(409, 'Hồ sơ hiện không chờ bổ sung bằng chứng.');
     if (!Number.isInteger(body.version) || body.version !== row.version) throw new InventoryError(409, 'Hồ sơ đã thay đổi, vui lòng tải lại.');
     const evidence = Array.isArray(body.evidence) ? body.evidence : [];
-    if (!evidence.length || evidence.length > 5 || evidence.some((v: any) => typeof v !== 'string' || v.length > 2000 || !/^https?:\/\//.test(v) && !/^\/uploads\/[\w./-]+$/.test(v))) throw new InventoryError(400, 'Cần từ 1–5 ảnh bằng chứng hợp lệ.');
+    if (!evidence.length || evidence.length > 5 || evidence.some((v: any) => typeof v !== 'string' || v.length > 2000 || !/^https?:\/\//.test(v) && !/^\/uploads\/[\w./-]+$/.test(v))) throw new InventoryError(400, 'Cần từ 1–5 ảnh/video bằng chứng hợp lệ.');
     const now = new Date();
     const merged = [...new Set([...(row.evidence || []), ...evidence])].slice(0, 5);
     const media = merged.map((url: string) => ({ url, type: /\.(mp4|webm|mov)(?:\?|$)/i.test(url) ? 'video' : 'image', uploadedAt: now, uploadedBy: 'CUSTOMER' }));

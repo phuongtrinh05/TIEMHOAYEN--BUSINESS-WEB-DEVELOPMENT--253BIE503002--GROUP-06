@@ -166,3 +166,11 @@ export function orderAccessSession(): OrderAccessSession | null {
   } catch {}
   return null;
 }
+
+/**
+ * Trang xem đơn khi chưa có phiên tra cứu: thành viên về "Đơn hàng của tôi" (đăng nhập lại),
+ * khách vãng lai về trang "Tra cứu đơn hàng" (nhập SĐT + OTP), không qua màn xác minh trung gian.
+ */
+export function orderLookupRoute(): string {
+  return currentOrderAccountKey() ? '/order-requests' : '/order-list';
+}

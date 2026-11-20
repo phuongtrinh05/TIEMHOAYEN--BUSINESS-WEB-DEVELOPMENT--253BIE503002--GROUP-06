@@ -1,4 +1,4 @@
-import { apiBaseUrl, orderAccessSession } from '../../../services/api-config';
+import { apiBaseUrl, orderAccessSession, orderLookupRoute } from '../../../services/api-config';
 import { memberAccessToken } from '../../../services/session-auth';
 import { LuckyWheelService } from '../../../services/lucky-wheel.service';
 import { CommonModule, isPlatformBrowser } 
@@ -24,7 +24,7 @@ import {
 
 interface OrderDetailView {
   requestId?: string;
-  paid?: number; refunded?: number; remaining?: number; history?: any[]; senderName?: string; senderPhone?: string; preparationAt?: string; handoverMedia?: string[]; supportDeadline?: string | null; giftCard?: any;
+  paid?: number; refunded?: number; remaining?: number; history?: any[]; senderName?: string; senderPhone?: string; preparationAt?: string; handoverMedia?: string[]; supportDeadline?: string | null; giftCard?: any; rescheduleMode?: 'direct' | 'contact' | 'locked';
   shipperName?: string; shipperPhone?: string; shipperAvatar?: string;
   id: string;
   customerId: string;
@@ -113,7 +113,7 @@ export class OrderDetail implements OnInit, OnDestroy {
   vouchers: OrderDetailVoucher[] = [];
   steps: any[] = [];
   afterSales: any[]=[]; afterSalesType='refund'; afterSalesIssueType='damaged'; afterSalesReasonCode='SHOP_FAULT'; afterSalesReason='';
-  afterSalesAccessory=''; afterSalesDetectedAt=''; afterSalesBusy=false; afterSalesMessage=''; afterSalesConfirming=false;
+  afterSalesAccessory=''; afterSalesDetectedAt=''; afterSalesBusy=false; afterSalesMessage='';
   afterSalesEvidenceFiles: File[] = [];
   afterSalesEvidencePreviews: string[] = [];
   showAfterSalesPopup=false;
@@ -122,18 +122,18 @@ export class OrderDetail implements OnInit, OnDestroy {
   openImage(image: string): void { if (image) this.zoomedImage = image; }
   closeImage(): void { this.zoomedImage = ''; }
   loadAfterSales() { if(!this.order.id)return;this.orderService.getAfterSales(this.order.id).subscribe({next:r=>{this.afterSales=r.requests||[];this.cdr.markForCheck();},error:()=>{}}); }
-  prepareAfterSales() {
+  /** Gửi thẳng yêu cầu hỗ trợ (không còn bước "Xem lại yêu cầu"). */
+  sendAfterSales() {
+    if(this.afterSalesBusy)return;
+    if(!this.canRequestReturnRefund()){this.afterSalesMessage='Đã hết thời hạn gửi yêu cầu hỗ trợ cho đơn này.';return;}
     const items=this.products.map(p=>({productId:p.id,quantity:p.quantity})).filter(x=>x.quantity>0);
     if(!items.length){this.afterSalesMessage='Đơn hàng không có sản phẩm để gửi yêu cầu hỗ trợ.';return;}
     if(!this.afterSalesReason.trim()){this.afterSalesMessage='Vui lòng mô tả chi tiết vấn đề cần hỗ trợ.';return;}
-    if(this.afterSalesIssueType==='missing_accessory'&&!this.afterSalesAccessory.trim()){this.afterSalesMessage='Vui lòng chọn hoặc ghi rõ phụ kiện còn thiếu.';return;}
-    if(this.evidenceRequired&&!this.afterSalesEvidenceFiles.length){this.afterSalesMessage='Vui lòng tải lên ít nhất 1 ảnh bằng chứng.';return;}
-    this.afterSalesMessage='';this.afterSalesConfirming=true;
-  }
-  sendAfterSales() {
-    if(this.afterSalesBusy)return;
-    const items=this.products.map(p=>({productId:p.id,quantity:p.quantity})).filter(x=>x.quantity>0);
-    if(!items.length||!this.afterSalesReason.trim())return;
+    if(this.afterSalesIssueType==='missing_accessory'&&!this.afterSalesAccessory.trim()){this.afterSalesMessage='Vui lòng ghi rõ phụ kiện còn thiếu.';return;}
+    if(this.evidenceRequired&&!this.afterSalesEvidenceFiles.length){this.afterSalesMessage='Vui lòng tải lên ít nhất 1 ảnh hoặc video bằng chứng.';return;}
+    const detected=this.afterSalesDetectedAt?new Date(this.afterSalesDetectedAt).getTime():NaN;
+    if(Number.isFinite(detected)&&(detected<new Date(this.detectedAtMin).getTime()||detected>Date.now()+60_000)){this.afterSalesMessage='Thời điểm phát hiện phải sau lúc nhận hàng và không muộn hơn hiện tại.';return;}
+    this.afterSalesMessage='';
     if(!this.afterSalesIdempotencyKey)this.afterSalesIdempotencyKey=crypto.randomUUID();
     this.afterSalesBusy=true;
     if (!this.afterSalesEvidenceFiles.length) { this.createAfterSalesWithEvidence(items, []); return; }
@@ -147,22 +147,24 @@ export class OrderDetail implements OnInit, OnDestroy {
       reason:this.afterSalesReason,description:this.afterSalesReason,accessory:this.afterSalesAccessory||null,
       detectedAt:this.afterSalesDetectedAt?new Date(this.afterSalesDetectedAt).toISOString():null,items,
       evidence,idempotencyKey:this.afterSalesIdempotencyKey}).subscribe({
-      next:()=>{this.afterSalesBusy=false;this.afterSalesConfirming=false;this.afterSalesIdempotencyKey='';this.clearAfterSalesImages();this.afterSalesMessage='Đã gửi yêu cầu hỗ trợ. Shop sẽ kiểm tra và phản hồi trong hồ sơ này.';this.loadAfterSales();this.cdr.markForCheck();},
+      next:()=>{this.afterSalesBusy=false;this.afterSalesIdempotencyKey='';this.afterSalesReason='';this.clearAfterSalesImages();this.afterSalesMessage='Đã gửi yêu cầu hỗ trợ. Shop sẽ kiểm tra và phản hồi trong hồ sơ này.';this.loadAfterSales();this.cdr.markForCheck();},
       error:e=>{this.afterSalesBusy=false;this.afterSalesMessage=e?.error?.message||'Chưa gửi được hồ sơ.';this.cdr.markForCheck();}});
   }
   onAfterSalesImagesSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     const selected = Array.from(input.files || []);
     input.value = '';
-    const validTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
-    if (selected.some(file => !validTypes.has(file.type))) { this.afterSalesMessage='Chỉ chấp nhận ảnh JPG, PNG hoặc WEBP.';return; }
-    if (selected.some(file => file.size > 5 * 1024 * 1024)) { this.afterSalesMessage='Mỗi ảnh không được vượt quá 5 MB.';return; }
+    const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    const videoTypes = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
+    if (selected.some(file => !imageTypes.has(file.type) && !videoTypes.has(file.type))) { this.afterSalesMessage='Chỉ chấp nhận ảnh JPG, PNG, WEBP hoặc video MP4, WEBM, MOV.';return; }
+    if (selected.some(file => imageTypes.has(file.type) && file.size > 5 * 1024 * 1024)) { this.afterSalesMessage='Mỗi ảnh không được vượt quá 5 MB.';return; }
+    if (selected.some(file => videoTypes.has(file.type) && file.size > 30 * 1024 * 1024)) { this.afterSalesMessage='Mỗi video không được vượt quá 30 MB.';return; }
     const remaining = 5 - this.afterSalesEvidenceFiles.length;
-    if (remaining <= 0) { this.afterSalesMessage='Chỉ được tải tối đa 5 ảnh.';return; }
+    if (remaining <= 0) { this.afterSalesMessage='Chỉ được tải tối đa 5 ảnh/video.';return; }
     const accepted = selected.slice(0, remaining);
     this.afterSalesEvidenceFiles.push(...accepted);
     this.afterSalesEvidencePreviews.push(...accepted.map(file => URL.createObjectURL(file)));
-    this.afterSalesMessage = selected.length > remaining ? 'Chỉ được tải tối đa 5 ảnh.' : '';
+    this.afterSalesMessage = selected.length > remaining ? 'Chỉ được tải tối đa 5 ảnh/video.' : '';
   }
   removeAfterSalesImage(index: number): void {
     const preview = this.afterSalesEvidencePreviews[index];
@@ -179,11 +181,29 @@ export class OrderDetail implements OnInit, OnDestroy {
   /** Lỗi về hoa và giao hàng bắt buộc có ít nhất 1 ảnh/video (server cũng kiểm tra). */
   get evidenceRequired(): boolean { return ['damaged','partial_damage','wrong_item','missing_item','missing_accessory','wrong_address'].includes(this.afterSalesIssueType); }
   afterSalesStatusLabel(status:string){return status==='Chờ Admin duyệt'?'Đang xem xét':status==='Chờ tiếp nhận'?'Đã gửi yêu cầu':status==='Cần bổ sung'?'Cần bổ sung thông tin':status==='Đã chấp nhận'?'Đã phê duyệt':status==='Bị từ chối'?'Đã từ chối':status==='Đã xử lý'?'Đã xử lý xong':status==='Đã hoàn tiền'?'Đã xử lý xong':status;}
-  canOpenOrderSupport(): boolean { return this.canRequestReturnRefund(); }
-  hasOrderActions(): boolean { return this.canReorder() || this.canRetryPayment() || this.canCancel() || this.canReview() || this.canOpenOrderSupport() || !!this.retryPaymentError || !!this.order.cancelReason || !!this.order.returnRefundReason || this.shouldShowRejectReason(); }
+  /** Mở hộp hỗ trợ: gửi mới khi còn hạn, hoặc theo dõi yêu cầu đã gửi. */
+  canOpenOrderSupport(): boolean { return this.canRequestReturnRefund() || this.afterSales.length > 0; }
+  /** Thanh hỗ trợ cuối trang chỉ hiện sau khi giao thành công. */
+  showSupportBar(): boolean { const status = this.normalizeStatus(this.order.status); return (status === 'delivered' || status === 'completed') && (this.canRequestReturnRefund() || this.afterSales.length > 0); }
+  isVideo(file: File | string): boolean { return typeof file === 'string' ? /\.(mp4|webm|mov)(\?|$)/i.test(file) : file.type.startsWith('video/'); }
+  productName(productId: string): string { return this.products.find(p => p.id === productId)?.name || 'Sản phẩm trong đơn'; }
+  /** Mốc giao thành công: lấy từ lịch sử trạng thái, nếu không có thì lùi 1 giờ từ hạn hỗ trợ. */
+  get detectedAtMin(): string {
+    const delivered = [...(this.order.history || [])].reverse().find(item => ['delivered'].includes(this.normalizeStatus(item.to)) && item.at);
+    const at = delivered?.at ? new Date(delivered.at) : this.order.supportDeadline ? new Date(new Date(this.order.supportDeadline).getTime() - 3600_000) : null;
+    return at && Number.isFinite(at.getTime()) ? this.toLocalInput(at) : '';
+  }
+  get detectedAtMax(): string { return this.toLocalInput(new Date()); }
+  private toLocalInput(date: Date): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+  hasOrderActions(): boolean { return this.canReorder() || this.canRetryPayment() || this.canCancel() || this.canReview() || !!this.retryPaymentError || !!this.order.cancelReason || !!this.order.returnRefundReason || this.shouldShowRejectReason(); }
   openAfterSalesPopup(): void {
     if (!this.canOpenOrderSupport()) return;
     this.showAfterSalesPopup = true;
+    this.afterSalesMessage = '';
+    if (!this.afterSalesDetectedAt) this.afterSalesDetectedAt = this.toLocalInput(new Date());
     this.loadAfterSales();
     if (this.autoRefreshTimer !== null) { window.clearInterval(this.autoRefreshTimer); this.autoRefreshTimer = null; }
     this.cdr.detectChanges();
@@ -191,18 +211,17 @@ export class OrderDetail implements OnInit, OnDestroy {
   closeAfterSalesPopup(): void {
     if (this.afterSalesBusy) return;
     this.showAfterSalesPopup = false;
-    this.afterSalesConfirming = false;
     this.startAutoRefreshStatus();
     this.cdr.detectChanges();
   }
   supplementAfterSales(request: any): void {
     if (this.afterSalesBusy) return;
     if (!this.afterSalesEvidenceFiles.length) {
-      this.afterSalesMessage = 'Vui lòng tải lên ít nhất một ảnh.';
+      this.afterSalesMessage = 'Vui lòng tải lên ít nhất một ảnh hoặc video.';
       return;
     }
     if ((request.evidence?.length || 0) + this.afterSalesEvidenceFiles.length > 5) {
-      this.afterSalesMessage = `Hồ sơ chỉ được có tối đa 5 ảnh. Hiện đã có ${request.evidence?.length || 0} ảnh.`;
+      this.afterSalesMessage = `Hồ sơ chỉ được có tối đa 5 ảnh/video. Hiện đã có ${request.evidence?.length || 0} tệp.`;
       return;
     }
     this.afterSalesBusy = true;
@@ -219,7 +238,7 @@ export class OrderDetail implements OnInit, OnDestroy {
   private autoRefreshTimer: number | null = null;
 
   ngOnInit(): void {
-    if (isPlatformBrowser(this.platformId) && !orderAccessSession()) { this.router.navigate(['/order-requests']); return; }
+    if (isPlatformBrowser(this.platformId) && !orderAccessSession()) { this.router.navigate([orderLookupRoute()], { queryParams: orderLookupRoute() === '/order-list' ? { code: this.route.snapshot.paramMap.get('id') || null } : {} }); return; }
     this.loadOrderDetail(true);
     this.startAutoRefreshStatus();
   }
@@ -349,6 +368,7 @@ export class OrderDetail implements OnInit, OnDestroy {
       paid:Number(summary.DA_THU||0), refunded:Number(summary.DA_HOAN||0), remaining:Number(summary.CON_LAI ?? total), history:row.LICH_SU_TRANG_THAI||[], senderName:row.AN_THONG_TIN?'':String(row.TEN_NGUOI_DAT||''), senderPhone:row.AN_THONG_TIN?'':String(row.SDT_NGUOI_DAT||''), preparationAt:row.THOI_DIEM_BAT_DAU_THUC_TE,
       handoverMedia: Array.isArray(row.MEDIA_BAN_GIAO) ? row.MEDIA_BAN_GIAO : [],
       supportDeadline: row.HAN_GUI_HO_TRO || null,
+      rescheduleMode: (row as any).CHE_DO_DOI_LICH === 'locked' ? 'locked' : 'direct',
       giftCard: row.THIEP_TANG || null,
       shipperName: String(row.NHAN_VIEN_GIAO_HANG?.name || ''),
       shipperPhone: this.formatPhone(String(row.NHAN_VIEN_GIAO_HANG?.phone || '')),
@@ -851,6 +871,7 @@ export class OrderDetail implements OnInit, OnDestroy {
   private openReasonModal(type: 'cancel' | 'return-refund'): void {
     this.reasonModalType = type;
     this.selectedReason = '';
+    this.otherCancelReason = '';
     this.reasonSubmitError = '';
     this.isReasonModalOpen = true;
 
@@ -892,6 +913,12 @@ export class OrderDetail implements OnInit, OnDestroy {
       this.reasonSubmitError = 'Vui lòng chọn lý do hủy đơn hàng.';
       return;
     }
+    const otherText = this.otherCancelReason.trim();
+    if (this.selectedReason === this.otherCancelOption && (otherText.length < 5 || otherText.length > 300)) {
+      this.reasonSubmitError = 'Vui lòng ghi rõ lý do hủy (5–300 ký tự).';
+      return;
+    }
+    const reasonToSend = this.selectedReason === this.otherCancelOption ? `Lý do khác: ${otherText}` : this.selectedReason;
 
     this.isSubmittingReason = true;
     this.reasonSubmitError = '';
@@ -905,7 +932,7 @@ export class OrderDetail implements OnInit, OnDestroy {
           'x-order-access': orderAccessSession()?.accessToken || '',
         },
         body: JSON.stringify({
-          reason: this.selectedReason,
+          reason: reasonToSend,
         }),
       });
 
@@ -916,7 +943,8 @@ export class OrderDetail implements OnInit, OnDestroy {
       }
 
       this.order.status = data?.orderStatus || 'Đã hủy';
-      this.order.cancelReason = this.selectedReason;
+      this.order.cancelReason = reasonToSend;
+      this.otherCancelReason = '';
       this.steps = this.buildSteps(this.order.status);
       this.isReasonModalOpen = false;
       this.selectedReason = '';
@@ -1046,7 +1074,10 @@ export class OrderDetail implements OnInit, OnDestroy {
     'Tôi muốn thay đổi sản phẩm (số lượng, mẫu mã,...)',
     'Tôi muốn thêm/thay đổi mã giảm giá',
     'Tôi không còn muốn mua sản phẩm nữa',
+    'Lý do khác',
   ];
+  readonly otherCancelOption = 'Lý do khác';
+  otherCancelReason = '';
 
   readonly returnRefundReasons = [
     'Hoa bị héo/dập/không còn tươi',
@@ -1400,6 +1431,12 @@ export class OrderDetail implements OnInit, OnDestroy {
     this.shippingTimeError = /^(?:[01]\d|2[0-3]):[0-5]\d(?:–(?:[01]\d|2[0-3]):[0-5]\d)?$/.test(deliveryTime)
       ? '' : 'Nhập giờ theo dạng HH:mm hoặc HH:mm–HH:mm.';
     if (this.shippingDateError || this.shippingTimeError) return;
+    if (!/^0\d{9}$/.test(this.editShipping.phone.replace(/\s+/g, ''))) {
+      this.saveShippingError = 'Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 0.';
+      return;
+    }
+    const scheduleError = this.checkReschedule(deliveryDate, deliveryTime);
+    if (scheduleError) { this.saveShippingError = scheduleError; this.cdr.detectChanges(); return; }
 
     this.isSavingShipping = true;
     this.saveShippingError = '';
@@ -1434,6 +1471,30 @@ export class OrderDetail implements OnInit, OnDestroy {
         this.cdr.detectChanges();
       },
     });
+  }
+
+  readonly shopPhone = '0909477488';
+  /** Lịch hiện tại còn dưới 4 giờ: khóa ô ngày/giờ. */
+  get scheduleLocked(): boolean { return this.order.rescheduleMode === 'locked'; }
+
+  /**
+   * Quy tắc đổi lịch (server kiểm tra lại):
+   * ≥ 24 giờ cập nhật trực tiếp; 4–24 giờ liên hệ shop; < 4 giờ gọi shop; không nhận giờ đã qua hoặc ngoài 08:00–22:00.
+   */
+  private checkReschedule(deliveryDate: string, deliveryTime: string): string {
+    const sameDate = deliveryDate === this.toInputDate(this.shippingDateLabel);
+    const sameTime = deliveryTime === String(this.order.deliveryTime || '').replace(/\s*[-–]\s*/g, '–');
+    if (sameDate && sameTime) return '';
+    if (this.scheduleLocked) return `Đơn sắp đến giờ giao (dưới 4 giờ) nên không đổi ngày/giờ trên website. Vui lòng gọi shop ${this.shopPhone}.`;
+    const [start, end = start] = deliveryTime.split('–');
+    const startAt = new Date(`${deliveryDate}T${start}:00+07:00`).getTime();
+    const minutes = (startAt - Date.now()) / 60000;
+    const toMinutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
+    if (!Number.isFinite(startAt) || minutes <= 0) return 'Thời gian giao mới đã qua. Vui lòng chọn lại.';
+    if (toMinutes(start) < 8 * 60 || toMinutes(end) > 22 * 60 || toMinutes(end) < toMinutes(start)) return 'Shop chỉ giao hàng từ 08:00 đến 22:00. Vui lòng chọn lại giờ giao.';
+    if (minutes < 4 * 60) return `Lịch giao mới còn dưới 4 giờ. Vui lòng gọi shop ${this.shopPhone}.`;
+    if (minutes < 24 * 60) return `Lịch giao mới cách hiện tại dưới 24 giờ nên shop cần kiểm tra hoa và người giao trước. Vui lòng liên hệ shop qua hotline ${this.shopPhone} hoặc chat để đổi lịch.`;
+    return '';
   }
 
   selectShippingDate(event: Event): void {

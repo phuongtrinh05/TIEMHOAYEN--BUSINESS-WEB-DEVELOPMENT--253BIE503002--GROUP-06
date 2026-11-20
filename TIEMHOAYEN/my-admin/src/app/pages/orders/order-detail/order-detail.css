@@ -2394,3 +2394,9 @@ option.status-option--completed{color:#aaa;background:#f4f4f4}
 .popup-check{display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:.9rem;color:var(--text-color);line-height:1.5;cursor:pointer}
 .popup-check input{margin-top:3px;accent-color:var(--primary-color)}
 @media (max-width:640px){.refund-due-callout{flex-direction:column;align-items:flex-start}}
+
+/* Nút sửa thông tin giao hàng nằm ngay trên thẻ */
+.delivery-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.delivery-card-head .card-title { margin-bottom: 0; }
+.delivery-card-head + .delivery-info { margin-top: 14px; }
+.delivery-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }

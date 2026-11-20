@@ -1,7 +1,7 @@
 import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { OrderAccessService } from '../../../services/order-access.service';
 import { currentOrderAccountKey } from '../../../services/api-config';
 import { OrderService } from '../../../services/order.service';
@@ -19,6 +19,7 @@ type LookupTab = 'all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
   styleUrls: ['./order-list.css', '../request-status-tone.css'],
 })
 export class OrderList implements OnInit, OnDestroy {
+  private readonly route = inject(ActivatedRoute);
   readonly access = inject(OrderAccessService);
   private readonly ordersService = inject(OrderService);
   private readonly cdr = inject(ChangeDetectorRef);
@@ -70,6 +71,16 @@ export class OrderList implements OnInit, OnDestroy {
       this.lookupCode = session.orderId;
     }
     if (session) this.load();
+    else {
+      // Được chuyển từ trang khác (chi tiết đơn, yêu cầu vừa gửi): điền sẵn mã và số điện thoại nếu có.
+      const code = String(this.route.snapshot.queryParamMap.get('code') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (code) this.lookupCodeInput(code);
+      try {
+        const pending = JSON.parse(sessionStorage.getItem('pendingSalesLookup') || 'null');
+        if (/^0\d{9}$/.test(pending?.phone || '')) this.phone = pending.phone;
+        if (!code && /^YC[\da-f]+$/i.test(pending?.requestId || '')) this.lookupCodeInput(pending.requestId);
+      } catch {}
+    }
     this.timer = setInterval(() => {
       this.now = Date.now();
       this.syncRequestEvents();
