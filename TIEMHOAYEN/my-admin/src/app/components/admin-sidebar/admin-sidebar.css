@@ -11,7 +11,7 @@
 
 .admin-sidebar{
     width:260px;
-    height:100vh;
+    height:calc(100vh / var(--admin-zoom, 1));
     position:fixed;
     left:0;
     top:0;
