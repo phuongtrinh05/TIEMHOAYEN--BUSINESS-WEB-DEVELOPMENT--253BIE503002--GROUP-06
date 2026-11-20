@@ -149,7 +149,7 @@ test('Voucher theo quy định: đối tượng, cá nhân, hạng, đơn tối 
   assert.equal(evaluateVoucher(v({ LOAI_GIAM_GIA: 'Phần trăm', GIA_TRI_GIAM: 10, MUC_GIAM_TOI_DA: 40000 }), base).productDiscount, 40000);
   // Đơn tối thiểu tính trên SP hợp lệ, trước phí giao.
   const min = evaluateVoucher(v({ LOAI_GIAM_GIA: 'Phần trăm', GIA_TRI_GIAM: 10, DON_TOI_THIEU: 700000 }), base);
-  assert.equal(min.ok, false); assert.match(min.reason, /Cần mua thêm 100\.000đ/);
+  assert.equal(min.ok, false); assert.match(min.reason, /Cần mua thêm 100,000đ/);
   // Guest chỉ dùng voucher công khai.
   assert.equal(evaluateVoucher(v({ LOAI_GIAM_GIA: 'Số tiền', GIA_TRI_GIAM: 20000, DOI_TUONG: 'Member' }), guest).ok, false);
   assert.equal(evaluateVoucher(v({ LOAI_GIAM_GIA: 'Số tiền', GIA_TRI_GIAM: 20000, DOI_TUONG: 'Tất cả' }), guest).ok, true);

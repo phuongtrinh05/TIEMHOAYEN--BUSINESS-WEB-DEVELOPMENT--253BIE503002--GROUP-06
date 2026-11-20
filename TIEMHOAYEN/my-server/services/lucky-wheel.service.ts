@@ -33,11 +33,11 @@ async function revokeGiftAttachment(session:ClientSession,r:any){
   await (await col(LUCKY.reward)).updateOne({_id:r._id},{$set:{giftStatus:'Đã hủy'}},{session});
 }
 
-export const defaultLuckyProgram=()=>({name:'Vòng quay may mắn Tiệm Hoa Yên',status:'Nháp',startAt:new Date().toISOString(),endAt:new Date(Date.now()+30*DAY).toISOString(),threshold:200000,minimumOrder:150000,spinDays:7,rewardDays:30,reminderDays:3,terms:'Đơn từ 200.000đ trước voucher, không gồm phí giao hàng. Mỗi đơn đủ điều kiện nhận một lượt sau khi cọc/thanh toán thành công. Phần thưởng dùng cho đơn sau khi đơn gốc hoàn thành.',prizes:[
+export const defaultLuckyProgram=()=>({name:'Vòng quay may mắn Tiệm Hoa Yên',status:'Nháp',startAt:new Date().toISOString(),endAt:new Date(Date.now()+30*DAY).toISOString(),threshold:200000,minimumOrder:150000,spinDays:7,rewardDays:30,reminderDays:3,terms:'Đơn từ 200,000đ trước voucher, không gồm phí giao hàng. Mỗi đơn đủ điều kiện nhận một lượt sau khi cọc/thanh toán thành công. Phần thưởng dùng cho đơn sau khi đơn gốc hoàn thành.',prizes:[
   {id:'P5',name:'Giảm 5%',kind:'percent',value:5,maxDiscount:20000,weight:30,active:true},
   {id:'P10',name:'Giảm 10%',kind:'percent',value:10,maxDiscount:40000,weight:20,active:true},
-  {id:'C20',name:'Giảm 20.000đ',kind:'cash',value:20000,maxDiscount:20000,weight:20,active:true},
-  {id:'SHIP',name:'Freeship tối đa 30.000đ',kind:'shipping',value:30000,maxDiscount:30000,weight:15,active:true},
+  {id:'C20',name:'Giảm 20,000đ',kind:'cash',value:20000,maxDiscount:20000,weight:20,active:true},
+  {id:'SHIP',name:'Freeship tối đa 30,000đ',kind:'shipping',value:30000,maxDiscount:30000,weight:15,active:true},
   {id:'P15',name:'Giảm 15%',kind:'percent',value:15,maxDiscount:60000,weight:5,active:true,totalLimit:20},
   {id:'GIFT',name:'Quà tặng kèm',kind:'gift',value:0,maxDiscount:0,weight:5,active:true,totalLimit:30,giftMaterialId:'',giftQuantity:1,giftCost:0},
   {id:'NONE',name:'Chúc bạn may mắn lần sau',kind:'none',value:0,maxDiscount:0,weight:5,active:true}
@@ -274,7 +274,7 @@ export async function quoteLuckyReward(session:ClientSession|undefined,customerI
   if(!completed(source)||reward.status!==REWARD_STATUS.available)throw new InventoryError(409,'Phần thưởng đã thu hồi hoặc đơn gốc không còn hợp lệ.');
   if(!reward.expiresAt||reward.expiresAt<=new Date())throw new InventoryError(410,'Phần thưởng đã hết hạn.');
   if(orderCreatedAt<=reward.activatedAt)throw new InventoryError(409,'Chỉ áp dụng cho đơn tạo sau khi đơn gốc hoàn thành.');
-  if(subtotal<reward.minimumOrder)throw new InventoryError(400,`Đơn tối thiểu ${reward.minimumOrder.toLocaleString('vi-VN')}đ, không gồm phí giao hàng.`);
+  if(subtotal<reward.minimumOrder)throw new InventoryError(400,`Đơn tối thiểu ${reward.minimumOrder.toLocaleString('en-US')}đ, không gồm phí giao hàng.`);
   return {reward,discount:luckyDiscount(reward.prize,subtotal,shipping)};
 }
 

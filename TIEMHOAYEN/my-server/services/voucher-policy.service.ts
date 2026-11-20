@@ -99,7 +99,7 @@ export function evaluateVoucher(v: any, ctx: VoucherContext): VoucherEvaluation 
   const eligibleSubtotal = eligible.reduce((s, l) => s + l.qty * l.price, 0);
   const minimum = Math.max(0, num(v.DON_TOI_THIEU ?? v.GIA_TRI_DON_TOI_THIEU ?? v.DON_HANG_TOI_THIEU));
   if (!eligibleSubtotal) return fail('Giỏ hàng chưa có sản phẩm thuộc phạm vi voucher.', { minimum });
-  if (eligibleSubtotal < minimum) return fail(`Cần mua thêm ${(minimum - eligibleSubtotal).toLocaleString('vi-VN')}đ (đơn tối thiểu ${minimum.toLocaleString('vi-VN')}đ, chưa gồm phí giao).`, { eligibleSubtotal, minimum });
+  if (eligibleSubtotal < minimum) return fail(`Cần mua thêm ${(minimum - eligibleSubtotal).toLocaleString('en-US')}đ (đơn tối thiểu ${minimum.toLocaleString('en-US')}đ, chưa gồm phí giao).`, { eligibleSubtotal, minimum });
 
   const type = voucherKey(v.LOAI_GIAM_GIA);
   const value = Math.max(0, num(v.GIA_TRI_GIAM));

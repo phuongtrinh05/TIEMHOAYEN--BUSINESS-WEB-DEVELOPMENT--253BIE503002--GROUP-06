@@ -1,3 +1,4 @@
+import { deliverySlotLabel } from '../../../shared/date-time';
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -21,10 +22,10 @@ export function vnDeliveryDate(isoDate: string, time: string): Date | null {
   return Number.isNaN(value.getTime()) ? null : value;
 }
 
-/** Giống trang Khách: mốc 30 phút trong 08:00–22:00; hôm nay chỉ còn các giờ chưa qua. */
+/** Giống trang Khách: khung 30 phút trong 08:00–22:00 (giá trị là giờ bắt đầu, khung cuối 21:30–22:00). */
 export function deliveryTimeSlots(isoDate: string, now = new Date()): string[] {
   const slots: string[] = [];
-  for (let minutes = 8 * 60; minutes <= 22 * 60; minutes += 30) {
+  for (let minutes = 8 * 60; minutes <= 22 * 60 - 30; minutes += 30) {
     slots.push(`${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`);
   }
   if (!isoDate) return slots;
@@ -134,6 +135,7 @@ export interface CreateOrderForm {
   styleUrl: './create-order.css',
 })
 export class CreateOrder implements OnInit {
+  readonly slotLabel = deliverySlotLabel;
 
   constructor(private readonly adminApi: AdminApiService, private readonly cdr: ChangeDetectorRef) {}
 

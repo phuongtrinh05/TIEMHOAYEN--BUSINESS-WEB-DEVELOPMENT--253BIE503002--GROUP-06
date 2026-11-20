@@ -164,7 +164,7 @@ export async function calculateCheckoutQuote(input: {
     const eligible = items.filter(item => (!productScope.size || productScope.has(item.id)) && (!categoryScope.size || categoryScope.has(item.categoryId)));
     const eligibleSubtotal = eligible.reduce((sum, item) => sum + item.lineTotal, 0);
     const minimum = Math.max(0, number(voucher.DON_TOI_THIEU ?? voucher.GIA_TRI_DON_TOI_THIEU));
-    if (eligibleSubtotal < minimum) throw new InventoryError(400, `Sản phẩm hợp lệ chưa đạt đơn tối thiểu ${minimum.toLocaleString('vi-VN')}đ.`);
+    if (eligibleSubtotal < minimum) throw new InventoryError(400, `Sản phẩm hợp lệ chưa đạt đơn tối thiểu ${minimum.toLocaleString('en-US')}đ.`);
     const type = String(voucher.LOAI_GIAM_GIA || '').toLowerCase();
     const value = Math.max(0, number(voucher.GIA_TRI_GIAM));
     const cap = Math.max(0, number(voucher.MUC_GIAM_TOI_DA ?? voucher.TRAN_GIAM));

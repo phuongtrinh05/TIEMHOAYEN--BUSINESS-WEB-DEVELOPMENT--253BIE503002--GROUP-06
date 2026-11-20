@@ -12,7 +12,7 @@ import { Router } from '@angular/router';
 import { CreateOrderPayload, CreateOrderResponse, OrderService } from '../../../services/order.service';
 import { apiBaseUrl } from '../../../services/api-config';
 import { SalesRequestResultComponent } from '../sales-request-result/sales-request-result';
-import { PricingService, ServerQuote, SHOP_PHONE, deliveryTimeSlots, isUrgentDelivery, isWithin24h } from '../../../services/pricing.service';
+import { PricingService, ServerQuote, SHOP_PHONE, deliverySlotLabel, deliveryTimeSlots, isUrgentDelivery, isWithin24h } from '../../../services/pricing.service';
 import { MAX_CART_ITEMS } from '../../../services/cart-limit';
 
 export interface OrderItem {
@@ -199,35 +199,35 @@ export class OrderHauntComponent implements OnInit {
       maxTotal: 299999,
       depositType: 'fixed',
       depositValue: 50000,
-      note: 'Đơn dưới 300.000đ cần đặt cọc 50.000đ',
+      note: 'Đơn dưới 300,000đ cần cọc 50,000đ',
     },
     {
       minTotal: 300000,
       maxTotal: 499999,
       depositType: 'fixed',
       depositValue: 100000,
-      note: 'Đơn từ 300.000đ đến dưới 500.000đ cần đặt cọc 100.000đ',
+      note: 'Đơn 300,000đ - 500,000đ cần cọc 100,000đ',
     },
     {
       minTotal: 500000,
       maxTotal: 999999,
       depositType: 'percent',
       depositValue: 30,
-      note: 'Đơn từ 500.000đ đến dưới 1.000.000đ cần đặt cọc 30%',
+      note: 'Đơn 500,000đ - 1,000,000đ cần cọc 30%',
     },
     {
       minTotal: 1000000,
       maxTotal: 1999999,
       depositType: 'percent',
       depositValue: 40,
-      note: 'Đơn từ 1.000.000đ đến dưới 2.000.000đ cần đặt cọc 40%',
+      note: 'Đơn 1,000,000đ - 2,000,000đ cần cọc 40%',
     },
     {
       minTotal: 2000000,
       maxTotal: null,
       depositType: 'percent',
       depositValue: 50,
-      note: 'Đơn từ 2.000.000đ trở lên cần đặt cọc 50%',
+      note: 'Đơn từ 2,000,000đ cần cọc 50%',
     },
   ];
 
@@ -471,7 +471,7 @@ export class OrderHauntComponent implements OnInit {
       return `Giảm ${value}% đơn hàng`;
     }
 
-    return `Giảm ${value.toLocaleString('vi-VN')}đ ${this.isCashVoucherType(type) ? 'phí ship' : 'tiền hàng'}`;
+    return `Giảm ${value.toLocaleString('en-US')}đ ${this.isCashVoucherType(type) ? 'phí ship' : 'tiền hàng'}`;
   }
 
   private buildVoucherDesc(type: string, value: number): string {
@@ -658,6 +658,7 @@ export class OrderHauntComponent implements OnInit {
   // ===== GIỜ GIAO: 08:00–22:00, khung 30 phút; dưới 4 giờ phải gọi shop =====
   urgentDeliveryPopup = false;
   readonly shopPhone = SHOP_PHONE;
+  readonly slotLabel = deliverySlotLabel;
   get deliveryTimeOptions(): string[] {
     const isoDate = this.toIsoDate(this.formData.deliveryDate);
     return deliveryTimeSlots(/^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? isoDate : '');
@@ -827,7 +828,7 @@ export class OrderHauntComponent implements OnInit {
   voucherEstimatedText(voucher: Voucher): string {
     if (voucher.eligible === false) return voucher.reason || 'Chưa đạt điều kiện';
     const value = voucher.estimatedDiscount ?? this.estimateVoucherDiscount(voucher);
-    return value > 0 ? `Ước giảm ${value.toLocaleString('vi-VN')}đ` : voucher.desc;
+    return value > 0 ? `Ước giảm ${value.toLocaleString('en-US')}đ` : voucher.desc;
   }
 
   private estimateVoucherDiscount(voucher: Voucher): number {
@@ -1232,7 +1233,7 @@ export class OrderHauntComponent implements OnInit {
         maxTotal: null,
         depositType: 'percent',
         depositValue: 70,
-        note: 'Hoa cưới, hoa sự kiện hoặc đơn số lượng lớn cần đặt cọc 70%',
+        note: 'Hoa cưới, sự kiện hoặc đơn số lượng lớn cần cọc 70%',
       };
     }
 

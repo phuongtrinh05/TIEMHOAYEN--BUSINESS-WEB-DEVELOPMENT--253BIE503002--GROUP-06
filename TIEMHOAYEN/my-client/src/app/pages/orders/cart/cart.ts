@@ -923,8 +923,8 @@ export class CartComponent implements OnInit {
 
   /**
    * Phí ship nội thành TP.HCM theo bảng quy định (tính theo tạm tính):
-   *  - Hỏa tốc: < 300.000đ: 60.000đ | 300.000-500.000đ: 30.000đ | > 500.000đ: miễn phí
-   *  - Tiêu chuẩn: < 300.000đ: 30.000đ | từ 300.000đ trở lên: miễn phí
+   *  - Hỏa tốc: < 300,000đ: 60,000đ | 300,000-500,000đ: 30,000đ | > 500,000đ: miễn phí
+   *  - Tiêu chuẩn: < 300,000đ: 30,000đ | từ 300,000đ trở lên: miễn phí
    */
   getShippingFee(): number {
     if (this.getSelectedCount() === 0) return 0;
@@ -1137,7 +1137,7 @@ export class CartComponent implements OnInit {
 
   formatPrice(price: number | null | undefined): string {
     const value = Number(price || 0);
-    return value.toLocaleString('vi-VN') + 'đ';
+    return value.toLocaleString('en-US') + 'đ';
   }
 
   private dispatchCartChanged(): void {
@@ -1159,7 +1159,7 @@ export class CartComponent implements OnInit {
         this.suggestedProducts = products
           .filter(item => !item.TRANG_THAI || this.normalizeText(String(item.TRANG_THAI)) === this.normalizeText('Đang bán'))
           .map((item: SuggestedProductResponse) => this.mapSuggestedProductResponse(item))
-          .filter(product => product.id.startsWith('SP') && !existingIds.has(product.id))
+          .filter(product => product.id.startsWith('SP') && !existingIds.has(product.id) && !/^\s*thi[eệ]p/i.test(product.name))
           .slice(0, 4);
         this.suggestedMobileStartIndex = 0;
 

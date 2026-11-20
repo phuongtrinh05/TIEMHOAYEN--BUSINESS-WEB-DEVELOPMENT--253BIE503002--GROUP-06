@@ -1,3 +1,4 @@
+import { deliverySlotLabel } from '../../../services/pricing.service';
 import { ChangeDetectorRef, Component, inject, Input, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -11,6 +12,7 @@ import { REQUEST_STEPS, requestStage } from '../request-stage';
 @Component({ selector: 'app-order-request', standalone: true, imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './order-request.html', styleUrls: ['./order-request.css', './order-request-refinement.css', '../request-status-tone.css'] })
 export class OrderRequest implements OnInit, OnDestroy {
+  readonly slotLabel = deliverySlotLabel;
   @Input() requestId = '';
   @Input() compact = false;
   private route = inject(ActivatedRoute);

@@ -1,3 +1,4 @@
+import { deliverySlotLabel } from '../../../shared/date-time';
 import { formatDateTime24 } from '../../../shared/date-time';
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -179,6 +180,7 @@ const STEP_CONFIG: Record<OrderStatus, { icon: string }> = {
   styleUrls: ['./order-detail.css', './order-detail-refinement.css'],
 })
 export class OrderDetail implements OnInit, OnDestroy {
+  readonly slotLabel = deliverySlotLabel;
   constructor(
     private readonly route: ActivatedRoute,
     private readonly adminApi: AdminApiService,

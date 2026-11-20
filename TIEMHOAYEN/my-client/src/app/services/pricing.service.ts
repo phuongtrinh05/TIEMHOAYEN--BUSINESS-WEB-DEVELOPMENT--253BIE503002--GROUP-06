@@ -57,10 +57,21 @@ export function vnDeliveryDate(isoDate: string, time: string): Date | null {
   return Number.isNaN(value.getTime()) ? null : value;
 }
 
-/** Khung 30 phút trong 08:00–22:00; ngày hôm nay chỉ còn các giờ chưa qua. */
+/** Nhãn khung giờ giao: "08:00" → "08:00 - 08:30"; dữ liệu đã là khoảng thì giữ khoảng. */
+export function deliverySlotLabel(value: unknown): string {
+  const text = String(value ?? '').trim();
+  if (!text || /(AM|PM)/i.test(text)) return text;
+  const times = [...text.matchAll(/(\d{1,2}):([0-5]\d)/g)].map(m => `${m[1].padStart(2, '0')}:${m[2]}`);
+  if (!times.length) return text;
+  if (times.length > 1) return `${times[0]} - ${times[1]}`;
+  const end = Math.min(Number(times[0].slice(0, 2)) * 60 + Number(times[0].slice(3)) + 30, 24 * 60 - 1);
+  return `${times[0]} - ${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
+}
+
+/** Khung 30 phút trong 08:00–22:00 (giá trị là giờ bắt đầu, khung cuối 21:30–22:00); hôm nay chỉ còn khung chưa bắt đầu. */
 export function deliveryTimeSlots(isoDate: string, now = new Date()): string[] {
   const slots: string[] = [];
-  for (let minutes = 8 * 60; minutes <= 22 * 60; minutes += 30) {
+  for (let minutes = 8 * 60; minutes <= 22 * 60 - 30; minutes += 30) {
     slots.push(`${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`);
   }
   if (!isoDate) return slots;

@@ -7,7 +7,7 @@ import { COLLECTIONS, MATERIAL_STATUS, PO_STATUS, RESERVATION_STATUS } from './i
 import { computeBuildable, incomingByMaterial, pendingDemandByMaterial, supplierOptionsFor } from './inventory/availability.service.js';
 import { getActiveBom, getActiveBomMap } from './inventory/bom.service.js';
 import { REQUESTS, REQUEST_STATUS, publicRequest, assertReservedStockUsable, SALES_CONFIRMED_ORDER_STATUS } from './order-request.service.js';
-import { assertWithinShopHours, classifyDeliverySchedule } from './delivery-policy.service.js';
+import { assertDeliverySlotStart, classifyDeliverySchedule } from './delivery-policy.service.js';
 import { requestByVerifiedPhone } from './order-access.service.js';
 import { reserveOrderLines } from './order-stock.service.js';
 import { releaseReservations, sweepExpiredReservations } from './inventory/stock.service.js';
@@ -65,8 +65,8 @@ function deliveryAt(date: unknown, time: unknown) {
   if (!Number.isFinite(parsed.getTime()) || parsed.getTime() <= Date.now()) throw new InventoryError(400, 'Thời gian giao phải ở tương lai.');
   const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(parsed);
   if (key !== String(date)) throw new InventoryError(400, 'Ngày giao không tồn tại.');
-  // Sales cũng chỉ được chốt lịch trong 08:00–22:00.
-  assertWithinShopHours(parsed);
+  // Sales cũng chỉ được chốt khung 30 phút trong 08:00–22:00 (giờ bắt đầu muộn nhất 21:30).
+  assertDeliverySlotStart(parsed);
   return parsed;
 }
 const SALES_PAYMENT_WINDOW_MS = 24 * 60 * 60 * 1000;
