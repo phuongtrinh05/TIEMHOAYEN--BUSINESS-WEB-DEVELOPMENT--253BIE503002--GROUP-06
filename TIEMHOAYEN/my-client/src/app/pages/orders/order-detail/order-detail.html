@@ -414,6 +414,10 @@
               {{ afterSales.length ? 'Theo dõi hỗ trợ đơn hàng' : 'Hỗ trợ đơn hàng' }}
             </button>
 
+            <div class="order-reason-box" *ngIf="order.paymentExpiredReason && !order.cancelReason">
+              <strong>Lý do:</strong>
+              <span>{{ order.paymentExpiredReason }}<ng-container *ngIf="order.paymentExpiredAt"> ({{ order.paymentExpiredAt | date:'HH:mm dd/MM/yyyy' }})</ng-container></span>
+            </div>
             <div class="order-reason-box" *ngIf="order.cancelReason">
               <strong>Lý do hủy:</strong>
               <span>{{ order.cancelReason }}</span>

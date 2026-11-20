@@ -297,6 +297,18 @@
           </a>
           <strong>{{ order.createdTime }}</strong>
         </div>
+        <div class="payment-deadline-meta" *ngIf="order.paymentExpired || order.paymentDeadline && ['Chờ thanh toán','Đã xác nhận đơn hàng'].includes(order.orderStatus)">
+          <ng-container *ngIf="order.paymentExpired; else waitingPayment">
+            <i class="bi bi-clock-history"></i>
+            Lý do: <strong>{{ order.paymentExpired.reason }}</strong>
+            <ng-container *ngIf="order.paymentExpired.at"> · {{ order.paymentExpired.at | date:'HH:mm dd/MM/yyyy' }}</ng-container>
+          </ng-container>
+          <ng-template #waitingPayment>
+            <i class="bi bi-hourglass-split"></i>
+            Hạn thanh toán của đơn: <strong>{{ order.paymentDeadline | date:'HH:mm dd/MM/yyyy' }}</strong>
+            <span class="qr-expired-tag" *ngIf="order.qrExpired">QR đã hết hạn – đơn vẫn chờ thanh toán</span>
+          </ng-template>
+        </div>
       </div>
 
       <div class="order-meta__right">

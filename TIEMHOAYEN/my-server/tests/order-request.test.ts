@@ -676,6 +676,42 @@ if (!uri) {
     assert.equal(await (await mongo.getCollection<any>('BIEN_DONG_KHO')).countDocuments({ SAN_PHAM_ID: 'SP_WILT' }), 1);
   });
 
+  test('payment retry: confirmed orders can get a new QR; expired or too-close orders cannot', async () => {
+    const { retryOrderPayment } = await import('../controllers/order.js');
+    const orders = await mongo.getCollection<any>('DON_HANG');
+    const base = { KIEM_TRA_TON_KHO: true, PHUONG_THUC_THANH_TOAN: 'Chuyển khoản', TONG_TIEN: 200000, TIEN_COC: 0, NGAY_TAO: new Date(), MA_PHIEN_THANH_TOAN: 'old-session' };
+    await orders.insertMany([
+      { ...base, DON_HANG_ID: 'RETRY_CONFIRMED', TRANG_THAI: 'Đã xác nhận đơn hàng', NGAY_MUON_GIAO: new Date('2099-11-02T00:00:00Z'), KHUNG_GIO_MUON_GIAO: '10:00' },
+      { ...base, DON_HANG_ID: 'RETRY_EXPIRED', TRANG_THAI: 'Thanh toán thất bại', HET_HAN_THANH_TOAN: true, LY_DO_THAT_BAI: 'Quá hạn thanh toán', NGAY_MUON_GIAO: new Date('2099-11-02T00:00:00Z'), KHUNG_GIO_MUON_GIAO: '10:00' },
+    ]);
+    const ok = await invoke(retryOrderPayment, {}, { orderId: 'RETRY_CONFIRMED' });
+    assert.equal(ok.code, 200, JSON.stringify(ok.data));
+    assert.equal(ok.data.orderStatus, 'Đã xác nhận đơn hàng');
+    assert.equal((await orders.findOne({ DON_HANG_ID: 'RETRY_CONFIRMED' })).TRANG_THAI, 'Đã xác nhận đơn hàng');
+    const expired = await invoke(retryOrderPayment, {}, { orderId: 'RETRY_EXPIRED' });
+    assert.equal(expired.code, 409);
+    assert.match(expired.data.message, /quá hạn thanh toán/);
+    // Giao sau 3 giờ: còn trong hạn (đơn mới tạo) nhưng không đủ 4 giờ trước giờ giao.
+    const soon = new Date(Date.now() + 3 * 3600_000);
+    const vn = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(soon).map(p => [p.type, p.value]));
+    await orders.insertOne({ ...base, DON_HANG_ID: 'RETRY_LATE', TRANG_THAI: 'Chờ thanh toán', NGAY_TAO: new Date(Date.now() - 3600_000 * 22),
+      NGAY_MUON_GIAO: new Date(`${vn.year}-${vn.month}-${vn.day}T00:00:00Z`), KHUNG_GIO_MUON_GIAO: `${vn.hour}:${vn.minute}` });
+    const late = await invoke(retryOrderPayment, {}, { orderId: 'RETRY_LATE' });
+    assert.equal(late.code, 409);
+    // Tạo cách đây 22 giờ, giao sau 3 giờ: hạn 24 giờ chưa qua nhưng không còn đủ 4 giờ trước giờ giao.
+    assert.equal(late.data.code, 'ORDER_PAYMENT_TOO_LATE', JSON.stringify(late.data));
+  });
+
+  test('customers still see orders that expired unpaid, with the reason', async () => {
+    const access = await import('../services/order-access.service.js');
+    const rules = await import('../services/unpaid-order-expiry.service.js');
+    const query = await access.ownedOrderQuery({ authType: 'member', customerId: 'KH_EXPIRED' });
+    assert.equal(JSON.stringify(query).includes('HET_HAN_THANH_TOAN'), false);
+    assert.deepEqual(rules.expiredPaymentInfo({ TRANG_THAI: 'Thanh toán thất bại', HET_HAN_THANH_TOAN: true, NGAY_HET_HAN_THANH_TOAN: 'x' }), { reason: 'Quá hạn thanh toán', at: 'x' });
+    assert.deepEqual(rules.expiredPaymentInfo({ TRANG_THAI: 'Đã hủy', LY_DO_HUY: 'Quá hạn thanh toán', NGAY_HUY: 'y' }), { reason: 'Quá hạn thanh toán', at: 'y' });
+    assert.equal(rules.expiredPaymentInfo({ TRANG_THAI: 'Thanh toán thất bại' }), null);
+  });
+
   test('request whose wanted delivery time has passed is rejected automatically', async () => {
     const { rejectRequestsPastDelivery } = await import('../services/sales-request-expiry.service.js');
     const requests = await mongo.getCollection<any>(service.REQUESTS);
