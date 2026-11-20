@@ -2,7 +2,6 @@
   <div class="order-detail-page">
     <section class="detail-card after-sales-routing-card">
       <div class="admin-after-sales-head"><div><span>CSKH · HẬU MÃI</span><h2>Hồ sơ hậu mãi</h2></div><b>{{afterSales.length}} hồ sơ</b></div>
-      <p>Việc tiếp nhận, duyệt phương án, nhận hàng trả và hoàn tiền được xử lý tại Chăm sóc khách hàng.</p>
       <p *ngFor="let request of afterSales"><b>{{request.requestId}}</b> · {{request.status}}</p>
       <a class="btn-icon-text" [routerLink]="['/customer-service/after-sales']" [queryParams]="{orderId:order.id}"><i class="bi bi-arrow-up-right-square"></i> Mở hồ sơ hậu mãi</a>
     </section>
