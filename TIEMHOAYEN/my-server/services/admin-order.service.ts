@@ -1,6 +1,7 @@
 import { getCollection } from '../mongo.js';
 import type { ClientSession } from 'mongodb';
 import { InventoryError, withTransaction } from './inventory/helpers.js';
+import { INVENTORY_CONFIG } from './inventory/constants.js';
 import { receiveReturnedFinishedGoods } from './inventory/stock.service.js';
 import { emitAdminNotification } from './analytics/notifications.service.js';
 import { assertWithinShopHours } from './delivery-policy.service.js';
@@ -395,6 +396,9 @@ export interface AdminOrderDetailDto {
   snapshotAvailable: boolean;
   allowedStatuses: string[];
   nextStep: OrderNextStep;
+  paymentDeadline: string | null;
+  qrExpired: boolean;
+  paymentExpired: { reason: string; at: any } | null;
   history: any[];
   preparationAt: string | null;
   preparationStartedAt: string | null;
@@ -666,9 +670,15 @@ export const getAdminOrderDetailById = async (orderId: string, role?: unknown): 
         : minutesToT <= 180 ? { level: 'high', label: 'Ưu tiên cao', minutesToT }
           : minutesToT <= 1440 ? { level: 'soon', label: 'Sắp đến lịch', minutesToT }
             : { level: 'normal', label: 'Bình thường', minutesToT };
+  const unpaidRules = await import('./unpaid-order-expiry.service.js');
   return {
     allowedStatuses: allowedOrderStatuses(order, paymentSummary.netCollected, role, true),
     nextStep: orderNextStep(order, paymentSummary.netCollected, pendingCashTotal(payments)),
+    // Hạn thanh toán của đơn, QR hiện tại đã hết hạn chưa, và lý do nếu đơn đã quá hạn thanh toán.
+    paymentDeadline: unpaidRules.orderPaymentDeadline(order)?.toISOString() || null,
+    qrExpired: unpaidRules.UNPAID_ORDER_STATUSES.includes(String(order.TRANG_THAI)) && paymentSummary.netCollected < unpaidRules.requiredPrepayment(order)
+      && !payments.some((p: any) => p.TRANG_THAI_THANH_TOAN === 'Chờ thanh toán' && new Date(p.NGAY_THANH_TOAN).getTime() + INVENTORY_CONFIG.holdMinutes * 60_000 > Date.now()),
+    paymentExpired: unpaidRules.expiredPaymentInfo(order),
     pendingCollection: { amount: pendingCashTotal(payments), items: pendingCashRows(payments) },
     snapshotAvailable: !!order.TINH_TIEN_SNAPSHOT && items.every(item => !!item.TEN_SAN_PHAM_SNAPSHOT),
     history: order.LICH_SU_TRANG_THAI || [],

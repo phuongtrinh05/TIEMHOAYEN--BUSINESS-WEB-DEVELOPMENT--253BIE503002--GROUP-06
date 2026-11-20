@@ -86,3 +86,5 @@
 .request-results .cancel-request:hover{color:#a51f25!important;background:#fff2f2!important}
 @media(max-width:900px){.request-results .customer-request-card{grid-template-columns:82px minmax(0,1fr);grid-template-areas:'photo copy' 'actions actions'}.request-results .request-photo{width:82px;height:82px}.request-results .request-actions{display:grid;grid-template-columns:1fr auto}.request-results .cancel-request{width:auto}}
 @media(max-width:560px){.request-results .customer-request-card{grid-template-columns:68px minmax(0,1fr);padding:13px;gap:12px}.request-results .request-photo{width:68px;height:68px}.request-results .request-actions{grid-template-columns:1fr}.request-schedule{align-items:flex-start;flex-wrap:wrap}.request-next{align-items:flex-start}.request-next b{display:none}}
+
+.payment-expired-note{margin:6px 0 0;color:#a15c00;font-size:13px;display:flex;gap:4px;align-items:center}
