@@ -1,6 +1,7 @@
 .admin-layout{
     display:flex;
-    min-height:100vh;
+    /* 100vh bị thu theo zoom → chia lại để khung vẫn cao kín màn hình */
+    min-height:calc(100vh / var(--admin-zoom, 1));
     background:rgb(249,250,251);
 }
 

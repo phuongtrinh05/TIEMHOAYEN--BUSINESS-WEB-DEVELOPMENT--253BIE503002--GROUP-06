@@ -56,6 +56,14 @@ async function ownedRequest(id: string, employee: any, session?: ClientSession) 
   if (row.assignedTo !== employee.NHAN_VIEN_ID) throw new InventoryError(403, 'Bạn chưa tiếp nhận yêu cầu này.');
   return row;
 }
+/** Chỉ đọc: yêu cầu đã kết thúc (từ chối / khách hủy / hết hạn) thì Sales nào cũng xem lại được. Thao tác ghi vẫn dùng ownedRequest. */
+const CLOSED_REQUEST_STATUSES: string[] = [REQUEST_STATUS.rejected, REQUEST_STATUS.cancelled, REQUEST_STATUS.expired];
+async function viewableRequest(id: string, employee: any) {
+  const row = await (await getCollection<any>(REQUESTS)).findOne({ _id: id });
+  if (!row) throw new InventoryError(404, 'Không tìm thấy yêu cầu.');
+  if (row.assignedTo !== employee.NHAN_VIEN_ID && !CLOSED_REQUEST_STATUSES.includes(row.status)) throw new InventoryError(403, 'Bạn chưa tiếp nhận yêu cầu này.');
+  return row;
+}
 function assertVersion(row: any, version: unknown) {
   if (!Number.isInteger(version) || row.version !== version) throw new InventoryError(409, 'Yêu cầu vừa thay đổi. Vui lòng tải lại.');
 }
@@ -473,7 +481,7 @@ async function consultationSources(row: any, relatedMaterialIds: string[], mater
 }
 
 export async function consultationOptions(id: string, search: string, employee: any, includeCatalog = false, includeSources = false) {
-  const row = await ownedRequest(id, employee);
+  const row = await viewableRequest(id, employee);
   const cacheKey = `${id}:${search.trim().toLocaleLowerCase()}:${includeCatalog ? 1 : 0}`;
   const cached = consultationCache.get(cacheKey);
   if (includeSources && cached && cached.version === row.version && cached.expiresAt > Date.now()) {

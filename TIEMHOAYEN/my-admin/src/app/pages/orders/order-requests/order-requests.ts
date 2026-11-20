@@ -2,7 +2,8 @@ import { deliverySlotLabel } from '../../../shared/date-time';
 import { ChangeDetectorRef, Component, inject, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, NavigationEnd, NavigationSkipped, Router, RouterLink } from '@angular/router';
+import { Subscription, timeout } from 'rxjs';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { apiBaseUrl } from '../../../services/api-config';
 
@@ -68,7 +69,9 @@ export class OrderRequests implements OnInit, OnDestroy {
   get closeDealBlocked() {
     return (this.needsPhoneAgreement || this.isUrgentConfirmation) && (!this.urgentDealConfirmed || !this.urgentDealNote.trim());
   }
-  canOpen(row: any) { return row?.assignedTo === this.employeeId; }
+  /** Yêu cầu đã kết thúc: ai cũng được mở để xem lại (các nút xử lý trong chi tiết tự khóa theo trạng thái). */
+  isClosedRequest(row: any) { return ['Đã từ chối', 'Khách đã hủy', 'Hết hạn thanh toán'].includes(String(row?.status || '')); }
+  canOpen(row: any) { return row?.assignedTo === this.employeeId || this.isClosedRequest(row); }
   get canConfirmOriginal() {
     return this.active?.status === 'Sales đang xử lý' && !this.active?.quote;
   }
@@ -162,6 +165,13 @@ export class OrderRequests implements OnInit, OnDestroy {
       this.appliedQueueSearch = this.targetRequestId;
     }
     this.load(); this.loadUnreadMessages();
+    // Bấm "Yêu cầu đặt hàng" ở sidebar khi đang xem chi tiết → quay về danh sách.
+    // Cùng URL nên router báo NavigationSkipped; có ?requestId thì là NavigationEnd.
+    this.navSub = this.router.events.subscribe(e => {
+      if (!(e instanceof NavigationSkipped || e instanceof NavigationEnd) || !this.active) return;
+      const path = String(e.url || '').split(/[?#]/)[0];
+      if (path === '/orders/requests') this.backToList();
+    });
     this.timer = setInterval(() => {
       if (!document.hidden && !this.busy && !this.editing) {
         this.load(true); this.loadUnreadMessages();
@@ -171,14 +181,26 @@ export class OrderRequests implements OnInit, OnDestroy {
       }
     }, 15000);
   }
-  ngOnDestroy() { if (this.timer) clearInterval(this.timer); }
+  ngOnDestroy() { if (this.timer) clearInterval(this.timer); this.navSub?.unsubscribe(); }
+  private navSub?: Subscription;
+  /** Đóng chi tiết từ sidebar; nếu đang sửa dở thì hỏi trước để không mất thay đổi. */
+  private backToList() {
+    if (this.editing && !confirm('Bạn đang sửa yêu cầu. Bỏ các thay đổi chưa lưu và quay về danh sách?')) return;
+    this.closeDetail(); this.chatOpen = false;
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+    this.cdr.markForCheck();
+  }
   image(url: string) { return url?.startsWith('/uploads/') ? `${apiBaseUrl().replace(/\/api$/, '')}${url}` : url || 'assets/images/logo-main.png'; }
   applySearch() { this.appliedQueueSearch = this.queueSearch.trim(); this.page = 1; this.active = null; this.load(); }
   clearSearch() { this.queueSearch = ''; this.appliedQueueSearch = ''; this.page = 1; this.active = null; this.load(); }
+  private listLoad?: Subscription;
   load(quiet = false) {
-    if (this.loading) return;
+    // Lần tải ngầm 15 giây không chen ngang lần tải đang chạy.
+    // Lần tải do người dùng (đổi tab, tìm, đổi trang) thì hủy request cũ, tránh kết quả tab cũ về sau đè lên tab mới.
+    if (this.loading && quiet) return;
+    this.listLoad?.unsubscribe();
     this.loading = true; if (!quiet) this.error = '';
-    this.http.get<any>(this.url, { params: new HttpParams().set('page', this.page).set('status', this.status).set('group', this.status ? '' : this.group).set('search', this.appliedQueueSearch) }).subscribe({
+    this.listLoad = this.http.get<any>(this.url, { params: new HttpParams().set('page', this.page).set('status', this.status).set('group', this.status ? '' : this.group).set('search', this.appliedQueueSearch) }).pipe(timeout(20000)).subscribe({
       next: data => { this.requests = data.requests; this.total = data.total; this.allCount = Number(data.summary?.total ?? data.total ?? 0); this.waitingCount = Number(data.summary?.waiting || 0); this.urgentCount = Number(data.summary?.urgent || 0); this.groupCounts = { todo: 0, customer: 0, done: 0, ...(data.summary?.groups || {}) }; this.loading = false;
         if (this.targetRequestId && !this.active) {
           const target = this.requests.find(r => r.requestId === this.targetRequestId);
@@ -190,7 +212,7 @@ export class OrderRequests implements OnInit, OnDestroy {
           this.openChatAfterLoad = false;
         }
         if (this.active) { const oldActive = this.active; const oldQuote = oldActive.quote?.id; this.active = this.requests.find(r => r.requestId === oldActive.requestId) || oldActive; if (oldQuote !== this.active.quote?.id) { this.contact.readBackConfirmed = false; this.contact.outcome = 'connected'; } if (this.chatOpen) this.loadMessages(); }
-        this.cdr.markForCheck(); }, error: err => { this.loading = false; this.fail(err); },
+        this.cdr.markForCheck(); }, error: err => { this.loading = false; this.fail(err?.name === 'TimeoutError' ? { error: { message: 'Máy chủ phản hồi chậm, chưa tải được danh sách. Bấm Tìm để thử lại.' } } : err); },
     });
   }
   private fail(err: any) { this.error = err?.error?.message || 'Chưa lưu được thao tác. Vui lòng thử lại.'; this.busy = false; this.cdr.markForCheck(); }

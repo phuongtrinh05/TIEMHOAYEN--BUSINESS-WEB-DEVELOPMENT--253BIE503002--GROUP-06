@@ -1,15 +1,3 @@
-:host { font-size: 16px; }
-.request-layout, .request-detail, .request-card { font-size: 16px; }
-.request-card b, .request-card p, .request-card button, .request-card input, .request-card select,
-.request-detail p, .request-detail button, .request-detail input, .request-detail select, .request-detail textarea,
-.stock-card p, .stock-card table { font-size: 15px; }
-.request-detail h2 { font-size: 29px; }
-.request-detail h3, .order-overview h3 { font-size: 23px; }
-.order-overview > div > span, .inline-editor-head span { font-size: 12px; }
-.stock-card th { font-size: 14px; }
-.stock-card td, .stock-card td b { font-size: 15px; }
-.stock-card td small { font-size: 13px; }
-.work-switcher button, .request-actions button, .proposal-submit button { font-size: 15px; }
 
 .routing-reason-card{margin:12px 0;padding:14px 16px;border:1px solid #f1d5c9;border-radius:12px;background:#fffaf7}
 .routing-reason-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px}
