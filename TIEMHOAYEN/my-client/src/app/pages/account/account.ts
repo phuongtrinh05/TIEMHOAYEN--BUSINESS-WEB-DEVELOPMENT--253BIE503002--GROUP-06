@@ -684,7 +684,7 @@ export class AccountComponent implements OnInit, OnDestroy {
             description:
               item.LOAI_GIAM_GIA === 'Phần trăm'
                 ? `Giảm ${value}% đơn hàng`
-                : `Giảm ${value.toLocaleString('vi-VN')}đ đơn hàng`,
+                : `Giảm ${value.toLocaleString('en-US')}đ đơn hàng`,
             condition: 'Áp dụng cho tài khoản của bạn',
             expiry: item.NGAY_KET_THUC
               ? this.toDisplayDate(item.NGAY_KET_THUC.split('T')[0])
@@ -1386,7 +1386,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   }
 
   formatPrice(price: number): string {
-    return price.toLocaleString('vi-VN') + 'đ';
+    return price.toLocaleString('en-US') + 'đ';
   }
 
   formatPhoneInput(value: string): string {
@@ -1701,8 +1701,8 @@ export class AccountComponent implements OnInit, OnDestroy {
   private toLuckyVoucher(reward: any): Voucher {
     const prize = reward?.prize || {};
     const minimum = Number(reward?.minimumOrder || 0);
-    const conditions = ['Vòng quay may mắn', `Đơn từ ${minimum.toLocaleString('vi-VN')}đ`];
-    if (prize.kind === 'percent' && Number(prize.maxDiscount) > 0) conditions.push(`giảm tối đa ${Number(prize.maxDiscount).toLocaleString('vi-VN')}đ`);
+    const conditions = ['Vòng quay may mắn', `Đơn từ ${minimum.toLocaleString('en-US')}đ`];
+    if (prize.kind === 'percent' && Number(prize.maxDiscount) > 0) conditions.push(`giảm tối đa ${Number(prize.maxDiscount).toLocaleString('en-US')}đ`);
     const usable = reward?.status === 'Có thể dùng';
     if (reward?.status === 'Chờ kích hoạt' && reward?.sourceOrderId) conditions.push(`dùng được khi đơn #${reward.sourceOrderId} hoàn thành`);
     return {

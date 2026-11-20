@@ -1,3 +1,4 @@
+import { deliverySlotLabel } from '../../../services/pricing.service';
 import { apiBaseUrl, currentOrderAccountKey, orderAccessSession, setTransientGuestLookupSession } from '../../../services/api-config';
 import { memberAccessToken } from '../../../services/session-auth';
 import { LuckyOrderSpin } from '../../../components/lucky-order-spin/lucky-order-spin';
@@ -87,6 +88,7 @@ interface CheckoutOrderView {
   styleUrl: './checkout.css',
 })
 export class CheckoutComponent implements OnInit, OnDestroy {
+  readonly slotLabel = deliverySlotLabel;
   private readonly platformId = inject(PLATFORM_ID);
   private readonly router = inject(Router);
   private readonly orderService = inject(OrderService);

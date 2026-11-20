@@ -1,3 +1,4 @@
+import { deliverySlotLabel } from '../../../shared/date-time';
 ﻿import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { OnDestroy } from '@angular/core';
@@ -79,6 +80,7 @@ type SortOption =
   styleUrl: './order-list.css',
 })
 export class OrderList implements OnInit, OnDestroy {
+  readonly slotLabel = deliverySlotLabel;
   constructor(
     private readonly router: Router,
     private readonly adminApi: AdminApiService,

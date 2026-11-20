@@ -72,7 +72,7 @@ export async function changeCheckoutPayment(session: ClientSession, paymentId: s
         $push: { history: { id: randomUUID(), at: new Date(), actor, action: 'Thanh toán thành công, yêu cầu đã lên đơn', orderId: order.DON_HANG_ID } },
       } as any, { session });
     }
-    await orderEvent(session,paymentId+':verified',order.KHACH_HANG_ID||null,order.DON_HANG_ID,'Đã xác minh thanh toán','Shop đã xác minh khoản thu '+amount.toLocaleString('vi-VN')+'đ.');
+    await orderEvent(session,paymentId+':verified',order.KHACH_HANG_ID||null,order.DON_HANG_ID,'Đã xác minh thanh toán','Shop đã xác minh khoản thu '+amount.toLocaleString('en-US')+'đ.');
   }
   return updated;
 }

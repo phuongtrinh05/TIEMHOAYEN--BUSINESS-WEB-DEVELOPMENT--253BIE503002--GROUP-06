@@ -21,7 +21,7 @@
         @for(label of requestSteps;track label;let i=$index){<li [class.done]="requestStep>i+1 || (requestStep===5 && i===4)" [class.current]="requestStep===i+1 && requestStep<5" [attr.aria-current]="requestStep===i+1 ? 'step' : null"><span>{{i+1}}</span><strong>{{label}}</strong></li>}
       </ol>}
       <p class="stage-hint" [attr.data-tone]="stage.tone" role="status"><i class="bi" [class.bi-info-circle]="!stage.terminal" [class.bi-flag]="stage.terminal" aria-hidden="true"></i><span><strong>{{stage.label}}.</strong> {{stage.hint}}</span></p>
-      @if(hasCreatedOrder){<div class="converted-request-summary"><div class="converted-product">@for(item of request.items;track item.productId){<img [src]="image(item.image)" [alt]="item.name"><div><strong>{{item.name}}</strong><span>{{item.quantity}} bó · Giao {{request.delivery?.date}} {{request.delivery?.time}}</span>@if(request.quote?.summary?.total ?? request.originalTotal;as total){<b>{{total | number:'1.0-0'}}đ</b>}<small>{{request.orderSummary?.status || 'Đã tạo đơn hàng'}} · Thanh toán: {{request.orderSummary?.paymentStatus || 'Chưa cập nhật'}}</small></div>}</div><a [routerLink]="['/order-detail',linkedOrderId]">Xem đơn hàng <i class="bi bi-arrow-right"></i></a></div>}
+      @if(hasCreatedOrder){<div class="converted-request-summary"><div class="converted-product">@for(item of request.items;track item.productId){<img [src]="image(item.image)" [alt]="item.name"><div><strong>{{item.name}}</strong><span>{{item.quantity}} bó · Giao {{request.delivery?.date}} {{slotLabel(request.delivery?.time)}}</span>@if(request.quote?.summary?.total ?? request.originalTotal;as total){<b>{{total | number:'1.0-0'}}đ</b>}<small>{{request.orderSummary?.status || 'Đã tạo đơn hàng'}} · Thanh toán: {{request.orderSummary?.paymentStatus || 'Chưa cập nhật'}}</small></div>}</div><a [routerLink]="['/order-detail',linkedOrderId]">Xem đơn hàng <i class="bi bi-arrow-right"></i></a></div>}
       @if(!hasCreatedOrder && request.requestUpdatedByProposal){<p class="not-an-order"><strong>Yêu cầu đơn hàng đã được sửa.</strong> Vui lòng kiểm tra lại và xác nhận.</p>}
       @if (!hasCreatedOrder && privateLink) { <p>Giữ liên kết riêng để mở lại yêu cầu này. Người có liên kết có thể xem và phản hồi yêu cầu.</p><button class="secondary" (click)="copyPrivateLink()">Sao chép liên kết riêng</button> }
       @if (!hasCreatedOrder && !request.orderResult && !stage.terminal) {
@@ -36,7 +36,7 @@
       @if(!hasCreatedOrder){<details class="request-details" open><summary>Sản phẩm và lịch giao mong muốn</summary>
         @for (item of request.items; track item.productId) { <div class="requested-item"><img [src]="image(item.image)" [alt]="item.name"><p><strong>{{item.name}}</strong><br> Số lượng: {{item.quantity}}</p></div> }
         @if (request.originalTotal !== null) { <p>Giá trị yêu cầu ban đầu: {{request.originalTotal | number:'1.0-0'}}đ</p> }
-        <p>Lịch giao: {{request.delivery?.date}} · {{request.delivery?.time}}</p>
+        <p>Lịch giao: {{request.delivery?.date}} · {{slotLabel(request.delivery?.time)}}</p>
       </details>}
       @if (request.customerMessage) { <p class="message">{{request.customerMessage}}</p> }
       @if (!hasCreatedOrder && request.orderSummary) { <p>Đơn hàng: {{request.orderSummary.status}} · Thanh toán: {{request.orderSummary.paymentStatus}}</p> }
@@ -44,7 +44,7 @@
       @if (!hasCreatedOrder && canChange) {
         <details><summary>Đổi lịch hoặc dừng yêu cầu</summary>
           <button class="secondary" (click)="editSchedule()">Đề nghị đổi lịch giao</button>
-          @if (showSchedule) { <label>Ngày giao<input type="date" [(ngModel)]="requestedDate" (ngModelChange)="clearScheduleError('date')" [class.is-invalid]="scheduleDateError">@if(scheduleDateError){<small class="field-error">{{scheduleDateError}}</small>}</label><label>Giờ giao<input type="time" min="08:00" max="22:00" step="900" [(ngModel)]="requestedTime" (ngModelChange)="clearScheduleError('time')" [class.is-invalid]="scheduleTimeError">@if(scheduleTimeError){<small class="field-error">{{scheduleTimeError}}</small>}</label><p>Shop giao từ 08:00 đến 22:00 và cần ít nhất 4 giờ để chuẩn bị. Shop sẽ kiểm tra lại. Phương án và xác nhận trước đó không còn áp dụng cho lịch mới.</p><button (click)="change('reschedule')" [disabled]="busy">Gửi lịch mới</button> }
+          @if (showSchedule) { <label>Ngày giao<input type="date" [(ngModel)]="requestedDate" (ngModelChange)="clearScheduleError('date')" [class.is-invalid]="scheduleDateError">@if(scheduleDateError){<small class="field-error">{{scheduleDateError}}</small>}</label><label>Giờ giao<input type="time" min="08:00" max="21:30" step="1800" [(ngModel)]="requestedTime" (ngModelChange)="clearScheduleError('time')" [class.is-invalid]="scheduleTimeError">@if(scheduleTimeError){<small class="field-error">{{scheduleTimeError}}</small>}</label><p>Shop giao theo khung 30 phút từ 08:00 đến 22:00 (giờ bắt đầu muộn nhất 21:30) và cần ít nhất 4 giờ để chuẩn bị. Shop sẽ kiểm tra lại. Phương án và xác nhận trước đó không còn áp dụng cho lịch mới.</p><button (click)="change('reschedule')" [disabled]="busy">Gửi lịch mới</button> }
         </details>
       }
     </section>
@@ -64,7 +64,7 @@
         <div class="gift-card-summary" *ngIf="q.giftCard"><img *ngIf="q.giftCard.image" [src]="image(q.giftCard.image)" [alt]="q.giftCard.name"><p><strong>{{q.giftCard.name}}</strong><br>{{q.giftCard.message || 'Không có lời nhắn'}}<br><small *ngIf="q.giftCard.note">{{q.giftCard.note}}</small></p></div>
         <p class="total">Tổng đơn: {{q.summary.total | number:'1.0-0'}}đ</p>
         <p>Thanh toán trước: <strong>{{q.payment.amountToPay | number:'1.0-0'}}đ</strong> · Còn lại: {{q.summary.total-q.payment.amountToPay | number:'1.0-0'}}đ</p>
-        <p>Giao lúc {{q.delivery.time}}, ngày {{q.delivery.date}} · {{q.payment.methodName}}</p>
+        <p>Giao lúc {{slotLabel(q.delivery.time)}}, ngày {{q.delivery.date}} · {{q.payment.methodName}}</p>
         @if(q.note){<p class="message">{{q.note}}</p>}<small>{{q.discountNote}}</small>
         @if (stage.awaitingConfirmation && !readOnly) {
           <button (click)="respond('accept')" [disabled]="busy">Xác nhận phương án</button>
@@ -79,7 +79,7 @@
       @if(compact){<div class="chat-request-summary">
         <div class="compact-summary-head"><span>Yêu cầu đặt hoa</span><div class="request-heading-actions"><span class="status-pill request-status" [attr.data-tone]="stage.tone">{{stage.label}}</span></div></div>
         @if(request.requestUpdatedByProposal){<p class="not-an-order"><strong>Yêu cầu đơn hàng đã được sửa.</strong> Vui lòng kiểm tra lại và xác nhận.</p>}
-        @if(request.quote; as currentQuote){@for(item of currentQuote.items;track item.id){<div class="requested-item"><img [src]="image(item.image)" [alt]="item.name"><p><strong>{{item.name}}</strong><span>{{item.qty}} bó · {{currentQuote.delivery?.date}} {{currentQuote.delivery?.time}}</span><b>{{item.price | number:'1.0-0'}}đ/bó</b></p></div>}<p class="compact-quote-total"><span>Tổng dự kiến</span><strong>{{currentQuote.summary?.total | number:'1.0-0'}}đ</strong></p>}@else{@for(item of request.items;track item.productId){<div class="requested-item"><img [src]="image(item.image)" [alt]="item.name"><p><strong>{{item.name}}</strong><span>{{item.quantity}} bó · {{request.delivery?.date}} {{request.delivery?.time}}</span></p></div>}}
+        @if(request.quote; as currentQuote){@for(item of currentQuote.items;track item.id){<div class="requested-item"><img [src]="image(item.image)" [alt]="item.name"><p><strong>{{item.name}}</strong><span>{{item.qty}} bó · {{currentQuote.delivery?.date}} {{slotLabel(currentQuote.delivery?.time)}}</span><b>{{item.price | number:'1.0-0'}}đ/bó</b></p></div>}<p class="compact-quote-total"><span>Tổng dự kiến</span><strong>{{currentQuote.summary?.total | number:'1.0-0'}}đ</strong></p>}@else{@for(item of request.items;track item.productId){<div class="requested-item"><img [src]="image(item.image)" [alt]="item.name"><p><strong>{{item.name}}</strong><span>{{item.quantity}} bó · {{request.delivery?.date}} {{slotLabel(request.delivery?.time)}}</span></p></div>}}
         <p class="compact-action-note"><i class="bi" [class.bi-credit-card]="stage.key==='payment'" [class.bi-info-circle]="stage.key!=='payment'" aria-hidden="true"></i>{{stage.hint}}</p>
         @if(stage.awaitingConfirmation && !readOnly){<div class="compact-confirm-actions"><button (click)="respond('accept')" [disabled]="busy">Xác nhận phương án</button><button class="secondary" (click)="respond('decline')" [disabled]="busy">Tư vấn lại</button></div>}
       </div>}

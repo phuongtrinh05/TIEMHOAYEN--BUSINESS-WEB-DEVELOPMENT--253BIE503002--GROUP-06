@@ -134,19 +134,6 @@
             </div>
           </div>
 
-          <!-- Hình thức giao hàng -->
-          <div class="shipping-method-block">
-            <p class="section-label">Hình thức giao hàng</p>
-            <p class="shipping-auto">
-              <i class="bi" [ngClass]="formData.shippingMethod === 'fast' ? 'bi-lightning-charge' : 'bi-truck'"></i>
-              <ng-container *ngIf="formData.deliveryDate && formData.deliveryTime; else chooseSchedule">
-                <strong>{{ shippingMethodName }}</strong>
-                <span>{{ formData.shippingMethod === 'fast' ? '— giao trong vòng 24 giờ' : '— giao sau 24 giờ trở lên' }}</span>
-              </ng-container>
-              <ng-template #chooseSchedule><span>Tự xác định theo ngày giờ giao: trong 24 giờ là Giao nhanh, từ 24 giờ trở lên là Giao tiêu chuẩn.</span></ng-template>
-            </p>
-
-          </div>
 
           <h3 class="or-block__title or-block__title--spaced">2. Thời gian giao hàng</h3>
 
@@ -199,8 +186,8 @@
                   [(ngModel)]="formData.deliveryTime" (ngModelChange)="onDeliveryTimeChange()"
                   required #deliveryTime="ngModel"
                   [class.is-invalid]="(deliveryTime.invalid && (deliveryTime.touched || orForm.submitted)) || deliveryScheduleError">
-                  <option value="" disabled>Chọn giờ giao (08:00–22:00)</option>
-                  <option *ngFor="let slot of deliveryTimeOptions" [value]="slot">{{ slot }}{{ isUrgentSlot(slot) ? ' – cần gọi shop' : '' }}</option>
+                  <option value="" disabled>Chọn khung giờ giao (08:00 - 22:00)</option>
+                  <option *ngFor="let slot of deliveryTimeOptions" [value]="slot">{{ slotLabel(slot) }}{{ isUrgentSlot(slot) ? ' – cần gọi shop' : '' }}</option>
                 </select>
               </div>
 
@@ -229,17 +216,21 @@
             <label class="gift-card-option" *ngFor="let card of cardTemplates" [class.is-selected]="selectedCardTemplateId===card.id" [attr.aria-label]="card.name"><input type="radio" name="giftCard" [value]="card.id" [ngModel]="selectedCardTemplateId" (ngModelChange)="onCardTemplateChange($event)"><img [src]="card.image" [alt]="card.name"><small class="gift-card-option__fee">{{card.fee ? (card.fee | number:'1.0-0') + 'đ' : 'Miễn phí'}}</small></label>
           </div>
 
-          <div class="gift-card-writing" *ngIf="selectedCardTemplateId">
+          <div class="gift-card-writing" *ngIf="selectedCardTemplateId" [class.has-message]="cardWritingMode==='shop'">
+            <div class="gift-card-writing__main">
             <p>Bạn muốn chuẩn bị nội dung thiệp như thế nào?</p>
             <div class="gift-card-writing__choices">
               <button type="button" [class.is-selected]="cardWritingMode==='customer'" (click)="chooseCardWritingMode('customer')">Tôi tự viết</button>
               <button type="button" [class.is-selected]="cardWritingMode==='shop'" (click)="chooseCardWritingMode('shop')">Nhờ shop viết</button>
             </div>
             <span class="error-msg gift-card-message-error" *ngIf="cardWritingModeTouched && !cardWritingMode">Vui lòng chọn cách viết thiệp.</span>
+            <p class="gift-card-writing__hint" *ngIf="cardWritingMode==='customer'">Shop sẽ để trống phần nội dung để bạn tự viết.</p>
+            </div>
+            <div class="gift-card-writing__message" *ngIf="cardWritingMode==='shop'">
             <textarea *ngIf="cardWritingMode==='shop'" name="noteReceiver" class="form-textarea" [class.is-invalid]="cardMessageTouched && !formData.noteReceiver.trim()" placeholder="Nhập lời nhắn để shop viết hoặc in trên thiệp" [(ngModel)]="formData.noteReceiver" (ngModelChange)="cardMessageTouched=true" (blur)="cardMessageTouched=true" maxlength="500" rows="3"></textarea>
             <span class="error-msg gift-card-message-error" *ngIf="cardWritingMode==='shop' && cardMessageTouched && !formData.noteReceiver.trim()">Vui lòng nhập nội dung thiệp.</span>
-            <small *ngIf="cardWritingMode==='shop'">{{formData.noteReceiver.length}}/500 ký tự</small>
-            <p class="gift-card-writing__hint" *ngIf="cardWritingMode==='customer'">Shop sẽ để trống phần nội dung để bạn tự viết.</p>
+            <small class="gift-card-message-count">{{formData.noteReceiver.length}}/500 ký tự</small>
+            </div>
           </div>
 
           <h3 class="or-block__title or-block__title--spaced">4. Lời nhắn cho shop</h3>
@@ -462,7 +453,6 @@
 
             <div class="or-item__info">
               <span class="or-item__name">{{ item.name }}</span>
-              <span class="or-item__unit">{{ item.price | number:'1.0-0' }}đ / sản phẩm</span>
               <div class="qty-stepper" role="group" [attr.aria-label]="'Số lượng ' + item.name">
                 <button type="button" aria-label="Giảm số lượng" [disabled]="item.qty <= 1 || !!salesRequestId || isSubmittingOrder" (click)="changeItemQty(item, -1)">−</button>
                 <input class="qty-input" type="text" inputmode="numeric" [value]="item.qty" [attr.aria-label]="'Nhập số lượng ' + item.name"
@@ -474,7 +464,7 @@
             </div>
 
             <span class="or-item__price">
-              {{ item.price * item.qty | number:'1.0-0' }}đ
+              {{ item.price | number:'1.0-0' }}đ
             </span>
           </div>
         </div>
@@ -489,10 +479,6 @@
             <span class="pricing-value">{{ subtotal | number:'1.0-0' }}đ</span>
           </div>
 
-          <div class="pricing-row">
-            <span>Hình thức giao hàng:</span>
-            <span class="pricing-value">{{ shippingMethodName }}</span>
-          </div>
 
           <div class="pricing-row">
             <span>Phí ship:</span>
@@ -505,14 +491,14 @@
           </div>
 
           <div class="pricing-row" *ngIf="productVoucherDiscount > 0">
-            <span>Voucher sản phẩm<span class="applied-voucher-code" *ngIf="selectedVoucher">({{ selectedVoucher.code }})</span>:</span>
+            <span>Voucher sản phẩm:</span>
             <span class="discount-value">
               -{{ productVoucherDiscount | number:'1.0-0' }}đ
             </span>
           </div>
 
           <div class="pricing-row" *ngIf="shippingVoucherDiscount > 0">
-            <span>Voucher phí ship<span class="applied-voucher-code" *ngIf="selectedVoucher">({{ selectedVoucher.code }})</span>:</span>
+            <span>Voucher phí ship:</span>
             <span class="discount-value">
               -{{ shippingVoucherDiscount | number:'1.0-0' }}đ
             </span>
@@ -542,8 +528,7 @@
 
         <div class="or-pricing" *ngIf="showDepositPolicy">
           <div class="pricing-row pricing-row--policy">
-            <span>Chính sách thanh toán:</span>
-            <span class="pricing-value">{{ currentPaymentPolicy?.note }}</span>
+            <span class="pricing-policy-note">{{ currentPaymentPolicy?.note }}</span>
           </div>
 
           <div class="pricing-row" *ngIf="depositAmount > 0">
@@ -562,11 +547,12 @@
         </p>
 
         <div class="request-notice" *ngIf="quoteNeedsRequest && !salesRequestId">
-          <p class="request-notice__title"><i class="bi bi-info-circle"></i> Đơn này cần shop xác nhận trước</p>
-          <ul class="request-notice__reasons">
+          <p class="request-notice__title"><i class="bi bi-info-circle"></i> Đơn này cần shop xác nhận</p>
+          <p class="request-notice__reason" *ngIf="quoteRequestReasons.length === 1">{{ quoteRequestReasons[0] }}</p>
+          <ul class="request-notice__reasons" *ngIf="quoteRequestReasons.length > 1">
             <li *ngFor="let reason of quoteRequestReasons">{{ reason }}</li>
           </ul>
-          <p class="request-notice__note">Vui lòng chờ shop liên hệ để xác nhận phương án phù hợp. Nếu cần gấp, bạn có thể gọi <a [href]="'tel:' + shopPhone">{{ shopPhone }}</a> để được hỗ trợ nhanh hơn.</p>
+          <p class="request-notice__note">Shop sẽ liên hệ xác nhận. Cần gấp gọi <a [href]="'tel:' + shopPhone">{{ shopPhone }}</a>.</p>
         </div>
 
         <button

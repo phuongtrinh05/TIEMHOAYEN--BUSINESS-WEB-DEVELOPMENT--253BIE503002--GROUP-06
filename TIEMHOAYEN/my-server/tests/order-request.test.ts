@@ -756,7 +756,7 @@ test('backend prices catalog, shipping and voucher instead of submitted money', 
   assert.equal(quote.summary.total, 255000);
   assert.equal(quote.items[0].image, '/sample.jpg');
   rows.VOUCHER = { VOUCHER_ID: 'V1', LOAI_GIAM_GIA: 'Tiền', GIA_TRI_GIAM: 100000, DON_TOI_THIEU: 1000000 };
-  await assert.rejects(priceCheckout(payload, undefined, collections), /đơn tối thiểu 1\.000\.000đ/);
+  await assert.rejects(priceCheckout(payload, undefined, collections), /đơn tối thiểu 1,000,000đ/);
   for (const type of ['Số tiền', 'Tiền mặt']) {
     rows.VOUCHER = { VOUCHER_ID: 'V1', LOAI_GIAM_GIA: type, GIA_TRI_GIAM: 50000 };
     const fixed = await priceCheckout(payload, undefined, collections);

@@ -170,7 +170,7 @@
                   @if (o.requestId) { <div class="muted small">YC {{ o.requestId }}</div> }
                 </td>
                 <td>{{ o.receiverName || '—' }}</td>
-                <td>{{ o.deliveryAt ? (o.deliveryAt | date: 'dd/MM/yyyy HH:mm') : '—' }}<div class="muted small">{{ o.deliverySlot }}</div></td>
+                <td>{{ o.deliveryAt ? (o.deliveryAt | date: 'dd/MM/yyyy HH:mm') : '—' }}<div class="muted small">{{ slotLabel(o.deliverySlot) }}</div></td>
                 <td>
                   @if (o.prepAt) {
                     <span [title]="prepTitle(o)">{{ o.prepAt | date: 'dd/MM HH:mm' }}</span>

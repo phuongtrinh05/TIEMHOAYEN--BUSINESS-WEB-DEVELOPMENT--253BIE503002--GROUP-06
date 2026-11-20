@@ -1,3 +1,4 @@
+import { deliverySlotLabel } from '../../../services/pricing.service';
 import { apiBaseUrl, orderAccessSession } from '../../../services/api-config';
 import { memberAccessToken } from '../../../services/session-auth';
 import { LuckyWheelService } from '../../../services/lucky-wheel.service';
@@ -90,6 +91,7 @@ interface OrderDetailVoucher {
   styleUrl: './order-detail.css',
 })
 export class OrderDetail implements OnInit, OnDestroy {
+  readonly slotLabel = deliverySlotLabel;
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly orderService = inject(OrderService);

@@ -1,3 +1,4 @@
+import { deliverySlotLabel } from '../../../shared/date-time';
 import { formatDateTime24 } from '../../../shared/date-time';
 import { InventoryDialogComponent } from '../inventory-dialog';
 import { CommonModule } from '@angular/common';
@@ -30,6 +31,7 @@ const MOVEMENT_LABEL: Record<string, string> = {
   styleUrls: ['../inventory.css'],
 })
 export class StockOverviewComponent implements OnInit {
+  readonly slotLabel = deliverySlotLabel;
   @ViewChild(InventoryDialogComponent) private dialog!: InventoryDialogComponent;
   exportCsv(): void {
     const tab = this.tab();

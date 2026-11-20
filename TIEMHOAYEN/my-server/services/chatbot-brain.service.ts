@@ -167,7 +167,7 @@ export async function planChatReply(body: any, history: any[] = []) {
             ? 'Hiện hệ thống ghi nhận mẫu này vẫn có khả năng đáp ứng.'
             : 'Hiện mẫu này chưa đủ hàng sẵn theo tồn kho.';
         const extra = /doi mau|thay mau/.test(s) ? ' Nếu muốn đổi màu, bạn chọn Gặp nhân viên để shop kiểm tra phương án và báo lại trước khi lên đơn.' : '';
-        return { intent, product, reply: `${product.name} có giá ${product.price.toLocaleString('vi-VN')}đ. ${availability} Nếu đặt trước từ 24 giờ trở lên, shop có thời gian chuẩn bị theo lịch giao; nếu cần giao trong ngày, nhân viên sẽ kiểm tra tồn thực tế và xác nhận với bạn. Trường hợp cần gấp dưới 4 giờ, bạn vui lòng gọi 0909477488 để shop kiểm tra khả năng nhận đơn.${extra}` };
+        return { intent, product, reply: `${product.name} có giá ${product.price.toLocaleString('en-US')}đ. ${availability} Nếu đặt trước từ 24 giờ trở lên, shop có thời gian chuẩn bị theo lịch giao; nếu cần giao trong ngày, nhân viên sẽ kiểm tra tồn thực tế và xác nhận với bạn. Trường hợp cần gấp dưới 4 giờ, bạn vui lòng gọi 0909477488 để shop kiểm tra khả năng nhận đơn.${extra}` };
     }
     if (intent === 'image') {
         const preferences = imagePreferences(text, body.preferences);

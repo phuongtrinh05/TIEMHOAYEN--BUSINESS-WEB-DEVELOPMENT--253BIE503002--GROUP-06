@@ -114,7 +114,7 @@
             <div class="info-item">
               <span class="info-label">Giờ giao:</span>
               <span class="info-value" [class.info-value--empty]="!order.delivery.time">
-                {{ order.delivery.time || 'Chưa chọn' }}
+                {{ order.delivery.time ? slotLabel(order.delivery.time) : 'Chưa chọn' }}
               </span>
             </div>
 

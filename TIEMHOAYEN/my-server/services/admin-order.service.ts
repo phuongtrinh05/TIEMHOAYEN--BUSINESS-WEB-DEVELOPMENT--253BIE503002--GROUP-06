@@ -4,7 +4,7 @@ import { InventoryError, withTransaction } from './inventory/helpers.js';
 import { INVENTORY_CONFIG } from './inventory/constants.js';
 import { receiveReturnedFinishedGoods } from './inventory/stock.service.js';
 import { emitAdminNotification } from './analytics/notifications.service.js';
-import { assertWithinShopHours } from './delivery-policy.service.js';
+import { assertDeliverySlotStart, assertWithinShopHours } from './delivery-policy.service.js';
 
 import { slot24h } from './time-format.js';
 import { evaluateVoucher, loadVoucherContext } from './voucher-policy.service.js';
@@ -288,6 +288,8 @@ export function shippingMethodFor(deliveryAt: string | Date, now = new Date()): 
 /** Mirrors the existing storefront tariff; no new deposit/cutoff policy is introduced. */
 export async function priceCheckout(payload: any, session?: ClientSession, collections: typeof getCollection = getCollection) {
   const delivery = validateCheckoutDelivery(payload.delivery);
+  // Đơn mới chọn một giờ (đầu khung 30 phút): cả khung phải kết thúc trước 22:00.
+  if (delivery.deliveryStartAt === delivery.deliveryAt) assertDeliverySlotStart(delivery.deliveryStartAt);
   if (String(delivery.message || '').length > 2000 || String(delivery.noteShop || '').length > 2000 || String(payload.adminNote || '').length > 2000) throw new InventoryError(400, 'Nội dung thiệp hoặc ghi chú tối đa 2.000 ký tự.');
   const items: any[] = [];
   const merged = new Map<string, number>();

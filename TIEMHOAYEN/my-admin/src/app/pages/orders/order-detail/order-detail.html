@@ -785,7 +785,7 @@
             <div class="delivery-row">
               <i class="bi bi-calendar2-check"></i>
               <span class="delivery-label">Khung giờ giao</span>
-              <span class="delivery-val" *ngIf="!isEditing">{{ order.deliverySlot }}</span>
+              <span class="delivery-val" *ngIf="!isEditing">{{ slotLabel(order.deliverySlot) }}</span>
               <input
                 *ngIf="isEditing"
                 class="edit-input"

@@ -793,7 +793,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       return '0đ';
     }
 
-    return value.toLocaleString('vi-VN') + 'đ';
+    return value.toLocaleString('en-US') + 'đ';
   }
   private getSelectedCount(): number {
     return Object.values(this.selectedFilters).reduce((total, group) => total + group.size, 0) +

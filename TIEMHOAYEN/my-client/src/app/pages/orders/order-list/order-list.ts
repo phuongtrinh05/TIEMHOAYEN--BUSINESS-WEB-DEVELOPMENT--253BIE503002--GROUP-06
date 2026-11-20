@@ -1,3 +1,4 @@
+import { deliverySlotLabel } from '../../../services/pricing.service';
 import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -19,6 +20,7 @@ type LookupTab = 'all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
   styleUrls: ['./order-list.css', '../request-status-tone.css'],
 })
 export class OrderList implements OnInit, OnDestroy {
+  readonly slotLabel = deliverySlotLabel;
   readonly access = inject(OrderAccessService);
   private readonly ordersService = inject(OrderService);
   private readonly cdr = inject(ChangeDetectorRef);

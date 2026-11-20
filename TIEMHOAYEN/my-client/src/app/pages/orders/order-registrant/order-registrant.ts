@@ -1,6 +1,6 @@
 import { memberAccessToken } from '../../../services/session-auth';
 import {LuckyRewardPicker} from '../../../components/lucky-reward-picker/lucky-reward-picker';
-import { AvailableVoucher, PricingService, ServerQuote, SHOP_PHONE, deliveryTimeSlots, isUrgentDelivery, isWithin24h } from '../../../services/pricing.service';
+import { AvailableVoucher, PricingService, ServerQuote, SHOP_PHONE, deliverySlotLabel, deliveryTimeSlots, isUrgentDelivery, isWithin24h } from '../../../services/pricing.service';
 import { Component, OnInit, ViewChild, inject, PLATFORM_ID, HostListener, ChangeDetectorRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule, NgForm } from '@angular/forms';
@@ -252,35 +252,35 @@ export class OrderRegistrantComponent implements OnInit {
       maxTotal: 299999,
       depositType: 'fixed',
       depositValue: 50000,
-      note: 'Đơn dưới 300.000đ cần đặt cọc 50.000đ',
+      note: 'Đơn dưới 300,000đ cần cọc 50,000đ',
     },
     {
       minTotal: 300000,
       maxTotal: 499999,
       depositType: 'fixed',
       depositValue: 100000,
-      note: 'Đơn từ 300.000đ đến dưới 500.000đ cần đặt cọc 100.000đ',
+      note: 'Đơn 300,000đ - 500,000đ cần cọc 100,000đ',
     },
     {
       minTotal: 500000,
       maxTotal: 999999,
       depositType: 'percent',
       depositValue: 30,
-      note: 'Đơn từ 500.000đ đến dưới 1.000.000đ cần đặt cọc 30%',
+      note: 'Đơn 500,000đ - 1,000,000đ cần cọc 30%',
     },
     {
       minTotal: 1000000,
       maxTotal: 1999999,
       depositType: 'percent',
       depositValue: 40,
-      note: 'Đơn từ 1.000.000đ đến dưới 2.000.000đ cần đặt cọc 40%',
+      note: 'Đơn 1,000,000đ - 2,000,000đ cần cọc 40%',
     },
     {
       minTotal: 2000000,
       maxTotal: null,
       depositType: 'percent',
       depositValue: 50,
-      note: 'Đơn từ 2.000.000đ trở lên cần đặt cọc 50%',
+      note: 'Đơn từ 2,000,000đ cần cọc 50%',
     },
   ];
 
@@ -597,7 +597,7 @@ export class OrderRegistrantComponent implements OnInit {
   }
 
   private formatMoney(value: number): string {
-    return `${Number(value || 0).toLocaleString('vi-VN')}đ`;
+    return `${Number(value || 0).toLocaleString('en-US')}đ`;
   }
 
   private loadOrderItemsFromSelectedCart(): void {
@@ -1108,7 +1108,7 @@ export class OrderRegistrantComponent implements OnInit {
     return this.productVoucherDiscount;
   }
 
-  /** 2 điểm = 1.000đ; backend chỉ nhận số điểm chẵn. */
+  /** 2 điểm = 1,000đ; backend chỉ nhận số điểm chẵn. */
   private getMaxRedeemablePointsByBalance(): number {
     return Math.floor(Math.max(0, this.maxLoyaltyPoints) / 2) * 2;
   }
@@ -1225,7 +1225,7 @@ export class OrderRegistrantComponent implements OnInit {
         maxTotal: null,
         depositType: 'percent',
         depositValue: 70,
-        note: 'Hoa cưới, hoa sự kiện hoặc đơn số lượng lớn cần đặt cọc 70%',
+        note: 'Hoa cưới, sự kiện hoặc đơn số lượng lớn cần cọc 70%',
       };
     }
 
@@ -1852,6 +1852,7 @@ export class OrderRegistrantComponent implements OnInit {
   // ===== GIỜ GIAO: 08:00–22:00, khung 30 phút; dưới 4 giờ phải gọi shop =====
   urgentDeliveryPopup = false;
   readonly shopPhone = SHOP_PHONE;
+  readonly slotLabel = deliverySlotLabel;
   get deliveryTimeOptions(): string[] {
     const isoDate = this.toIsoDate(this.formData.deliveryDate);
     return deliveryTimeSlots(/^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? isoDate : '');
