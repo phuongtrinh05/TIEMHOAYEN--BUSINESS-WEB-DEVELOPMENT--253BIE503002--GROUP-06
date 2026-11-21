@@ -78,6 +78,7 @@ function deliveryAt(date: unknown, time: unknown) {
   return parsed;
 }
 const SALES_PAYMENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const PAYMENT_CUTOFF_LEAD_MS = 4 * 60 * 60 * 1000;
 const PREPARATION_LEAD_MS = 3 * 60 * 60 * 1000;
 /**
  * Quyết định giữ tồn khi Sales chốt đơn:
@@ -130,8 +131,8 @@ async function planOrderStock(items: any[], neededAt: Date, session: ClientSessi
 }
 function salesPaymentDeadline(delivery: any, acceptedAt: Date, urgentOverride = false) {
   const scheduledAt = deliveryAt(delivery?.date, delivery?.time);
-  const preparationCutoff = scheduledAt.getTime() - PREPARATION_LEAD_MS;
-  const deadlineMs = Math.min(acceptedAt.getTime() + SALES_PAYMENT_WINDOW_MS, preparationCutoff);
+  const paymentCutoff = scheduledAt.getTime() - PAYMENT_CUTOFF_LEAD_MS;
+  const deadlineMs = Math.min(acceptedAt.getTime() + SALES_PAYMENT_WINDOW_MS, paymentCutoff);
   if (deadlineMs <= acceptedAt.getTime()) {
     if (!urgentOverride) throw new InventoryError(409, 'Lịch giao đã quá gần thời điểm chuẩn bị; cần đổi lịch hoặc xác nhận xử lý đơn gấp sau khi đã thống nhất với khách.');
     // Giá trị chỉ dùng để hoàn tất phép kiểm tra. Đơn gấp do Sales xác nhận sẽ
