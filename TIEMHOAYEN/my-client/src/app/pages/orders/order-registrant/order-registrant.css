@@ -1005,6 +1005,10 @@
   font-weight: 600;
 }
 
+.discount-row {
+  color: #888;
+}
+
 .pricing-total {
   font-family: var(--font-body);
   font-size: 1.02rem;

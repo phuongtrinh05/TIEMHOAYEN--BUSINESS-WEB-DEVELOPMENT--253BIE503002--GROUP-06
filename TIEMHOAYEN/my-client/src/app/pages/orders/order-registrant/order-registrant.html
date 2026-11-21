@@ -484,7 +484,7 @@
             <span class="pricing-value">{{ selectedCardFee | number:'1.0-0' }}đ</span>
           </div>
 
-          <div class="pricing-row" *ngIf="productVoucherDiscount > 0">
+          <div class="pricing-row discount-row" *ngIf="productVoucherDiscount > 0">
             <span>Voucher</span>
             <span class="discount-value">
               -{{ productVoucherDiscount | number:'1.0-0' }}đ
