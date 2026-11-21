@@ -1041,8 +1041,8 @@ export class OrderDetail implements OnInit, OnDestroy {
     if (!Array.isArray(existing)) existing = [];
     for (const item of cartItems) {
       const found = existing.find(row => String(row.lineKey || row.id) === item.lineKey);
-      if (found) { found.quantity = Number(found.quantity || 0) + item.quantity; found.selected = true; }
-      else existing.push(item);
+      if (found) { existing.splice(existing.indexOf(found), 1); existing.unshift(found); found.quantity = Number(found.quantity || 0) + item.quantity; found.selected = true; }
+      else existing.unshift(item);
     }
     localStorage.setItem('tiemHoaYenCart', JSON.stringify(existing));
     localStorage.removeItem('tiemHoaYenCheckoutItems');

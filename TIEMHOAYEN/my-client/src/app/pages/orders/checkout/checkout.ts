@@ -19,6 +19,7 @@ import {
 
 interface CheckoutProduct {
   id: string;
+  cartLineKeys?: string[];
   name: string;
   qty: number;
   price: number;
@@ -437,6 +438,7 @@ export class CheckoutComponent implements OnInit, OnDestroy {
 
     return items.map((item: any) => ({
       id: String(item.id || item.SAN_PHAM_ID || ''),
+      cartLineKeys: item.cartLineKeys || [String(item.lineKey || item.LINE_KEY || item.id || item.SAN_PHAM_ID || '')],
       name: String(item.name || item.TEN_SAN_PHAM || ''),
       qty: Math.max(1, Number(item.qty ?? item.quantity ?? item.SO_LUONG ?? 1)),
       price: Number(item.price ?? item.GIA_KHUYEN_MAI ?? item.GIA ?? 0),
@@ -594,6 +596,7 @@ export class CheckoutComponent implements OnInit, OnDestroy {
     if (res.requiresPayment === false && !this.isSuccessText(this.paymentStatus) && !/hủy|từ chối/i.test(this.orderStatus)) {
       this.isOrderAccepted = true; this.stopTimers(); this.saveCompletedOrderInfo();
       if (this.order?.source === 'guest') this.cleanGuestCartAfterSuccess();
+      else this.refreshMemberCartAfterSuccess();
       this.cdr.markForCheck(); return;
     }
     if (this.isSuccessText(this.paymentStatus)) {
@@ -649,7 +652,7 @@ export class CheckoutComponent implements OnInit, OnDestroy {
 
     if (this.order.source === 'guest') {
       this.cleanGuestCartAfterSuccess();
-    }
+    } else this.refreshMemberCartAfterSuccess();
     this.cdr.detectChanges();
   }
 
@@ -823,6 +826,16 @@ export class CheckoutComponent implements OnInit, OnDestroy {
     localStorage.removeItem(this.failedOrderStorageKey);
   }
 
+  private memberCartRefreshed = false;
+
+  private refreshMemberCartAfterSuccess(): void {
+    if (!this.order || this.memberCartRefreshed) return;
+    this.memberCartRefreshed = true;
+    localStorage.removeItem(`tiemHoaYen:cart:${this.order.customerId}`);
+    localStorage.removeItem(this.checkoutItemsStorageKey);
+    window.dispatchEvent(new Event('cart-changed'));
+  }
+
   private cleanGuestCartAfterSuccess(): void {
     if (!this.order || this.order.source !== 'guest') {
       return;
@@ -830,7 +843,7 @@ export class CheckoutComponent implements OnInit, OnDestroy {
 
     const orderedIds = new Set(
       this.order.products
-        .map((item) => String(item.id || '').trim())
+        .flatMap((item) => item.cartLineKeys || [String(item.id || '').trim()])
         .filter(Boolean)
     );
 
@@ -847,7 +860,7 @@ export class CheckoutComponent implements OnInit, OnDestroy {
 
         if (Array.isArray(cart)) {
           const remainingCart = cart.filter((item: any) => {
-            const itemId = String(item?.id || item?.SAN_PHAM_ID || '').trim();
+            const itemId = String(item?.lineKey || item?.LINE_KEY || item?.id || item?.SAN_PHAM_ID || '').trim();
             return !orderedIds.has(itemId);
           });
 

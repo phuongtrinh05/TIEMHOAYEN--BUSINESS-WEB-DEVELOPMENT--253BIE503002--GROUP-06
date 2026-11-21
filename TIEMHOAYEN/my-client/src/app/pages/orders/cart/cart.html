@@ -7,7 +7,7 @@
     <span>Giỏ hàng</span>
   </div>
 
-  <h2 class="cart-title">Giỏ hàng của bạn ({{ getSelectedCount() }})</h2>
+  <h2 class="cart-title">Giỏ hàng của bạn ({{ cartItems.length }})</h2>
 
   <div class="cart-layout">
 
@@ -66,7 +66,7 @@
                  [attr.tabindex]="canOpenProductDetail(item) ? 0 : null"
                  (click)="goToProductDetail(item)"
                  (keydown.enter)="goToProductDetail(item)">{{ item.name }}</p><p *ngIf="item.designId" class="item-meta">{{item.requiresReview ? 'Cần shop duyệt · Giá tạm tính' : 'Mẫu đã được duyệt'}}</p>
-              <p class="item-meta">Kiểu dáng: {{ item.style }}</p>
+              <p class="item-meta" *ngIf="!isAddOnItem(item)">Kiểu dáng: {{ item.style }}</p>
               <span class="cart-status-badge" *ngIf="!item.purchasable">Ngừng bán</span>
               <p class="cart-line-warning" *ngIf="item.priceChanged">Giá sản phẩm đã được cập nhật theo giá hiện tại.</p>
             </div>
@@ -157,7 +157,7 @@
         class="btn-order"
         [disabled]="!canCheckout()"
         (click)="goToCheckout()">
-        {{ hasDesignReview ? 'Tiếp tục gửi yêu cầu' : 'Đặt hàng' }}
+        {{ hasDesignReview ? 'Tiếp tục gửi yêu cầu' : 'Đặt hàng' }} ({{ getSelectedCount() }})
       </button>
 
       <div class="summary-guarantees">
@@ -183,11 +183,11 @@
     <h3 class="suggestions-title">Gợi ý sản phẩm mua kèm</h3>
 
     <div class="suggestions-wrapper">
-      <button type="button" class="btn-nav btn-prev" (click)="prevSlide()">
+      <button *ngIf="suggestedProducts.length > 2" type="button" class="btn-nav btn-prev" aria-label="Sản phẩm mua kèm trước" (click)="prevSlide()">
         <i class="bi bi-chevron-left"></i>
       </button>
 
-      <div class="suggestions-list">
+      <div class="suggestions-list" [style.--suggestion-count]="suggestedProducts.length">
         <div
           class="suggestion-card"
           *ngFor="let product of getSuggestedProducts()"
@@ -206,7 +206,7 @@
         </div>
       </div>
 
-      <button type="button" class="btn-nav btn-next" (click)="nextSlide()">
+      <button *ngIf="suggestedProducts.length > 2" type="button" class="btn-nav btn-next" aria-label="Sản phẩm mua kèm tiếp theo" (click)="nextSlide()">
         <i class="bi bi-chevron-right"></i>
       </button>
     </div>

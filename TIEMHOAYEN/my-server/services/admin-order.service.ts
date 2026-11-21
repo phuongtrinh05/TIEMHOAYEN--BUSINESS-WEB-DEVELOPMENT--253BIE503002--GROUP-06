@@ -324,7 +324,10 @@ export async function priceCheckout(payload: any, session?: ClientSession, colle
     const price = sale > 0 && sale < regular ? sale : regular;
     if (!Number.isSafeInteger(price) || price <= 0) throw new InventoryError(409, `Sản phẩm ${id} chưa có giá hợp lệ.`);
     const image = imageByProduct.get(id);
-    items.push({ id, qty, price, name: product.TEN_SAN_PHAM, image: image?.URL || '' });
+    const cartLineKeys = (payload.items || [])
+      .filter((item: any) => String(item.id || item.productId || item.SAN_PHAM_ID || '') === id)
+      .map((item: any) => String(item.lineKey || item.LINE_KEY || id));
+    items.push({ id, qty, price, name: product.TEN_SAN_PHAM, image: image?.URL || '', cartLineKeys });
   }
   const subtotal = items.reduce((sum, i) => sum + i.qty * i.price, 0);
   if (!Number.isSafeInteger(subtotal)) throw new InventoryError(400, 'Giá trị đơn vượt giới hạn tính toán.');

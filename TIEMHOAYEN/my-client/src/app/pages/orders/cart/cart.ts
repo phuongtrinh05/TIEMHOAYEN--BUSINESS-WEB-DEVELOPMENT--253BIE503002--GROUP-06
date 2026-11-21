@@ -677,6 +677,12 @@ export class CartComponent implements OnInit {
       .replace(/\s+/g, ' ');
   }
 
+  isAddOnItem(item: CartItem): boolean {
+    const style = this.normalizeText(item.style);
+    return style === 'san pham mua kem' || style === 'phu kien' ||
+      ['SPM143', 'SPM144', 'SPM145', 'SPM146'].includes(item.id);
+  }
+
   getSelectedCount(): number {
     return this.cartItems.filter((item: CartItem) => item.selected).length;
   }
@@ -1039,6 +1045,7 @@ export class CartComponent implements OnInit {
 
     if (existingItem) {
       existingItem.quantity++;
+      this.cartItems = [existingItem, ...this.cartItems.filter(item => item !== existingItem)];
       const topicName = this.getCartTopicName(product.status);
 
       if (topicName && !existingItem.topicName) {
@@ -1048,7 +1055,7 @@ export class CartComponent implements OnInit {
     } else {
       const topicName = this.getCartTopicName(product.status);
 
-      this.cartItems.push({
+      this.cartItems.unshift({
         id: product.id,
         lineKey: product.id,
         name: product.name,
@@ -1155,11 +1162,10 @@ export class CartComponent implements OnInit {
             ? res.materials
             : [];
 
-        const existingIds = new Set(this.cartItems.map(item => item.id));
         this.suggestedProducts = products
           .filter(item => !item.TRANG_THAI || this.normalizeText(String(item.TRANG_THAI)) === this.normalizeText('Đang bán'))
           .map((item: SuggestedProductResponse) => this.mapSuggestedProductResponse(item))
-          .filter(product => product.id.startsWith('SP') && !existingIds.has(product.id) && !/^\s*thi[eệ]p/i.test(product.name))
+          .filter(product => product.id.startsWith('SP') && !/^\s*thi[eệ]p/i.test(product.name))
           .slice(0, 4);
         this.suggestedMobileStartIndex = 0;
 

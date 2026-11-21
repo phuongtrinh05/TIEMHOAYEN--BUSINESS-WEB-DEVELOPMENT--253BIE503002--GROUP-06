@@ -78,6 +78,7 @@ export async function changeCheckoutPayment(session: ClientSession, paymentId: s
 }
 
 export async function consumeCheckoutBenefits(session: ClientSession, order: any) {
+    await removeOrderedCartItems(session, order);
     const orders = await getCollection<any>('DON_HANG');
     if (order.DIEM_THUONG_SU_DUNG && !order.DA_TRU_DIEM_THUONG) {
       const points = Number(order.DIEM_THUONG_SU_DUNG);
@@ -106,6 +107,39 @@ export async function consumeCheckoutBenefits(session: ClientSession, order: any
       if (voucher.KHACH_HANG_ID) await (await getCollection<any>('VOUCHER')).updateOne({ VOUCHER_ID: voucher.VOUCHER_ID }, { $set: { DA_DUNG: true } }, { session });
     }
 
+}
+
+/** Delete purchased cart lines once, in the same transaction that accepts the order. */
+export async function removeOrderedCartItems(session: ClientSession, order: any) {
+  if (!order.KHACH_HANG_ID) return;
+  const orders = await getCollection<any>('DON_HANG');
+  const claimed = await orders.updateOne(
+    { DON_HANG_ID: order.DON_HANG_ID, DA_DON_GIO_HANG: { $ne: true } },
+    { $set: { DA_DON_GIO_HANG: true } }, { session },
+  );
+  if (!claimed.modifiedCount) return;
+  const carts = await (await getCollection<any>('GIO_HANG'))
+    .find({ KHACH_HANG_ID: order.KHACH_HANG_ID }, { session }).toArray();
+  const cartIds = carts.map(cart => cart.GIO_HANG_ID);
+  if (!cartIds.length) return;
+  const lines = await (await getCollection<any>('DON_HANG_CHI_TIET'))
+    .find({ DON_HANG_ID: order.DON_HANG_ID }, { session }).toArray();
+  if (!lines.length) return;
+  const lineFilters = lines.map(line => ({
+    SAN_PHAM_ID: line.SAN_PHAM_ID,
+    $or: [
+      { LINE_KEY: { $in: line.CART_LINE_KEYS || [line.LINE_KEY || line.SAN_PHAM_ID] } },
+      ...((line.CART_LINE_KEYS || [line.LINE_KEY || line.SAN_PHAM_ID]).includes(line.SAN_PHAM_ID)
+        ? [{ LINE_KEY: { $exists: false } }] : []),
+    ],
+  }));
+  await (await getCollection<any>('GIO_HANG_CHI_TIET')).deleteMany({
+    GIO_HANG_ID: { $in: cartIds },
+    $and: [
+      { $or: lineFilters },
+      { $or: [{ LAN_THEM_CUOI: { $exists: false } }, { LAN_THEM_CUOI: { $lte: order.NGAY_TAO } }] },
+    ],
+  }, { session });
 }
 
 /** Called inside the same transaction as payment writes for stock-checked orders. */

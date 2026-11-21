@@ -179,11 +179,6 @@
           </strong>
         </div>
 
-        <p class="payment-deadline-note" *ngIf="showPaymentCountdown && orderPaymentDeadlineDate">
-          <i class="bi bi-clock"></i>
-          <span>Vui lòng thanh toán trước <b>{{ orderPaymentDeadlineDate | date:'dd/MM/yyyy HH:mm' }}</b>.</span>
-        </p>
-
         <div class="payment-method-summary">
           <span>Phương thức:</span>
           <strong>{{ order.payment.methodName }}</strong>
@@ -290,7 +285,7 @@
           </div>
 
           <div class="payment-summary__row" *ngIf="order.summary.shippingVoucherDiscount > 0">
-            <span>Voucher phí ship:</span>
+            <span>Voucher</span>
             <span class="text-danger">
               -{{ order.summary.shippingVoucherDiscount | number:'1.0-0' }}đ
             </span>
@@ -302,7 +297,7 @@
           </div>
 
           <div class="payment-summary__row" *ngIf="order.summary.productVoucherDiscount > 0">
-            <span>Voucher sản phẩm:</span>
+            <span>Voucher</span>
             <span class="text-danger">
               -{{ order.summary.productVoucherDiscount | number:'1.0-0' }}đ
             </span>

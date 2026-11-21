@@ -334,7 +334,7 @@ export class Design3d implements OnInit, OnDestroy {
       let customer:any=null;try{customer=JSON.parse(localStorage.getItem('khachHang') || 'null');}catch{}
       if(customer?.KHACH_HANG_ID){this.cartApi.addItem(customer.KHACH_HANG_ID,d.productId,1).subscribe({next:()=>{this.savingDesign=false;this.router.navigate(['/cart']);},error:e=>{this.savingDesign=false;this.designError=e.error?.message || 'Chưa thêm được vào giỏ.';this.cdr.markForCheck();}});}
       else {try{const raw=JSON.parse(localStorage.getItem('tiemHoaYenCart') || '[]');const cart=Array.isArray(raw)?raw:[];
-        cart.push({id:d.productId,designId:d.designId,name:d.name,style:'Thiết kế 3D',quantity:1,price:d.price,image:d.image,selected:true,requiresReview:d.requiresReview,badges:d.badges});
+        cart.unshift({id:d.productId,designId:d.designId,name:d.name,style:'Thiết kế 3D',quantity:1,price:d.price,image:d.image,selected:true,requiresReview:d.requiresReview,badges:d.badges});
         localStorage.setItem('tiemHoaYenCart',JSON.stringify(cart));window.dispatchEvent(new Event('cart-changed'));this.savingDesign=false;this.router.navigate(['/cart']);
       }catch{this.savingDesign=false;this.designError='Giỏ hàng lưu trên máy đã đầy. Hãy xóa bớt thiết kế hoặc đăng nhập rồi thử lại.';this.cdr.markForCheck();}}
     },error:e=>{this.savingDesign=false;this.designError=e.error?.message || 'Chưa lưu được thiết kế.';this.cdr.markForCheck();}});

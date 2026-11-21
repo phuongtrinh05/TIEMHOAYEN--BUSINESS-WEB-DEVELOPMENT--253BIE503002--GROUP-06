@@ -189,7 +189,8 @@
 
 .gift-card-message-error {
   display: block;
-  margin: -7px 0 7px;
+  margin: 8px 0 0;
+  line-height: 1.4;
 }
 
 .error-msg {
@@ -999,23 +1000,6 @@
   text-align: right;
 }
 
-.pricing-row--policy {
-  align-items: flex-start;
-}
-
-.pricing-row--policy > span:first-child {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-.pricing-row--policy .pricing-value {
-  flex: 1;
-  min-width: 0;
-  line-height: 1.4;
-  font-weight: 700;
-  text-align: right;
-}
-
 .discount-value {
   color: var(--color-scarlet-red);
   font-weight: 600;
@@ -1684,7 +1668,7 @@ textarea.address-modal-input.address-detail-textarea {
   font-weight: 600;
 }
 .gift-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,100px));gap:8px;margin:8px 0 12px}.gift-card-option{position:relative;display:flex;min-height:60px;flex-direction:column;gap:3px;padding:6px;border:1px solid #ead5c5;border-radius:10px;background:#fff;cursor:pointer;color:#731919}.gift-card-option.is-selected{border-color:#731919;box-shadow:0 0 0 2px rgba(115,25,25,.08)}.gift-card-option input{position:absolute;opacity:0}.gift-card-option img{width:100%;object-fit:cover;border-radius:7px}.gift-card-option span{font-size:12px;font-weight:700}.gift-card-option small{color:#8b7168}
-.gift-card-option--none{align-items:center;justify-content:center;text-align:center}.gift-card-writing{margin:2px 0 14px;padding:14px 16px;border:1px solid #ead5c5;border-radius:14px;background:#fff8f5}.gift-card-writing>p{margin:0 0 10px;color:#5f332f;font-weight:700}.gift-card-writing__choices{display:flex;flex-wrap:wrap;gap:10px}.gift-card-writing__choices button{min-width:140px;padding:10px 18px;border:1px solid #d9b382;border-radius:999px;background:#fff;color:#731919;font:700 14px 'Nunito Sans',sans-serif;cursor:pointer;transition:.18s ease}.gift-card-writing__choices button:hover,.gift-card-writing__choices button.is-selected{border-color:#731919;background:#731919;color:#fff}.gift-card-writing .gift-card-writing__hint{margin:10px 0 0;color:#80645d;font-weight:500}.gift-card-message-count{display:block;margin-top:5px;text-align:right;color:#8b7168}@media(max-width:560px){.gift-card-writing__choices button{flex:1;min-width:120px}}
+.gift-card-option--none{align-items:center;justify-content:center;text-align:center}.gift-card-writing{margin:2px 0 12px;padding:10px 12px;border:1px solid #ead5c5;border-radius:10px;background:#fff8f5}.gift-card-writing > p,.gift-card-writing__main > p{margin:0 0 8px;color:#5f332f;font-size:0.85rem;line-height:1.4;font-weight:600}.gift-card-writing__choices{display:flex;flex-wrap:wrap;gap:8px}.gift-card-writing__choices button{min-width:0;padding:6px 14px;border:1px solid #d9b382;border-radius:999px;background:#fff;color:#731919;font:600 13px/1.4 var(--font-body);cursor:pointer;transition:.18s ease}.gift-card-writing__choices button:hover,.gift-card-writing__choices button.is-selected{border-color:#731919;background:#731919;color:#fff}.gift-card-writing .gift-card-writing__hint{margin:8px 0 0;color:#80645d;font-size:0.78rem;font-weight:500}.gift-card-message-count{display:block;margin-top:5px;text-align:right;color:#8b7168}@media(max-width:560px){.gift-card-writing__choices button{flex:0 1 auto}}
 .gift-card-option:not(.gift-card-option--none){padding:4px;overflow:hidden}.gift-card-option:not(.gift-card-option--none) img{aspect-ratio:3/2}.gift-card-option .gift-card-option__fee{position:absolute;right:6px;bottom:6px;padding:2px 5px;border-radius:999px;background:rgba(255,248,245,.94);color:#731919;font-size:10px;font-weight:700;box-shadow:0 2px 8px rgba(75,31,26,.14)}.gift-card-writing+.form-group .form-textarea{box-sizing:border-box;padding:14px 16px;line-height:1.5}.gift-card-writing+.form-group{margin-top:16px}.gift-card-writing__choices+.form-textarea{display:block;margin-top:16px;padding:14px 16px;box-sizing:border-box}
 
 /* ===== Giờ giao, yêu cầu đặt hàng, popup giao gấp ===== */
@@ -1759,11 +1743,42 @@ textarea.address-modal-input.address-detail-textarea {
 
 /* Ô số lượng gọn hơn. */
 .qty-stepper{border-radius:6px}
-.qty-stepper button{width:22px;min-width:22px;height:24px;min-height:24px;flex:0 0 22px;font-size:.75rem}
-.qty-stepper .qty-input{width:26px;min-width:26px;height:24px;min-height:24px;flex:0 0 26px;font-size:.75rem}
+.qty-stepper button {
+  width: 16px;
+  min-width: 16px;
+  height: 20px;
+  min-height: 20px;
+  flex: 0 0 16px;
+  font-size: 0.7rem;
+}
+.qty-stepper .qty-input {
+  width: 22px;
+  min-width: 22px;
+  height: 20px;
+  min-height: 20px;
+  flex: 0 0 22px;
+  font-size: 0.7rem;
+}
 /* Cảnh báo cần shop xác nhận: một lý do thì hiện một dòng. */
 .request-notice__reason{margin:0 0 4px}
-.pricing-row--policy .pricing-policy-note{flex:1;text-align:left;font-weight:600}
+.deposit-policy-note {
+  margin: 0 0 12px;
+  padding: 9px 11px;
+  border: 1px solid #ead5c5;
+  border-left: 3px solid #a5653e;
+  border-radius: 8px;
+  background: #fff7ef;
+  color: #5f332f;
+  font-size: 0.84rem;
+  font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.deposit-policy-note strong {
+  color: var(--primary-color);
+  font-weight: 700;
+}
 /* Ô nội dung thiệp cùng hàng với câu hỏi cách viết thiệp. */
 .gift-card-writing__message{margin-top:14px}
 .gift-card-writing__message .form-textarea{display:block;width:100%;box-sizing:border-box;padding:14px 16px;line-height:1.5}
@@ -1777,3 +1792,22 @@ textarea.address-modal-input.address-detail-textarea {
 .or-item{align-items:end}
 .or-item__img{align-self:center}
 .or-item__price{align-self:end;line-height:24px}
+
+
+.pricing-row--shipping {
+  align-items: baseline;
+}
+
+.shipping-price {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.shipping-price__original {
+  color: #a39791;
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.3;
+}

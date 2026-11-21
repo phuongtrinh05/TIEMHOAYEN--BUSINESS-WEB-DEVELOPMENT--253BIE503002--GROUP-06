@@ -3,7 +3,7 @@ import { getCollection } from '../mongo.js';
 import { getProductSellableStockMap, sellableStockFields } from '../services/inventory/availability.service.js';
 import { getCachedRows, getPrimaryImages } from '../services/read-cache.service.js';
 
-const PUBLIC_PRODUCT_FILTER = { TRANG_THAI: 'Đang bán' };
+import { PUBLIC_PRODUCT_FILTER } from '../services/public-product-filter.js';
 const PUBLIC_CATEGORY_FILTER = { AN: { $ne: true }, TRANG_THAI: { $nin: ['Ẩn', 'Đang ẩn', 'Đã xóa'] } };
 const publicCategory = (row: any, idField: string, nameField: string) => ({
   [idField]: row?.[idField], [nameField]: row?.[nameField],
@@ -339,7 +339,7 @@ export const getProductsByCollection = async (req: Request, res: Response) => {
 export const getSaleProducts = async (_req: Request, res: Response) => {
   try {
     const productCollection = await getCollection<any>('SAN_PHAM');
-    const products = (await productCollection.find({ TRANG_THAI: 'Đang bán' }).toArray())
+    const products = (await productCollection.find(PUBLIC_PRODUCT_FILTER).toArray())
       .filter((product) => Number(product.GIA_KHUYEN_MAI || 0) > 0 && Number(product.GIA_KHUYEN_MAI || 0) < Number(product.GIA || 0))
       .sort((left, right) => {
         const soldDiff = Number(right.DA_BAN || 0) - Number(left.DA_BAN || 0);
@@ -361,7 +361,7 @@ export const getSaleProducts = async (_req: Request, res: Response) => {
 export const getBestSellerProducts = async (_req: Request, res: Response) => {
   try {
     const productCollection = await getCollection<any>('SAN_PHAM');
-    const products = (await productCollection.find({ TRANG_THAI: 'Đang bán' }).toArray())
+    const products = (await productCollection.find(PUBLIC_PRODUCT_FILTER).toArray())
       .sort((left, right) => Number(right.DA_BAN || 0) - Number(left.DA_BAN || 0))
       .slice(0, 40);
     const enriched = await enrichProducts(products);

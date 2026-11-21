@@ -6,7 +6,7 @@ import { getProductSellableStockMap } from '../services/inventory/availability.s
 import { routeCheckout, assertReservedStockUsable, evaluateCheckoutFulfillment } from '../services/order-request.service.js';
 import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
 import { INVENTORY_CONFIG, RESERVATION_STATUS } from '../services/inventory/constants.js';
-import { syncCheckoutInventory, changeCheckoutPayment } from '../services/checkout-payment.service.js';
+import { syncCheckoutInventory, changeCheckoutPayment, removeOrderedCartItems } from '../services/checkout-payment.service.js';
 import { confirmReservations, releaseReservations, reserveProducts } from '../services/inventory/stock.service.js';
 import { randomUUID } from 'node:crypto';
 import { reserveOrderLines } from '../services/order-stock.service.js';
@@ -206,24 +206,6 @@ const resolveVoucherForOrder = async (voucher: any, customerId: string | null) =
   return available[0] || null;
 };
 
-const removePaidItemsFromCart = async (orderId: string, customerId: string): Promise<void> => {
-  if (!customerId) return;
-
-  const [cartCollection, cartDetailCollection, orderDetailCollection] = await Promise.all([
-    getCollection<any>('GIO_HANG'),
-    getCollection<any>('GIO_HANG_CHI_TIET'),
-    getCollection<any>('DON_HANG_CHI_TIET'),
-  ]);
-  const carts = await cartCollection.find({ KHACH_HANG_ID: customerId }).toArray();
-  const cartIds = carts.map((cart) => cart.GIO_HANG_ID).filter(Boolean);
-  const orderDetails = await orderDetailCollection.find({ DON_HANG_ID: orderId }).toArray();
-  const productIds = orderDetails.map((item) => item.SAN_PHAM_ID).filter(Boolean);
-
-  if (cartIds.length > 0 && productIds.length > 0) {
-    await cartDetailCollection.deleteMany({ GIO_HANG_ID: { $in: cartIds }, SAN_PHAM_ID: { $in: productIds } });
-  }
-};
-
 const finalizeSuccessfulPayment = async (orderId: string): Promise<void> => {
   const orderCollection = await getCollection<any>('DON_HANG');
   const current = await orderCollection.findOne({ DON_HANG_ID: orderId });
@@ -238,7 +220,7 @@ const finalizeSuccessfulPayment = async (orderId: string): Promise<void> => {
 
   if (order) {
     await synchronizeLuckyOrder(orderId);
-    await removePaidItemsFromCart(orderId, String(order.KHACH_HANG_ID || ''));
+    await withTransaction(session => removeOrderedCartItems(session, order));
   }
 };
 

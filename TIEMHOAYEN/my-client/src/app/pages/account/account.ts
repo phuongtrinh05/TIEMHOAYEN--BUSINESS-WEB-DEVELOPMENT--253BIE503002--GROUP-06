@@ -1562,6 +1562,8 @@ export class AccountComponent implements OnInit, OnDestroy {
     const existingItem = cart.find((cartEntry: any) => String(cartEntry?.id || '') === item.id);
 
     if (existingItem) {
+      cart.splice(cart.indexOf(existingItem), 1);
+      cart.unshift(existingItem);
       existingItem.quantity = Number(existingItem.quantity || 1) + 1;
       existingItem.name = cartItem.name;
       existingItem.style = cartItem.style;
@@ -1571,7 +1573,7 @@ export class AccountComponent implements OnInit, OnDestroy {
       existingItem.image = cartItem.image;
       existingItem.selected = true;
     } else {
-      cart.push(cartItem);
+      cart.unshift(cartItem);
     }
 
     localStorage.setItem(this.cartStorageKey, JSON.stringify(cart));

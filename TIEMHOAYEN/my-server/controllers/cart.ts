@@ -69,8 +69,9 @@ const buildCartItems = async (cartId: string) => {
   const topicCollection = await getCollection<any>('CHU_DE');
   const imageCollection = await getCollection<any>('HINH_ANH_SAN_PHAM');
 
-  const details = await detailCollection.find({ GIO_HANG_ID: cartId }).toArray();
+  const details = await detailCollection.find({ GIO_HANG_ID: cartId }).sort({ LAN_THEM_CUOI: -1, _id: -1 }).toArray();
   const productIds = details.map((item) => item.SAN_PHAM_ID).filter(Boolean);
+  const lineOrder = new Map(details.map((detail, index) => [String(detail.LINE_KEY || detail.SAN_PHAM_ID), index]));
 
   if (productIds.length === 0) {
     return [];
@@ -98,7 +99,7 @@ const buildCartItems = async (cartId: string) => {
     const design=await getDesign(detail.SAN_PHAM_ID);
     const quantity=Number(detail.SO_LUONG || 1);
     const short=design.materials.some((l:any)=>l.quantity*quantity>l.available);
-    designItems.push({SAN_PHAM_ID:detail.SAN_PHAM_ID,THIET_KE_3D_ID:design.designId,TEN_SAN_PHAM:design.name,GIA:design.price,SO_LUONG:quantity,
+    designItems.push({LINE_KEY:detail.LINE_KEY || detail.SAN_PHAM_ID,SAN_PHAM_ID:detail.SAN_PHAM_ID,THIET_KE_3D_ID:design.designId,TEN_SAN_PHAM:design.name,GIA:design.price,SO_LUONG:quantity,
       KIEU_DANG:'Thiết kế 3D',HINH_ANH:design.image,SO_LUONG_TON:null,CAN_SHOP_DUYET:design.requiresReview || short,BADGES:[...design.badges,...(short?['Số bó vượt NVL khả dụng']:[])]});
   }
   const mapped = await Promise.all(details.filter(detail => !isDesignProduct(String(detail.SAN_PHAM_ID))).map(async (detail) => {
@@ -128,7 +129,7 @@ const buildCartItems = async (cartId: string) => {
         GIA_LUC_THEM: Number(detail.GIA_LUC_THEM || 0),
       };
     }));
-  return [...designItems, ...mapped.filter(Boolean)].sort((left: any, right: any) => String(left.TEN_SAN_PHAM || '').localeCompare(String(right.TEN_SAN_PHAM || ''), 'vi'));
+  return [...designItems, ...mapped.filter(Boolean)].sort((left: any, right: any) => (lineOrder.get(String(left.LINE_KEY || left.SAN_PHAM_ID)) ?? 0) - (lineOrder.get(String(right.LINE_KEY || right.SAN_PHAM_ID)) ?? 0));
 };
 
 export const getCartByCustomer = async (req: Request, res: Response) => {
@@ -205,7 +206,7 @@ export const addCartItem = async (req: Request, res: Response) => {
     await detailCollection.updateOne(
       lineFilter,
       {
-        $set: { LINE_KEY: lineKey },
+        $set: { LINE_KEY: lineKey, LAN_THEM_CUOI: new Date() },
         $setOnInsert: {
           _id: { GIO_HANG_ID: cartId, LINE_KEY: lineKey },
           SAN_PHAM_ID: productId,

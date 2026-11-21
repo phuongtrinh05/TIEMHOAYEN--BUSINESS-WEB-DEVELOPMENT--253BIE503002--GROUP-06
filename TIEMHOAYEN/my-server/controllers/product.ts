@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { getCollection } from '../mongo.js';
 import { getProductSellableStockMap, sellableStockFields } from '../services/inventory/availability.service.js';
 import { getCachedRows, getPrimaryImages } from '../services/read-cache.service.js';
+import { PUBLIC_PRODUCT_FILTER } from '../services/public-product-filter.js';
 
 type SearchProductRow = {
   SAN_PHAM_ID: string;
@@ -285,7 +286,7 @@ export const getAllProducts = async (req: Request, res: Response) => {
   try {
     if (!catalogRead) catalogRead = (async () => {
       const productCollection = await getCollection('SAN_PHAM');
-      const products = await productCollection.find({ TRANG_THAI: 'Đang bán' }).sort({ TEN_SAN_PHAM: 1 }).toArray();
+      const products = await productCollection.find(PUBLIC_PRODUCT_FILTER).sort({ TEN_SAN_PHAM: 1 }).toArray();
       return enrichProducts(products);
     })().finally(() => { catalogRead = null; });
     const rows = await catalogRead;
@@ -319,7 +320,7 @@ export const searchProducts = async (req: Request, res: Response) => {
     const budget = parseBudgetFromKeyword(keyword);
 
     const productCollection = await getCollection('SAN_PHAM');
-    const products = await productCollection.find({ TRANG_THAI: 'Đang bán' }).toArray();
+    const products = await productCollection.find(PUBLIC_PRODUCT_FILTER).toArray();
     const rows = await enrichProducts(products, true);
 
     const rankedProducts = rows

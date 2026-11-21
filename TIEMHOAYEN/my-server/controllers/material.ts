@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { PUBLIC_PRODUCT_FILTER } from '../services/public-product-filter.js';
 import { getCollection } from '../mongo.js';
 import { getProductSellableStockMap, sellableStockFields } from '../services/inventory/availability.service.js';
 
@@ -32,12 +33,11 @@ export const getSuggestedMaterials = async (req: Request, res: Response) => {
     // Thiệp đã chọn ở bước "Thiệp tặng" khi đặt hàng nên không gợi ý mua kèm nữa.
     // Dữ liệu chưa có danh mục riêng cho thiệp, nên nhận diện theo tên sản phẩm bắt đầu bằng "Thiệp".
     const candidates = await productCollection.find({
-      TRANG_THAI: 'Đang bán',
-      TEN_SAN_PHAM: { $not: /^\s*thi[eệ]p/i },
+      ...PUBLIC_PRODUCT_FILTER,
       $or: [
         { KIEU_DANG: 'Sản phẩm mua kèm' },
         { KIEU_DANG: 'Phụ kiện' },
-        { TEN_SAN_PHAM: { $in: ['Gấu bông', 'Nến thơm', 'Túi quà cao cấp'] } },
+        { TEN_SAN_PHAM: { $in: ['Gấu bông', 'Nến thơm', 'Móc khóa len', 'Túi quà cao cấp'] } },
         { MO_TA: /SẢN PHẨM MUA KÈM/i },
         { MO_TA: /SAN PHAM MUA KEM/i },
       ],
@@ -46,7 +46,8 @@ export const getSuggestedMaterials = async (req: Request, res: Response) => {
     const order = new Map([
       ['Gấu bông', 1],
       ['Nến thơm', 2],
-      ['Túi quà cao cấp', 3],
+      ['Móc khóa len', 3],
+      ['Túi quà cao cấp', 4],
     ]);
     const sorted = candidates
       .sort((a: any, b: any) => {

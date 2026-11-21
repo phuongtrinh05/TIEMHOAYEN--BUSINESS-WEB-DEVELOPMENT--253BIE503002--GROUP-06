@@ -1347,3 +1347,21 @@
   display: block;
   color: #777;
 }
+
+@media (min-width: 769px) {
+  .suggestions-wrapper {
+    justify-content: center;
+  }
+
+  .suggestions-list {
+    grid-template-columns: repeat(var(--suggestion-count, 3), minmax(0, 215px));
+    justify-content: center;
+    gap: 24px;
+    flex: 0 1 932px;
+    min-width: 0;
+  }
+
+  .suggestions-wrapper .btn-nav {
+    display: none;
+  }
+}

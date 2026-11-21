@@ -2006,7 +2006,7 @@ export class OrderRegistrantComponent implements OnInit {
 
     if (this.selectedCardTemplateId && !this.cardWritingMode) {
       this.cardWritingModeTouched = true;
-      this.submitOrderError = 'Vui lòng chọn tự viết thiệp hoặc nhờ shop viết.';
+      this.submitOrderError = '';
       return;
     }
     if (this.selectedCardTemplateId && this.cardWritingMode === 'shop' && !this.formData.noteReceiver.trim()) {

@@ -335,12 +335,6 @@
             {{ deliveryScheduleError }}
           </span>
 
-          <p class="delivery-hours-hint">
-            <i class="bi bi-clock"></i>
-            <span>Tiệm giao hoa 08:00–22:00 mỗi ngày, khung 30 phút. Giờ đã qua sẽ được ẩn; giờ giao trong vòng 4 giờ tới vui lòng gọi
-              <a [href]="'tel:' + shopPhone">{{ shopPhone }}</a>.</span>
-          </p>
-
           <h3 class="order-block__title order-block__title--spaced">4. Thiệp tặng</h3>
           <div class="gift-card-grid">
             <label class="gift-card-option gift-card-option--none" [class.is-selected]="!selectedCardTemplateId"><input type="radio" name="giftCard" value="" [ngModel]="selectedCardTemplateId" (ngModelChange)="onCardTemplateChange($event)"><span>Không kèm thiệp</span></label>
@@ -575,9 +569,12 @@
           </div>
 
 
-          <div class="pricing-row">
+          <div class="pricing-row pricing-row--shipping">
             <span>Phí ship:</span>
-            <span class="pricing-value">{{ shippingFee | number:'1.0-0' }}đ</span>
+            <span class="shipping-price">
+              <del class="shipping-price__original" *ngIf="shippingVoucherDiscount > 0">{{ (serverQuote?.shippingFee ?? shippingFee) | number:'1.0-0' }}đ</del>
+              <span class="pricing-value">{{ (serverQuote?.shippingFee ?? shippingFee) === 0 ? 'Miễn phí' : (((serverQuote?.shippingFee ?? shippingFee) - shippingVoucherDiscount) | number:'1.0-0') + 'đ' }}</span>
+            </span>
           </div>
 
           <div class="pricing-row" *ngIf="selectedCardFee > 0">
@@ -585,10 +582,10 @@
             <span class="pricing-value">{{ selectedCardFee | number:'1.0-0' }}đ</span>
           </div>
 
-          <div class="pricing-row discount-row" *ngIf="discount > 0">
-            <span>Voucher:</span>
+          <div class="pricing-row discount-row" *ngIf="productVoucherDiscount > 0">
+            <span>Voucher</span>
             <span class="discount-value">
-              -{{ discount | number:'1.0-0' }}đ
+              -{{ productVoucherDiscount | number:'1.0-0' }}đ
             </span>
           </div>
         </div>
@@ -609,9 +606,7 @@
         <div
           class="order-pricing"
           *ngIf="showDepositPolicy && currentPaymentPolicy as policy">
-          <div class="pricing-row pricing-row--policy">
-            <span class="pricing-policy-note">{{ policy.note }}</span>
-          </div>
+          <p class="deposit-policy-note"><strong>Chính sách:</strong> {{ policy.note }}</p>
 
           <div class="pricing-row" *ngIf="depositAmount > 0">
             <span>Tiền cọc:</span>
@@ -625,12 +620,12 @@
         </div>
 
         <div class="request-notice" *ngIf="quoteNeedsRequest && !salesRequestId">
-          <p class="request-notice__title"><i class="bi bi-info-circle"></i> Đơn này cần shop xác nhận</p>
+          <p class="request-notice__title"><i class="bi bi-info-circle"></i> Đơn hàng cần shop xác nhận</p>
           <p class="request-notice__reason" *ngIf="quoteRequestReasons.length === 1">{{ quoteRequestReasons[0] }}</p>
           <ul class="request-notice__reasons" *ngIf="quoteRequestReasons.length > 1">
             <li *ngFor="let reason of quoteRequestReasons">{{ reason }}</li>
           </ul>
-          <p class="request-notice__note">Shop sẽ liên hệ xác nhận. Cần gấp gọi <a [href]="'tel:' + shopPhone">{{ shopPhone }}</a>.</p>
+          <p class="request-notice__note">Shop sẽ liên hệ để tư vấn phương án phù hợp. Nếu cần hỗ trợ ngay, bạn vui lòng gọi <a [href]="'tel:' + shopPhone">{{ shopPhone }}</a>.</p>
         </div>
 
         <button

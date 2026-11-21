@@ -1323,7 +1323,7 @@ export class OrderHauntComponent implements OnInit {
     }
 
     if (this.selectedCardTemplateId && !this.cardWritingMode) {
-      this.submitOrderError = 'Vui lòng chọn tự viết thiệp hoặc nhờ shop viết.';
+      this.submitOrderError = '';
       return;
     }
 

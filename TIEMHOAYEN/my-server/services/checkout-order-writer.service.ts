@@ -118,6 +118,7 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
   await (await getCollection<any>('DON_HANG_CHI_TIET')).insertMany(payload.items.map((item: any) => ({
     _id: { DON_HANG_ID: orderId, SAN_PHAM_ID: item.id }, DON_HANG_ID: orderId, SAN_PHAM_ID: item.id,
     SO_LUONG: item.qty, GIA: item.price, ...(item.bom ? { BOM_SNAPSHOT: item.bom } : {}),
+    CART_LINE_KEYS: item.cartLineKeys || [item.lineKey || item.id],
     TEN_SAN_PHAM_SNAPSHOT: item.name, HINH_ANH_SNAPSHOT: item.image,
     SAN_PHAM_TUY_CHINH: !!item.custom,
   })), { session });

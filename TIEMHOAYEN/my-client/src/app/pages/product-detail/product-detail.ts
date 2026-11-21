@@ -845,6 +845,8 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     const existingItem = cart.find((cartProduct: any) => cartProduct.id === item.id);
 
     if (existingItem) {
+      cart.splice(cart.indexOf(existingItem), 1);
+      cart.unshift(existingItem);
       const currentQuantity = Number(existingItem.quantity || 1);
 
       existingItem.quantity = currentQuantity + 1;
@@ -857,7 +859,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       existingItem.selected = true;
       existingItem.maxQuantity = cartItem.maxQuantity;
     } else {
-      cart.push(cartItem);
+      cart.unshift(cartItem);
     }
 
     localStorage.setItem(cartStorageKey, JSON.stringify(cart));
@@ -1243,6 +1245,8 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     const existingItem = cart.find((item: any) => (item.lineKey || item.id) === lineKey);
 
     if (existingItem) {
+      cart.splice(cart.indexOf(existingItem), 1);
+      cart.unshift(existingItem);
       const currentQuantity = Number(existingItem.quantity || existingItem.qty || 1);
       const nextQuantity = currentQuantity + this.quantity;
 
@@ -1258,7 +1262,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
       existingItem.selected = true;
       existingItem.maxQuantity = cartItem.maxQuantity;
     } else {
-      cart.push(cartItem);
+      cart.unshift(cartItem);
     }
 
     localStorage.setItem(cartStorageKey, JSON.stringify(cart));

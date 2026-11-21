@@ -204,12 +204,6 @@
             {{ deliveryScheduleError }}
           </span>
 
-          <p class="delivery-hours-hint">
-            <i class="bi bi-clock"></i>
-            <span>Tiệm giao hoa 08:00–22:00 mỗi ngày, khung 30 phút. Giờ đã qua sẽ được ẩn; giờ giao trong vòng 4 giờ tới vui lòng gọi
-              <a [href]="'tel:' + shopPhone">{{ shopPhone }}</a>.</span>
-          </p>
-
           <h3 class="or-block__title or-block__title--spaced">3. Thiệp tặng</h3>
           <div class="gift-card-grid">
             <label class="gift-card-option gift-card-option--none" [class.is-selected]="!selectedCardTemplateId"><input type="radio" name="giftCard" value="" [ngModel]="selectedCardTemplateId" (ngModelChange)="onCardTemplateChange($event)"><span>Không kèm thiệp</span></label>
@@ -365,9 +359,6 @@
 
             <span class="section-label loyalty-label">
               Dùng điểm thưởng (có {{ maxLoyaltyPoints }} điểm)
-              <small class="loyalty-hint" *ngIf="useLoyaltyPoints">· dùng {{ loyaltyPointsToUse }} điểm, giảm {{ loyaltyDiscount | number:'1.0-0' }}đ</small>
-              <small class="loyalty-hint" *ngIf="!useLoyaltyPoints && redeemablePoints > 0">· bật để dùng hết điểm (tối đa {{ redeemablePoints }} điểm cho đơn này)</small>
-              <small class="loyalty-hint" *ngIf="redeemablePoints <= 0">· đơn chưa đủ giá trị để dùng điểm</small>
             </span>
 
             <button
@@ -480,9 +471,12 @@
           </div>
 
 
-          <div class="pricing-row">
+          <div class="pricing-row pricing-row--shipping">
             <span>Phí ship:</span>
-            <span class="pricing-value">{{ shippingFee | number:'1.0-0' }}đ</span>
+            <span class="shipping-price">
+              <del class="shipping-price__original" *ngIf="shippingVoucherDiscount > 0">{{ (serverQuote?.shippingFee ?? baseShippingFee) | number:'1.0-0' }}đ</del>
+              <span class="pricing-value">{{ (serverQuote?.shippingFee ?? baseShippingFee) === 0 ? 'Miễn phí' : (shippingFee | number:'1.0-0') + 'đ' }}</span>
+            </span>
           </div>
 
           <div class="pricing-row" *ngIf="selectedCardFee > 0">
@@ -491,16 +485,9 @@
           </div>
 
           <div class="pricing-row" *ngIf="productVoucherDiscount > 0">
-            <span>Voucher sản phẩm:</span>
+            <span>Voucher</span>
             <span class="discount-value">
               -{{ productVoucherDiscount | number:'1.0-0' }}đ
-            </span>
-          </div>
-
-          <div class="pricing-row" *ngIf="shippingVoucherDiscount > 0">
-            <span>Voucher phí ship:</span>
-            <span class="discount-value">
-              -{{ shippingVoucherDiscount | number:'1.0-0' }}đ
             </span>
           </div>
 
@@ -527,9 +514,7 @@
         <div class="or-divider" *ngIf="showDepositPolicy"></div>
 
         <div class="or-pricing" *ngIf="showDepositPolicy">
-          <div class="pricing-row pricing-row--policy">
-            <span class="pricing-policy-note">{{ currentPaymentPolicy?.note }}</span>
-          </div>
+          <p class="deposit-policy-note"><strong>Chính sách:</strong> {{ currentPaymentPolicy?.note }}</p>
 
           <div class="pricing-row" *ngIf="depositAmount > 0">
             <span>Tiền cọc:</span>
@@ -547,12 +532,12 @@
         </p>
 
         <div class="request-notice" *ngIf="quoteNeedsRequest && !salesRequestId">
-          <p class="request-notice__title"><i class="bi bi-info-circle"></i> Đơn này cần shop xác nhận</p>
+          <p class="request-notice__title"><i class="bi bi-info-circle"></i> Đơn hàng cần shop xác nhận</p>
           <p class="request-notice__reason" *ngIf="quoteRequestReasons.length === 1">{{ quoteRequestReasons[0] }}</p>
           <ul class="request-notice__reasons" *ngIf="quoteRequestReasons.length > 1">
             <li *ngFor="let reason of quoteRequestReasons">{{ reason }}</li>
           </ul>
-          <p class="request-notice__note">Shop sẽ liên hệ xác nhận. Cần gấp gọi <a [href]="'tel:' + shopPhone">{{ shopPhone }}</a>.</p>
+          <p class="request-notice__note">Shop sẽ liên hệ để tư vấn phương án phù hợp. Nếu cần hỗ trợ ngay, bạn vui lòng gọi <a [href]="'tel:' + shopPhone">{{ shopPhone }}</a>.</p>
         </div>
 
         <button

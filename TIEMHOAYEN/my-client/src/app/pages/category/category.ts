@@ -1994,6 +1994,8 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     const existingItem = cart.find((item: any) => String(item?.id || '') === product.id);
 
     if (existingItem) {
+      cart.splice(cart.indexOf(existingItem), 1);
+      cart.unshift(existingItem);
       const currentQuantity = Number(existingItem.quantity || 1);
       const nextQuantity = currentQuantity + 1;
       existingItem.quantity = nextQuantity;
@@ -2006,7 +2008,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       existingItem.selected = true;
       existingItem.maxQuantity = cartItem.maxQuantity;
     } else {
-      cart.push(cartItem);
+      cart.unshift(cartItem);
     }
 
     localStorage.setItem(this.guestCartStorageKey, JSON.stringify(cart));
