@@ -125,7 +125,17 @@ export class OrderRequest implements OnInit, OnDestroy {
     if (this.loading) return;
     this.loading = true; if (!quiet) this.error = '';
     this.service.getSalesRequest(this.id, this.token).subscribe({
-      next: value => { if (value.quote?.id !== this.request?.quote?.id) this.confirmed = false; this.request = value; this.loading = false; this.cdr.markForCheck(); },
+      next: value => {
+        if (value.quote?.id !== this.request?.quote?.id) this.confirmed = false;
+        this.request = value;
+        this.loading = false;
+        const orderId = String(value?.orderResult?.orderId || value?.orderId || '');
+        if (!this.compact && orderId) {
+          void this.router.navigate(['/order-detail', orderId], { replaceUrl: true });
+          return;
+        }
+        this.cdr.markForCheck();
+      },
       error: err => { if ([401,404].includes(err.status)) { this.request = null; this.messages = []; } this.error = err?.error?.message || 'Chưa tải được trạng thái. Vui lòng thử lại.'; this.loading = false; this.cdr.markForCheck(); },
     });
     this.service.getRequestMessages(this.id, this.token).subscribe({ next: value => { this.messages = value; this.cdr.markForCheck(); }, error: () => {} });
