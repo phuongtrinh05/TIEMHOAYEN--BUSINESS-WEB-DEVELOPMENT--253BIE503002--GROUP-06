@@ -102,6 +102,7 @@ const FIELD_ALIASES: Record<string, Record<string, string>> = {
   THIET_KE_3D: { name: 'TEN', image: 'HINH_ANH', materials: 'NGUYEN_VAT_LIEU', arrangement: 'KIEU_CAM', fingerprint: 'FINGERPRINT', createdAt: 'NGAY_TAO' },
   PHIEN_DANG_NHAP_ADMIN: { employeeId: 'NHAN_VIEN_ID', expiresAt: 'HET_HAN' },
   BO_DEM_MA: { value: 'GIA_TRI', at: 'THOI_DIEM', orders: 'DS_DON_HANG', fingerprint: 'FINGERPRINT', revision: 'SO_PHIEN_BAN', createdAt: 'NGAY_TAO' },
+  KHACH_HANG: { DOB: 'NGAY_SINH', AVATAR: 'ANH_DAI_DIEN' },
 };
 
 const toStandardPath = (path: string, aliases: Record<string, string>): string => {
@@ -190,8 +191,26 @@ const mirrorFields = (fields: Document, aliases: Record<string, string>): Docume
   return mirrored;
 };
 
-const mirrorUpdate = (update: Document, aliases: Record<string, string>): Document => {
-  if (Array.isArray(update)) throw new TypeError('Bảng đang đổi tên trường chưa hỗ trợ cập nhật bằng pipeline.');
+/** Cập nhật dạng pipeline: sau các bước gốc, chép giá trị của trường cũ vừa đổi sang tên chuẩn. */
+const mirrorPipeline = (pipeline: Document[], aliases: Record<string, string>): Document[] => {
+  const touched = new Set<string>();
+  for (const stage of pipeline) {
+    const removed = stage.$unset ? [stage.$unset].flat() as string[] : [];
+    for (const key of [...Object.keys(stage.$set || {}), ...Object.keys(stage.$addFields || {}), ...removed]) {
+      const root = key.split('.')[0];
+      if (aliases[root]) touched.add(root);
+    }
+  }
+  if (!touched.size) return pipeline;
+  const copied = Object.fromEntries([...touched].map((oldName) => [
+    aliases[oldName],
+    { $cond: [{ $eq: [{ $type: `$${oldName}` }, 'missing'] }, '$$REMOVE', `$${oldName}`] },
+  ]));
+  return [...pipeline, { $set: copied }];
+};
+
+const mirrorUpdate = (update: Document | Document[], aliases: Record<string, string>): Document | Document[] => {
+  if (Array.isArray(update)) return mirrorPipeline(update, aliases);
   return Object.fromEntries(Object.entries(update).map(([operator, fields]) => [
     operator,
     operator.startsWith('$') && fields && typeof fields === 'object' ? mirrorFields(fields, aliases) : fields,

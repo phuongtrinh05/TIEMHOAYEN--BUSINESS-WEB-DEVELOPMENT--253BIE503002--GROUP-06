@@ -331,4 +331,29 @@ else {
         assert.ok(await db.collection<any>('PHIEN_DANG_NHAP_ADMIN').findOne({ _id: 'W3R-EXPIRED' as any }));
         await Promise.all([db.collection<any>('BO_DEM_MA').deleteOne({ _id: 'W3R_TEST:WR' }), db.collection<any>('PHIEN_DANG_NHAP_ADMIN').deleteOne({ _id: 'W3R-EXPIRED' as any })]);
     });
+    test('wave 5 mirrors customer birth date and avatar, including pipeline updates', async () => {
+        const raw = (await mongo.getDb()).collection<any>('KHACH_HANG');
+        const customers = await mongo.getCollection<any>('KHACH_HANG');
+        const dob = new Date('2000-01-02T00:00:00Z');
+        await customers.insertOne({ _id: 'W5-CUSTOMER', KHACH_HANG_ID: 'W5-CUSTOMER', DOB: dob, AVATAR: null, DIEM_TICH_LUY: 1 });
+        let row = await raw.findOne({ _id: 'W5-CUSTOMER' });
+        assert.equal(row.NGAY_SINH.getTime(), dob.getTime());
+        assert.equal(row.ANH_DAI_DIEN, null);
+        const updated = await customers.findOneAndUpdate({ _id: 'W5-CUSTOMER' }, { $set: { AVATAR: '/avatar.png' } }, { returnDocument: 'after' });
+        assert.equal(updated.AVATAR, '/avatar.png');
+        assert.equal(updated.ANH_DAI_DIEN, undefined);
+        assert.equal(updated.NGAY_SINH, undefined);
+        assert.equal((await raw.findOne({ _id: 'W5-CUSTOMER' })).ANH_DAI_DIEN, '/avatar.png');
+        await customers.updateOne({ _id: 'W5-CUSTOMER' }, [{ $set: { DIEM_TICH_LUY: { $add: ['$DIEM_TICH_LUY', 1] } } }]);
+        row = await raw.findOne({ _id: 'W5-CUSTOMER' });
+        assert.equal(row.DIEM_TICH_LUY, 2);
+        assert.equal(row.ANH_DAI_DIEN, '/avatar.png');
+        await customers.updateOne({ _id: 'W5-CUSTOMER' }, [{ $set: { AVATAR: '/next.png' } }]);
+        assert.equal((await raw.findOne({ _id: 'W5-CUSTOMER' })).ANH_DAI_DIEN, '/next.png');
+        await customers.updateOne({ _id: 'W5-CUSTOMER' }, [{ $unset: 'AVATAR' }]);
+        row = await raw.findOne({ _id: 'W5-CUSTOMER' });
+        assert.equal('AVATAR' in row, false);
+        assert.equal('ANH_DAI_DIEN' in row, false);
+        await raw.deleteOne({ _id: 'W5-CUSTOMER' });
+    });
 }
