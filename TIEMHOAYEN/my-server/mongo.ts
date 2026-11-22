@@ -83,7 +83,7 @@ const LUCKY_FIELD_ALIASES: Record<string, string> = {
   restoredAt: 'NGAY_KHOI_PHUC', sourceCancelledReview: 'DA_DOI_SOAT_HUY_NGUON', deliveredAt: 'NGAY_GIAO_QUA', actualGiftCost: 'GIA_VON_QUA_THUC_TE', giftExportId: 'PHIEU_XUAT_QUA_ID',
 };
 const LUCKY_TABLES = ['VQ_CHUONG_TRINH', 'VQ_LUOT_QUAY', 'VQ_KET_QUA', 'VQ_PHAN_THUONG', 'VQ_HAN_MUC', 'VQ_NHAT_KY', 'VQ_THONG_BAO', 'VQ_YEU_CAU_QUAY', 'VQ_DONG_BO_META'];
-const READ_STANDARD_TABLES = new Set([...LUCKY_TABLES, 'YEU_CAU_HO_TRO', 'YEU_CAU_TAO_ANH', 'THIET_KE_3D', 'PHIEN_DANG_NHAP_ADMIN', 'BO_DEM_MA', 'KHACH_HANG']);
+const READ_STANDARD_TABLES = new Set([...LUCKY_TABLES, 'YEU_CAU_HO_TRO', 'YEU_CAU_TAO_ANH', 'THIET_KE_3D', 'PHIEN_DANG_NHAP_ADMIN', 'BO_DEM_MA', 'KHACH_HANG', 'HOAN_TIEN', 'PHIEN_DAT_HANG', 'YEU_CAU_DAT_HANG', 'YEU_CAU_HAU_MAI', 'XAC_THUC_TRA_CUU_DON']);
 const FIELD_ALIASES: Record<string, Record<string, string>> = {
   ...Object.fromEntries(LUCKY_TABLES.map((table) => {
     const aliases: Record<string, string> = { ...LUCKY_FIELD_ALIASES, id: `${table}_ID` };
@@ -143,6 +143,14 @@ const toStandardFilter = (filter: Document | undefined, aliases: Record<string, 
   Object.fromEntries(Object.entries(filter || {}).map(([key, value]) => {
     if (['$or', '$and', '$nor'].includes(key)) return [key, (value as Document[]).map((item) => toStandardFilter(item, aliases))];
     return [key.startsWith('$') ? key : toStandardPath(key, aliases), value];
+  }))
+);
+
+/** Bộ lọc change stream đặt trường dữ liệu dưới fullDocument nên phải đổi tên ở phần sau tiền tố này. */
+const toStandardChangeFilter = (filter: Document, aliases: Record<string, string>): Document => (
+  Object.fromEntries(Object.entries(filter).map(([key, value]) => {
+    if (['$or', '$and', '$nor'].includes(key)) return [key, (value as Document[]).map((item) => toStandardChangeFilter(item, aliases))];
+    return [key.startsWith('fullDocument.') ? `fullDocument.${toStandardPath(key.slice('fullDocument.'.length), aliases)}` : key, value];
   }))
 );
 
@@ -281,6 +289,9 @@ const withFieldAliases = <T extends Document>(collection: Collection<T>): Collec
       return operation;
     }), ...rest),
     aggregate: (target, [pipeline, options]) => target.aggregate(pipelineOf(pipeline), options),
+    watch: (target, [pipeline = [], ...rest]) => target.watch(readsStandard
+      ? pipeline.map((stage: Document) => (stage.$match ? { $match: toStandardChangeFilter(stage.$match, aliases) } : stage))
+      : pipeline, ...rest),
   };
   return new Proxy(collection, {
     get(target, property) {
