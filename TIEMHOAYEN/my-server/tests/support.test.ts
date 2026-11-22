@@ -310,4 +310,25 @@ else {
         assert.equal((await sessions.deleteMany({ employeeId: 'NV_W3' })).deletedCount, 1);
         await Promise.all([db.collection('W3_TEST').drop(), db.collection<any>('BO_DEM_MA').deleteOne({ _id: 'W3_TEST:W3' })]);
     });
+    test('wave 3 reads counters and admin sessions by standard names', async () => {
+        const { nextCode } = await import('../services/inventory/helpers.js');
+        const db = await mongo.getDb();
+        await db.collection<any>('BO_DEM_MA').insertOne({ _id: 'W3R_TEST:WR', value: 1, GIA_TRI: 20 });
+        assert.equal(await nextCode('W3R_TEST', 'W3R_ID', 'WR', 4), 'WR0021');
+        const counter = await db.collection<any>('BO_DEM_MA').findOne({ _id: 'W3R_TEST:WR' });
+        assert.equal(counter.GIA_TRI, 21);
+        const now = Date.now();
+        await db.collection<any>('PHIEN_DANG_NHAP_ADMIN').insertMany([
+            { _id: 'W3R-LIVE', employeeId: 'OLD', NHAN_VIEN_ID: 'NV_W3R', expiresAt: new Date(now - 60000), HET_HAN: new Date(now + 60000) },
+            { _id: 'W3R-EXPIRED', employeeId: 'NV_W3R', NHAN_VIEN_ID: 'NV_OTHER', expiresAt: new Date(now + 60000), HET_HAN: new Date(now - 60000) },
+        ] as any[]);
+        const sessions = await mongo.getCollection<any>('PHIEN_DANG_NHAP_ADMIN');
+        const live = await sessions.findOne({ _id: 'W3R-LIVE', expiresAt: { $gt: new Date() } });
+        assert.equal(live.employeeId, 'NV_W3R');
+        assert.equal(live.NHAN_VIEN_ID, undefined);
+        assert.equal(await sessions.findOne({ _id: 'W3R-EXPIRED', expiresAt: { $gt: new Date() } }), null);
+        assert.equal((await sessions.deleteMany({ employeeId: 'NV_W3R' })).deletedCount, 1);
+        assert.ok(await db.collection<any>('PHIEN_DANG_NHAP_ADMIN').findOne({ _id: 'W3R-EXPIRED' as any }));
+        await Promise.all([db.collection<any>('BO_DEM_MA').deleteOne({ _id: 'W3R_TEST:WR' }), db.collection<any>('PHIEN_DANG_NHAP_ADMIN').deleteOne({ _id: 'W3R-EXPIRED' as any })]);
+    });
 }
