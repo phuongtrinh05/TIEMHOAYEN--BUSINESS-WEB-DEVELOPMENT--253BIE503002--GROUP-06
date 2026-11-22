@@ -22,21 +22,21 @@ export interface RequestStage {
   canCancel: boolean;
   /** Đổi lịch giao / đề nghị thay đổi. */
   canChange: boolean;
-  /** Đang chờ khách bấm "Xác nhận phương án" (cần có phương án kèm theo). */
+  /** Trường cũ để tương thích giao diện; quy trình hiện tại không yêu cầu khách xác nhận phương án. */
   awaitingConfirmation: boolean;
   canChat: boolean;
 }
 
 /** 5 bước hiển thị trên thanh tiến trình. */
-export const REQUEST_STEPS = ['Đã gửi', 'Shop tư vấn', 'Bạn xác nhận', 'Thanh toán', 'Thành đơn'] as const;
+export const REQUEST_STEPS = ['Đã gửi', 'Shop tư vấn', 'Chốt phương án', 'Xác minh thanh toán', 'Thành đơn'] as const;
 
 const STAGES: Record<Exclude<RequestStageKey, 'unknown'>, Omit<RequestStage, 'key' | 'canCancel' | 'canChange' | 'canChat' | 'awaitingConfirmation'>> = {
   submitted: { step: 1, label: 'Đã gửi yêu cầu', tone: 'new', terminal: false,
     hint: 'Shop đã nhận yêu cầu và sẽ liên hệ tư vấn. Bạn chưa cần thanh toán.' },
   consulting: { step: 2, label: 'Shop đang tư vấn', tone: 'processing', terminal: false,
     hint: 'Shop đang kiểm tra hoa và lịch giao, phương án sẽ được gửi tại đây. Bạn chưa cần thanh toán.' },
-  confirm: { step: 3, label: 'Chờ bạn xác nhận', tone: 'waiting', terminal: false,
-    hint: 'Shop đã gửi phương án. Bạn kiểm tra mẫu, giá và lịch giao rồi xác nhận hoặc yêu cầu tư vấn lại.' },
+  confirm: { step: 2, label: 'Shop đang chốt phương án', tone: 'processing', terminal: false,
+    hint: 'Sales đang hoàn tất phương án và xác minh khoản thanh toán. Bạn có thể nhắn shop nếu cần điều chỉnh.' },
   creating: { step: 4, label: 'Shop đang tạo đơn', tone: 'processing', terminal: false,
     hint: 'Bạn đã đồng ý phương án. Shop kiểm tra hàng lần cuối và tạo đơn, sau đó bạn thanh toán.' },
   payment: { step: 4, label: 'Chờ bạn thanh toán', tone: 'waiting', terminal: false,
@@ -80,7 +80,7 @@ export function requestStage(request: any): RequestStage {
     key, ...base,
     canCancel: !base.terminal && key !== 'converted',
     canChange: !base.terminal && !['payment', 'converted'].includes(key),
-    awaitingConfirmation: key === 'confirm' && (typeof request === 'string' || !!request?.quote),
+    awaitingConfirmation: false,
     canChat: !base.terminal,
   };
   if (typeof request !== 'string') {

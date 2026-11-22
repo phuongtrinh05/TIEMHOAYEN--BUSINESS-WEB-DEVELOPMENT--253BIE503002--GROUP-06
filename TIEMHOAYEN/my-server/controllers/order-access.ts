@@ -177,7 +177,7 @@ export async function lookupHistory(req: Request, res: Response) {
       items: request.quote.items.map((item: any) => ({ productId: item.id, name: item.name, quantity: item.qty, price: item.price, image: item.image, custom: !!item.custom })),
       delivery: request.quote.delivery,
     } : ({ ...request, linkedOrder: request.orderId ? linkedOrderMap.get(request.requestId) || { DON_HANG_ID: request.orderId } : null }));
-    const counts = { all:allOrderStates.length, shipping:0, completed:0, returns:0, cancelled:0, requests:allRequestCount };
+    const counts = { all:allOrderStates.length + allRequestCount, shipping:0, completed:0, returns:0, cancelled:0, requests:allRequestCount };
     for (const order of allOrderStates) {
       const bucket = customerOrderGroup(order.TRANG_THAI, afterMap.has(order.DON_HANG_ID));
       if (bucket !== 'all') counts[bucket as 'shipping'|'completed'|'returns'|'cancelled']++;

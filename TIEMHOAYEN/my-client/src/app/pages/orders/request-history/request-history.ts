@@ -37,15 +37,21 @@ type HistoryTab='all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
     @else if(activeTab==='requests'){<div class="cards">@for(r of filteredRequests;track r.requestId){<article class="card request" tabindex="0" (click)="open(r)" (keyup.enter)="open(r)">
       <div class="photo"><img [src]="r.items?.[0]?.image||'assets/images/logo-main.png'" alt=""></div>
       <div class="body"><div class="head"><b class="code">{{r.requestId}}</b><span class="request-status" [attr.data-tone]="requestStatusTone(r.status)">{{requestStatusLabel(r)}}</span></div><h3>{{r.items?.[0]?.name||'Yêu cầu đặt hoa'}} <small>× {{r.items?.[0]?.quantity||1}}</small></h3><p class="meta"><i class="bi bi-calendar3" aria-hidden="true"></i> Giao mong muốn <strong>{{r.delivery?.date||'Chưa chốt'}} · {{r.delivery?.time||'Chưa chốt'}}</strong></p>@if(r.quote){<em class="quote-note"><i class="bi bi-stars" aria-hidden="true"></i> Có phương án mới · {{r.quote.summary?.total|number:'1.0-0'}}đ</em>}</div>
-      <div class="side request-actions">@if(canConfirmRequest(r)){<button type="button" class="confirm-proposal" (click)="$event.stopPropagation();confirmRequest(r)" [disabled]="busy">Xác nhận phương án</button>}@else{<button type="button" class="detail" (click)="$event.stopPropagation();open(r)">Mở tư vấn <i class="bi bi-arrow-right" aria-hidden="true"></i></button>}@if(canCancelRequest(r)){<button type="button" class="cancel-request" (click)="$event.stopPropagation();cancelRequest(r)">Hủy yêu cầu</button>}</div>
+      <div class="side request-actions"><button type="button" class="detail" (click)="$event.stopPropagation();open(r)">Xem chi tiết <i class="bi bi-arrow-right" aria-hidden="true"></i></button>@if(canCancelRequest(r)){<button type="button" class="cancel-request" (click)="$event.stopPropagation();cancelRequest(r)">Hủy yêu cầu</button>}</div>
     </article>}@empty{<ng-container *ngTemplateOutlet="empty"></ng-container>}</div>}
-    @else{<div class="cards">@for(o of filteredOrders;track o.DON_HANG_ID){<article class="card"><a class="cover" [routerLink]="['/order-detail',o.DON_HANG_ID]" [attr.aria-label]="'Xem đơn '+o.DON_HANG_ID"></a>
+    @else{<div class="cards">
+      @if(activeTab==='all'){@for(r of filteredRequests;track r.requestId){<article class="card request" tabindex="0" (click)="open(r)" (keyup.enter)="open(r)">
+        <div class="photo"><img [src]="r.items?.[0]?.image||'assets/images/logo-main.png'" alt=""></div>
+        <div class="body"><div class="head"><b class="code">{{r.requestId}}</b><span class="request-status" [attr.data-tone]="requestStatusTone(r.status)">{{requestStatusLabel(r)}}</span></div><h3>{{r.items?.[0]?.name||'Yêu cầu đặt hoa'}} <small>× {{r.items?.[0]?.quantity||1}}</small></h3><p class="meta"><i class="bi bi-calendar3" aria-hidden="true"></i> Giao mong muốn <strong>{{r.delivery?.date||'Chưa chốt'}} · {{r.delivery?.time||'Chưa chốt'}}</strong></p>@if(r.quote){<em class="quote-note"><i class="bi bi-stars" aria-hidden="true"></i> Phương án hiện tại · {{r.quote.summary?.total|number:'1.0-0'}}đ</em>}</div>
+        <div class="side request-actions"><button type="button" class="detail" (click)="$event.stopPropagation();open(r)">Xem chi tiết <i class="bi bi-arrow-right" aria-hidden="true"></i></button>@if(canCancelRequest(r)){<button type="button" class="cancel-request" (click)="$event.stopPropagation();cancelRequest(r)">Hủy yêu cầu</button>}</div>
+      </article>}}
+      @for(o of filteredOrders;track o.DON_HANG_ID){<article class="card"><a class="cover" [routerLink]="['/order-detail',o.DON_HANG_ID]" [attr.aria-label]="'Xem đơn '+o.DON_HANG_ID"></a>
       <div class="photo"><img [src]="o.items?.[0]?.HINH_ANH_SNAPSHOT||'assets/images/logo-main.png'" alt=""></div>
       <div class="body"><div class="head"><b class="code">{{o.DON_HANG_ID}}</b><span class="order-status" [class.cancel]="isCancelled(o)" [class.done]="isCompleted(o)">{{o.TRANG_THAI}}</span></div><h3>{{o.items?.[0]?.TEN_SAN_PHAM_SNAPSHOT||'Đơn hoa Tiệm Hoa Yên'}} <small>× {{o.items?.[0]?.SO_LUONG||1}}</small></h3><p class="meta"><i class="bi bi-calendar3" aria-hidden="true"></i> Ngày giao <strong>{{o.NGAY_MUON_GIAO|date:'dd/MM/yyyy'}} · {{o.KHUNG_GIO_MUON_GIAO||'Chưa chốt'}}</strong></p>@if(o.YEU_CAU_DAT_HANG_ID){<a class="source-request" [routerLink]="['/order-request',o.YEU_CAU_DAT_HANG_ID]"><i class="bi bi-chat-dots" aria-hidden="true"></i> Từ yêu cầu đặt hàng · Xem trao đổi</a>}</div>
       <div class="side"><div class="money"><div class="money-total"><span>Tổng tiền</span><b>{{o.TONG_TIEN|number:'1.0-0'}}đ</b></div>@if(!isCompleted(o)){<dl><div><dt>Cọc</dt><dd>{{o.paymentSummary?.deposit|number:'1.0-0'}}đ</dd></div><div><dt>Đã thu</dt><dd>{{o.paymentSummary?.paid|number:'1.0-0'}}đ</dd></div><div class="due"><dt>Còn lại</dt><dd>{{o.paymentSummary?.remaining|number:'1.0-0'}}đ</dd></div></dl>}</div><a class="detail" [routerLink]="['/order-detail',o.DON_HANG_ID]">Xem chi tiết <i class="bi bi-arrow-right" aria-hidden="true"></i></a></div>
       @if(orderStep(o)>=0){<ol class="order-steps" [attr.aria-label]="'Tiến trình: '+steps[orderStep(o)]">@for(step of steps;track step;let i=$index){<li [class.done]="i<orderStep(o)" [class.current]="i===orderStep(o)"><span class="bar"></span><span class="label">{{step}}</span></li>}</ol>}
       @else{<p class="progress-note"><i class="bi bi-info-circle" aria-hidden="true"></i> {{isCancelled(o)?'Đơn đã hủy':'Đơn đang được shop hỗ trợ hoàn tiền / đổi trả'}}</p>}
-    </article>}@empty{<ng-container *ngTemplateOutlet="empty"></ng-container>}</div>}
+    </article>}@empty{@if(activeTab!=='all'||!filteredRequests.length){<ng-container *ngTemplateOutlet="empty"></ng-container>}}</div>}
     <ng-template #empty><div class="empty"><div class="flower">❀</div><h2>Chưa có nội dung trong mục này</h2><p>Đơn hoặc yêu cầu mới sẽ xuất hiện tại đây.</p><a routerLink="/">Tiếp tục chọn hoa</a></div></ng-template>
     @if(total>20){<div class="pager"><button type="button" (click)="page=page-1;load()" [disabled]="page===1">← Trước</button><span>Trang {{page}}</span><button type="button" (click)="page=page+1;load()" [disabled]="page*20>=total">Sau →</button></div>}
   }
@@ -241,7 +247,7 @@ export class RequestHistory implements OnInit,OnDestroy{
    const requests = this.activeTab === 'requests';
    const all = this.activeTab === 'all';
    this.historyLoad = this.access.history(this.page, {
-     pageSize: 20, scope: requests ? 'requests' : 'orders', group: requests || all ? '' : this.activeTab,
+     pageSize: 20, scope: requests ? 'requests' : all ? 'all' : 'orders', group: requests || all ? '' : this.activeTab,
    }).pipe(timeout(20000)).subscribe({ // DB chậm thì báo lỗi sau 20 giây, không treo trang ở trạng thái đang tải
      next: result => {
        this.busy = false;
@@ -251,7 +257,7 @@ export class RequestHistory implements OnInit,OnDestroy{
        this.orders = result.orders || [];
        this.counts = result.counts || {};
        if (all) this.updateRemaining();
-       this.total = Number(requests ? result.totalRequests : result.totalOrders) || 0;
+       this.total = Number(requests ? result.totalRequests : all ? result.total : result.totalOrders) || 0;
        this.cdr.markForCheck();
      },
      error: error => {
@@ -264,5 +270,5 @@ export class RequestHistory implements OnInit,OnDestroy{
      },
    });
  }
- open(r:any){this.service.openSalesChat(r.requestId)}changePhone(){this.challengeId='';this.code='';this.error=''}end(){this.access.logout();this.orders=[];this.requests=[];this.service.closeSalesChat();this.changePhone();this.cdr.markForCheck()}private fail(e:any){this.busy=false;this.refreshing=false;this.error=e?.error?.message||'Chưa thực hiện được. Vui lòng thử lại.';this.cdr.markForCheck()}
+ open(r:any){void this.router.navigate(['/order-request',r.requestId])}changePhone(){this.challengeId='';this.code='';this.error=''}end(){this.access.logout();this.orders=[];this.requests=[];this.service.closeSalesChat();this.changePhone();this.cdr.markForCheck()}private fail(e:any){this.busy=false;this.refreshing=false;this.error=e?.error?.message||'Chưa thực hiện được. Vui lòng thử lại.';this.cdr.markForCheck()}
 }

@@ -12,6 +12,7 @@ import { requestByVerifiedPhone } from './order-access.service.js';
 import { reserveOrderLines } from './order-stock.service.js';
 import { releaseReservations, sweepExpiredReservations } from './inventory/stock.service.js';
 import { writeCheckoutOrder } from './checkout-order-writer.service.js';
+import { changeCheckoutPayment } from './checkout-payment.service.js';
 
 export const MESSAGES = 'TIN_NHAN_CHAT';
 export const SALES_CHAT_TYPES = ['sales_request_customer', 'sales_request_staff'];
@@ -294,17 +295,20 @@ export async function propose(id: string, body: any, employee: any) {
       note: optionalText(body.note), urgentOverride, urgentConfirmationNote,
       agreedByPhone, agreementNote,
       discountNote: 'Giá phương án này chưa áp dụng voucher hoặc điểm của yêu cầu cũ.' };
+    const finalDraft = body.finalDraft === true;
     await (await getCollection<any>(REQUESTS)).updateOne({ _id: id, version: row.version }, {
-      $set: { quote, status: REQUEST_STATUS.quoted,
+      $set: { quote, status: finalDraft ? REQUEST_STATUS.processing : REQUEST_STATUS.quoted,
         acceptedQuoteId: null, acceptedAt: null, customerAcceptedAt: null,
         paymentDeadlineAt: null, acceptance: null, updatedAt: new Date() },
       $inc: { version: 1 }, $push: { quoteHistory: quote, history: { id: randomUUID(), at: new Date(), actor: employee.NHAN_VIEN_ID,
         action: agreedByPhone ? 'Sales chốt phương án đã thống nhất với khách qua điện thoại'
+          : finalDraft ? `Sales lưu phương án cuối phiên bản ${quote.revision}`
           : confirmOriginal ? (quote.items.some((item: any) => item.bom?.substitutions?.length) ? 'Sales gửi yêu cầu gốc với NVL thay thế theo BOM để khách xác nhận' : 'Sales gửi yêu cầu gốc để khách xác nhận') : `Gửi phương án phiên bản ${quote.revision}`, quoteId: quote.id } },
     } as any, { session });
     // Xác nhận ngay sẽ tạo đơn ở bước kế tiếp (thông báo tạo đơn gửi riêng); chỉ bản thảo mới cần khách xác nhận.
-    if (!confirmOriginal) await orderEvent(session,quote.id+':sent',row.customerId||null,null,'Phương án đặt hoa mới',
-      'Vui lòng xem và xác nhận đúng mẫu, giá và lịch giao trước khi thanh toán.','/order-request/'+id);
+    if (!confirmOriginal) await orderEvent(session,quote.id+':sent',row.customerId||null,null,'Phương án đặt hoa đã được cập nhật',
+      finalDraft ? 'Sales đang hoàn tất phương án và xác minh khoản thanh toán trước khi tạo đơn.'
+        : 'Vui lòng xem lại mẫu, giá và lịch giao; liên hệ shop nếu cần điều chỉnh.','/order-request/'+id);
     return quote;
   });
 }
@@ -315,9 +319,24 @@ export async function propose(id: string, body: any, employee: any) {
  */
 export async function confirmOriginalRequest(id: string, body: any, employee: any) {
   const requests = await getCollection<any>(REQUESTS);
+  const paymentConfirmation = body.paymentConfirmation || {};
+  const confirmedAmount = Number(paymentConfirmation.amount);
+  const paymentReference = String(paymentConfirmation.referenceCode || '').trim();
+  if (paymentConfirmation.confirmed !== true) throw new InventoryError(400, 'Sales phải xác nhận đã nhận tiền của khách trước khi chốt đơn.');
+  if (!Number.isSafeInteger(confirmedAmount) || confirmedAmount <= 0) throw new InventoryError(400, 'Số tiền đã nhận phải là số nguyên dương.');
+  if (!/^[\w./:-]{3,100}$/.test(paymentReference)) throw new InventoryError(400, 'Nhập mã giao dịch hoặc mã biên nhận hợp lệ (3–100 ký tự).');
   // Giữ trạng thái/phương án trước khi chốt để trả lại đúng như cũ nếu tạo đơn thất bại.
   const before = await requests.findOne({ _id: id }, { projection: { status: 1, quote: 1 } });
   const quote = await propose(id, { ...body, confirmOriginal: true }, employee);
+  if (confirmedAmount !== Number(quote.payment?.amountToPay || 0)) {
+    const proposedForRollback = await requests.findOne({ _id: id });
+    if (proposedForRollback?.quote?.id === quote.id) await requests.updateOne({ _id: id, version: proposedForRollback.version, 'quote.id': quote.id }, {
+      $set: { status: before?.status === REQUEST_STATUS.quoted ? REQUEST_STATUS.quoted : REQUEST_STATUS.processing,
+        quote: before?.quote || null, acceptedQuoteId: null, acceptedAt: null, acceptance: null, updatedAt: new Date() },
+      $pull: { quoteHistory: { id: quote.id } }, $inc: { version: 1 },
+    } as any);
+    throw new InventoryError(409, `Số tiền xác nhận phải đúng ${Number(quote.payment?.amountToPay || 0).toLocaleString('en-US')}đ theo phương án cuối.`);
+  }
   const proposed = await requests.findOne({ _id: id });
   if (!proposed) throw new InventoryError(404, 'Không tìm thấy yêu cầu.');
   const acceptedAt = new Date();
@@ -333,7 +352,9 @@ export async function confirmOriginalRequest(id: string, body: any, employee: an
   } as any, { returnDocument: 'after', includeResultMetadata: false });
   if (!accepted) throw new InventoryError(409, 'Yêu cầu vừa thay đổi. Vui lòng tải lại.');
   try {
-    await convertProposal(id, { quoteId: quote.id, version: accepted.version }, employee);
+    await convertProposal(id, { quoteId: quote.id, version: accepted.version, paymentConfirmation: {
+      confirmed: true, amount: confirmedAmount, referenceCode: paymentReference,
+    } }, employee);
   } catch (error: any) {
     // Không tạo được đơn (vd. thiếu NVL): trả yêu cầu về đúng trạng thái trước khi bấm để Sales xử lý tiếp.
     await requests.updateOne({ _id: id, version: accepted.version, status: REQUEST_STATUS.accepted, 'quote.id': quote.id }, {
@@ -441,19 +462,34 @@ export async function convertProposal(id: string, body: any, employee: any) {
       ...(waitForIncoming ? { inventoryMode: 'FUTURE_DEMAND', prepStartAt,
         staffOverride: { reason: stockPlan.uncovered.length ? 'Sales chốt đơn khi hệ thống còn thiếu NVL (chưa có hàng nhập đủ trên hệ thống)' : 'Sales chốt đơn chờ hàng về',
           at: new Date(), actor: employee.NHAN_VIEN_ID, shortages: stockPlan.shortages } } : {}) };
-    const result = { kind: 'order', ...await writeCheckoutOrder(session, orderId, checkoutData, { requestId: id, quote: row.quote, pendingOrderStatus: SALES_CONFIRMED_ORDER_STATUS }) };
+    let result: any = { kind: 'order', ...await writeCheckoutOrder(session, orderId, checkoutData, { requestId: id, quote: row.quote, pendingOrderStatus: SALES_CONFIRMED_ORDER_STATUS }) };
+    const paymentConfirmation = body.paymentConfirmation;
+    const paymentConfirmedBySales = paymentConfirmation?.confirmed === true;
+    if (paymentConfirmedBySales) {
+      const confirmedAmount = Number(paymentConfirmation.amount);
+      const expectedAmount = Number(result.paymentAmount || 0);
+      const referenceCode = String(paymentConfirmation.referenceCode || '').trim();
+      if (!Number.isSafeInteger(confirmedAmount) || confirmedAmount !== expectedAmount || confirmedAmount <= 0) {
+        throw new InventoryError(409, `Khoản Sales xác nhận phải đúng ${expectedAmount.toLocaleString('en-US')}đ.`);
+      }
+      if (!/^[\w./:-]{3,100}$/.test(referenceCode)) throw new InventoryError(400, 'Mã giao dịch hoặc mã biên nhận không hợp lệ.');
+      await changeCheckoutPayment(session, result.paymentId, { status: 'Thành công', amount: confirmedAmount,
+        referenceCode, source: 'SALES_FINALIZE', reason: `Sales chốt phương án ${row.quote.revision}` }, employee.NHAN_VIEN_ID);
+      result = { ...result, paymentStatus: 'Thành công', orderStatus: 'Đã đặt hàng thành công', paymentConfirmed: true };
+    }
     // Đơn đã xác nhận giữ NVL tới hạn thanh toán của khách, không phải hạn 5 phút của mã QR thường.
     if (result.requiresPayment) await (await getCollection<any>('GIU_TON')).updateMany(
       { DON_HANG_ID: orderId, TRANG_THAI: RESERVATION_STATUS.temporary },
       urgentOrder ? { $set: { HET_HAN_LUC: null } } : { $set: { HET_HAN_LUC: new Date(paymentDeadlineAt) } }, { session });
     await (await getCollection<any>(MESSAGES)).updateMany({ YEU_CAU_ID: id, LOAI_TIN_NHAN: { $in: SALES_CHAT_TYPES } }, { $set: { DON_HANG_ID: orderId } }, { session });
-    const requestStatus = result.requiresPayment ? REQUEST_STATUS.pendingPayment : REQUEST_STATUS.converted;
+    const requestStatus = paymentConfirmedBySales || !result.requiresPayment ? REQUEST_STATUS.converted : REQUEST_STATUS.pendingPayment;
     await (await getCollection<any>(REQUESTS)).updateOne({ _id: id, version: row.version }, {
       $set: { orderId, orderResult: result, checkoutData, status: requestStatus,
-        paymentDeadlineAt: result.requiresPayment && !urgentOrder ? paymentDeadlineAt : null,
+        paymentDeadlineAt: requestStatus === REQUEST_STATUS.pendingPayment && !urgentOrder ? paymentDeadlineAt : null,
         urgentOrder: row.quote.urgentOverride === true, updatedAt: new Date() }, $inc: { version: 1 },
       $push: { history: { id: randomUUID(), at: new Date(), actor: employee.NHAN_VIEN_ID,
-        action: row.quote.urgentOverride === true ? 'Sales xác nhận xử lý đơn gấp và tạo đơn'
+        action: paymentConfirmedBySales ? `Sales xác nhận đã nhận ${Number(paymentConfirmation.amount).toLocaleString('en-US')}đ và tạo đơn`
+          : row.quote.urgentOverride === true ? 'Sales xác nhận xử lý đơn gấp và tạo đơn'
           : result.requiresPayment ? 'Xác nhận yêu cầu, tạo đơn "Đã xác nhận đơn hàng" chờ khách thanh toán' : 'Xác nhận yêu cầu và lên đơn',
         note: [row.quote.urgentConfirmationNote,
           waitForIncoming ? `${stockPlan.uncovered.length ? 'Chốt khi hệ thống còn thiếu NVL, kho cần nhập/cập nhật' : 'Chờ hàng về'} trước ${prepStartAt.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}: ${stockPlan.shortages.map(s => s.materialId ? `${s.name} (cần ${s.required}, hiện có ${s.available}, sắp về ${s.incoming} ${s.unit})` : s.name).join('; ')}` : '']

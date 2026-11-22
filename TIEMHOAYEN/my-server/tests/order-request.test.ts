@@ -594,7 +594,7 @@ if (!uri) {
     assert.equal(row.overdueExport, true);
   });
 
-  test('Sales "Xác nhận ngay" turns the request into an order "Đã xác nhận đơn hàng" with a payment deadline', async () => {
+  test('Sales confirms the exact received amount and immediately turns the request into a paid order', async () => {
     await seedRule();
     const flow = await import('../services/sales-proposal.service.js');
     await (await mongo.getCollection<any>('NGUYEN_VAT_LIEU')).updateOne({ NGUYEN_VAT_LIEU_ID: 'TULIP_T' }, { $set: { TON_THUC: 20 } });
@@ -607,14 +607,22 @@ if (!uri) {
       items: [{ productId: 'SP_RULE_A', quantity: 1, name: 'Rule A', price: 100000 }], originalSummary: { subtotal: 100000, shippingFee: 0, total: 100000 }, history: [] });
     await service.updateSalesRequest(requestId, { action: 'claim', version: 0 }, sales);
     const result: any = await flow.confirmOriginalRequest(requestId, { version: 1, items: [{ id: 'SP_RULE_A', qty: 1 }], date: soonDelivery.date, time: soonDelivery.time,
-      shippingFee: 0, paymentMethod: 'bank', substitutions: [] }, sales);
+      shippingFee: 0, paymentMethod: 'bank', substitutions: [], paymentConfirmation: {
+        confirmed: true,
+        amount: 100000,
+        referenceCode: 'SALES-CONFIRM-NOW',
+      } }, sales);
     const row = await requestRow(requestId);
-    assert.equal(row.status, 'Chờ khách thanh toán');
-    assert.ok(row.paymentDeadlineAt && new Date(row.paymentDeadlineAt).getTime() <= Date.now() + 24 * 3600_000 + 5000);
+    assert.equal(row.status, 'Đã lên đơn');
+    assert.equal(row.paymentDeadlineAt, null);
     const order = await (await mongo.getCollection<any>('DON_HANG')).findOne({ DON_HANG_ID: row.orderId });
-    assert.equal(order.TRANG_THAI, 'Đã xác nhận đơn hàng');
+    assert.equal(order.TRANG_THAI, 'Đã đặt hàng thành công');
     assert.equal(order.YEU_CAU_DAT_HANG_ID, requestId);
-    assert.equal(result.status, 'Chờ khách thanh toán');
+    assert.equal(result.status, 'Đã lên đơn');
+    const payment = await (await mongo.getCollection<any>('THANH_TOAN')).findOne({ DON_HANG_ID: row.orderId });
+    assert.equal(payment.TRANG_THAI_THANH_TOAN, 'Thành công');
+    assert.equal(payment.SO_TIEN, 100000);
+    assert.equal(payment.MA_GIAO_DICH, 'SALES-CONFIRM-NOW');
     const holds = await (await mongo.getCollection<any>('GIU_TON')).find({ DON_HANG_ID: row.orderId }).toArray();
     assert.equal(holds.reduce((n: number, h: any) => n + Number(h.SO_LUONG), 0), 4);
   });

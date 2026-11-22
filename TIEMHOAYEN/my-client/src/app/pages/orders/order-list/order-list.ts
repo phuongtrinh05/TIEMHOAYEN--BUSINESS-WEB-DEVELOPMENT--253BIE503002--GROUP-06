@@ -2,7 +2,7 @@ import { deliverySlotLabel } from '../../../services/pricing.service';
 import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { OrderAccessService } from '../../../services/order-access.service';
 import { currentOrderAccountKey } from '../../../services/api-config';
 import { OrderService } from '../../../services/order.service';
@@ -22,6 +22,7 @@ type LookupTab = 'all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
 export class OrderList implements OnInit, OnDestroy {
   readonly slotLabel = deliverySlotLabel;
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   readonly access = inject(OrderAccessService);
   private readonly ordersService = inject(OrderService);
   private readonly cdr = inject(ChangeDetectorRef);
@@ -116,7 +117,7 @@ export class OrderList implements OnInit, OnDestroy {
   hasLinkedOrder(request:any){return request?.status==='Đã lên đơn'&&!!this.linkedOrderId(request)}
   cancelRequest(request:any){const session=this.access.session;if(this.busy||!session||!this.canCancelRequest(request))return;this.busy=true;this.error='';this.ordersService.updateSalesRequest(request.requestId,session.accessToken,{action:'cancel'}).subscribe({next:()=>{this.busy=false;this.load()},error:e=>this.fail(e)})}
   confirmRequest(request:any){const session=this.access.session;if(this.busy||!session||!this.canConfirmRequest(request))return;this.busy=true;this.error='';this.ordersService.respondSalesRequest(request.requestId,session.accessToken,request.quote.id,'accept').subscribe({next:()=>{this.busy=false;this.load()},error:e=>this.fail(e)})}
-  chatWithSales(request:any){this.ordersService.openSalesChat(request.requestId)}
+  openRequest(request:any){void this.router.navigate(['/order-request',request.requestId])}
   private syncRequestEvents() {
     const token = this.access.session?.accessToken || '';
     if (token === this.eventsToken) return;

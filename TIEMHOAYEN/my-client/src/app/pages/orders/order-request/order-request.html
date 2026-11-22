@@ -22,7 +22,7 @@
       </ol>}
       <p class="stage-hint" [attr.data-tone]="stage.tone" role="status"><i class="bi" [class.bi-info-circle]="!stage.terminal" [class.bi-flag]="stage.terminal" aria-hidden="true"></i><span><strong>{{stage.label}}.</strong> {{stage.hint}}</span></p>
       @if(hasCreatedOrder){<div class="converted-request-summary"><div class="converted-product">@for(item of request.items;track item.productId){<img [src]="image(item.image)" [alt]="item.name"><div><strong>{{item.name}}</strong><span>{{item.quantity}} bó · Giao {{request.delivery?.date}} {{slotLabel(request.delivery?.time)}}</span>@if(request.quote?.summary?.total ?? request.originalTotal;as total){<b>{{total | number:'1.0-0'}}đ</b>}<small>{{request.orderSummary?.status || 'Đã tạo đơn hàng'}} · Thanh toán: {{request.orderSummary?.paymentStatus || 'Chưa cập nhật'}}</small></div>}</div><a [routerLink]="['/order-detail',linkedOrderId]">Xem đơn hàng <i class="bi bi-arrow-right"></i></a></div>}
-      @if(!hasCreatedOrder && request.requestUpdatedByProposal){<p class="not-an-order"><strong>Yêu cầu đơn hàng đã được sửa.</strong> Vui lòng kiểm tra lại và xác nhận.</p>}
+      @if(!hasCreatedOrder && request.requestUpdatedByProposal){<p class="not-an-order"><strong>Sales đã cập nhật phương án.</strong> Bạn có thể xem lại và nhắn shop nếu cần điều chỉnh; Sales sẽ chốt sau khi xác minh thanh toán.</p>}
       @if (!hasCreatedOrder && privateLink) { <p>Giữ liên kết riêng để mở lại yêu cầu này. Người có liên kết có thể xem và phản hồi yêu cầu.</p><button class="secondary" (click)="copyPrivateLink()">Sao chép liên kết riêng</button> }
       @if (!hasCreatedOrder && !request.orderResult && !stage.terminal) {
       <details class="review-notice">
@@ -66,11 +66,7 @@
         <p>Thanh toán trước: <strong>{{q.payment.amountToPay | number:'1.0-0'}}đ</strong> · Còn lại: {{q.summary.total-q.payment.amountToPay | number:'1.0-0'}}đ</p>
         <p>Giao lúc {{slotLabel(q.delivery.time)}}, ngày {{q.delivery.date}} · {{q.payment.methodName}}</p>
         @if(q.note){<p class="message">{{q.note}}</p>}<small>{{q.discountNote}}</small>
-        @if (stage.awaitingConfirmation && !readOnly) {
-          <button (click)="respond('accept')" [disabled]="busy">Xác nhận phương án</button>
-          <button class="secondary" (click)="respond('decline')" [disabled]="busy">Tôi muốn tư vấn lại</button>
-          <p><small>Sau khi bạn đồng ý, hệ thống kiểm tra lại tồn và tạo đơn ở trạng thái Đã xác nhận đơn hàng. Bạn thanh toán trong 24 giờ để đơn được đặt thành công; quá hạn đơn tự hủy.</small></p>
-        }
+        @if (!hasCreatedOrder && !stage.terminal) {<p><small>Phương án này do Sales quản lý. Nếu cần thay đổi, bạn hãy nhắn trực tiếp cho shop trong phần trao đổi bên dưới.</small></p>}
         @if (request.orderResult) { @if(stage.key === 'payment'){<p>Đơn <strong>{{request.orderResult.orderId}}</strong> đang chờ thanh toán.</p>@if(!readOnly){<button (click)="checkout()">Thanh toán đơn hàng</button>}}@else{<p>Đã lên đơn <strong>{{request.orderResult.orderId}}</strong>.</p><a [routerLink]="['/order-detail',request.orderResult.orderId]">Theo dõi đơn hàng</a>}
         }
       </section>
@@ -78,10 +74,9 @@
     <section class="chat-shell" id="trao-doi" [class.read-only-history]="!canContinueChat">@if(!compact){<div class="chat-title"><div class="shop-avatar"><i class="bi bi-chat-heart" aria-hidden="true"></i></div><div><h2>{{canContinueChat ? (hasCreatedOrder ? 'Trao đổi về đơn hàng' : 'Trao đổi với shop') : 'Lịch sử trao đổi'}}</h2><p>{{canContinueChat ? (hasCreatedOrder ? 'Bạn vẫn có thể nhắn shop trước khi giao xong.' : 'Shop sẽ phản hồi tại cuộc trò chuyện này.') : 'Cuộc trao đổi đã kết thúc và được lưu để xem lại.'}}</p></div></div>}
       @if(compact){<div class="chat-request-summary">
         <div class="compact-summary-head"><span>Yêu cầu đặt hoa</span><div class="request-heading-actions"><span class="status-pill request-status" [attr.data-tone]="stage.tone">{{stage.label}}</span></div></div>
-        @if(request.requestUpdatedByProposal){<p class="not-an-order"><strong>Yêu cầu đơn hàng đã được sửa.</strong> Vui lòng kiểm tra lại và xác nhận.</p>}
+        @if(request.requestUpdatedByProposal){<p class="not-an-order"><strong>Sales đã cập nhật phương án.</strong> Hãy nhắn shop nếu bạn cần điều chỉnh.</p>}
         @if(request.quote; as currentQuote){@for(item of currentQuote.items;track item.id){<div class="requested-item"><img [src]="image(item.image)" [alt]="item.name"><p><strong>{{item.name}}</strong><span>{{item.qty}} bó · {{currentQuote.delivery?.date}} {{slotLabel(currentQuote.delivery?.time)}}</span><b>{{item.price | number:'1.0-0'}}đ/bó</b></p></div>}<p class="compact-quote-total"><span>Tổng dự kiến</span><strong>{{currentQuote.summary?.total | number:'1.0-0'}}đ</strong></p>}@else{@for(item of request.items;track item.productId){<div class="requested-item"><img [src]="image(item.image)" [alt]="item.name"><p><strong>{{item.name}}</strong><span>{{item.quantity}} bó · {{request.delivery?.date}} {{slotLabel(request.delivery?.time)}}</span></p></div>}}
         <p class="compact-action-note"><i class="bi" [class.bi-credit-card]="stage.key==='payment'" [class.bi-info-circle]="stage.key!=='payment'" aria-hidden="true"></i>{{stage.hint}}</p>
-        @if(stage.awaitingConfirmation && !readOnly){<div class="compact-confirm-actions"><button (click)="respond('accept')" [disabled]="busy">Xác nhận phương án</button><button class="secondary" (click)="respond('decline')" [disabled]="busy">Tư vấn lại</button></div>}
       </div>}
       <div class="chat" aria-live="polite">
         @for (m of messages; track m.id) { <div class="bubble" [class.mine]="m.senderType==='customer'" [class.system]="m.senderType==='system'">

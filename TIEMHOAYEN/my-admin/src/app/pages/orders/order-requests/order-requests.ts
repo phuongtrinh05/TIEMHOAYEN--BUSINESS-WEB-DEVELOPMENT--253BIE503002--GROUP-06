@@ -20,6 +20,7 @@ export class OrderRequests implements OnInit, OnDestroy {
   private replacementBaseline = '{}';
   workTab = 'stock'; chatOpen = false; showDecision = false; showOriginalConfirm = false;
   urgentDealConfirmed = false; urgentDealNote = '';
+  paymentReceivedConfirmed = false; paymentReceivedAmount: number | null = null; paymentReference = '';
   replacementChoice: Record<string, string> = {};
   proposalReplacementChoice: Record<string, string> = {};
   productOptionSearch: Record<number, string> = {};
@@ -32,7 +33,7 @@ export class OrderRequests implements OnInit, OnDestroy {
   /** 3 tab hàng đợi: việc shop cần làm / đang chờ khách / đã kết thúc. */
   readonly groupTabs = [
     { key: 'todo', label: 'Cần xử lý', hint: 'Mới gửi, đang tư vấn' },
-    { key: 'customer', label: 'Chờ khách', hint: 'Chờ xác nhận, chờ thanh toán' },
+    { key: 'customer', label: 'Chờ chốt', hint: 'Sales xác minh tiền và tạo đơn' },
     { key: 'done', label: 'Đã xong', hint: 'Đã lên đơn, từ chối, hủy' },
   ] as const;
   group: 'todo' | 'customer' | 'done' = 'todo';
@@ -67,7 +68,20 @@ export class OrderRequests implements OnInit, OnDestroy {
       .map((m: any) => `${m.name} thiếu ${m.missing} ${m.unit || ''}`.trim()));
   }
   get closeDealBlocked() {
-    return (this.needsPhoneAgreement || this.isUrgentConfirmation) && (!this.urgentDealConfirmed || !this.urgentDealNote.trim());
+    const paymentInvalid = !this.paymentReceivedConfirmed
+      || Number(this.paymentReceivedAmount) !== this.requiredPaymentAmount
+      || !/^[\w./:-]{3,100}$/.test(this.paymentReference.trim());
+    const urgentInvalid = this.isUrgentConfirmation && (!this.urgentDealConfirmed || !this.urgentDealNote.trim());
+    return paymentInvalid || urgentInvalid;
+  }
+  get requiredPaymentAmount() {
+    if (this.editing && this.draft) return this.draft.paymentMethod === 'cod' ? this.draftDeposit : this.draftTotal;
+    if (this.active?.quote) return Number(this.active.quote.payment?.amountToPay || 0);
+    return Number(this.active?.originalSummary?.total || 0);
+  }
+  get paymentConfirmationLabel() {
+    const method = this.editing ? this.draft?.paymentMethod : this.active?.quote?.payment?.method;
+    return method === 'cod' ? 'Tiền cọc đã nhận' : 'Toàn bộ tiền đơn đã nhận';
   }
   /** Yêu cầu đã kết thúc: ai cũng được mở để xem lại (các nút xử lý trong chi tiết tự khóa theo trạng thái). */
   isClosedRequest(row: any) { return ['Đã từ chối', 'Khách đã hủy', 'Hết hạn thanh toán'].includes(String(row?.status || '')); }
@@ -216,7 +230,7 @@ export class OrderRequests implements OnInit, OnDestroy {
     });
   }
   private fail(err: any) { this.error = err?.error?.message || 'Chưa lưu được thao tác. Vui lòng thử lại.'; this.busy = false; this.cdr.markForCheck(); }
-  open(row: any) { this.workTab = 'stock'; this.chatOpen = false; this.showDecision = false; this.showOriginalConfirm = false; this.urgentDealConfirmed = false; this.urgentDealNote = ''; this.replacementChoice = {}; this.proposalReplacementChoice = {}; this.approvedReplacements = {}; this.contact = { outcome: 'connected', note: '', followUpAt: '', readBackConfirmed: false }; this.active = row; this.editing = false; this.draft = null; this.pendingEdit = false; this.catalogLoaded = false; this.optionsLoading = false; this.optionsError = ''; this.sourcesLoading = false; this.sourcesLoaded = false; this.optionsUpdatedAt = null; this.options = null; this.message = ''; this.note = ''; this.search = ''; this.messages = []; this.loadOptions(); }
+  open(row: any) { this.workTab = 'stock'; this.chatOpen = false; this.showDecision = false; this.showOriginalConfirm = false; this.urgentDealConfirmed = false; this.urgentDealNote = ''; this.paymentReceivedConfirmed = false; this.paymentReceivedAmount = null; this.paymentReference = ''; this.replacementChoice = {}; this.proposalReplacementChoice = {}; this.approvedReplacements = {}; this.contact = { outcome: 'connected', note: '', followUpAt: '', readBackConfirmed: false }; this.active = row; this.editing = false; this.draft = null; this.pendingEdit = false; this.catalogLoaded = false; this.optionsLoading = false; this.optionsError = ''; this.sourcesLoading = false; this.sourcesLoaded = false; this.optionsUpdatedAt = null; this.options = null; this.message = ''; this.note = ''; this.search = ''; this.messages = []; this.loadOptions(); }
   /** Ngày phương án lưu dạng yyyy-mm-dd, ngày gốc dạng dd/mm/yyyy: luôn hiển thị dd/mm/yyyy. */
   displayDate(value: string) { return /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('/') : value || ''; }
   get totalPages() { return Math.max(1, Math.ceil(Number(this.total || 0) / 20)); }
@@ -226,16 +240,27 @@ export class OrderRequests implements OnInit, OnDestroy {
     this.showOriginalConfirm = true;
     this.showDecision = false;
     this.urgentDealConfirmed = false;
+    this.paymentReceivedConfirmed = false;
+    this.paymentReceivedAmount = this.requiredPaymentAmount;
+    this.paymentReference = '';
   }
-  /** "Chốt luôn": theo yêu cầu gốc, hoặc thay khách khi đã thống nhất qua điện thoại. */
+  openRejectDecision() {
+    if (this.busy || !this.canDecide) return;
+    this.showDecision = true;
+    this.showOriginalConfirm = false;
+    this.note = '';
+  }
+  /** Sales chốt phương án cuối sau khi đã xác minh khoản khách thanh toán. */
   closeDeal() {
     if (this.busy || !this.active || !this.canDecide || this.closeDealBlocked) return;
-    if (!this.needsPhoneAgreement) { this.confirmOriginal(); return; }
     const note = this.urgentDealNote.trim();
     const body = { ...(this.editing && this.draft ? this.draft : this.buildDraft()), version: this.active.version,
       substitutions: Object.values(this.approvedReplacements),
-      agreedByPhone: true, agreementNote: note,
-      urgentOverride: this.isUrgentConfirmation, urgentConfirmationNote: this.isUrgentConfirmation ? note : '' };
+      agreedByPhone: true,
+      agreementNote: note || `Sales xác nhận đã nhận ${Number(this.paymentReceivedAmount).toLocaleString('en-US')}đ của khách.`,
+      urgentOverride: this.isUrgentConfirmation, urgentConfirmationNote: this.isUrgentConfirmation ? note : '',
+      paymentConfirmation: { confirmed: this.paymentReceivedConfirmed, amount: Number(this.paymentReceivedAmount),
+        referenceCode: this.paymentReference.trim() } };
     this.busy = true; this.error = '';
     this.http.post(`${this.url}/${this.active.requestId}/confirm`, body).subscribe({
       next: () => this.afterDealClosed(), error: err => this.fail(err),
@@ -244,6 +269,7 @@ export class OrderRequests implements OnInit, OnDestroy {
   private afterDealClosed() {
     this.busy = false; this.showOriginalConfirm = false; this.editing = false; this.draft = null;
     this.urgentDealConfirmed = false; this.urgentDealNote = '';
+    this.paymentReceivedConfirmed = false; this.paymentReceivedAmount = null; this.paymentReference = '';
     this.workTab = 'stock'; this.status = ''; this.load(); this.cdr.markForCheck();
   }
   selectWorkTab(tab: string) {
@@ -511,18 +537,18 @@ export class OrderRequests implements OnInit, OnDestroy {
     if (this.editing) return !!this.draft?.items?.length && (this.active.status === 'Sales đang xử lý' || this.requiresCustomerProposal);
     return this.active.status === 'Sales đang xử lý';
   }
-  /** "Gửi phương án cho khách": khách xem và tự bấm xác nhận trên web rồi thanh toán. */
+  /** Lưu phương án cuối để khách theo dõi; quyền chốt và xác minh thanh toán thuộc Sales. */
   propose() {
     if (this.busy || !this.active || !this.canSendProposal) return;
     const draft = this.editing && this.draft ? this.draft : this.buildDraft();
     this.busy = true; this.error = ''; this.showOriginalConfirm = false;
-    this.http.post<any>(`${this.url}/${this.active.requestId}/proposal`, { ...draft, version: this.active.version,
+    this.http.post<any>(`${this.url}/${this.active.requestId}/proposal`, { ...draft, version: this.active.version, finalDraft: true,
       substitutions: Object.values(this.approvedReplacements) }).subscribe({
       next: quote => {
         // Swap the editor back to the request card immediately. The returned
         // immutable quote is now the current customer-facing request content;
         // the queue refresh and BOM refresh continue in the background.
-        this.active = { ...this.active, quote, status: 'Chờ khách xác nhận', acceptedQuoteId: null,
+        this.active = { ...this.active, quote, status: 'Sales đang xử lý', acceptedQuoteId: null,
           version: Number(this.active.version || 0) + 1, updatedAt: new Date().toISOString() };
         this.busy = false; this.editing = false; this.draft = null; this.status = '';
         this.options = null; this.catalogLoaded = false; this.sourcesLoaded = false;

@@ -767,7 +767,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   buyRelatedProduct(item: RelatedProduct): void {
-    const lineKey = String(item.id);
+    const lineKey = `BUY_NOW:${item.id}`;
     const checkoutItem = {
       id: item.id,
       lineKey,
@@ -787,24 +787,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     };
 
     localStorage.setItem('tiemHoaYenCheckoutItems', JSON.stringify([checkoutItem]));
-
-    const customerId = this.getCustomerId();
-
-    if (customerId && item.id.startsWith('SP')) {
-      this.cartService.addItem(customerId, item.id, 1, { lineKey, variantId: null, designId: null, configuration: {} }).subscribe({
-        next: () => {
-          this.dispatchCartChanged();
-          this.router.navigate(['/order-registrant']);
-        },
-        error: (err: unknown) => {
-          console.error('Lỗi mua ngay sản phẩm liên quan:', err);
-        }
-      });
-
-      return;
-    }
-
-    this.router.navigate(['/order-haunt']);
+    this.router.navigate([this.getCustomerId() ? '/order-registrant' : '/order-haunt']);
   }
 
   addRelatedToCart(item: RelatedProduct, event?: Event): void {
@@ -1160,7 +1143,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
 
   buyNow(): void {
     this.normalizeQuantity();
-    const lineKey = String(this.product.id);
+    const lineKey = `BUY_NOW:${this.product.id}`;
     const checkoutItem = {
       id: this.product.id,
       lineKey,
@@ -1180,24 +1163,7 @@ export class ProductDetailComponent implements OnInit, AfterViewInit, OnDestroy 
     };
 
     localStorage.setItem('tiemHoaYenCheckoutItems', JSON.stringify([checkoutItem]));
-
-    if (this.getCustomerId()) {
-      this.cartService.addItem(this.getCustomerId(), this.product.id, this.quantity, { lineKey, variantId: null, designId: null, configuration: {} }).subscribe({
-        next: () => {
-          this.dispatchCartChanged();
-          this.router.navigate(['/order-registrant']);
-        },
-        error: (err: any) => {
-          console.error('Lỗi mua ngay:', err);
-          this.cartLimitError = err?.error?.message || 'Chưa thêm được sản phẩm vào giỏ hàng.';
-          this.cdr.detectChanges();
-        }
-      });
-
-      return;
-    }
-
-    this.router.navigate(['/order-haunt']);
+    this.router.navigate([this.getCustomerId() ? '/order-registrant' : '/order-haunt']);
   }
 
   private saveProductToCart(): void {
