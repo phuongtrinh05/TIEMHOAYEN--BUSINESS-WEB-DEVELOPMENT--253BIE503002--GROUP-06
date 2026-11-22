@@ -9,7 +9,7 @@
     </div>
 
     <div class="checkout-toast__content">
-      <strong>{{ isOrderAccepted ? 'Đã tiếp nhận đơn — không cần cọc' : isPaymentSuccess ? (isCodPayment ? 'Đã xác minh tiền cọc' : 'Thanh toán thành công') : isPaymentFailed ? 'Thanh toán thất bại' : 'Xác nhận thanh toán' }}</strong>
+      <strong>{{ isOrderAccepted ? 'Đặt hàng thành công — thanh toán khi nhận hàng' : isPaymentSuccess ? (isCodPayment ? 'Đã xác minh tiền cọc' : 'Thanh toán thành công') : isPaymentFailed ? 'Thanh toán thất bại' : 'Xác nhận thanh toán' }}</strong>
       <span *ngIf="!isPaymentSuccess && !isPaymentFailed && !isOrderAccepted">
         Vui lòng kiểm tra lại thông tin đơn hàng trước khi thanh toán.
       </span>
@@ -248,6 +248,17 @@
           </div>
         </div>
 
+        <!-- COD không cần cọc (tạm tính dưới 300.000đ): hiện kết quả ngay trên trang, không dùng pop-up -->
+        <div class="payment-accepted" *ngIf="isOrderAccepted">
+          <div class="payment-state-box payment-state-box--success">
+            Đặt hàng thành công. Bạn cần thanh toán {{ order.summary.remainingAmount | number:'1.0-0' }}đ khi nhận hàng.
+          </div>
+          <div class="payment-accepted__actions">
+            <button type="button" class="payment-accepted__btn payment-accepted__btn--primary" (click)="viewOrderDetail()">Xem đơn hàng</button>
+            <button type="button" class="payment-accepted__btn" (click)="continueShopping()">Tiếp tục mua sắm</button>
+          </div>
+        </div>
+
         <div class="payment-state-box payment-state-box--success" *ngIf="isPaymentSuccess">
           Thanh toán thành công. Hệ thống đang chuyển sang trang hoàn tất đơn hàng.
         </div>
@@ -339,7 +350,7 @@
 
   <div
     class="checkout-result-overlay"
-    *ngIf="(isPaymentSuccess || isPaymentFailed || isOrderAccepted) && !checkoutResultDismissed && !luckyCheckPending"
+    *ngIf="(isPaymentSuccess || isPaymentFailed) && !checkoutResultDismissed && !luckyCheckPending"
     role="dialog"
     aria-modal="true"
     (click)="closeCheckoutResultPopup()">
@@ -358,7 +369,7 @@
       </div>
 
       <p class="checkout-result-message">
-        {{ isOrderAccepted ? 'Đã tiếp nhận đơn hàng' : isPaymentSuccess ? 'Thanh toán thành công' : 'Thanh toán thất bại' }}
+        {{ isOrderAccepted ? 'Đặt hàng thành công' : isPaymentSuccess ? 'Thanh toán thành công' : 'Thanh toán thất bại' }}
       </p>
 
       <p class="checkout-result-sub-message" *ngIf="isPaymentFailed">
@@ -369,7 +380,7 @@
         {{ checkoutResultError }}
       </p>
 
-      <p class="checkout-result-sub-message" *ngIf="isOrderAccepted">Đơn không yêu cầu cọc; chưa ghi nhận đã thu tiền. Số tiền còn lại: {{ order.summary.remainingAmount | number:'1.0-0' }}đ.</p>
+      <p class="checkout-result-sub-message" *ngIf="isOrderAccepted">Bạn cần thanh toán {{ order.summary.remainingAmount | number:'1.0-0' }}đ khi nhận hàng.</p>
       <div class="checkout-result-actions" *ngIf="isPaymentSuccess || isOrderAccepted">
         <button type="button" class="checkout-result-action" (click)="viewOrderDetail()">
           Xem đơn hàng

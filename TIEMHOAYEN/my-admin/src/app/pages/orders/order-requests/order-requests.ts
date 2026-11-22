@@ -492,10 +492,10 @@ export class OrderRequests implements OnInit, OnDestroy {
   get draftDeposit() {
     if (!this.draft || this.draft.paymentMethod !== 'cod') return 0;
     const subtotal = this.draftTotal - Number(this.draft.shippingFee || 0) - this.draftCardFee;
-    if (subtotal < 50000) return 0;
+    if (subtotal < 300000) return 0; // Chính sách: tạm tính dưới 300.000đ không cần đặt cọc
     const totalQty = this.draft.items.reduce((sum: number, item: any) => sum + Number(item.qty || 0), 0);
     const special = totalQty >= 10 || this.draft.items.some((item: any) => /cưới|sự kiện|wedding|event/i.test(String(item.name || '')));
-    const amount = special ? Math.round(subtotal * .7) : subtotal < 300000 ? 50000 : subtotal < 500000 ? 100000
+    const amount = special ? Math.round(subtotal * .7) : subtotal < 500000 ? 100000
       : Math.round(subtotal * (subtotal < 1000000 ? .3 : subtotal < 2000000 ? .4 : .5));
     return Math.min(this.draftTotal, amount);
   }
