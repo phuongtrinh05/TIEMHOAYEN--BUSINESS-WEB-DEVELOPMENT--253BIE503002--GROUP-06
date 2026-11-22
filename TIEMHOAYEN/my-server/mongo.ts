@@ -64,9 +64,69 @@ export const getMongoClient = async (): Promise<MongoClient> => {
   return client as MongoClient;
 };
 
+/**
+ * Đổi tên trường theo từ điển dữ liệu, giai đoạn ghi song song:
+ * code vẫn đọc tên cũ, mọi lệnh ghi lưu thêm tên chuẩn để có thể chuyển dần mà web không gián đoạn.
+ */
+const LUCKY_FIELD_ALIASES: Record<string, string> = {
+  name: 'TEN', terms: 'DIEU_KHOAN', status: 'TRANG_THAI', startAt: 'NGAY_BAT_DAU', endAt: 'NGAY_KET_THUC', prizes: 'DS_PHAN_THUONG',
+  threshold: 'NGUONG', minimumOrder: 'DON_TOI_THIEU', spinDays: 'SO_NGAY_QUAY', rewardDays: 'SO_NGAY_THUONG', reminderDays: 'SO_NGAY_NHAC',
+  version: 'PHIEN_BAN', pauses: 'LAN_TAM_DUNG', createdAt: 'NGAY_TAO', updatedAt: 'NGAY_CAP_NHAT', updatedBy: 'NGUOI_CAP_NHAT', endedAt: 'NGAY_DA_KET_THUC',
+  at: 'THOI_DIEM', token: 'TOKEN', revision: 'SO_PHIEN_BAN', count: 'SO_LUONG', prizeId: 'PHAN_THUONG_ID', programId: 'CHUONG_TRINH_ID',
+  spinId: 'LUOT_QUAY_ID', orderId: 'DON_HANG_ID', customerId: 'KHACH_HANG_ID', programVersion: 'PHIEN_BAN_CHUONG_TRINH', prize: 'PHAN_THUONG',
+  weights: 'TRONG_SO', rewardId: 'PHAN_THUONG_ID', grantedAt: 'NGAY_CAP', baseExpiresAt: 'HET_HAN_GOC', qualifyingValue: 'GIA_TRI_DU_DIEU_KIEN',
+  rules: 'QUY_TAC', resultId: 'KET_QUA_ID', spunAt: 'NGAY_QUAY', reason: 'LY_DO', actor: 'NGUOI_THUC_HIEN', action: 'HANH_DONG', snapshot: 'BAN_CHUP',
+  result: 'KET_QUA', activatedAt: 'NGAY_KICH_HOAT', expiresAt: 'HET_HAN', discount: 'GIAM_GIA', code: 'MA', sourceOrderId: 'DON_HANG_NGUON_ID',
+  issuedAt: 'NGAY_PHAT_HANH', heldAt: 'NGAY_GIU', heldUntil: 'GIU_DEN', usedOrderId: 'DON_HANG_DA_DUNG_ID', usedAt: 'NGAY_SU_DUNG', revokedAt: 'NGAY_THU_HOI',
+  read: 'DA_DOC', text: 'NOI_DUNG', technicalFailure: 'LOI_KY_THUAT', needsGiftReview: 'CAN_DOI_SOAT_QUA', giftStatus: 'TRANG_THAI_QUA',
+  restoredAt: 'NGAY_KHOI_PHUC', sourceCancelledReview: 'DA_DOI_SOAT_HUY_NGUON', deliveredAt: 'NGAY_GIAO_QUA', actualGiftCost: 'GIA_VON_QUA_THUC_TE', giftExportId: 'PHIEU_XUAT_QUA_ID',
+};
+const FIELD_ALIASES: Record<string, Record<string, string>> = Object.fromEntries(
+  ['VQ_CHUONG_TRINH', 'VQ_LUOT_QUAY', 'VQ_KET_QUA', 'VQ_PHAN_THUONG', 'VQ_HAN_MUC', 'VQ_NHAT_KY', 'VQ_THONG_BAO', 'VQ_YEU_CAU_QUAY', 'VQ_DONG_BO_META']
+    .map((table) => [table, { ...LUCKY_FIELD_ALIASES, id: `${table}_ID` }]),
+);
+
+const mirrorFields = (fields: Document, aliases: Record<string, string>): Document => {
+  const mirrored: Document = { ...fields };
+  for (const [key, value] of Object.entries(fields)) {
+    const root = key.split('.')[0];
+    if (aliases[root]) mirrored[aliases[root] + key.slice(root.length)] = value;
+  }
+  return mirrored;
+};
+
+const mirrorUpdate = (update: Document, aliases: Record<string, string>): Document => {
+  if (Array.isArray(update)) throw new TypeError('Bảng đang đổi tên trường chưa hỗ trợ cập nhật bằng pipeline.');
+  return Object.fromEntries(Object.entries(update).map(([operator, fields]) => [
+    operator,
+    operator.startsWith('$') && fields && typeof fields === 'object' ? mirrorFields(fields, aliases) : fields,
+  ]));
+};
+
+const withFieldAliases = <T extends Document>(collection: Collection<T>): Collection<T> => {
+  const aliases = FIELD_ALIASES[collection.collectionName];
+  if (!aliases) return collection;
+  const writers: Record<string, (target: any, args: any[]) => unknown> = {
+    insertOne: (target, [doc, ...rest]) => target.insertOne(mirrorFields(doc, aliases), ...rest),
+    insertMany: (target, [docs, ...rest]) => target.insertMany(docs.map((doc: Document) => mirrorFields(doc, aliases)), ...rest),
+    replaceOne: (target, [filter, doc, ...rest]) => target.replaceOne(filter, mirrorFields(doc, aliases), ...rest),
+    updateOne: (target, [filter, update, ...rest]) => target.updateOne(filter, mirrorUpdate(update, aliases), ...rest),
+    updateMany: (target, [filter, update, ...rest]) => target.updateMany(filter, mirrorUpdate(update, aliases), ...rest),
+    findOneAndUpdate: (target, [filter, update, ...rest]) => target.findOneAndUpdate(filter, mirrorUpdate(update, aliases), ...rest),
+  };
+  return new Proxy(collection, {
+    get(target, property) {
+      const writer = typeof property === 'string' ? writers[property] : undefined;
+      if (writer) return (...args: any[]) => writer(target, args);
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+};
+
 export const getCollection = async <T extends Document = Document>(name: string): Promise<Collection<T>> => {
   const db = await getDb();
-  return db.collection<T>(name);
+  return withFieldAliases(db.collection<T>(name));
 };
 
 export const getNextPrefixedId = async (

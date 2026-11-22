@@ -174,6 +174,20 @@ else{
     assert.equal((await (await c(lucky.LUCKY.reward)).findOne({_id:r.rewardId})).status,'Đang giữ chỗ');
   });
 
+  test('writes keep legacy fields and mirror standard dictionary names',async()=>{
+    const raw=async(name:string)=>(await mongo.getDb()).collection<any>(name);
+    await order('ALIAS-SOURCE');
+    const spin=await (await raw(lucky.LUCKY.spin)).findOne({_id:'ALIAS-SOURCE'});
+    assert.equal(spin.customerId,'KH1');assert.equal(spin.KHACH_HANG_ID,'KH1');assert.equal(spin.VQ_LUOT_QUAY_ID,'ALIAS-SOURCE');assert.equal(spin.TRANG_THAI,spin.status);
+    const result=await lucky.spinLucky('KH1','ALIAS-SOURCE');
+    const updated=await (await raw(lucky.LUCKY.spin)).findOne({_id:'ALIAS-SOURCE'});
+    assert.equal(updated.status,'Đã quay');assert.equal(updated.TRANG_THAI,'Đã quay');assert.equal(updated.NGAY_QUAY.getTime(),updated.spunAt.getTime());
+    const reward=await (await raw(lucky.LUCKY.reward)).findOne({_id:result.rewardId});
+    assert.equal(reward.MA,reward.code);assert.equal(reward.DON_HANG_NGUON_ID,'ALIAS-SOURCE');assert.deepEqual(reward.PHAN_THUONG,reward.prize);
+    await (await c('VQ_HAN_MUC')).updateOne({_id:'ALIAS-QUOTA'},{$inc:{count:2}},{upsert:true});
+    const quota=await (await raw('VQ_HAN_MUC')).findOne({_id:'ALIAS-QUOTA'});assert.equal(quota.count,2);assert.equal(quota.SO_LUONG,2);
+  });
+
   test('reward code preview distinguishes waiting, activation, ownership and expiry',async()=>{
     await order('CODE-SOURCE');const result=await lucky.spinLucky('KH1','CODE-SOURCE');const reward=await (await c(lucky.LUCKY.reward)).findOne({_id:result.rewardId});
     const express=(await import('express')).default;const routes=(await import('../routes/lucky-wheel.js')).default;const access=await import('../services/order-access.service.js');
