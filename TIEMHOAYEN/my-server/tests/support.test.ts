@@ -415,4 +415,38 @@ else {
         assert.equal(listed.TRANG_THAI, undefined);
         await Promise.all([rawAccess.deleteMany({ _id: { $in: ['W7-RATE', 'W7-OTP'] } } as any), rawLedger.deleteOne({ _id: 'RF:W7-CASE' as any }), rawCases.deleteOne({ _id: 'W7-CASE' as any })]);
     });
+    test('wave 7 reads order workflow tables by standard names, including realtime scope', async () => {
+        const db = await mongo.getDb();
+        const rawRequests = db.collection<any>('YEU_CAU_DAT_HANG'), requests = await mongo.getCollection<any>('YEU_CAU_DAT_HANG');
+        await rawRequests.insertOne({ _id: 'W7R-REQ', requestId: 'W7R-REQ', YEU_CAU_ID: 'W7R-REQ', status: 'old', TRANG_THAI: 'new', customerId: 'W7R-OLD', KHACH_HANG_ID: 'W7R-NEW', tokenHash: 'secret', MA_BAM_TOKEN: 'secret', sender: { phone: '0900000000' }, NGUOI_GUI: { phone: '0900000077' } });
+        assert.equal(await requests.countDocuments({ _id: 'W7R-REQ', status: 'old' }), 0);
+        const row = await requests.findOne({ _id: 'W7R-REQ', status: 'new', 'sender.phone': '0900000077' }, { projection: { tokenHash: 0 } });
+        assert.equal(row.status, 'new');
+        assert.equal(row.customerId, 'W7R-NEW');
+        assert.equal(row.sender.phone, '0900000077');
+        assert.equal(row.TRANG_THAI, undefined);
+        assert.equal(row.tokenHash, undefined);
+        assert.equal(row.MA_BAM_TOKEN, undefined);
+        const stream = requests.watch([{ $match: { operationType: { $in: ['insert', 'update'] }, $and: [{ 'fullDocument.customerId': 'W7R-NEW' }, { 'documentKey._id': 'W7R-REQ' }] } }], { fullDocument: 'updateLookup', maxAwaitTimeMS: 200 });
+        try {
+            await stream.tryNext();
+            await rawRequests.updateOne({ _id: 'W7R-REQ' as any }, { $set: { TRANG_THAI: 'changed' } });
+            let change: any = null;
+            for (let attempt = 0; attempt < 25 && !change; attempt++) change = await stream.tryNext();
+            assert.equal(change?.documentKey?._id, 'W7R-REQ');
+        } finally { await stream.close(); }
+        const rawLedger = db.collection<any>('HOAN_TIEN'), ledger = await mongo.getCollection<any>('HOAN_TIEN');
+        await rawLedger.insertOne({ _id: 'W7R-RF', requestId: 'W7R-OTHER', YEU_CAU_ID: 'W7R-OTHER', orderId: 'W7R-ORDER', DON_HANG_ID: 'W7R-ORDER', amount: 1, SO_TIEN: 70000, status: 'Pending', TRANG_THAI: 'Pending' });
+        const [sum] = await ledger.aggregate([{ $match: { orderId: 'W7R-ORDER', status: { $in: ['Pending'] }, requestId: { $ne: 'W7R-REQ' } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]).toArray();
+        assert.equal(sum.total, 70000);
+        const access = await mongo.getCollection<any>('XAC_THUC_TRA_CUU_DON'), rawAccess = db.collection<any>('XAC_THUC_TRA_CUU_DON');
+        const now = new Date(), rate = () => ({ updateOne: { filter: { _id: 'W7R-RATE', $or: [{ count: { $lt: 2 } }, { count: { $exists: false } }] }, update: [{ $set: { kind: 'rate', count: { $add: [{ $ifNull: ['$count', 0] }, 1] }, windowAt: now } }], upsert: true } });
+        await access.bulkWrite([rate()] as any);
+        await access.bulkWrite([rate()] as any);
+        await assert.rejects(access.bulkWrite([rate()] as any), (error: any) => error?.code === 11000);
+        const bucket = await rawAccess.findOne({ _id: 'W7R-RATE' as any });
+        assert.equal(bucket.count, 2);
+        assert.equal(bucket.SO_LUONG, 2);
+        await Promise.all([rawRequests.deleteOne({ _id: 'W7R-REQ' as any }), rawLedger.deleteOne({ _id: 'W7R-RF' as any }), rawAccess.deleteOne({ _id: 'W7R-RATE' as any })]);
+    });
 }

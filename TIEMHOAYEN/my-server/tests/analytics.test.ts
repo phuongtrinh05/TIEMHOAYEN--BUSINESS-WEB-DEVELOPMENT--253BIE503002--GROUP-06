@@ -87,7 +87,7 @@ if (!uri) {
     await db.collection<any>('NGUYEN_VAT_LIEU').insertOne({ NGUYEN_VAT_LIEU_ID: 'NVL001', TEN_NGUYEN_VAT_LIEU: 'Hồng', NHOM_NVL: 'IT_HU', GIA_VON_BQ: 8000, TON_THUC: 0, TON_DANG_GIU: 0, TON_KHONG_DAT: 0, NGUONG_CANH_BAO: 0 });
     await db.collection<any>('BOM_SAN_PHAM').insertOne({ BOM_ID: 'B1', SAN_PHAM_ID: 'SPA', PHIEN_BAN: 1, TRANG_THAI: 'Hiệu lực' });
     await db.collection<any>('CHI_TIET_BOM').insertOne({ BOM_ID: 'B1', NGUYEN_VAT_LIEU_ID: 'NVL001', DINH_LUONG: 10, DON_VI_TINH: 'cành', VAI_TRO: 'Chính', DS_THAY_THE: [] });
-    await db.collection<any>('YEU_CAU_DAT_HANG').insertOne({ _id: 'YC1', requestId: 'YC1', status: 'Chờ Sales tiếp nhận', createdAt: ago(1) });
+    await (await mongo.getCollection<any>('YEU_CAU_DAT_HANG')).insertOne({ _id: 'YC1', requestId: 'YC1', status: 'Chờ Sales tiếp nhận', createdAt: ago(1) });
     await db.collection<any>('NHAN_VIEN').insertMany([{ NHAN_VIEN_ID: 'NV1', VAI_TRO: 'Admin' }, { NHAN_VIEN_ID: 'NV2', VAI_TRO: 'Admin' }]);
   });
 
