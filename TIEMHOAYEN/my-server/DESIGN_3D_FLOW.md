@@ -4,7 +4,7 @@
 
 - Danh sách 3D lấy từ NVL đang sử dụng và bật `DUNG_CHO_3D`. Không lấy sản phẩm mua kèm làm nguyên liệu.
 - Một NVL có nhiều màu trên 3D. Mặc định theo mô hình hiện có (hồng: đỏ/hồng; tulip: hồng/trắng); Admin chọn nhiều màu cho phép. Thiết kế lưu phân bổ từng màu, báo giá và đơn giữ nguyên phân bổ đó. Ví dụ 3 đỏ + 2 hồng cùng mã NVL tính tổng 5 cành vào tồn chung của mã; chưa có tồn riêng từng màu. Thay phân bổ màu cần duyệt mẫu tương ứng.
-- NVL hết khả dụng không thêm mới được trên giao diện. Còn hàng nhưng dưới ngưỡng vẫn chọn được, có cảnh báo. Chọn vượt lượng khả dụng chuyển sang shop kiểm tra.
+- Mọi NVL bật 3D đều chọn được trên giao diện, kể cả khi hết khả dụng; trang 3D không hiện tồn kho hay cảnh báo hết/sắp hết cho khách. Thiết kế thiếu NVL vẫn được đánh dấu cần duyệt ở backend nên đi vào yêu cầu đặt hàng để nhân viên xử lý (đổi NVL, chờ hàng về…).
 - Giá tạm tính = tổng định lượng × giá bán NVL hiện tại + phí thiết kế và phí bổ sung của mẫu đã được shop duyệt. Mẫu mới chưa có phí chốt nên cần tư vấn; không tự gán biểu phí đề xuất thành giá chính thức.
 - “Đặt mẫu này” lưu thiết kế và chi tiết, thêm dòng giỏ hàng có `THIET_KE_3D_ID`. Lưu/thêm giỏ không giữ hoặc xuất kho.
 - Mẫu mới/chưa được shop duyệt hoặc có cảnh báo → `YEU_CAU_DAT_HANG`, không tạo QR. Nhân viên tiếp nhận, trao đổi, gửi phương án; khách đồng ý đúng phiên bản rồi mới lên đơn/thanh toán.

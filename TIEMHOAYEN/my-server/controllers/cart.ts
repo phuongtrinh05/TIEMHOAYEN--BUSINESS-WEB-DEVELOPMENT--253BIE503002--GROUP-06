@@ -202,7 +202,9 @@ export const addCartItem = async (req: Request, res: Response) => {
     const totalQuantity = Number(existing?.SO_LUONG || 0) + quantity;
     const cartTotal = await cartTotalQuantity(cartId);
     if (cartTotal + quantity > MAX_CART_ITEMS) return res.status(400).json({ message: cartLimitMessage(cartTotal), code: 'CART_LIMIT', maxItems: MAX_CART_ITEMS });
-    const availability = await checkProductAvailability(productId, totalQuantity, null);
+    // Mẫu 3D (SP3D_TK3D…) không có trong SAN_PHAM; tồn NVL của mẫu đã được báo giá thiết kế xét
+    // (thiếu NVL → cần shop duyệt → yêu cầu đặt hàng), nên không kiểm tra như sản phẩm thường.
+    const availability = design ? null : await checkProductAvailability(productId, totalQuantity, null);
     await detailCollection.updateOne(
       lineFilter,
       {
@@ -243,7 +245,7 @@ export const updateCartItem = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Thiếu customerId hoặc productId.' });
     }
     if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000) return res.status(400).json({ message: 'Số lượng phải là số nguyên từ 1–1000.' });
-    const availability = await checkProductAvailability(productId, quantity, null);
+    const availability = isDesignProduct(productId) ? null : await checkProductAvailability(productId, quantity, null);
 
     const cartId = await getOrCreateCart(customerId);
     const detailCollection = await getCollection<any>('GIO_HANG_CHI_TIET');

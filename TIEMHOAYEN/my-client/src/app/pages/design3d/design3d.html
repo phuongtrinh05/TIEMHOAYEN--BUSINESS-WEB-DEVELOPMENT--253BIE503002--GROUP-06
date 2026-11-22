@@ -155,7 +155,7 @@
                     <span class="design-review-badge" *ngIf="quote.requiresReview"><i class="bi bi-clock-history" aria-hidden="true"></i> Cần shop duyệt</span>
                     <span class="design-review-badge approved" *ngIf="!quote.requiresReview"><i class="bi bi-check-circle" aria-hidden="true"></i> Mẫu đã được duyệt</span>
                     <p *ngIf="quote.requiresReview">Shop xác nhận mẫu và phí trước khi thanh toán.</p>
-                    <details class="design-review-details" *ngIf="quote.requiresReview && quote.badges.length > 1"><summary><span>Xem lý do cần duyệt</span><i class="bi bi-chevron-down" aria-hidden="true"></i></summary><ul><li *ngFor="let badge of quote.badges">{{badge}}</li></ul></details>
+                    <details class="design-review-details" *ngIf="quote.requiresReview && reviewReasons(quote).length > 1"><summary><span>Xem lý do cần duyệt</span><i class="bi bi-chevron-down" aria-hidden="true"></i></summary><ul><li *ngFor="let badge of reviewReasons(quote)">{{badge}}</li></ul></details>
                   </div>
                 </div>
                 <p class="design-price-note" *ngIf="quoteLoading">Đang tính giá…</p>
@@ -163,7 +163,6 @@
                 <div class="design-actions">
                   <button class="design-order-btn" type="button" (click)="orderDesign()" [disabled]="savingDesign || quoteLoading || !quote || !selectedFlowers.length || !rendererReady || modelsLoading() > 0 || !!modelError()"><i class="bi bi-cart-plus" aria-hidden="true"></i> {{savingDesign ? 'Đang lưu…' : 'Đặt mẫu này'}}</button>
                   <div class="design-secondary-actions">
-                    <button class="save-btn" type="button" (click)="refreshQuote()" [disabled]="quoteLoading || !selectedFlowers.length"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Cập nhật</button>
                     <button class="save-btn" type="button" (click)="captureImage()" [disabled]="!rendererReady"><i class="bi bi-camera" aria-hidden="true"></i> Chụp ảnh</button>
                   </div>
                 </div>
@@ -177,14 +176,12 @@
                     <div
                         class="flower-item"
                         *ngFor="let flower of flowers"
-                        (click)="addFlower(flower)" [class.design-unavailable]="!flower.available"
+                        (click)="addFlower(flower)"
                     >
                         <img [src]="flower.image" [alt]="flower.name">
                         <p class="flower-name">{{ flower.name }}</p>
                         <div class="flower-price">{{flower.price | number:'1.0-0'}}đ / {{flower.unit}}</div>
-                        <span class="flower-stock-badge out" *ngIf="!flower.available">Hết hàng</span>
-                        <span class="flower-stock-badge low" *ngIf="flower.available && flower.available! <= (flower.threshold || 0)">Sắp hết</span>
-                        <div class="flower-availability" *ngIf="flower.available">Còn {{flower.available}} {{flower.unit}}</div>
+                        <!-- Không hiện tồn kho/cảnh báo hết hàng cho khách: thiếu NVL do shop xử lý ở bước yêu cầu đặt hàng. -->
                         <span class="flower-stock-badge neutral" *ngIf="!flower.modelPath && !flower.modelPathsByColor">Chưa có mô hình</span>
 
                         <div

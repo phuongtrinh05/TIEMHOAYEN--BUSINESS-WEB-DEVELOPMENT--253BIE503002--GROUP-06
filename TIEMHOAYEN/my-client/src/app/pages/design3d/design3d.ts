@@ -302,6 +302,8 @@ export class Design3d implements OnInit, OnDestroy {
       error:e=>{this.materialLoadError=e.name==='TimeoutError'?'Tải nguyên vật liệu quá lâu. Bạn thử lại nhé.':e.error?.message || 'Không tải được nguyên vật liệu thiết kế. Bạn thử lại nhé.';this.cdr.markForCheck();}
     });
   }
+  /** Lý do cần duyệt hiển thị cho khách: bỏ các dòng thiếu NVL (shop tự xử lý, không cảnh báo khách). */
+  reviewReasons(quote:DesignQuote):string[] {return (quote.badges || []).filter(b=>!/^Thiếu /.test(b));}
   private backendHost():string {return this.designApiUrl().replace(/\/api$/,'');}
   private designApiUrl():string {return apiBaseUrl();}
   private materialLines(){
@@ -368,7 +370,8 @@ export class Design3d implements OnInit, OnDestroy {
    * nhờ vậy có thể trộn nhiều màu của cùng 1 loại hoa (vd Hoa Hồng Đỏ + Hồng).
    */
   addFlowerWithColor(flower: FlowerDef, color: string): void {
-    if(!flower.materialId || !(Number(flower.available)>0)){this.designError='NVL hiện hết khả dụng. Chọn NVL khác hoặc trao đổi với shop.';return;}
+    // Hết NVL vẫn cho chọn, không cảnh báo khách: mẫu thiếu NVL tự chuyển thành yêu cầu đặt hàng để shop xử lý.
+    if(!flower.materialId)return;
     this.designError='';
     const existing = this.selectedFlowers.find(
       item => item.materialId === flower.materialId && item.selectedColor === color
