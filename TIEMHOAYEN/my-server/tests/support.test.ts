@@ -260,4 +260,29 @@ else {
         assert.equal(listed.phone, row.phone);
         assert.equal(listed.TEN, undefined);
     });
+    test('wave 2 tables filter, sort and project by standard names', async () => {
+        const db = await mongo.getDb();
+        const tickets = db.collection<any>('YEU_CAU_HO_TRO'), images = db.collection<any>('YEU_CAU_TAO_ANH'), designs = db.collection<any>('THIET_KE_3D');
+        await tickets.insertMany([
+            { _id: 'W2-A', status: 'OLD', TRANG_THAI: 'W2-NEW', name: 'old', TEN: 'A', updatedAt: new Date(2000), NGAY_CAP_NHAT: new Date(1000), ratings: [], DS_DANH_GIA: [{ round: 7 }] },
+            { _id: 'W2-B', status: 'OLD', TRANG_THAI: 'W2-NEW', name: 'old', TEN: 'B', updatedAt: new Date(1000), NGAY_CAP_NHAT: new Date(2000), ratings: [{ round: 7 }], DS_DANH_GIA: [] },
+        ]);
+        await images.insertOne({ _id: 'W2-IMG', COLOR: 'old', MAU_SAC: 'Đỏ', OCCASION: 'old', DIP: 'Sinh nhật' });
+        await designs.insertOne({ _id: 'W2-DESIGN', name: 'old', TEN: 'Bó mới', image: 'old', HINH_ANH: 'new-image' });
+        const wrapped = await mongo.getCollection<any>('YEU_CAU_HO_TRO');
+        assert.equal(await wrapped.countDocuments({ status: 'OLD' }), 0);
+        const first = await wrapped.findOne({ status: 'W2-NEW' }, { sort: { updatedAt: -1 } });
+        assert.equal(first._id, 'W2-B');
+        assert.equal(first.name, 'B');
+        assert.equal(first.TEN, undefined);
+        const rated = await wrapped.find({ 'ratings.round': 7 }).project({ name: 1 }).toArray();
+        assert.deepEqual(rated, [{ _id: 'W2-A', name: 'A' }]);
+        const image = await (await mongo.getCollection<any>('YEU_CAU_TAO_ANH')).findOne({ COLOR: 'Đỏ' });
+        assert.equal(image.OCCASION, 'Sinh nhật');
+        assert.equal(image.MAU_SAC, undefined);
+        const design = await (await mongo.getCollection<any>('THIET_KE_3D')).findOne({ _id: 'W2-DESIGN' });
+        assert.equal(design.name, 'Bó mới');
+        assert.equal(design.image, 'new-image');
+        await Promise.all([tickets.deleteMany({ _id: { $in: ['W2-A', 'W2-B'] } }), images.deleteOne({ _id: 'W2-IMG' }), designs.deleteOne({ _id: 'W2-DESIGN' })]);
+    });
 }
