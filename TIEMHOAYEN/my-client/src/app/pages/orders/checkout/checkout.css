@@ -396,6 +396,29 @@
   color: var(--color-scarlet-red);
 }
 
+/* Đơn COD không cần cọc: nút thao tác ngay trên trang */
+.payment-accepted__actions {
+  display: flex;
+  gap: 10px;
+  margin: 12px 20px 0;
+}
+
+.payment-accepted__btn {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid #731919;
+  border-radius: 10px;
+  background: #fff;
+  color: #731919;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.payment-accepted__btn--primary {
+  background: #731919;
+  color: #fff;
+}
+
 /* Guarantees */
 .payment-guarantees {
   padding: 14px 24px;

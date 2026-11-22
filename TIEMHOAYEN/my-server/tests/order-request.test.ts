@@ -768,13 +768,14 @@ test('backend prices catalog, shipping and voucher instead of submitted money', 
   const shipping = await priceCheckout(payload, undefined, collections);
   assert.equal(shipping.summary.productDiscount, 0);
   assert.equal(shipping.summary.shippingFee, 0);
-  rows.SAN_PHAM.GIA_KHUYEN_MAI = 49999;
+  // Chính sách mới: tạm tính dưới 300.000đ chọn COD không cần cọc (đơn đặt thành công ngay, trả tiền khi nhận hàng).
+  rows.SAN_PHAM.GIA_KHUYEN_MAI = 299999;
   const noDeposit = await priceCheckout({ ...payload, voucher: null, payment: { method: 'cod' } }, undefined, collections);
   assert.equal(noDeposit.summary.depositAmount, 0);
-  assert.equal(noDeposit.summary.total, 79999);
-  rows.SAN_PHAM.GIA_KHUYEN_MAI = 50000;
+  assert.equal(noDeposit.summary.total, 329999);
+  rows.SAN_PHAM.GIA_KHUYEN_MAI = 300000;
   const deposit = await priceCheckout({ ...payload, voucher: null, payment: { method: 'cod' } }, undefined, collections);
-  assert.equal(deposit.summary.depositAmount, 50000);
+  assert.equal(deposit.summary.depositAmount, 100000);
   await assert.rejects(priceCheckout({ ...payload, payment: { method: 'unknown' } }, undefined, collections), /không được hỗ trợ/);
   await assert.rejects(priceCheckout({ ...payload, items: [{ id: 'SP1', qty: -1 }] }, undefined, collections), /số lượng/);
   await assert.rejects(priceCheckout({ ...payload, receiver: { address: 'Hà Nội' } }, undefined, collections), /Hồ Chí Minh/);

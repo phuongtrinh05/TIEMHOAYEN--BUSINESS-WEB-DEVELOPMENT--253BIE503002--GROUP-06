@@ -197,9 +197,9 @@ export class OrderHauntComponent implements OnInit {
     {
       minTotal: 0,
       maxTotal: 299999,
-      depositType: 'fixed',
-      depositValue: 50000,
-      note: 'Đơn dưới 300,000đ cần cọc 50,000đ',
+      depositType: 'none',
+      depositValue: 0,
+      note: 'Đơn dưới 300,000đ không cần đặt cọc, thanh toán toàn bộ khi nhận hàng',
     },
     {
       minTotal: 300000,
@@ -1223,7 +1223,7 @@ export class OrderHauntComponent implements OnInit {
   }
 
   get showDepositPolicy(): boolean {
-    return this.subtotal >= 50000 && this.isCodPayment && !this.isCashPaymentBlocked && !!this.currentPaymentPolicy;
+    return this.isCodPayment && !this.isCashPaymentBlocked && !!this.currentPaymentPolicy;
   }
 
   get currentPaymentPolicy(): PaymentPolicy | null {
@@ -1248,7 +1248,6 @@ export class OrderHauntComponent implements OnInit {
   }
 
   get depositAmount(): number {
-    if (this.subtotal < 50000) return 0;
     if (!this.isCodPayment || this.isCashPaymentBlocked) {
       return 0;
     }

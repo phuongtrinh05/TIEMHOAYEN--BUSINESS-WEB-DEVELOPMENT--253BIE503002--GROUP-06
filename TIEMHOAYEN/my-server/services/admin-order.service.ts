@@ -17,11 +17,13 @@ export function cleanAddress(value: unknown): string {
 
 const statusKey = (v: unknown) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').trim().toLowerCase();
 export const paymentSucceeded = (v: unknown) => ['thanh cong', 'thanh toan thanh cong', 'da thanh toan', 'da coc', 'success', 'paid'].includes(statusKey(v));
+/** Chính sách thanh toán: đơn có tạm tính dưới mức này không cần đặt cọc (COD trả khi nhận hàng, hoặc thanh toán trước toàn bộ). */
+export const NO_DEPOSIT_BELOW = 300000;
 export function depositByPolicy(subtotal: number, total: number, items: Array<{ name?: string; qty?: number }>) {
-  if (subtotal < 50000) return 0;
+  if (subtotal < NO_DEPOSIT_BELOW) return 0;
   const special = items.reduce((sum, item) => sum + Number(item.qty || 0), 0) >= 10
     || items.some(item => /cuoi|su kien|wedding|event/.test(statusKey(item.name)));
-  const amount = special ? Math.round(subtotal * .7) : subtotal < 300000 ? 50000 : subtotal < 500000 ? 100000
+  const amount = special ? Math.round(subtotal * .7) : subtotal < 500000 ? 100000
     : Math.round(subtotal * (subtotal < 1000000 ? .3 : subtotal < 2000000 ? .4 : .5));
   return Math.min(total, amount);
 }
