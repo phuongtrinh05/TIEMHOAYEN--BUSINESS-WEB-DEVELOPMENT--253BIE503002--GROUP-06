@@ -65,9 +65,9 @@ export const getMongoClient = async (): Promise<MongoClient> => {
 };
 
 /**
- * Đổi tên trường theo từ điển dữ liệu, giai đoạn đọc tên chuẩn:
- * truy vấn dùng tên chuẩn trong database, kết quả đổi lại tên cũ để service và API không thay đổi.
- * Lệnh ghi vẫn lưu cả hai tên để có thể quay lại bản trước khi cần.
+ * Đổi tên trường theo từ điển dữ liệu. Lệnh ghi luôn lưu cả tên cũ và tên chuẩn để có thể quay lại bản trước.
+ * - Bảng trong READ_STANDARD_TABLES: truy vấn dùng tên chuẩn, kết quả đổi lại tên cũ.
+ * - Bảng còn lại đang ghi song song: truy vấn dùng tên cũ, kết quả bỏ tên chuẩn để không lộ thêm trường qua API.
  */
 const LUCKY_FIELD_ALIASES: Record<string, string> = {
   name: 'TEN', terms: 'DIEU_KHOAN', status: 'TRANG_THAI', startAt: 'NGAY_BAT_DAU', endAt: 'NGAY_KET_THUC', prizes: 'DS_PHAN_THUONG',
@@ -82,15 +82,25 @@ const LUCKY_FIELD_ALIASES: Record<string, string> = {
   read: 'DA_DOC', text: 'NOI_DUNG', technicalFailure: 'LOI_KY_THUAT', needsGiftReview: 'CAN_DOI_SOAT_QUA', giftStatus: 'TRANG_THAI_QUA',
   restoredAt: 'NGAY_KHOI_PHUC', sourceCancelledReview: 'DA_DOI_SOAT_HUY_NGUON', deliveredAt: 'NGAY_GIAO_QUA', actualGiftCost: 'GIA_VON_QUA_THUC_TE', giftExportId: 'PHIEU_XUAT_QUA_ID',
 };
-const FIELD_ALIASES: Record<string, Record<string, string>> = Object.fromEntries(
-  ['VQ_CHUONG_TRINH', 'VQ_LUOT_QUAY', 'VQ_KET_QUA', 'VQ_PHAN_THUONG', 'VQ_HAN_MUC', 'VQ_NHAT_KY', 'VQ_THONG_BAO', 'VQ_YEU_CAU_QUAY', 'VQ_DONG_BO_META']
-    .map((table) => {
-      const aliases: Record<string, string> = { ...LUCKY_FIELD_ALIASES, id: `${table}_ID` };
-      // prizeId (hạn mức) và rewardId (thưởng) cùng tên chuẩn PHAN_THUONG_ID nên mỗi bảng chỉ giữ một nghĩa.
-      delete aliases[table === 'VQ_HAN_MUC' ? 'rewardId' : 'prizeId'];
-      return [table, aliases];
-    }),
-);
+const LUCKY_TABLES = ['VQ_CHUONG_TRINH', 'VQ_LUOT_QUAY', 'VQ_KET_QUA', 'VQ_PHAN_THUONG', 'VQ_HAN_MUC', 'VQ_NHAT_KY', 'VQ_THONG_BAO', 'VQ_YEU_CAU_QUAY', 'VQ_DONG_BO_META'];
+const READ_STANDARD_TABLES = new Set(LUCKY_TABLES);
+const FIELD_ALIASES: Record<string, Record<string, string>> = {
+  ...Object.fromEntries(LUCKY_TABLES.map((table) => {
+    const aliases: Record<string, string> = { ...LUCKY_FIELD_ALIASES, id: `${table}_ID` };
+    // prizeId (hạn mức) và rewardId (thưởng) cùng tên chuẩn PHAN_THUONG_ID nên mỗi bảng chỉ giữ một nghĩa.
+    delete aliases[table === 'VQ_HAN_MUC' ? 'rewardId' : 'prizeId'];
+    return [table, aliases];
+  })),
+  YEU_CAU_HO_TRO: {
+    customerId: 'KHACH_HANG_ID', guestHash: 'MA_BAM_KHACH_VANG_LAI', name: 'TEN', phone: 'SDT', email: 'EMAIL', source: 'NGUON', status: 'TRANG_THAI',
+    mode: 'CHE_DO', priority: 'UU_TIEN', assignedTo: 'NGUOI_PHU_TRACH_ID', assignedName: 'TEN_NGUOI_PHU_TRACH', reason: 'LY_DO', version: 'PHIEN_BAN',
+    round: 'VONG', createdAt: 'NGAY_TAO', updatedAt: 'NGAY_CAP_NHAT', expiresAt: 'HET_HAN', history: 'LICH_SU', notes: 'GHI_CHU', ratings: 'DS_DANH_GIA',
+    preferences: 'TUY_CHON', messageCount: 'SO_TIN_NHAN', messageWindowAt: 'MOC_CUA_SO_TIN_NHAN', productId: 'SAN_PHAM_ID', closedAt: 'NGAY_DONG',
+    selectedImageId: 'ANH_DA_CHON_ID', busyUntil: 'KHOA_XU_LY_DEN',
+  },
+  YEU_CAU_TAO_ANH: { COLOR: 'MAU_SAC', OCCASION: 'DIP' },
+  THIET_KE_3D: { name: 'TEN', image: 'HINH_ANH', materials: 'NGUYEN_VAT_LIEU', arrangement: 'KIEU_CAM', fingerprint: 'FINGERPRINT', createdAt: 'NGAY_TAO' },
+};
 
 const toStandardPath = (path: string, aliases: Record<string, string>): string => {
   const root = path.split('.')[0];
@@ -144,11 +154,20 @@ const toLegacyDocument = <D extends Document | null>(doc: D, aliases: Record<str
   return legacy as D;
 };
 
-const withStandardCursor = (cursor: any, aliases: Record<string, string>) => {
-  const proxy: any = new Proxy(cursor.map((doc: Document) => toLegacyDocument(doc, aliases)), {
+const withoutStandardFields = <D extends Document | null>(doc: D, aliases: Record<string, string>): D => {
+  if (!doc) return doc;
+  const legacy: Document = { ...doc };
+  for (const standardName of Object.values(aliases)) delete legacy[standardName];
+  return legacy as D;
+};
+
+const withStandardCursor = (cursor: any, aliases: Record<string, string>, readsStandard: boolean) => {
+  const keysOf = (fields: Document) => (readsStandard ? toStandardKeys(fields, aliases) : fields);
+  const documentOf = readsStandard ? toLegacyDocument : withoutStandardFields;
+  const proxy: any = new Proxy(cursor.map((doc: Document) => documentOf(doc, aliases)), {
     get(target, property) {
-      if (property === 'sort') return (sort: Document, ...rest: unknown[]) => { target.sort(toStandardKeys(sort, aliases), ...rest); return proxy; };
-      if (property === 'project') return (projection: Document) => { target.project(toStandardKeys(projection, aliases)); return proxy; };
+      if (property === 'sort') return (sort: Document, ...rest: unknown[]) => { target.sort(keysOf(sort), ...rest); return proxy; };
+      if (property === 'project') return (projection: Document) => { target.project(keysOf(projection)); return proxy; };
       const value = Reflect.get(target, property, target);
       if (typeof value !== 'function') return value;
       return (...args: unknown[]) => {
@@ -180,20 +199,22 @@ const mirrorUpdate = (update: Document, aliases: Record<string, string>): Docume
 const withFieldAliases = <T extends Document>(collection: Collection<T>): Collection<T> => {
   const aliases = FIELD_ALIASES[collection.collectionName];
   if (!aliases) return collection;
+  const readsStandard = READ_STANDARD_TABLES.has(collection.collectionName);
+  const filterOf = (filter: Document) => (readsStandard ? toStandardFilter(filter, aliases) : filter);
+  const optionsOf = (options?: Document) => (readsStandard ? toStandardOptions(options, aliases) : options);
+  const pipelineOf = (pipeline: Document[] = []) => (readsStandard ? toStandardPipeline(pipeline, aliases) : pipeline);
+  const documentOf = <D extends Document | null>(doc: D) => (readsStandard ? toLegacyDocument(doc, aliases) : withoutStandardFields(doc, aliases));
   const writers: Record<string, (target: any, args: any[]) => unknown> = {
     insertOne: (target, [doc, ...rest]) => target.insertOne(mirrorFields(doc, aliases), ...rest),
     insertMany: (target, [docs, ...rest]) => target.insertMany(docs.map((doc: Document) => mirrorFields(doc, aliases)), ...rest),
-    replaceOne: (target, [filter, doc, ...rest]) => target.replaceOne(toStandardFilter(filter, aliases), mirrorFields(doc, aliases), ...rest),
-    updateOne: (target, [filter, update, ...rest]) => target.updateOne(toStandardFilter(filter, aliases), mirrorUpdate(update, aliases), ...rest),
-    updateMany: (target, [filter, update, ...rest]) => target.updateMany(toStandardFilter(filter, aliases), mirrorUpdate(update, aliases), ...rest),
-    findOneAndUpdate: async (target, [filter, update, options]) => toLegacyDocument(
-      await target.findOneAndUpdate(toStandardFilter(filter, aliases), mirrorUpdate(update, aliases), toStandardOptions(options, aliases)),
-      aliases,
-    ),
-    findOne: async (target, [filter, options]) => toLegacyDocument(await target.findOne(toStandardFilter(filter, aliases), toStandardOptions(options, aliases)), aliases),
-    find: (target, [filter, options]) => withStandardCursor(target.find(toStandardFilter(filter, aliases), toStandardOptions(options, aliases)), aliases),
-    countDocuments: (target, [filter, options]) => target.countDocuments(toStandardFilter(filter, aliases), options),
-    aggregate: (target, [pipeline, options]) => target.aggregate(toStandardPipeline(pipeline || [], aliases), options),
+    replaceOne: (target, [filter, doc, ...rest]) => target.replaceOne(filterOf(filter), mirrorFields(doc, aliases), ...rest),
+    updateOne: (target, [filter, update, ...rest]) => target.updateOne(filterOf(filter), mirrorUpdate(update, aliases), ...rest),
+    updateMany: (target, [filter, update, ...rest]) => target.updateMany(filterOf(filter), mirrorUpdate(update, aliases), ...rest),
+    findOneAndUpdate: async (target, [filter, update, options]) => documentOf(await target.findOneAndUpdate(filterOf(filter), mirrorUpdate(update, aliases), optionsOf(options))),
+    findOne: async (target, [filter, options]) => documentOf(await target.findOne(filterOf(filter), optionsOf(options))),
+    find: (target, [filter, options]) => withStandardCursor(target.find(filterOf(filter), optionsOf(options)), aliases, readsStandard),
+    countDocuments: (target, [filter, options]) => target.countDocuments(filterOf(filter), options),
+    aggregate: (target, [pipeline, options]) => target.aggregate(pipelineOf(pipeline), options),
   };
   return new Proxy(collection, {
     get(target, property) {
