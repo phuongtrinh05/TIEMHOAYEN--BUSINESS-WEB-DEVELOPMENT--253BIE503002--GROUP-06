@@ -37,12 +37,12 @@ export function startLuckyJobs(){
     ]).catch(e=>console.warn('[lucky] indexes:',e.message));
     for(const name of ['DON_HANG','THANH_TOAN']){
       void (async()=>{
-        const saved=await db.collection('VQ_DONG_BO_META').findOne({_id:name as any});
+        const saved=await (await col('VQ_DONG_BO_META')).findOne({_id:name as any});
         const stream=db.collection(name).watch([{$match:{operationType:{$in:['insert','update','replace']}}}],{fullDocument:'updateLookup',...(saved?.token?{resumeAfter:saved.token}:{})});
         let queue=Promise.resolve();
         stream.on('change',(event:any)=>{queue=queue.then(async()=>{
           const id=event.fullDocument?.DON_HANG_ID;if(id)await synchronizeLuckyOrder(id,event.wallTime||new Date());
-          await db.collection('VQ_DONG_BO_META').updateOne({_id:name as any},{$set:{token:event._id,at:new Date()}},{upsert:true});
+          await (await col('VQ_DONG_BO_META')).updateOne({_id:name as any},{$set:{token:event._id,at:new Date()}},{upsert:true});
         }).catch(e=>{console.error('[lucky] event',e.message);void stream.close();});});
         stream.on('error',e=>{console.warn('[lucky] change stream unavailable; 30-second catch-up remains active:',e.message);void stream.close();});
       })().catch(e=>console.warn('[lucky] start stream:',e.message));
