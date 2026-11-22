@@ -103,6 +103,31 @@ const FIELD_ALIASES: Record<string, Record<string, string>> = {
   PHIEN_DANG_NHAP_ADMIN: { employeeId: 'NHAN_VIEN_ID', expiresAt: 'HET_HAN' },
   BO_DEM_MA: { value: 'GIA_TRI', at: 'THOI_DIEM', orders: 'DS_DON_HANG', fingerprint: 'FINGERPRINT', revision: 'SO_PHIEN_BAN', createdAt: 'NGAY_TAO' },
   KHACH_HANG: { DOB: 'NGAY_SINH', AVATAR: 'ANH_DAI_DIEN' },
+  HOAN_TIEN: {
+    requestId: 'YEU_CAU_ID', amount: 'SO_TIEN', createdAt: 'NGAY_TAO', history: 'LICH_SU', method: 'PHUONG_THUC', orderId: 'DON_HANG_ID', reference: 'MA_THAM_CHIEU',
+    refundedAmount: 'SO_TIEN_DA_HOAN', status: 'TRANG_THAI', actor: 'NGUOI_THUC_HIEN', paymentId: 'THANH_TOAN_ID', refundedAt: 'NGAY_HOAN_TIEN', updatedAt: 'NGAY_CAP_NHAT',
+  },
+  PHIEN_DAT_HANG: { fingerprint: 'FINGERPRINT', result: 'KET_QUA', createdAt: 'NGAY_TAO', paymentId: 'THANH_TOAN_ID' },
+  YEU_CAU_DAT_HANG: {
+    requestId: 'YEU_CAU_ID', status: 'TRANG_THAI', assignedTo: 'NGUOI_PHU_TRACH_ID', assignedName: 'TEN_NGUOI_PHU_TRACH', sender: 'NGUOI_GUI', receiver: 'NGUOI_NHAN',
+    delivery: 'THONG_TIN_GIAO_HANG', flags: 'DANH_DAU', originalSummary: 'TOM_TAT_GOC', customerId: 'KHACH_HANG_ID', items: 'CHI_TIET', reason: 'LY_DO', shortages: 'THIEU_HANG',
+    requestReason: 'LY_DO_YEU_CAU', reviewReason: 'LY_DO_XEM_XET', routing: 'DIEU_PHOI', createdAt: 'NGAY_TAO', updatedAt: 'NGAY_CAP_NHAT', version: 'PHIEN_BAN', history: 'LICH_SU',
+    acceptance: 'CHAP_NHAN', acceptedAt: 'NGAY_CHAP_NHAN', acceptedQuoteId: 'BAO_GIA_CHAP_NHAN_ID', customerAcceptedAt: 'NGAY_KHACH_CHAP_NHAN', paymentDeadlineAt: 'HAN_THANH_TOAN',
+    quote: 'BAO_GIA', quoteHistory: 'LICH_SU_BAO_GIA', customerMessage: 'LOI_NHAN_KHACH', rejectedReason: 'LY_DO_TU_CHOI', giftCard: 'THIEP', checkoutData: 'DU_LIEU_THANH_TOAN',
+    orderId: 'DON_HANG_ID', orderResult: 'KET_QUA_DON_HANG', expiredAt: 'NGAY_HET_HIEU_LUC', reasonCodes: 'MA_LY_DO', materialCheck: 'KIEM_TRA_NVL', customDesigns: 'THIET_KE_TUY_CHINH',
+    dataIssues: 'VAN_DE_DU_LIEU', urgentOrder: 'DON_GAP', contactStatus: 'TRANG_THAI_LIEN_HE', followUpAt: 'NGAY_THEO_DOI', lastContactAt: 'LAN_LIEN_HE_CUOI', tokenHash: 'MA_BAM_TOKEN',
+  },
+  YEU_CAU_HAU_MAI: {
+    active: 'DANG_HOAT_DONG', assignedTo: 'NGUOI_PHU_TRACH_ID', createdAt: 'NGAY_TAO', customerId: 'KHACH_HANG_ID', evidence: 'BANG_CHUNG', history: 'LICH_SU', items: 'CHI_TIET',
+    orderId: 'DON_HANG_ID', reason: 'LY_DO', refundContext: 'NGU_CANH_HOAN_TIEN', requestId: 'YEU_CAU_ID', status: 'TRANG_THAI', type: 'LOAI', updatedAt: 'NGAY_CAP_NHAT', version: 'PHIEN_BAN',
+    assignedAt: 'NGAY_PHAN_CONG', sla: 'THOI_HAN_XU_LY', decision: 'QUYET_DINH', refund: 'HOAN_TIEN', suggestion: 'GOI_Y', requester: 'NGUOI_YEU_CAU', idempotencyKey: 'KHOA_CHONG_TRUNG',
+    issueType: 'LOAI_SU_CO', media: 'TEP_DINH_KEM', requestedAt: 'NGAY_YEU_CAU', deliveredAt: 'NGAY_GIAO', additionalRequest: 'YEU_CAU_BO_SUNG', returnReceipt: 'BIEN_NHAN_TRA_HANG',
+  },
+  XAC_THUC_TRA_CUU_DON: {
+    kind: 'PHAN_LOAI', authType: 'LOAI_XAC_THUC', requestId: 'YEU_CAU_ID', expiresAt: 'HET_HAN', createdAt: 'NGAY_TAO', customerId: 'KHACH_HANG_ID', phone: 'SDT', employeeId: 'NHAN_VIEN_ID',
+    credentialHash: 'MA_BAM_XAC_THUC', orderId: 'DON_HANG_ID', attempts: 'SO_LAN_THU', codeHash: 'MA_BAM_OTP', consumed: 'DA_SU_DUNG', count: 'SO_LUONG', lastSentAt: 'LAN_GUI_CUOI',
+    readOnly: 'CHI_DOC', windowAt: 'MOC_CUA_SO',
+  },
 };
 
 const toStandardPath = (path: string, aliases: Record<string, string>): string => {
@@ -246,6 +271,15 @@ const withFieldAliases = <T extends Document>(collection: Collection<T>): Collec
     countDocuments: (target, [filter, options]) => target.countDocuments(filterOf(filter), options),
     deleteOne: (target, [filter, options]) => target.deleteOne(filterOf(filter), options),
     deleteMany: (target, [filter, options]) => target.deleteMany(filterOf(filter), options),
+    bulkWrite: (target, [operations, ...rest]) => target.bulkWrite(operations.map((operation: Document) => {
+      if (operation.insertOne) return { insertOne: { ...operation.insertOne, document: mirrorFields(operation.insertOne.document, aliases) } };
+      if (operation.replaceOne) return { replaceOne: { ...operation.replaceOne, filter: filterOf(operation.replaceOne.filter), replacement: mirrorFields(operation.replaceOne.replacement, aliases) } };
+      if (operation.updateOne) return { updateOne: { ...operation.updateOne, filter: filterOf(operation.updateOne.filter), update: mirrorUpdate(operation.updateOne.update, aliases) } };
+      if (operation.updateMany) return { updateMany: { ...operation.updateMany, filter: filterOf(operation.updateMany.filter), update: mirrorUpdate(operation.updateMany.update, aliases) } };
+      if (operation.deleteOne) return { deleteOne: { ...operation.deleteOne, filter: filterOf(operation.deleteOne.filter) } };
+      if (operation.deleteMany) return { deleteMany: { ...operation.deleteMany, filter: filterOf(operation.deleteMany.filter) } };
+      return operation;
+    }), ...rest),
     aggregate: (target, [pipeline, options]) => target.aggregate(pipelineOf(pipeline), options),
   };
   return new Proxy(collection, {

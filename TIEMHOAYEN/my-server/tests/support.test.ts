@@ -377,4 +377,42 @@ else {
         assert.equal(hiddenRow.AVATAR, '/new.png');
         await raw.deleteOne({ _id: 'W5R-CUSTOMER' });
     });
+    test('wave 7 mirrors order workflow writes, including bulk OTP buckets and refund upserts', async () => {
+        const db = await mongo.getDb();
+        const access = await mongo.getCollection<any>('XAC_THUC_TRA_CUU_DON'), rawAccess = db.collection<any>('XAC_THUC_TRA_CUU_DON');
+        const now = new Date(), expiresAt = new Date(now.getTime() + 60000);
+        const rate = { updateOne: { filter: { _id: 'W7-RATE' }, update: [{ $set: { kind: 'rate', windowAt: now, count: { $add: [{ $ifNull: ['$count', 0] }, 1] }, lastSentAt: now, expiresAt } }], upsert: true } };
+        await access.bulkWrite([rate, rate, { insertOne: { document: { _id: 'W7-OTP', kind: 'otp', phone: '0900000007', consumed: false, codeHash: 'hash', expiresAt } } },
+            { updateMany: { filter: { _id: 'W7-OTP', consumed: false }, update: { $set: { consumed: true } } } }] as any, { ordered: true });
+        const bucket = await rawAccess.findOne({ _id: 'W7-RATE' });
+        assert.equal(bucket.count, 2);
+        assert.equal(bucket.SO_LUONG, 2);
+        assert.equal(bucket.PHAN_LOAI, 'rate');
+        const otp = await rawAccess.findOne({ _id: 'W7-OTP' });
+        assert.equal(otp.DA_SU_DUNG, true);
+        assert.equal(otp.MA_BAM_OTP, 'hash');
+        const read = await access.findOne({ _id: 'W7-OTP', consumed: true });
+        assert.equal(read.codeHash, 'hash');
+        assert.equal(read.MA_BAM_OTP, undefined);
+        const ledger = await mongo.getCollection<any>('HOAN_TIEN'), rawLedger = db.collection<any>('HOAN_TIEN');
+        await ledger.updateOne({ requestId: 'W7-CASE' }, { $setOnInsert: { _id: 'RF:W7-CASE', requestId: 'W7-CASE', orderId: 'W7-ORDER', amount: 50000, refundedAmount: 0, status: 'Pending', history: [] } }, { upsert: true });
+        await ledger.updateOne({ requestId: 'W7-CASE', status: 'Pending', refundedAmount: 0 }, { $set: { refundedAmount: 50000, status: 'Succeeded' }, $push: { history: { action: 'refund' } } } as any);
+        const refund = await rawLedger.findOne({ _id: 'RF:W7-CASE' as any });
+        assert.equal(refund.YEU_CAU_ID, 'W7-CASE');
+        assert.equal(refund.SO_TIEN, 50000);
+        assert.equal(refund.SO_TIEN_DA_HOAN, 50000);
+        assert.equal(refund.TRANG_THAI, 'Succeeded');
+        assert.deepEqual(refund.LICH_SU, refund.history);
+        const cases = await mongo.getCollection<any>('YEU_CAU_HAU_MAI'), rawCases = db.collection<any>('YEU_CAU_HAU_MAI');
+        await cases.insertOne({ _id: 'W7-CASE', requestId: 'W7-CASE', orderId: 'W7-ORDER', type: 'refund', status: 'Chờ tiếp nhận', active: true, version: 0, sla: { claimBy: now }, history: [] });
+        await cases.updateOne({ _id: 'W7-CASE', version: 0 }, { $set: { 'sla.decideBy': expiresAt, status: 'Đang xem xét' }, $inc: { version: 1 } });
+        const row = await rawCases.findOne({ _id: 'W7-CASE' as any });
+        assert.equal(row.PHIEN_BAN, 1);
+        assert.equal(row.TRANG_THAI, 'Đang xem xét');
+        assert.equal(row.THOI_HAN_XU_LY.decideBy.getTime(), expiresAt.getTime());
+        const [listed] = await cases.find({ _id: 'W7-CASE', active: true }).toArray();
+        assert.equal(listed.status, 'Đang xem xét');
+        assert.equal(listed.TRANG_THAI, undefined);
+        await Promise.all([rawAccess.deleteMany({ _id: { $in: ['W7-RATE', 'W7-OTP'] } } as any), rawLedger.deleteOne({ _id: 'RF:W7-CASE' as any }), rawCases.deleteOne({ _id: 'W7-CASE' as any })]);
+    });
 }
