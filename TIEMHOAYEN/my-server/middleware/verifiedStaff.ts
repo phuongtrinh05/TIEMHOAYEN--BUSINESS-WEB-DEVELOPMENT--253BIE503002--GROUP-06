@@ -37,3 +37,50 @@ export async function attachVerifiedStaff(req: Request, _res: Response, next: Ne
   } catch { /* không có phiên nhân viên hợp lệ: tiếp tục như khách */ }
   next();
 }
+
+let apiWriteGeneration = 0;
+/** Sau mỗi thao tác ghi, lần đọc tiếp theo không dùng chung kết quả đã bắt đầu trước đó. */
+export function trackApiWrites(req: Request, res: Response, next: NextFunction) {
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) res.once('finish', () => { apiWriteGeneration += 1; });
+  next();
+}
+
+type SharedJson = { status: number; cacheControl: unknown; body: unknown } | null;
+const inFlightJson = new Map<string, Promise<SharedJson>>();
+const SHARED_READ_MAX_MS = 30_000;
+
+/**
+ * Nhân viên bấm qua lại giữa các trang: các GET giống hệt đang chạy dùng chung một lần đọc DB.
+ * Đặt SAU middleware phân quyền; khóa gồm mã nhân viên nên không chia sẻ dữ liệu giữa các tài khoản.
+ */
+export function shareInFlightGet(req: Request, res: Response, next: NextFunction) {
+  const staffId = String(req.headers['x-admin-id'] || '');
+  if (req.method !== 'GET' || !staffId) return next();
+  const key = `${apiWriteGeneration}:${staffId}:${req.originalUrl}`;
+  const running = inFlightJson.get(key);
+  if (running) {
+    void running.then((shared) => {
+      if (!shared) return next();
+      if (shared.cacheControl) res.setHeader('Cache-Control', shared.cacheControl as string);
+      res.status(shared.status).json(shared.body);
+    });
+    return;
+  }
+  let settle!: (value: SharedJson) => void;
+  const shared = new Promise<SharedJson>((resolve) => { settle = resolve; });
+  inFlightJson.set(key, shared);
+  const finish = (value: SharedJson) => {
+    clearTimeout(timer);
+    if (inFlightJson.get(key) === shared) inFlightJson.delete(key);
+    settle(value);
+  };
+  const timer = setTimeout(() => finish(null), SHARED_READ_MAX_MS);
+  timer.unref();
+  const json = res.json.bind(res);
+  res.json = (body: any) => {
+    finish({ status: res.statusCode, cacheControl: res.getHeader('Cache-Control'), body });
+    return json(body);
+  };
+  res.once('finish', () => finish(null));
+  next();
+}

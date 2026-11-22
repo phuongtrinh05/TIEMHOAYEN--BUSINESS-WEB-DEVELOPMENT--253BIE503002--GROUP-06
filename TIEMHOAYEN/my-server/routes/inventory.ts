@@ -1,4 +1,5 @@
 import express from 'express';
+import { shareInFlightGet } from '../middleware/verifiedStaff.js';
 import * as c from '../controllers/inventory.js';
 import { requireAdminPermission, requireAnyAdminPermission } from '../middleware/rolePermission.js';
 
@@ -62,7 +63,7 @@ router.post('/exports/:receiptId/cancel', kho('update'), c.cancelExport);
 router.delete('/exports/:receiptId', kho(), c.deleteExport);
 
 // BOM
-router.get('/boms/products', kho(), c.listBomProducts);
+router.get('/boms/products', kho(), shareInFlightGet, c.listBomProducts);
 router.get('/boms/products/:productId', kho(), c.getProductBoms);
 router.post('/boms/products/:productId', kho('create'), c.createBom);
 router.post('/boms/validate', kho('view'), c.validateBom);
@@ -72,7 +73,7 @@ router.post('/boms/:bomId/retire', kho('update'), c.retireBom);
 
 // Sổ kho, cảnh báo, đối soát, thành phẩm
 router.get('/inventory/movements', kho(), c.listMovements);
-router.get('/inventory/alerts', kho(), c.getAlerts);
+router.get('/inventory/alerts', kho(), shareInFlightGet, c.getAlerts);
 router.post('/inventory/reconcile', kho('update'), c.reconcile);
 router.get('/inventory/finished-goods', kho(), c.listFinishedGoods);
 router.post('/inventory/finished-goods/:productId/dispose', kho('update'), c.disposeFinishedGoods);

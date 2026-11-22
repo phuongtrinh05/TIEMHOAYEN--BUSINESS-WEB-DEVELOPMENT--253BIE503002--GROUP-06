@@ -42,6 +42,8 @@ export class ProductList implements OnInit {
   selectedQuantity = '';
   selectedStatus = '';
   currentPage = 1;
+  productsLoading = false;
+  productsLoadError = '';
   itemsPerPage = 10;
 
   @ViewChild('fileInput')
@@ -152,9 +154,30 @@ export class ProductList implements OnInit {
   }
 
   private loadProducts(): void {
+    // Quay lại trang: hiện ngay bản gần nhất, đồng thời luôn tải dữ liệu mới từ server.
+    const cached = this.products.length ? null : this.adminApi.peekProducts();
+    if (cached) this.applyProductsResponse(cached);
+    this.productsLoading = !this.products.length;
+    this.productsLoadError = '';
     this.adminApi.getProducts().subscribe({
       next: (response) => {
-        this.products = response.products.filter(Boolean).map((product) => {
+        this.productsLoading = false;
+        this.applyProductsResponse(response);
+        this.cdr.detectChanges();
+      },
+      error: (error) => {
+        console.error('Cannot load admin products', error);
+        this.productsLoading = false;
+        // Lỗi mạng tạm thời không xóa danh sách đang hiển thị.
+        if (!this.products.length) this.productsLoadError = 'Không tải được danh sách sản phẩm. Vui lòng tải lại trang.';
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  private applyProductsResponse(response: any): void {
+    const page = this.currentPage;
+        this.products = response.products.filter(Boolean).map((product: any) => {
           const source = product as any;
           const originalPrice = Number(source.salePrice ?? source.GIA ?? 0);
           const discountPrice = Number(source.discountPrice ?? source.GIA_KHUYEN_MAI ?? 0);
@@ -182,22 +205,13 @@ export class ProductList implements OnInit {
         this.rebuildProductCaches();
         this.originalProducts = [...this.products];
         this.applyCurrentView();
+        // Giữ trang đang xem khi dữ liệu mới về (số trang được chỉnh lại nếu danh sách ngắn đi).
+        this.currentPage = page;
+        this.rebuildPagedProducts();
         if (response.nextCode) {
           this.serverNextSku = response.nextCode;
         }
-        this.prepareNextProductCode();
-        this.cdr.detectChanges();
-      },
-      error: (error) => {
-        console.error('Cannot load admin products', error);
-        this.products = [];
-        this.originalProducts = [];
-        this.filteredProducts = [];
-        this.rebuildProductCaches();
-        this.rebuildPagedProducts();
-        this.cdr.detectChanges();
-      }
-    });
+        // Mã sản phẩm chỉ được giữ khi mở form thêm mới, không giữ mỗi lần xem danh sách.
   }
 
   private createEmptyProduct() {

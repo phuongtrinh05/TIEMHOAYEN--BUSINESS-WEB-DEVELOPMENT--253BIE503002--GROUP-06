@@ -197,7 +197,14 @@ export class OrderList implements OnInit, OnDestroy {
       if (statusParam && (this.orderStatusFilters as string[]).includes(statusParam)) {
         this.orderStatusFilter = statusParam as OrderStatusFilter;
       }
-      this.loadOrders();
+      // Quay lại trang: hiện ngay bản gần nhất, đồng thời luôn tải dữ liệu mới từ server.
+      const cached = this.adminApi.peekOrders();
+      if (cached) {
+        this.applyOrdersResponse(cached, new Set());
+        this.currentPage = 1;
+        this.rebuildOrderView();
+      }
+      this.loadOrders(true, !!cached);
       this.startLiveDatabaseRefresh();
     }
   }
@@ -263,6 +270,19 @@ export class OrderList implements OnInit, OnDestroy {
     return order.customerId || 'Kh\u00e1ch l\u1ebb';
   }
 
+  private applyOrdersResponse(response: { orders: any[] }, selectedIds: Set<string>): void {
+    this.allOrders = response.orders.map(order => ({
+      ...order,
+      id: order.id,
+      customerId: order.customerId || '',
+      createdAt: order.createdAt,
+      total: Number(order.total || 0),
+      paymentStatus: this.normalizePaymentStatusText(order.paymentStatus),
+      orderStatus: this.normalizeOrderStatusText(order.orderStatus),
+      selected: selectedIds.has(order.id),
+    }));
+  }
+
   private loadOrders(forceRefresh = false, preservePage = false): void {
     if (preservePage && this.isLiveRefreshInFlight) {
       return;
@@ -286,16 +306,7 @@ export class OrderList implements OnInit, OnDestroy {
 
     ordersRequest.subscribe({
       next: (response) => {
-        this.allOrders = response.orders.map(order => ({
-          ...order,
-          id: order.id,
-          customerId: order.customerId || '',
-          createdAt: order.createdAt,
-          total: Number(order.total || 0),
-          paymentStatus: this.normalizePaymentStatusText(order.paymentStatus),
-          orderStatus: this.normalizeOrderStatusText(order.orderStatus),
-          selected: selectedIds.has(order.id),
-        }));
+        this.applyOrdersResponse(response, selectedIds);
         this.currentPage = preservePage ? previousPage : 1;
         this.rebuildOrderView();
         this.isLoading = false;

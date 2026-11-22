@@ -4,6 +4,7 @@ import {
   getAdminCustomers, setAdminCustomerLock, setAdminReviewVisibility, setDefaultAdminCustomerAddress, updateAdminCustomer, updateAdminCustomerAddress,
 } from '../controllers/admin-customer.js';
 import express from 'express';
+import { shareInFlightGet } from '../middleware/verifiedStaff.js';
 import { requireSales, listRequests, changeRequest, salesOptions, salesPropose, salesConvert, salesConfirmOriginal, listRequestMessages, listUnreadRequestMessages, postRequestMessage, requireRequestOwner, uploadedProposalImage, salesRecordContact } from '../controllers/order-request.js';
 import fs from 'fs';
 import multer from 'multer';
@@ -88,7 +89,7 @@ router.get('/staff-accounts', (req,res,next) => req.query.scope === 'delivery'
 router.get('/after-sales',requireAdminPermission('customerService'),getAdminAfterSales);
 router.post('/after-sales/refund-case',requireAdminPermission('customerService','create'),createAdminRefundCase);
 router.patch('/after-sales/:requestId',requireAdminPermission('customerService','update'),(req,res,next)=>req.body.action==='refund' ? requireAdminPermission('payments','update')(req,res,next) : next(),changeAdminAfterSales);
-router.get('/orders', requireAdminPermission('orders'), getAdminOrders);
+router.get('/orders', requireAdminPermission('orders'), shareInFlightGet, getAdminOrders);
 router.get('/order-requests', requireSales, listRequests);
 router.get('/order-requests/unread-messages', requireSales, listUnreadRequestMessages);
 router.patch('/order-requests/:requestId', requireSales, changeRequest);
@@ -117,7 +118,7 @@ router.post('/orders/:orderId/handover-image', requireAdminPermission('orders', 
   });
 });
 router.put('/orders/:orderId/payment-status', requireAdminPermission('payments'), updateAdminOrderPaymentStatus);
-router.get('/customers', requireAdminPermission('customers'), getAdminCustomers);
+router.get('/customers', requireAdminPermission('customers'), shareInFlightGet, getAdminCustomers);
 router.get('/customers/:customerId', requireAdminPermission('customers'), getAdminCustomerDetail);
 router.put('/customers/:customerId', requireAdminPermission('customers'), updateAdminCustomer);
 router.patch('/customers/:customerId/lock', requireAdminPermission('customers', 'update'), setAdminCustomerLock);
@@ -127,10 +128,10 @@ router.post('/customers/:customerId/addresses', requireAdminPermission('customer
 router.put('/customers/:customerId/addresses/:addressId', requireAdminPermission('customers'), updateAdminCustomerAddress);
 router.patch('/customers/:customerId/addresses/:addressId/default', requireAdminPermission('customers'), setDefaultAdminCustomerAddress);
 router.delete('/customers/:customerId/addresses/:addressId', requireAdminPermission('customers'), deleteAdminCustomerAddress);
-router.get('/transactions', requireAdminPermission('payments'), getAdminTransactions);
+router.get('/transactions', requireAdminPermission('payments'), shareInFlightGet, getAdminTransactions);
 router.post('/transactions', requireAdminPermission('payments'), createAdminTransaction);
 router.put('/transactions/:transactionId', requireAdminPermission('payments'), updateAdminTransaction);
-router.get('/products', requireAdminPermission('products'), getAdminProducts);
+router.get('/products', requireAdminPermission('products'), shareInFlightGet, getAdminProducts);
 router.get('/products/next-code', requireAdminPermission('products'), getAdminNextProductCode);
 router.post('/products/reserve-code', requireAdminPermission('products'), reserveAdminProductCode);
 router.post('/products', requireAdminPermission('products'), createAdminProduct);
@@ -138,7 +139,7 @@ router.get('/products/:productId', requireAdminPermission('products'), getAdminP
 router.put('/products/:productId', requireAdminPermission('products'), updateAdminProductDetail);
 router.put('/products/:productId/status', requireAdminPermission('products'), updateAdminProductStatus);
 router.delete('/products/:productId', requireAdminPermission('products'), deleteAdminProduct);
-router.get('/categories/:type', requireAdminPermission('products'), getAdminCategories);
+router.get('/categories/:type', requireAdminPermission('products'), shareInFlightGet, getAdminCategories);
 router.post('/categories/:type', requireAdminPermission('products'), createAdminCategory);
 router.get('/categories/:type/:categoryId', requireAdminPermission('products'), getAdminCategoryDetail);
 router.put('/categories/:type/:categoryId', requireAdminPermission('products'), updateAdminCategory);
