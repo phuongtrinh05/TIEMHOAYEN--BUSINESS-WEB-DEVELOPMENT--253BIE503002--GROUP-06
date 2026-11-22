@@ -100,6 +100,8 @@ const FIELD_ALIASES: Record<string, Record<string, string>> = {
   },
   YEU_CAU_TAO_ANH: { COLOR: 'MAU_SAC', OCCASION: 'DIP' },
   THIET_KE_3D: { name: 'TEN', image: 'HINH_ANH', materials: 'NGUYEN_VAT_LIEU', arrangement: 'KIEU_CAM', fingerprint: 'FINGERPRINT', createdAt: 'NGAY_TAO' },
+  PHIEN_DANG_NHAP_ADMIN: { employeeId: 'NHAN_VIEN_ID', expiresAt: 'HET_HAN' },
+  BO_DEM_MA: { value: 'GIA_TRI', at: 'THOI_DIEM', orders: 'DS_DON_HANG', fingerprint: 'FINGERPRINT', revision: 'SO_PHIEN_BAN', createdAt: 'NGAY_TAO' },
 };
 
 const toStandardPath = (path: string, aliases: Record<string, string>): string => {
@@ -214,6 +216,8 @@ const withFieldAliases = <T extends Document>(collection: Collection<T>): Collec
     findOne: async (target, [filter, options]) => documentOf(await target.findOne(filterOf(filter), optionsOf(options))),
     find: (target, [filter, options]) => withStandardCursor(target.find(filterOf(filter), optionsOf(options)), aliases, readsStandard),
     countDocuments: (target, [filter, options]) => target.countDocuments(filterOf(filter), options),
+    deleteOne: (target, [filter, options]) => target.deleteOne(filterOf(filter), options),
+    deleteMany: (target, [filter, options]) => target.deleteMany(filterOf(filter), options),
     aggregate: (target, [pipeline, options]) => target.aggregate(pipelineOf(pipeline), options),
   };
   return new Proxy(collection, {

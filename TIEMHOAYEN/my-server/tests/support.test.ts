@@ -285,4 +285,29 @@ else {
         assert.equal(design.image, 'new-image');
         await Promise.all([tickets.deleteMany({ _id: { $in: ['W2-A', 'W2-B'] } }), images.deleteOne({ _id: 'W2-IMG' }), designs.deleteOne({ _id: 'W2-DESIGN' })]);
     });
+    test('wave 3 mirrors counters and admin sessions without exposing standard names', async () => {
+        const { nextCode } = await import('../services/inventory/helpers.js');
+        const db = await mongo.getDb();
+        await db.collection<any>('W3_TEST').insertOne({ _id: 'W30007', W3_ID: 'W30007' });
+        assert.equal(await nextCode('W3_TEST', 'W3_ID', 'W3', 4), 'W30008');
+        assert.equal(await nextCode('W3_TEST', 'W3_ID', 'W3', 4), 'W30009');
+        const counter = await db.collection<any>('BO_DEM_MA').findOne({ _id: 'W3_TEST:W3' });
+        assert.equal(counter.value, 9);
+        assert.equal(counter.GIA_TRI, 9);
+        assert.equal(counter.NGAY_TAO.getTime(), counter.createdAt.getTime());
+        const wrappedCounter = await (await mongo.getCollection<any>('BO_DEM_MA')).findOne({ _id: 'W3_TEST:W3' });
+        assert.equal(wrappedCounter.value, 9);
+        assert.equal(wrappedCounter.GIA_TRI, undefined);
+        const sessions = await mongo.getCollection<any>('PHIEN_DANG_NHAP_ADMIN');
+        const expiresAt = new Date(Date.now() + 60000);
+        await sessions.insertOne({ _id: 'W3-SESSION', employeeId: 'NV_W3', expiresAt });
+        const raw = await db.collection<any>('PHIEN_DANG_NHAP_ADMIN').findOne({ _id: 'W3-SESSION' as any });
+        assert.equal(raw.NHAN_VIEN_ID, 'NV_W3');
+        assert.equal(raw.HET_HAN.getTime(), expiresAt.getTime());
+        const row = await sessions.findOne({ _id: 'W3-SESSION', expiresAt: { $gt: new Date() } });
+        assert.equal(row.employeeId, 'NV_W3');
+        assert.equal(row.NHAN_VIEN_ID, undefined);
+        assert.equal((await sessions.deleteMany({ employeeId: 'NV_W3' })).deletedCount, 1);
+        await Promise.all([db.collection('W3_TEST').drop(), db.collection<any>('BO_DEM_MA').deleteOne({ _id: 'W3_TEST:W3' })]);
+    });
 }
