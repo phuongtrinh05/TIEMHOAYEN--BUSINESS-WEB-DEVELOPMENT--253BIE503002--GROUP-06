@@ -47,7 +47,7 @@ type HistoryTab='all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
       </article>}}
       @for(o of filteredOrders;track o.DON_HANG_ID){<article class="card"><a class="cover" [routerLink]="['/order-detail',o.DON_HANG_ID]" [attr.aria-label]="'Xem đơn '+o.DON_HANG_ID"></a>
       <div class="photo"><img [src]="o.items?.[0]?.HINH_ANH_SNAPSHOT||'assets/images/logo-main.png'" alt=""></div>
-      <div class="body"><div class="head"><b class="code">{{o.DON_HANG_ID}}</b><span class="order-status" [class.cancel]="isCancelled(o)" [class.done]="isCompleted(o)">{{o.TRANG_THAI}}</span></div><h3>{{o.items?.[0]?.TEN_SAN_PHAM_SNAPSHOT||'Đơn hoa Tiệm Hoa Yên'}} <small>× {{o.items?.[0]?.SO_LUONG||1}}</small></h3><p class="meta"><i class="bi bi-calendar3" aria-hidden="true"></i> Ngày giao <strong>{{o.NGAY_MUON_GIAO|date:'dd/MM/yyyy'}} · {{o.KHUNG_GIO_MUON_GIAO||'Chưa chốt'}}</strong></p>@if(o.YEU_CAU_DAT_HANG_ID){<a class="source-request" [routerLink]="['/order-request',o.YEU_CAU_DAT_HANG_ID]"><i class="bi bi-chat-dots" aria-hidden="true"></i> Từ yêu cầu đặt hàng · Xem trao đổi</a>}</div>
+      <div class="body"><div class="head"><b class="code">{{o.DON_HANG_ID}}</b><span class="order-status" [attr.data-tone]="orderTone(o)">{{o.TRANG_THAI}}</span></div><h3>{{o.items?.[0]?.TEN_SAN_PHAM_SNAPSHOT||'Đơn hoa Tiệm Hoa Yên'}} <small>× {{o.items?.[0]?.SO_LUONG||1}}</small></h3><p class="meta"><i class="bi bi-calendar3" aria-hidden="true"></i> Ngày giao <strong>{{o.NGAY_MUON_GIAO|date:'dd/MM/yyyy'}} · {{o.KHUNG_GIO_MUON_GIAO||'Chưa chốt'}}</strong></p>@if(o.YEU_CAU_DAT_HANG_ID){<a class="source-request" [routerLink]="['/order-request',o.YEU_CAU_DAT_HANG_ID]"><i class="bi bi-chat-dots" aria-hidden="true"></i> Từ yêu cầu đặt hàng · Xem trao đổi</a>}</div>
       <div class="side"><div class="money"><div class="money-total"><span>Tổng tiền</span><b>{{o.TONG_TIEN|number:'1.0-0'}}đ</b></div>@if(!isCompleted(o)){<dl><div><dt>Cọc</dt><dd>{{o.paymentSummary?.deposit|number:'1.0-0'}}đ</dd></div><div><dt>Đã thu</dt><dd>{{o.paymentSummary?.paid|number:'1.0-0'}}đ</dd></div><div class="due"><dt>Còn lại</dt><dd>{{o.paymentSummary?.remaining|number:'1.0-0'}}đ</dd></div></dl>}</div><a class="detail" [routerLink]="['/order-detail',o.DON_HANG_ID]">Xem chi tiết <i class="bi bi-arrow-right" aria-hidden="true"></i></a></div>
       @if(orderStep(o)>=0){<ol class="order-steps" [attr.aria-label]="'Tiến trình: '+steps[orderStep(o)]">@for(step of steps;track step;let i=$index){<li [class.done]="i<orderStep(o)" [class.current]="i===orderStep(o)"><span class="bar"></span><span class="label">{{step}}</span></li>}</ol>}
       @else{<p class="progress-note"><i class="bi bi-info-circle" aria-hidden="true"></i> {{isCancelled(o)?'Đơn đã hủy':'Đơn đang được shop hỗ trợ hoàn tiền / đổi trả'}}</p>}
@@ -105,10 +105,17 @@ input:focus{outline:none;border-color:#b98a6f;box-shadow:0 0 0 3px #d9b38233}
 .body{min-width:0}
 .head{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px}
 .head .code{color:#9d6b5c;font-size:13px;letter-spacing:.03em}
-.head span{font-size:12px;font-weight:800;border-radius:99px;padding:4px 10px;white-space:nowrap}
-.head .order-status{background:#fff0c9;color:#725014}
-.head .order-status.done{background:#e6f4e9;color:#287143}
-.head .order-status.cancel{background:#eee;color:#777}
+.head span{font-size:12px;font-weight:500;border-radius:99px;padding:4px 10px;white-space:nowrap}
+/* Mỗi nhóm trạng thái đơn một màu */
+.head .order-status{background:#f1ece9;color:#5f5049}
+.head .order-status[data-tone=pending]{background:#fff2c7;color:#805d00}
+.head .order-status[data-tone=confirmed]{background:#e8eef8;color:#285b91}
+.head .order-status[data-tone=preparing]{background:#efe6f7;color:#6a3d93}
+.head .order-status[data-tone=shipping]{background:#dff2ef;color:#1d6a61}
+.head .order-status[data-tone=success]{background:#e2f3e6;color:#26623a}
+.head .order-status[data-tone=refund]{background:#fde9dc;color:#a1461b}
+.head .order-status[data-tone=failed]{background:#fae2e2;color:#9d2424}
+.head .order-status[data-tone=cancelled]{background:#eeeae7;color:#6b5f59}
 .head span.request-cancelled{background:#a51f25;color:#fff;border:1px solid #8b171d}
 .card h3{margin:8px 0 6px;font:700 19px/1.3 'Playfair Display',serif;color:#571717;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card h3 small{font:700 13px 'Nunito Sans',sans-serif;color:#8a746d}
@@ -193,7 +200,18 @@ export class RequestHistory implements OnInit,OnDestroy{
  orderStep(o:any){const t=String(o?.TRANG_THAI||'');if(/hủy|hoàn tiền|trả hàng|thất bại/i.test(t))return-1;if(/đã giao|hoàn thành/i.test(t))return 3;if(/đang giao/i.test(t))return 2;if(/chuẩn bị|chờ vận chuyển/i.test(t))return 1;return 0}
  /** Tổng còn phải trả: chỉ tính lại khi tải tab "Tất cả", để đổi tab không làm con số nhảy về 0. */
  totalRemaining=0;remainingOrders=0;
- private updateRemaining(){const unpaid=this.orders.filter(o=>this.orderStep(o)>=0&&Number(o.paymentSummary?.remaining||0)>0);this.totalRemaining=unpaid.reduce((sum,o)=>sum+Number(o.paymentSummary?.remaining||0),0);this.remainingOrders=unpaid.length}isCancelled(o:any){return/hủy/i.test(String(o.TRANG_THAI||''))}isCompleted(o:any){return o?.uiGroup==='completed'||/hoàn thành|đã giao|giao thành công/i.test(String(o?.TRANG_THAI||''))}
+ private updateRemaining(){const unpaid=this.orders.filter(o=>this.orderStep(o)>=0&&Number(o.paymentSummary?.remaining||0)>0);this.totalRemaining=unpaid.reduce((sum,o)=>sum+Number(o.paymentSummary?.remaining||0),0);this.remainingOrders=unpaid.length}isCancelled(o:any){return/hủy/i.test(String(o.TRANG_THAI||''))}
+ /** Nhóm màu cho nhãn trạng thái đơn. Thứ tự kiểm tra quan trọng: "Đã đặt hàng thành công" không phải "Giao thành công". */
+ orderTone(o:any){const s=String(o?.TRANG_THAI||'').toLowerCase();
+  if(/hủy/.test(s))return'cancelled';
+  if(/thất bại|từ chối|hết hạn/.test(s))return'failed';
+  if(/hoàn tiền|đổi trả|trả hàng/.test(s))return'refund';
+  if(this.isCompleted(o)||/giao hàng thành công/.test(s))return'success';
+  if(/đang giao|chờ giao|giao hàng/.test(s))return'shipping';
+  if(/chuẩn bị/.test(s))return'preparing';
+  if(/đặt hàng thành công|xác nhận/.test(s))return'confirmed';
+  if(/chờ|thanh toán|cọc|xử lý/.test(s))return'pending';
+  return'neutral'}isCompleted(o:any){return o?.uiGroup==='completed'||/hoàn thành|đã giao|giao thành công/i.test(String(o?.TRANG_THAI||''))}
  ngOnInit(){if(typeof window==='undefined')return;const tab=this.route.snapshot.queryParamMap.get('tab');if(tab==='requests')this.activeTab='requests';try{const p=JSON.parse(sessionStorage.getItem('pendingSalesLookup')||'null');if(/^YC[\da-f]+$/i.test(p?.requestId||'')&&/^0\d{9}$/.test(p?.phone||'')){this.pendingRequestId=p.requestId;this.phone=p.phone}}catch{}if(location.hash)history.replaceState(null,'',location.pathname+location.search);if(!this.access.session&&!this.hasAccount){const code=this.route.snapshot.queryParamMap.get('orderId')||this.pendingRequestId||'';this.router.navigate(['/order-list'],{replaceUrl:true,queryParams:code?{code}:{}});return;}if(this.access.session)this.load();
    this.timer = setInterval(() => {
      this.now = Date.now();
