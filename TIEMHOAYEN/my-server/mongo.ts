@@ -65,8 +65,9 @@ export const getMongoClient = async (): Promise<MongoClient> => {
 };
 
 /**
- * Đổi tên trường theo từ điển dữ liệu, giai đoạn ghi song song:
- * code vẫn đọc tên cũ, mọi lệnh ghi lưu thêm tên chuẩn để có thể chuyển dần mà web không gián đoạn.
+ * Đổi tên trường theo từ điển dữ liệu, giai đoạn đọc tên chuẩn:
+ * truy vấn dùng tên chuẩn trong database, kết quả đổi lại tên cũ để service và API không thay đổi.
+ * Lệnh ghi vẫn lưu cả hai tên để có thể quay lại bản trước khi cần.
  */
 const LUCKY_FIELD_ALIASES: Record<string, string> = {
   name: 'TEN', terms: 'DIEU_KHOAN', status: 'TRANG_THAI', startAt: 'NGAY_BAT_DAU', endAt: 'NGAY_KET_THUC', prizes: 'DS_PHAN_THUONG',
@@ -83,8 +84,81 @@ const LUCKY_FIELD_ALIASES: Record<string, string> = {
 };
 const FIELD_ALIASES: Record<string, Record<string, string>> = Object.fromEntries(
   ['VQ_CHUONG_TRINH', 'VQ_LUOT_QUAY', 'VQ_KET_QUA', 'VQ_PHAN_THUONG', 'VQ_HAN_MUC', 'VQ_NHAT_KY', 'VQ_THONG_BAO', 'VQ_YEU_CAU_QUAY', 'VQ_DONG_BO_META']
-    .map((table) => [table, { ...LUCKY_FIELD_ALIASES, id: `${table}_ID` }]),
+    .map((table) => {
+      const aliases: Record<string, string> = { ...LUCKY_FIELD_ALIASES, id: `${table}_ID` };
+      // prizeId (hạn mức) và rewardId (thưởng) cùng tên chuẩn PHAN_THUONG_ID nên mỗi bảng chỉ giữ một nghĩa.
+      delete aliases[table === 'VQ_HAN_MUC' ? 'rewardId' : 'prizeId'];
+      return [table, aliases];
+    }),
 );
+
+const toStandardPath = (path: string, aliases: Record<string, string>): string => {
+  const root = path.split('.')[0];
+  return aliases[root] ? aliases[root] + path.slice(root.length) : path;
+};
+
+const toStandardKeys = <V extends Document | undefined>(fields: V, aliases: Record<string, string>): V => (
+  fields && Object.fromEntries(Object.entries(fields).map(([key, value]) => [toStandardPath(key, aliases), value])) as V
+);
+
+const toStandardFilter = (filter: Document | undefined, aliases: Record<string, string>): Document => (
+  Object.fromEntries(Object.entries(filter || {}).map(([key, value]) => {
+    if (['$or', '$and', '$nor'].includes(key)) return [key, (value as Document[]).map((item) => toStandardFilter(item, aliases))];
+    return [key.startsWith('$') ? key : toStandardPath(key, aliases), value];
+  }))
+);
+
+const toStandardExpression = (value: unknown, aliases: Record<string, string>): unknown => {
+  if (typeof value === 'string') return /^\$[^$]/.test(value) ? `$${toStandardPath(value.slice(1), aliases)}` : value;
+  if (Array.isArray(value)) return value.map((item) => toStandardExpression(item, aliases));
+  if (value && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, toStandardExpression(item, aliases)]));
+  }
+  return value;
+};
+
+const toStandardPipeline = (pipeline: Document[], aliases: Record<string, string>): Document[] => pipeline.map((stage) => {
+  if (stage.$match) return { $match: toStandardFilter(stage.$match, aliases) };
+  if (stage.$sort) return { $sort: toStandardKeys(stage.$sort, aliases) };
+  return toStandardExpression(stage, aliases) as Document;
+});
+
+const toStandardOptions = (options: Document | undefined, aliases: Record<string, string>): Document | undefined => {
+  if (!options) return options;
+  return {
+    ...options,
+    ...(options.sort ? { sort: toStandardKeys(options.sort, aliases) } : {}),
+    ...(options.projection ? { projection: toStandardKeys(options.projection, aliases) } : {}),
+  };
+};
+
+const toLegacyDocument = <D extends Document | null>(doc: D, aliases: Record<string, string>): D => {
+  if (!doc) return doc;
+  const legacy: Document = { ...doc };
+  for (const [oldName, standardName] of Object.entries(aliases)) {
+    if (standardName in legacy) {
+      legacy[oldName] = legacy[standardName];
+      delete legacy[standardName];
+    }
+  }
+  return legacy as D;
+};
+
+const withStandardCursor = (cursor: any, aliases: Record<string, string>) => {
+  const proxy: any = new Proxy(cursor.map((doc: Document) => toLegacyDocument(doc, aliases)), {
+    get(target, property) {
+      if (property === 'sort') return (sort: Document, ...rest: unknown[]) => { target.sort(toStandardKeys(sort, aliases), ...rest); return proxy; };
+      if (property === 'project') return (projection: Document) => { target.project(toStandardKeys(projection, aliases)); return proxy; };
+      const value = Reflect.get(target, property, target);
+      if (typeof value !== 'function') return value;
+      return (...args: unknown[]) => {
+        const result = value.apply(target, args);
+        return result === target ? proxy : result;
+      };
+    },
+  });
+  return proxy;
+};
 
 const mirrorFields = (fields: Document, aliases: Record<string, string>): Document => {
   const mirrored: Document = { ...fields };
@@ -109,10 +183,17 @@ const withFieldAliases = <T extends Document>(collection: Collection<T>): Collec
   const writers: Record<string, (target: any, args: any[]) => unknown> = {
     insertOne: (target, [doc, ...rest]) => target.insertOne(mirrorFields(doc, aliases), ...rest),
     insertMany: (target, [docs, ...rest]) => target.insertMany(docs.map((doc: Document) => mirrorFields(doc, aliases)), ...rest),
-    replaceOne: (target, [filter, doc, ...rest]) => target.replaceOne(filter, mirrorFields(doc, aliases), ...rest),
-    updateOne: (target, [filter, update, ...rest]) => target.updateOne(filter, mirrorUpdate(update, aliases), ...rest),
-    updateMany: (target, [filter, update, ...rest]) => target.updateMany(filter, mirrorUpdate(update, aliases), ...rest),
-    findOneAndUpdate: (target, [filter, update, ...rest]) => target.findOneAndUpdate(filter, mirrorUpdate(update, aliases), ...rest),
+    replaceOne: (target, [filter, doc, ...rest]) => target.replaceOne(toStandardFilter(filter, aliases), mirrorFields(doc, aliases), ...rest),
+    updateOne: (target, [filter, update, ...rest]) => target.updateOne(toStandardFilter(filter, aliases), mirrorUpdate(update, aliases), ...rest),
+    updateMany: (target, [filter, update, ...rest]) => target.updateMany(toStandardFilter(filter, aliases), mirrorUpdate(update, aliases), ...rest),
+    findOneAndUpdate: async (target, [filter, update, options]) => toLegacyDocument(
+      await target.findOneAndUpdate(toStandardFilter(filter, aliases), mirrorUpdate(update, aliases), toStandardOptions(options, aliases)),
+      aliases,
+    ),
+    findOne: async (target, [filter, options]) => toLegacyDocument(await target.findOne(toStandardFilter(filter, aliases), toStandardOptions(options, aliases)), aliases),
+    find: (target, [filter, options]) => withStandardCursor(target.find(toStandardFilter(filter, aliases), toStandardOptions(options, aliases)), aliases),
+    countDocuments: (target, [filter, options]) => target.countDocuments(toStandardFilter(filter, aliases), options),
+    aggregate: (target, [pipeline, options]) => target.aggregate(toStandardPipeline(pipeline || [], aliases), options),
   };
   return new Proxy(collection, {
     get(target, property) {

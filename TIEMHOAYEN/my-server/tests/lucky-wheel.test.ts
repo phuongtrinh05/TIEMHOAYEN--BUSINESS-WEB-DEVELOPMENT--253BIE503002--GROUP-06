@@ -188,6 +188,18 @@ else{
     const quota=await (await raw('VQ_HAN_MUC')).findOne({_id:'ALIAS-QUOTA'});assert.equal(quota.count,2);assert.equal(quota.SO_LUONG,2);
   });
 
+  test('reads filter and sort by standard names while returning legacy fields',async()=>{
+    const raw=await (await mongo.getDb()).collection<any>('VQ_THONG_BAO'),wrapped=await c('VQ_THONG_BAO');
+    await raw.insertMany([{_id:'STD-1',customerId:'OLD',KHACH_HANG_ID:'KH-STD',at:new Date(2000),THOI_DIEM:new Date(1000),text:'old',NOI_DUNG:'first',read:true,DA_DOC:false},{_id:'STD-2',customerId:'OLD',KHACH_HANG_ID:'KH-STD',at:new Date(1000),THOI_DIEM:new Date(2000),text:'old',NOI_DUNG:'second',read:true,DA_DOC:false}]);
+    assert.equal(await wrapped.countDocuments({customerId:'OLD'}),0);assert.equal(await wrapped.countDocuments({customerId:'KH-STD',read:false}),2);
+    const one=await wrapped.findOne({customerId:'KH-STD'},{sort:{at:-1}});assert.equal(one._id,'STD-2');assert.equal(one.text,'second');assert.equal(one.customerId,'KH-STD');assert.equal(one.NOI_DUNG,undefined);
+    const rows=await wrapped.find({$or:[{customerId:'KH-STD'}]}).sort({at:1}).skip(1).limit(1).project({text:1}).toArray();assert.deepEqual(rows,[{_id:'STD-2',text:'second'}]);
+    const seen:string[]=[];for await(const row of wrapped.find({customerId:'KH-STD'}).sort({at:1}))seen.push(row.text);assert.deepEqual(seen,['first','second']);
+    const grouped=await wrapped.aggregate([{$match:{customerId:'KH-STD'}},{$group:{_id:'$read',count:{$sum:1}}}]).toArray();assert.deepEqual(grouped,[{_id:false,count:2}]);
+    const quota=await (await mongo.getDb()).collection<any>('VQ_HAN_MUC');await quota.insertOne({_id:'STD-QUOTA',prizeId:'P5',PHAN_THUONG_ID:'P5'});assert.equal((await (await c('VQ_HAN_MUC')).findOne({prizeId:'P5',_id:'STD-QUOTA'})).prizeId,'P5');
+    await raw.deleteMany({_id:{$in:['STD-1','STD-2']}});
+  });
+
   test('reward code preview distinguishes waiting, activation, ownership and expiry',async()=>{
     await order('CODE-SOURCE');const result=await lucky.spinLucky('KH1','CODE-SOURCE');const reward=await (await c(lucky.LUCKY.reward)).findOne({_id:result.rewardId});
     const express=(await import('express')).default;const routes=(await import('../routes/lucky-wheel.js')).default;const access=await import('../services/order-access.service.js');
