@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { mapPromotionCampaign, mapPromotionVoucher } from './promotion-mappers';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, catchError, forkJoin, map, of, switchMap, tap, timeout } from 'rxjs';
+import { Observable, catchError, finalize, forkJoin, map, of, shareReplay, switchMap, tap, timeout } from 'rxjs';
 import { apiBaseUrl } from './api-config';
 
 export interface AdminOrder {
@@ -820,12 +820,11 @@ export class AdminApiService {
   private readonly faqApiUrl = `${this.apiBaseUrl}/faqs`;
   private readonly reviewApiUrl = `${this.apiBaseUrl}/reviews`;
   private readonly customerDetailCache = new Map<string, AdminCustomerDetailResponse>();
+  /** Bản gần nhất chỉ để hiện ngay khi quay lại trang; trang vẫn luôn tải lại dữ liệu mới. */
   private ordersCache: AdminOrdersResponse | null = null;
-  private ordersCacheAt = 0;
-  private readonly ordersCacheTtlMs = 15000;
+  private ordersInFlight: Observable<AdminOrdersResponse> | null = null;
   private productsCache: AdminProductsResponse | null = null;
-  private productsCacheAt = 0;
-  private readonly productsCacheTtlMs = 15000;
+  private productsInFlight: Observable<AdminProductsResponse> | null = null;
 
   constructor(private readonly http: HttpClient) {}
 
@@ -929,21 +928,29 @@ export class AdminApiService {
     return this.http.put<AdminOrderDetailResponse>(`${this.apiUrl}/orders/${encodeURIComponent(orderId)}/status`, body).pipe(tap(() => this.clearOrdersCache()));
   }
 
-  getOrders(options: { forceRefresh?: boolean } = {}): Observable<AdminOrdersResponse> {
-    if (!options.forceRefresh && this.ordersCache && Date.now() - this.ordersCacheAt < this.ordersCacheTtlMs) {
-      return of(this.ordersCache);
-    }
-
-    return this.http.get<AdminOrdersResponse>(`${this.apiUrl}/orders`).pipe(
+  /** Luôn lấy từ server; nếu đang có request giống hệt thì dùng chung, không gọi thêm. */
+  getOrders(): Observable<AdminOrdersResponse> {
+    if (this.ordersInFlight) return this.ordersInFlight;
+    const request: Observable<AdminOrdersResponse> = this.http.get<AdminOrdersResponse>(`${this.apiUrl}/orders`).pipe(
       tap((response) => {
-        this.ordersCache = response;
-        this.ordersCacheAt = Date.now();
-      })
+        if (this.ordersInFlight === request) this.ordersCache = response;
+      }),
+      finalize(() => {
+        if (this.ordersInFlight === request) this.ordersInFlight = null;
+      }),
+      shareReplay({ bufferSize: 1, refCount: false })
     );
+    this.ordersInFlight = request;
+    return request;
+  }
+
+  /** Bản đã tải gần nhất, để trang hiện ngay trong lúc chờ dữ liệu mới. */
+  peekOrders(): AdminOrdersResponse | null {
+    return this.ordersCache;
   }
 
   refreshOrdersFromDatabase(): Observable<AdminOrdersResponse> {
-    return this.getOrders({ forceRefresh: true });
+    return this.getOrders();
   }
 
   getOrderDetail(orderId: string): Observable<AdminOrderDetailResponse> {
@@ -1021,7 +1028,7 @@ export class AdminApiService {
 
   private clearOrdersCache(): void {
     this.ordersCache = null;
-    this.ordersCacheAt = 0;
+    this.ordersInFlight = null;
   }
 
   replyToReview(reviewId: string, reply: string, staffId?: string): Observable<AdminReviewReplyResponse> {
@@ -1190,17 +1197,25 @@ export class AdminApiService {
     );
   }
 
+  /** Luôn lấy từ server; nếu đang có request giống hệt thì dùng chung, không gọi thêm. */
   getProducts(): Observable<AdminProductsResponse> {
-    if (this.productsCache && Date.now() - this.productsCacheAt < this.productsCacheTtlMs) {
-      return of(this.productsCache);
-    }
-
-    return this.http.get<AdminProductsResponse>(`${this.apiUrl}/products?includeDeleted=true`).pipe(
+    if (this.productsInFlight) return this.productsInFlight;
+    const request: Observable<AdminProductsResponse> = this.http.get<AdminProductsResponse>(`${this.apiUrl}/products?includeDeleted=true`).pipe(
       tap((response) => {
-        this.productsCache = response;
-        this.productsCacheAt = Date.now();
-      })
+        if (this.productsInFlight === request) this.productsCache = response;
+      }),
+      finalize(() => {
+        if (this.productsInFlight === request) this.productsInFlight = null;
+      }),
+      shareReplay({ bufferSize: 1, refCount: false })
     );
+    this.productsInFlight = request;
+    return request;
+  }
+
+  /** Bản đã tải gần nhất, để trang hiện ngay trong lúc chờ dữ liệu mới. */
+  peekProducts(): AdminProductsResponse | null {
+    return this.productsCache;
   }
 
   createProduct(payload: {
@@ -1316,7 +1331,7 @@ export class AdminApiService {
 
   private clearProductsCache(): void {
     this.productsCache = null;
-    this.productsCacheAt = 0;
+    this.productsInFlight = null;
   }
 
   getBlogs(): Observable<AdminBlogRow[]> {

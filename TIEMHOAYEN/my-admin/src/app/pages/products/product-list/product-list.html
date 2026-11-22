@@ -219,7 +219,7 @@
 
                     <tr *ngIf="pagedProducts.length === 0">
                         <td colspan="8" class="empty-search">
-                            {{ searchKeyword.trim() ? 'Không tìm thấy sản phẩm phù hợp.' : 'Chưa có sản phẩm trong nhóm này.' }}
+                            {{ productsLoading ? 'Đang tải sản phẩm...' : productsLoadError ? productsLoadError : searchKeyword.trim() ? 'Không tìm thấy sản phẩm phù hợp.' : 'Chưa có sản phẩm trong nhóm này.' }}
                         </td>
                     </tr>
 
