@@ -83,7 +83,7 @@ const LUCKY_FIELD_ALIASES: Record<string, string> = {
   restoredAt: 'NGAY_KHOI_PHUC', sourceCancelledReview: 'DA_DOI_SOAT_HUY_NGUON', deliveredAt: 'NGAY_GIAO_QUA', actualGiftCost: 'GIA_VON_QUA_THUC_TE', giftExportId: 'PHIEU_XUAT_QUA_ID',
 };
 const LUCKY_TABLES = ['VQ_CHUONG_TRINH', 'VQ_LUOT_QUAY', 'VQ_KET_QUA', 'VQ_PHAN_THUONG', 'VQ_HAN_MUC', 'VQ_NHAT_KY', 'VQ_THONG_BAO', 'VQ_YEU_CAU_QUAY', 'VQ_DONG_BO_META'];
-const READ_STANDARD_TABLES = new Set([...LUCKY_TABLES, 'YEU_CAU_HO_TRO', 'YEU_CAU_TAO_ANH', 'THIET_KE_3D', 'PHIEN_DANG_NHAP_ADMIN', 'BO_DEM_MA']);
+const READ_STANDARD_TABLES = new Set([...LUCKY_TABLES, 'YEU_CAU_HO_TRO', 'YEU_CAU_TAO_ANH', 'THIET_KE_3D', 'PHIEN_DANG_NHAP_ADMIN', 'BO_DEM_MA', 'KHACH_HANG']);
 const FIELD_ALIASES: Record<string, Record<string, string>> = {
   ...Object.fromEntries(LUCKY_TABLES.map((table) => {
     const aliases: Record<string, string> = { ...LUCKY_FIELD_ALIASES, id: `${table}_ID` };
@@ -136,12 +136,21 @@ const toStandardPipeline = (pipeline: Document[], aliases: Record<string, string
   return toStandardExpression(stage, aliases) as Document;
 });
 
+/** Loại trường (giá trị 0/false) phải loại cả tên cũ lẫn tên chuẩn, nếu không dữ liệu vẫn lộ qua tên còn lại. */
+const toStandardProjection = (projection: Document, aliases: Record<string, string>): Document => {
+  const standard = toStandardKeys(projection, aliases);
+  for (const [key, value] of Object.entries(projection)) {
+    if (!value && aliases[key.split('.')[0]]) standard[key] = value;
+  }
+  return standard;
+};
+
 const toStandardOptions = (options: Document | undefined, aliases: Record<string, string>): Document | undefined => {
   if (!options) return options;
   return {
     ...options,
     ...(options.sort ? { sort: toStandardKeys(options.sort, aliases) } : {}),
-    ...(options.projection ? { projection: toStandardKeys(options.projection, aliases) } : {}),
+    ...(options.projection ? { projection: toStandardProjection(options.projection, aliases) } : {}),
   };
 };
 
@@ -170,7 +179,7 @@ const withStandardCursor = (cursor: any, aliases: Record<string, string>, readsS
   const proxy: any = new Proxy(cursor.map((doc: Document) => documentOf(doc, aliases)), {
     get(target, property) {
       if (property === 'sort') return (sort: Document, ...rest: unknown[]) => { target.sort(keysOf(sort), ...rest); return proxy; };
-      if (property === 'project') return (projection: Document) => { target.project(keysOf(projection)); return proxy; };
+      if (property === 'project') return (projection: Document) => { target.project(readsStandard ? toStandardProjection(projection, aliases) : projection); return proxy; };
       const value = Reflect.get(target, property, target);
       if (typeof value !== 'function') return value;
       return (...args: unknown[]) => {

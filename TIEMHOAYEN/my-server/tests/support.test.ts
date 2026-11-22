@@ -356,4 +356,25 @@ else {
         assert.equal('ANH_DAI_DIEN' in row, false);
         await raw.deleteOne({ _id: 'W5-CUSTOMER' });
     });
+    test('wave 5 reads customer birth date and avatar by standard names', async () => {
+        const raw = (await mongo.getDb()).collection<any>('KHACH_HANG');
+        const customers = await mongo.getCollection<any>('KHACH_HANG');
+        const oldDate = new Date('1990-01-01T00:00:00Z'), newDate = new Date('2001-02-03T00:00:00Z');
+        await raw.insertOne({ _id: 'W5R-CUSTOMER', KHACH_HANG_ID: 'W5R-CUSTOMER', DOB: oldDate, NGAY_SINH: newDate, AVATAR: '/old.png', ANH_DAI_DIEN: '/new.png', TEN: 'W5R' });
+        assert.equal(await customers.countDocuments({ _id: 'W5R-CUSTOMER', AVATAR: '/old.png' }), 0);
+        const row = await customers.findOne({ _id: 'W5R-CUSTOMER', AVATAR: '/new.png' });
+        assert.equal(row.DOB.getTime(), newDate.getTime());
+        assert.equal(row.AVATAR, '/new.png');
+        assert.equal(row.NGAY_SINH, undefined);
+        assert.equal(row.ANH_DAI_DIEN, undefined);
+        const [picked] = await customers.find({ _id: 'W5R-CUSTOMER' }).project({ AVATAR: 1, DOB: 1 }).toArray();
+        assert.deepEqual(picked, { _id: 'W5R-CUSTOMER', AVATAR: '/new.png', DOB: newDate });
+        const hidden = await customers.findOne({ _id: 'W5R-CUSTOMER' }, { projection: { AVATAR: 0 } });
+        assert.equal(hidden.AVATAR, undefined);
+        assert.equal(hidden.ANH_DAI_DIEN, undefined);
+        const [hiddenRow] = await customers.find({ _id: 'W5R-CUSTOMER' }).project({ DOB: 0 }).toArray();
+        assert.equal(hiddenRow.DOB, undefined);
+        assert.equal(hiddenRow.AVATAR, '/new.png');
+        await raw.deleteOne({ _id: 'W5R-CUSTOMER' });
+    });
 }
