@@ -68,6 +68,9 @@ export class CampaignListComponent implements OnInit {
     campaigns: CampaignItem[] = [];
     filteredCampaigns: CampaignItem[] = [];
 
+    // Chỉ Admin được duyệt chiến dịch (server cũng kiểm tra lại).
+    readonly canApprove = typeof localStorage !== 'undefined' && localStorage.getItem('adminRole') === 'Admin';
+
     constructor(
         private readonly adminApi: AdminApiService,
         private readonly cdr: ChangeDetectorRef,
