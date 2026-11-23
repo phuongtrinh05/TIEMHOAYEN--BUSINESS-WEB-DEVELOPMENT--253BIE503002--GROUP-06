@@ -4,6 +4,7 @@ import { hasPermission } from '../services/role-permission.service.js';
 import { InventoryError } from '../services/inventory/helpers.js';
 import { lookupAccess } from '../services/order-access.service.js';
 import * as m from '../services/marketing.service.js';
+import { isInactiveStatus } from '../utils/account-status.js';
 
 const router = Router();
 const col = (n: string) => getCollection<any>(n);
@@ -13,7 +14,7 @@ router.use('/admin', async (req: Request, res: Response, next: NextFunction) => 
   try {
     const employee = await (await col('NHAN_VIEN')).findOne({ NHAN_VIEN_ID: String(req.headers['x-admin-id'] || '') });
     const action = req.method === 'GET' ? 'view' : req.method === 'POST' && ['/templates', '/configs'].includes(req.path) ? 'create' : 'update';
-    if (!employee || employee.DA_XOA || /khóa|ngừng|nghỉ|inactive/i.test(employee.TRANG_THAI || '') || !hasPermission(employee.VAI_TRO, 'promotions', action)) fail('Bạn không có quyền thao tác Marketing.', 403);
+    if (!employee || employee.DA_XOA || isInactiveStatus(employee.TRANG_THAI) || !hasPermission(employee.VAI_TRO, 'promotions', action)) fail('Bạn không có quyền thao tác Marketing.', 403);
     res.locals.employee = employee; res.setHeader('Cache-Control', 'no-store'); next();
   } catch (e: any) { res.status(e instanceof InventoryError ? e.status : 500).json({ message: e instanceof InventoryError ? e.message : 'Không kiểm tra được quyền.' }); }
 });
@@ -34,6 +35,8 @@ async function saveTemplate(req: Request, res: Response) {
   if (req.params.id) {
     const row = await collection.findOneAndUpdate({ MAU_ID: req.params.id, PHIEN_BAN: req.body.PHIEN_BAN }, { $set: { ...value, NGAY_CAP_NHAT: now, NHAN_VIEN_CAP_NHAT_ID: employee }, $inc: { PHIEN_BAN: 1 } }, { returnDocument: 'after' });
     if (!row) fail('Mẫu đã thay đổi. Tải lại trước khi sửa.', 409);
+    // A new template version voids earlier approval: pause every config using it until re-reviewed.
+    await (await col('CAU_HINH_GUI_TU_DONG')).updateMany({ MAU_ID: row.MAU_ID, TRANG_THAI: 'Đang bật' }, { $set: { TRANG_THAI: 'Tạm dừng', NGAY_CAP_NHAT: now } });
     res.json(row);
   } else {
     const row = { ...value, MAU_ID: m.id('MAU'), PHIEN_BAN: 1, NGAY_TAO: now, NGAY_CAP_NHAT: now, NHAN_VIEN_TAO_ID: employee };
@@ -63,7 +66,7 @@ async function loadConfig(id: string) {
   if (!c) fail('Không tìm thấy cấu hình.', 404);
   const t = await (await col('MAU_TIN_NHAN')).findOne({ MAU_ID: c.MAU_ID });
   await m.checkLinks(c, t);
-  return { c, t, fingerprint: m.revision([c.CAU_HINH_ID, c.PHIEN_BAN, t.MAU_ID, t.PHIEN_BAN]) };
+  return { c, t, fingerprint: m.approvalFingerprint(c, t) };
 }
 router.post('/admin/configs/:id/preview', handle(async (req, res) => {
   const { c, t, fingerprint } = await loadConfig(String(req.params.id));
