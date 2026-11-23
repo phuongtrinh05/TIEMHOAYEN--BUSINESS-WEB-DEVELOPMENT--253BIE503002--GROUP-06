@@ -69,7 +69,9 @@ input,select,textarea{max-width:100%;box-sizing:border-box;padding:10px 11px;bor
 
 /* Card yêu cầu: đồng bộ đúng mẫu thông tin đơn hàng của Sales workspace. */
 .current-request-card{padding:16px 17px 14px;background:#fff;border:1px solid #ead8d1;border-radius:12px;box-shadow:none}
-.current-request-card .order-overview{grid-template-columns:104px minmax(0,1fr) 154px;gap:18px;padding:4px 5px 20px}
+.current-request-card .order-overview{grid-template-columns:104px minmax(0,1fr) auto;gap:18px;padding:4px 5px 20px}
+/* Ô Thành phẩm / Có thể cắm thêm rộng theo nội dung, không tràn khỏi cột cố định 154px. */
+.current-request-card .stock-summary{min-width:max-content;box-sizing:border-box}
 .current-request-card .order-overview>img{width:104px;height:118px;border-radius:11px;background:#f7eeea}
 .current-request-card .order-overview>div>span{color:#a16d5c;font-size:11px;font-weight:900;letter-spacing:.17em}
 .current-request-card .order-overview h3{margin:6px 0 9px;color:#731919;font:700 21px/1.25 var(--font-heading,'Playfair Display',serif)}

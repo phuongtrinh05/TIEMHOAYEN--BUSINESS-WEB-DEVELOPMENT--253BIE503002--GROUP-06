@@ -894,7 +894,8 @@
     display: inline-block;
     margin: 0 0 16px;
     padding-bottom: 12px;
-    color: #D9B382;
+    /* Cùng màu với các tiêu đề mục khác trên trang chủ (trước đây vàng #D9B382). */
+    color: #1F1F1F;
     font-family: 'Playfair Display', serif;
     font-size: 24px;
     font-weight: 700;
@@ -1437,4 +1438,418 @@
         padding: 12px 16px;
         font-size: 12.5px;
     }
+}
+
+/* =========================================================
+   HERO SLIDER — banner chiến dịch (thay video)
+   ========================================================= */
+.hero-slider {
+    --hero-h: clamp(380px, 40vw, 560px);
+    height: var(--hero-h);
+    touch-action: pan-y;
+    user-select: none;
+    background: #2a1512;
+}
+
+.hero-slider::after { display: none; }
+
+.hero-track {
+    display: flex;
+    height: 100%;
+    transition: transform .7s cubic-bezier(.65, .05, .25, 1);
+    will-change: transform;
+}
+
+.hero-slide {
+    position: relative;
+    flex: 0 0 100%;
+    height: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+}
+
+.hero-slider .hero-slide-img {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    min-height: 0;
+    object-position: center 35%;
+    transform: none;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 22%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 22%);
+}
+
+.hero-slider:hover .hero-slide-img { transform: none; }
+
+.hero-slide-content {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+    justify-self: end;
+    width: min(520px, 100%);
+    padding: 0 56px 0 72px;
+    position: relative;
+    z-index: 2;
+    color: var(--hero-text, #FFF3E4);
+}
+
+.hero-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    background: var(--hero-chip-bg, rgba(255, 255, 255, .16));
+    color: var(--hero-chip, #FFE7CF);
+}
+
+.hero-title {
+    margin: 16px 0 12px;
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(30px, 3.6vw, 50px);
+    line-height: 1.12;
+    color: inherit;
+}
+
+.hero-desc {
+    margin: 0 0 26px;
+    font-size: 15px;
+    line-height: 1.65;
+    max-width: 420px;
+    opacity: .88;
+}
+
+.hero-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 26px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 14px;
+    text-decoration: none;
+    background: var(--hero-btn, #FFF3E4);
+    color: var(--hero-btn-text, #731919);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, .18);
+    transition: transform .25s ease, box-shadow .25s ease;
+}
+
+.hero-cta:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(0, 0, 0, .24); }
+.hero-cta i { transition: transform .25s ease; }
+.hero-cta:hover i { transform: translateX(4px); }
+
+/* Chữ trượt vào khi slide hiện ra */
+.hero-slide .hero-slide-content > * {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity .6s ease, transform .6s ease;
+}
+.hero-slide[aria-hidden="false"] .hero-slide-content > * { opacity: 1; transform: none; }
+.hero-slide[aria-hidden="false"] .hero-title { transition-delay: .12s; }
+.hero-slide[aria-hidden="false"] .hero-desc { transition-delay: .22s; }
+.hero-slide[aria-hidden="false"] .hero-cta { transition-delay: .32s; }
+
+/* Chủ đề từng chiến dịch */
+.hero-slide.theme-brand { grid-template-columns: 1fr; }
+.hero-slide.theme-brand .hero-slide-img {
+    grid-column: 1;
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+.hero-slide.theme-brand::before {
+    content: "";
+    grid-column: 1;
+    grid-row: 1;
+    z-index: 1;
+    background: linear-gradient(100deg, rgba(30, 12, 10, .72) 0%, rgba(30, 12, 10, .4) 42%, rgba(30, 12, 10, 0) 72%);
+}
+.hero-slide.theme-brand .hero-slide-content { justify-self: start; padding-left: 80px; }
+
+.hero-slide.theme-pink {
+    background: linear-gradient(120deg, #FCE4EA 0%, #F8C9D4 55%, #F3B5C3 100%);
+    --hero-text: #6B1F33;
+    --hero-chip-bg: #fff;
+    --hero-chip: #C2416A;
+    --hero-btn: #C2416A;
+    --hero-btn-text: #fff;
+}
+
+.hero-slide.theme-wine {
+    background: linear-gradient(120deg, #3B0F14 0%, #5E1A22 55%, #7A2630 100%);
+    --hero-text: #FBEDE2;
+    --hero-chip-bg: rgba(217, 179, 130, .18);
+    --hero-chip: #E9C893;
+    --hero-btn: #D9B382;
+    --hero-btn-text: #3B0F14;
+}
+
+.hero-slide.theme-cream {
+    background: linear-gradient(120deg, #FFF8EC 0%, #F6EAD3 55%, #EBD9B6 100%);
+    --hero-text: #3E2A17;
+    --hero-chip-bg: #2F4A3A;
+    --hero-chip: #F6EAD3;
+    --hero-btn: #2F4A3A;
+    --hero-btn-text: #FFF8EC;
+}
+
+/* Nút điều hướng */
+.hero-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 3;
+    width: 46px;
+    height: 46px;
+    border: 0;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 18px;
+    color: #731919;
+    background: rgba(255, 255, 255, .82);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .15);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .25s ease, background .25s ease;
+}
+.hero-arrow-left { left: 20px; }
+.hero-arrow-right { right: 20px; }
+.hero-slider:hover .hero-arrow,
+.hero-arrow:focus-visible { opacity: 1; }
+.hero-arrow:hover { background: #fff; }
+
+.hero-dots {
+    position: absolute;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 3;
+    display: flex;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, .18);
+    backdrop-filter: blur(6px);
+}
+.hero-dot {
+    width: 9px;
+    height: 9px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .6);
+    cursor: pointer;
+    transition: width .35s ease, background .35s ease;
+}
+.hero-dot.active { width: 28px; background: #fff; }
+
+@media (max-width: 1024px) {
+    .hero-slide-content { padding: 0 28px 0 76px; }
+    .hero-slide.theme-brand .hero-slide-content { padding-left: 76px; }
+    .hero-arrow { opacity: 1; width: 38px; height: 38px; font-size: 15px; }
+}
+
+@media (max-width: 640px) {
+    .hero-slider { --hero-h: 480px; }
+    .hero-slide { grid-template-columns: minmax(0, 1fr); }
+    .hero-slider .hero-slide-img {
+        grid-column: 1;
+        -webkit-mask-image: linear-gradient(180deg, #000 22%, transparent 64%);
+        mask-image: linear-gradient(180deg, #000 22%, transparent 64%);
+    }
+    .hero-slide.theme-brand .hero-slide-img { -webkit-mask-image: none; mask-image: none; }
+    .hero-slide.theme-brand::before {
+        background: linear-gradient(0deg, rgba(30, 12, 10, .82) 0%, rgba(30, 12, 10, .3) 60%, rgba(30, 12, 10, .1) 100%);
+    }
+    .hero-slide-content,
+    .hero-slide.theme-brand .hero-slide-content {
+        align-self: end;
+        justify-self: stretch;
+        width: auto;
+        padding: 0 20px 64px;
+    }
+    .hero-desc { font-size: 14px; margin-bottom: 18px; }
+    .hero-arrow { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hero-track,
+    .hero-slide .hero-slide-content > * { transition: none; }
+}
+
+/* =========================================================
+   ƯU ĐÃI ĐANG DIỄN RA — không cần ảnh riêng cho ưu đãi
+   ========================================================= */
+.sale-banner .campaign-banner-content {
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(220px, 1fr);
+    align-items: center;
+    gap: 24px;
+    padding: 38px 48px;
+    border-radius: 22px;
+    background:
+        radial-gradient(circle at 85% 20%, rgba(255, 214, 170, .35), transparent 45%),
+        radial-gradient(circle at 10% 110%, rgba(255, 255, 255, .12), transparent 40%),
+        linear-gradient(120deg, #5E1414 0%, #8E2323 50%, #C0503F 100%);
+    box-shadow: 0 18px 40px rgba(115, 25, 25, .18);
+}
+
+.campaign-deco {
+    position: absolute;
+    color: rgba(255, 236, 214, .14);
+    pointer-events: none;
+}
+.campaign-deco.deco-1 { font-size: 46px; top: 18px; left: 46%; }
+.campaign-deco.deco-2 { font-size: 120px; bottom: -40px; left: -24px; }
+.campaign-deco.deco-3 { font-size: 64px; top: -14px; right: 34%; transform: rotate(18deg); }
+
+.campaign-text { position: relative; z-index: 1; }
+
+.sale-banner .campaign-banner-content .campaign-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(255, 236, 214, .16);
+    color: #FFDDB8;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .14em;
+}
+
+.sale-banner .campaign-banner-content h2 {
+    margin: 14px 0 8px;
+    font-size: clamp(26px, 3vw, 38px);
+    line-height: 1.15;
+    color: #FFF3E4;
+}
+
+.sale-banner .campaign-banner-content p {
+    color: rgba(255, 243, 228, .85);
+    font-size: 15px;
+}
+
+.campaign-countdown {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 20px;
+}
+.countdown-label {
+    font-size: 13px;
+    color: rgba(255, 243, 228, .8);
+    margin-right: 4px;
+}
+.countdown-box {
+    min-width: 56px;
+    padding: 8px 6px 6px;
+    border-radius: 12px;
+    text-align: center;
+    background: rgba(255, 255, 255, .12);
+    border: 1px solid rgba(255, 236, 214, .22);
+}
+.countdown-box b {
+    display: block;
+    font-size: 22px;
+    line-height: 1;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+}
+.countdown-box small {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: rgba(255, 243, 228, .75);
+}
+
+.campaign-cta {
+    margin-top: 22px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 26px;
+    border: 0;
+    border-radius: 999px;
+    background: #FFF3E4;
+    color: #731919;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    box-shadow: 0 10px 22px rgba(0, 0, 0, .18);
+    transition: transform .25s ease;
+}
+.campaign-cta:hover { transform: translateY(-2px); }
+
+.campaign-visual {
+    position: relative;
+    justify-self: center;
+    width: 240px;
+    aspect-ratio: 1;
+    z-index: 1;
+}
+.campaign-ring {
+    position: absolute;
+    inset: -14px;
+    border-radius: 50%;
+    border: 2px dashed rgba(255, 221, 184, .45);
+    animation: campaign-spin 30s linear infinite;
+}
+.sale-banner .campaign-visual img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 30%;
+    border-radius: 50%;
+    border: 6px solid rgba(255, 243, 228, .9);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, .25);
+}
+.sale-banner:hover .campaign-visual img { transform: none; }
+
+.campaign-badge {
+    position: absolute;
+    left: -18px;
+    bottom: 8px;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    display: grid;
+    place-content: center;
+    text-align: center;
+    background: #FFD36E;
+    color: #731919;
+    box-shadow: 0 10px 22px rgba(0, 0, 0, .25);
+    transform: rotate(-10deg);
+}
+.campaign-badge small { font-size: 11px; font-weight: 700; }
+.campaign-badge b { font-size: 28px; line-height: 1; font-family: 'Playfair Display', serif; }
+
+@keyframes campaign-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 768px) {
+    .sale-banner .campaign-banner-content {
+        grid-template-columns: 1fr;
+        padding: 28px 22px;
+        text-align: center;
+    }
+    .campaign-countdown { justify-content: center; }
+    .countdown-label { flex-basis: 100%; margin: 0; }
+    .campaign-visual { width: 170px; order: -1; }
+    .campaign-badge { width: 76px; height: 76px; left: -22px; }
+    .campaign-badge b { font-size: 22px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .campaign-ring { animation: none; }
 }

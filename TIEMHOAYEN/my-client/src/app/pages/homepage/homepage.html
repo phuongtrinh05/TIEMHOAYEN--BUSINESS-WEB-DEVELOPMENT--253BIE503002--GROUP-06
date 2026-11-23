@@ -1,23 +1,52 @@
 <div class="home-page">
 
-    <!-- HERO -->
-    <section class="hero reveal">
-        <video
-            autoplay
-            muted
-            [muted]="true"
-            [volume]="0"
-            loop
-            playsinline
-            preload="auto"
-            disablepictureinpicture
-            disableRemotePlayback
-            controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
-            x-webkit-airplay="deny">
-            <source
-                src="https://res.cloudinary.com/dxeffzk0e/video/upload/v1783596361/tiem_hoa_yen_vshlky.mp4"
-                type="video/mp4">
-        </video>
+    <!-- HERO: banner chiến dịch, lướt qua lại được -->
+    <section class="hero hero-slider reveal"
+        aria-roledescription="carousel"
+        aria-label="Banner chiến dịch"
+        (mouseenter)="pauseHero()"
+        (mouseleave)="resumeHero()"
+        (focusin)="pauseHero()"
+        (focusout)="resumeHero()"
+        (keydown.arrowLeft)="prevHero()"
+        (keydown.arrowRight)="nextHero()"
+        (pointerdown)="onHeroPointerDown($event)"
+        (pointerup)="onHeroPointerUp($event)"
+        (pointercancel)="heroPointerStartX = null">
+        <div class="hero-track" [style.transform]="'translateX(-' + heroIndex * 100 + '%)'">
+            @for (slide of heroSlides; track slide.id; let i = $index) {
+                <article class="hero-slide" [ngClass]="'theme-' + slide.theme"
+                    role="group" aria-roledescription="slide"
+                    [attr.aria-label]="(i + 1) + ' / ' + heroSlides.length"
+                    [attr.aria-hidden]="i !== heroIndex">
+                    <img class="hero-slide-img" [src]="slide.image" [alt]="slide.title" draggable="false"
+                        [attr.loading]="i === 0 ? 'eager' : 'lazy'">
+                    <div class="hero-slide-content">
+                        <span class="hero-kicker">{{ slide.kicker }}</span>
+                        <h2 class="hero-title">{{ slide.title }}</h2>
+                        <p class="hero-desc">{{ slide.subtitle }}</p>
+                        <a class="hero-cta" [routerLink]="slide.link" [attr.tabindex]="i === heroIndex ? 0 : -1">
+                            {{ slide.cta }} <i class="bi bi-arrow-right"></i>
+                        </a>
+                    </div>
+                </article>
+            }
+        </div>
+
+        <button class="hero-arrow hero-arrow-left" type="button" aria-label="Banner trước" (click)="prevHero()">
+            <i class="bi bi-chevron-left"></i>
+        </button>
+        <button class="hero-arrow hero-arrow-right" type="button" aria-label="Banner sau" (click)="nextHero()">
+            <i class="bi bi-chevron-right"></i>
+        </button>
+
+        <div class="hero-dots">
+            @for (slide of heroSlides; track slide.id; let i = $index) {
+                <button type="button" class="hero-dot" [class.active]="i === heroIndex"
+                    [attr.aria-label]="'Xem banner ' + slide.kicker" [attr.aria-current]="i === heroIndex"
+                    (click)="goHero(i)"></button>
+            }
+        </div>
     </section>
 
     <!-- BENEFIT -->
@@ -150,17 +179,44 @@
         </button>
     </section>
 
-    <!-- SALE BANNER -->
+    <!-- SALE BANNER: chiến dịch đang chạy (không cần ảnh riêng cho từng ưu đãi) -->
     <section class="sale-banner promotion-banner" *ngIf="activeCampaign">
         <div class="campaign-banner-content">
-            <span>ƯU ĐÃI ĐANG DIỄN RA</span>
-            <h2>{{ activeCampaign.TEN_CHIEN_DICH }}</h2>
-            <p *ngIf="activeCampaign.MO_TA">{{ activeCampaign.MO_TA }}</p>
+            <i class="bi bi-stars campaign-deco deco-1" aria-hidden="true"></i>
+            <i class="bi bi-flower1 campaign-deco deco-2" aria-hidden="true"></i>
+            <i class="bi bi-flower2 campaign-deco deco-3" aria-hidden="true"></i>
+
+            <div class="campaign-text">
+                <span class="campaign-kicker"><i class="bi bi-lightning-charge-fill"></i> ƯU ĐÃI ĐANG DIỄN RA</span>
+                <h2>{{ activeCampaign.TEN_CHIEN_DICH }}</h2>
+                <p *ngIf="activeCampaign.MO_TA">{{ activeCampaign.MO_TA }}</p>
+
+                <div class="campaign-countdown" *ngIf="campaignCountdown as cd" aria-label="Thời gian còn lại">
+                    <span class="countdown-label">Kết thúc sau</span>
+                    <div class="countdown-box"><b>{{ cd.days }}</b><small>ngày</small></div>
+                    <div class="countdown-box"><b>{{ cd.hours }}</b><small>giờ</small></div>
+                    <div class="countdown-box"><b>{{ cd.minutes }}</b><small>phút</small></div>
+                    <div class="countdown-box"><b>{{ cd.seconds }}</b><small>giây</small></div>
+                </div>
+
+                <button type="button" class="campaign-cta" *ngIf="allSaleProducts.length" (click)="scrollToSaleProducts()">
+                    Mua ngay <i class="bi bi-arrow-right"></i>
+                </button>
+            </div>
+
+            <div class="campaign-visual" aria-hidden="true">
+                <div class="campaign-ring"></div>
+                <img src="assets/images/homepage-RedPassion.png" alt="">
+                <div class="campaign-badge" *ngIf="maxSaleDiscount > 0">
+                    <small>Giảm đến</small>
+                    <b>{{ maxSaleDiscount }}%</b>
+                </div>
+            </div>
         </div>
     </section>
 
     <!-- SALE PRODUCTS -->
-    <section class="collection promotion-products-section" *ngIf="allSaleProducts.length">
+    <section id="sale-products" class="collection promotion-products-section" *ngIf="allSaleProducts.length">
         <h2>SẢN PHẨM GIẢM GIÁ</h2>
 
         <div class="product-carousel">

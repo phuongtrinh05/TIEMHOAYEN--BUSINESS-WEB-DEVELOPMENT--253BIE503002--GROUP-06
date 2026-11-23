@@ -774,6 +774,12 @@ export class AccountComponent implements OnInit, OnDestroy {
     if (!item?.id || item.linkAvailable === false) return;
     this.router.navigate(['/product-detail', item.id]);
   }
+  /** Ảnh đại diện lưu trên máy chủ có thể mất (vd. Render xóa thư mục uploads khi deploy): hiện ảnh mặc định thay icon hỏng. */
+  onAvatarError(event: Event): void {
+    const img = event.target as HTMLImageElement;
+    const fallback = 'assets/images/account/default-avatar.png';
+    if (!img.src.endsWith(fallback)) img.src = fallback;
+  }
   onAvatarSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
 

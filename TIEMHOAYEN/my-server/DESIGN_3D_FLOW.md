@@ -7,10 +7,10 @@
 - Mọi NVL bật 3D đều chọn được trên giao diện, kể cả khi hết khả dụng; trang 3D không hiện tồn kho hay cảnh báo hết/sắp hết cho khách. Thiết kế thiếu NVL vẫn được đánh dấu cần duyệt ở backend nên đi vào yêu cầu đặt hàng để nhân viên xử lý (đổi NVL, chờ hàng về…).
 - Giá tạm tính = tổng định lượng × giá bán NVL hiện tại + phí thiết kế và phí bổ sung của mẫu đã được shop duyệt. Mẫu mới chưa có phí chốt nên cần tư vấn; không tự gán biểu phí đề xuất thành giá chính thức.
 - “Đặt mẫu này” lưu thiết kế và chi tiết, thêm dòng giỏ hàng có `THIET_KE_3D_ID`. Lưu/thêm giỏ không giữ hoặc xuất kho.
-- Mẫu mới/chưa được shop duyệt hoặc có cảnh báo → `YEU_CAU_DAT_HANG`, không tạo QR. Nhân viên tiếp nhận, trao đổi, gửi phương án; khách đồng ý đúng phiên bản rồi mới lên đơn/thanh toán.
-- Chỉ phương án cùng đúng NVL, định lượng và bố cục gốc, đã được khách chấp nhận và nhân viên chuyển thành đơn, mới duyệt mẫu gốc cho lần đặt sau. Đổi thành phần không duyệt nhầm mẫu ban đầu. Khách tự lưu một mẫu trước đây không có nghĩa shop đã duyệt.
-- Mẫu đã duyệt: backend xác nhận lại giá và khả dụng khi checkout. Giao hôm nay giữ NVL trước QR, xác nhận tiền chuyển giữ chính thức. QR hết hạn/thất bại nhả giữ.
-- Đơn có thiết kế giao ngày sau không giữ NVL ngay. Chỉ khi tiền được xác nhận mới ghi nhu cầu theo snapshot; Admin tiếp tục xếp lịch T theo luồng kho hiện có. Mua nhiều hoặc giỏ hỗn hợp không được bỏ qua kiểm tra thiếu NVL.
+- **Mọi mẫu 3D đều đi `YEU_CAU_DAT_HANG`**, kể cả mẫu shop đã từng duyệt, bất kể lịch giao: nhân viên phải duyệt vì có thể phát sinh phí (thay hoa, phụ kiện, công cắm…). Checkout không tạo QR, không giữ tồn cho mẫu 3D. Nhân viên tiếp nhận, trao đổi, lưu Phương án cuối; khách thanh toán theo phương án qua cổng, Sales nhập đúng số tiền + mã giao dịch rồi chốt thì hệ thống mới tạo đơn.
+- Chỉ phương án cùng đúng NVL, định lượng và bố cục gốc, đã được khách chấp nhận và nhân viên chuyển thành đơn, mới được ghi là "mẫu shop đã từng làm" kèm phí thiết kế/phí bổ sung. Việc này chỉ giúp lần sau báo giá có sẵn phí, **không** cho đặt thẳng. Đổi thành phần không duyệt nhầm mẫu ban đầu. Khách tự lưu một mẫu không có nghĩa shop đã duyệt.
+- Giao diện: trang 3D và giỏ hàng luôn ghi "Shop duyệt trước khi thanh toán"; giỏ có mẫu 3D đổi nút thành "Tiếp tục gửi yêu cầu".
+- Sau khi Sales chốt: đủ NVL thì giữ theo snapshot thiết kế; chờ hàng về thì ghi nhu cầu Chờ giữ theo snapshot với T = giờ giao − 3 giờ, Kho/Admin chỉnh T và giữ theo luồng kho hiện có. Mua nhiều hoặc giỏ hỗn hợp không được bỏ qua kiểm tra thiếu NVL.
 - Đơn lưu ảnh, tên, định lượng và phí đã chốt trong snapshot. Không lấy BOM mới để thay nội dung đơn cũ.
 
 ## Chuẩn bị dữ liệu để thử
@@ -24,8 +24,8 @@
 1. Chọn 2 cành tại trang 3D → xem giá tạm tính → Đặt mẫu này → giỏ hàng. Kiểm tra kho chưa tăng đang giữ.
 2. Tiếp tục đặt mẫu mới: nhận mã yêu cầu, chưa có QR. Nhân viên mở Yêu cầu đặt hàng, tiếp nhận và tạo phương án từ thiết kế đã gửi; kiểm tra ảnh, NVL, lượng và phí.
 3. Khách mở yêu cầu bằng tài khoản sở hữu hoặc xác thực số điện thoại; đồng ý phương án. Nhân viên lên đơn, kiểm tra số tiền thanh toán đúng báo giá.
-4. Tạo lại đúng thành phần mẫu đã duyệt: được đi tiếp thanh toán nếu đủ NVL. Đổi 2 cành thành 3 cành: cần shop duyệt lại.
-5. Với giao hôm nay, xem đang giữ tăng khi QR được tạo; thử để QR hết hạn. Với giao ngày sau, xem không giữ ngay; xác nhận tiền rồi mới thấy nhu cầu chờ xếp lịch T.
+4. Tạo lại đúng thành phần mẫu đã từng làm: vẫn nhận mã yêu cầu (không QR), báo giá có sẵn phí thiết kế. Đổi 2 cành thành 3 cành: báo giá không còn phí chốt sẵn.
+5. Sau khi Sales chốt đơn: giao hôm nay thấy đang giữ tăng theo snapshot; giao ngày sau không giữ ngay mà có nhu cầu Chờ giữ chờ xếp lịch T.
 
 ## Kiểm thử tự động và giới hạn
 

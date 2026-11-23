@@ -55,6 +55,7 @@
               [src]="item.image"
               [alt]="item.name"
               class="item-image"
+              [class.design-image]="!!item.designId || item.id.startsWith('SP3D_')"
               [class.clickable]="canOpenProductDetail(item)"
               [attr.role]="canOpenProductDetail(item) ? 'link' : null"
               (click)="goToProductDetail(item)">
@@ -65,7 +66,7 @@
                  [attr.role]="canOpenProductDetail(item) ? 'link' : null"
                  [attr.tabindex]="canOpenProductDetail(item) ? 0 : null"
                  (click)="goToProductDetail(item)"
-                 (keydown.enter)="goToProductDetail(item)">{{ item.name }}</p><p *ngIf="item.designId" class="item-meta">{{item.requiresReview ? 'Cần shop duyệt · Giá tạm tính' : 'Mẫu đã được duyệt'}}</p>
+                 (keydown.enter)="goToProductDetail(item)">{{ item.name }}</p><p *ngIf="item.designId" class="item-meta">{{item.requiresReview ? 'Shop duyệt trước khi thanh toán · Giá tạm tính' : 'Shop duyệt trước khi thanh toán · Mẫu shop đã từng làm'}}</p>
               <p class="item-meta" *ngIf="!isAddOnItem(item)">Kiểu dáng: {{ item.style }}</p>
               <span class="cart-status-badge" *ngIf="!item.purchasable">Ngừng bán</span>
               <p class="cart-line-warning" *ngIf="item.priceChanged">Giá sản phẩm đã được cập nhật theo giá hiện tại.</p>

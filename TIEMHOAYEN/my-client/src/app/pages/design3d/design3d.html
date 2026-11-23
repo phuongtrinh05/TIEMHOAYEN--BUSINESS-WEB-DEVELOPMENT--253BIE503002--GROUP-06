@@ -152,9 +152,9 @@
                     <p class="design-price-note"><i class="bi bi-info-circle" aria-hidden="true"></i> Giá có thể thay đổi theo mùa vụ.</p>
                   </div>
                   <div class="design-review">
-                    <span class="design-review-badge" *ngIf="quote.requiresReview"><i class="bi bi-clock-history" aria-hidden="true"></i> Cần shop duyệt</span>
-                    <span class="design-review-badge approved" *ngIf="!quote.requiresReview"><i class="bi bi-check-circle" aria-hidden="true"></i> Mẫu đã được duyệt</span>
-                    <p *ngIf="quote.requiresReview">Shop xác nhận mẫu và phí trước khi thanh toán.</p>
+                    <!-- Mọi mẫu 3D đều qua Yêu cầu đặt hàng: nhân viên duyệt vì có thể phát sinh phí. -->
+                    <span class="design-review-badge"><i class="bi bi-clock-history" aria-hidden="true"></i> Shop duyệt trước khi thanh toán</span>
+                    <p>Shop xác nhận mẫu và phí trước khi thanh toán.<ng-container *ngIf="!quote.requiresReview"> Mẫu shop đã từng làm, giá tham khảo.</ng-container></p>
                     <details class="design-review-details" *ngIf="quote.requiresReview && reviewReasons(quote).length > 1"><summary><span>Xem lý do cần duyệt</span><i class="bi bi-chevron-down" aria-hidden="true"></i></summary><ul><li *ngFor="let badge of reviewReasons(quote)">{{badge}}</li></ul></details>
                   </div>
                 </div>

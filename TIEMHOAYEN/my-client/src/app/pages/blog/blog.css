@@ -1,3 +1,333 @@
-:host{display:block}.journal{color:#573c3b;background:#fffaf7}.journal-banner{height:280px;position:relative;overflow:hidden;display:flex;align-items:center;padding:40px 9%}.journal-banner>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.25}.journal-banner>div{position:relative;max-width:550px}.journal-banner span{font-size:11px;letter-spacing:3px;color:#ad7675}.journal-banner h1{font-family:var(--font-heading,'Playfair Display'),serif;font-size:40px;color:#781b20;margin:14px 0;line-height:1.2}.journal-banner p{font-size:14px;line-height:1.8;color:#987b74}.journal-layout{max-width:1250px;margin:auto;padding:50px 30px;display:grid;grid-template-columns:220px minmax(0,1fr);gap:45px}.journal-layout aside h2{font-family:var(--font-heading,'Playfair Display'),serif;font-size:24px;color:#781b20}.journal button{font:inherit;cursor:pointer}.journal-layout aside>button{display:block;width:100%;text-align:left;border:0;background:transparent;border-radius:6px;padding:12px;font-size:13px;color:#937774}.journal-layout aside>button.active{background:#f8e5e2;color:#781b20}.journal form{margin-top:25px;border-top:1px solid #edd8d3;padding-top:20px}.journal label{font-size:12px;color:#9c7b73;display:block;margin-bottom:8px}.journal input{width:100%;box-sizing:border-box;padding:11px;border:1px solid #e4ccc6;border-radius:5px;font-size:12px}.journal form button{background:#781b20;color:white;border:0;border-radius:5px;padding:9px 14px;margin-top:8px;font-size:12px}.list-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:25px;gap:10px}.list-title h2{font-family:var(--font-heading,'Playfair Display'),serif;font-size:26px;color:#781b20;margin:0}.list-title>span{font-size:12px;color:#b19389;white-space:nowrap}.journal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:25px}.journal article{border:1px solid #efdfd8;border-radius:10px;overflow:hidden;background:white}.journal article a{color:inherit;text-decoration:none}.journal article img{width:100%;height:220px;object-fit:cover}.post-copy{padding:20px}.category{font-size:10px;color:#ad7675;letter-spacing:.5px}.post-copy h3{font-family:var(--font-heading,'Playfair Display'),serif;font-size:23px;line-height:1.4;margin:10px 0;color:#781b20}.post-copy p{font-size:13px;line-height:1.8;color:#9c817a}.post-copy small{font-size:10px;color:#b1948a;display:flex;justify-content:space-between}.pagination{display:flex;gap:20px;align-items:center;justify-content:center;margin-top:30px;font-size:12px}.pagination button{border:1px solid #e8cec8;background:white;border-radius:5px;padding:8px 12px;color:#781b20}.pagination button:disabled{opacity:.35}.state{padding:40px 0;font-size:14px;color:#ad8078}@media(max-width:750px){.journal-layout{grid-template-columns:1fr;padding:25px 18px;gap:25px}.journal-layout aside>button{display:inline-block;width:auto;padding:8px}.journal-layout aside h2{font-size:20px}.journal form{margin-top:10px;padding-top:12px}.journal-banner{height:230px;padding:25px}.journal-banner h1{font-size:30px}.journal-grid{gap:12px}.journal article img{height:160px}.post-copy{padding:14px}.post-copy h3{font-size:19px}.list-title h2{font-size:22px}}@media(max-width:420px){.journal-grid{grid-template-columns:1fr}}
+:host { display: block; }
 
-.journal{font-family:var(--font-body,'Nunito Sans'),sans-serif}.blog-banner{width:100%;margin:0;overflow:hidden;background:#fff8f4}.blog-video{width:100%;height:610px;display:block;object-fit:cover}.journal-layout{padding-top:20px}.journal-layout aside h2{font-family:var(--font-body,'Nunito Sans'),sans-serif;font-size:19px;font-weight:650;margin-bottom:18px}.journal-top-search{max-width:1190px;margin:32px auto 0;padding:0 0 20px;border-bottom:1px solid #eee0da}.journal-top-search form{display:flex;align-items:center;gap:12px;margin:0;padding:0;border:0}.journal-top-search label{margin:0;font-size:14px;white-space:nowrap;color:#77504c}.journal-top-search input{flex:1;max-width:460px;width:auto;font-family:var(--font-body);font-size:14px;background:white}.journal-top-search form button{margin:0;padding:11px 18px}.post-meta{display:flex;align-items:center;gap:14px;font-size:11px;color:#ad9388;border-top:1px solid #f4e9e2;padding-top:12px}.post-meta i{margin-right:4px}.post-meta .read-more{margin-left:auto;color:#9a4548}.list-title h2{font-size:26px;font-weight:500}.post-copy h3{font-size:23px;font-weight:500}.post-copy p{margin:10px 0 17px}.journal .post-copy{font-family:var(--font-body)}@media(max-width:750px){.blog-video{height:350px}.journal-top-search{margin:20px 18px 0}.journal-top-search form{flex-wrap:wrap;gap:8px}.journal-top-search label{width:100%}.journal-top-search input{min-width:150px}.post-meta{font-size:10px;gap:9px}}
+.journal {
+  --wine: #781b20;
+  --wine-soft: #f8e5e2;
+  --ink: #573c3b;
+  --muted: #9c817a;
+  --line: #efdfd8;
+  color: var(--ink);
+  background: #fffaf7;
+  font-family: var(--font-body, 'Nunito Sans'), sans-serif;
+  padding-bottom: 64px;
+}
+
+.journal button { font: inherit; cursor: pointer; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ===== Banner ===== */
+.blog-banner {
+  width: 100%;
+  overflow: hidden;
+  background: #fbefe7;
+}
+
+.blog-banner img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2048 / 783;
+  max-height: 520px;
+  object-fit: cover;
+  object-position: 30% center;
+}
+
+/* ===== Tìm kiếm nổi trên banner ===== */
+.journal-search {
+  position: relative;
+  z-index: 2;
+  max-width: 760px;
+  margin: -34px auto 0;
+  padding: 0 20px;
+}
+
+.journal-search form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 20px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 16px 36px rgba(120, 27, 32, .12);
+}
+
+.journal-search .bi-search { color: #b48d85; font-size: 16px; }
+
+.journal-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--ink);
+  padding: 10px 0;
+}
+
+.journal-search button {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 26px;
+  background: var(--wine);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  transition: background .2s ease;
+}
+.journal-search button:hover { background: #5f1418; }
+
+/* ===== Nội dung ===== */
+.journal-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 36px 30px 0;
+}
+
+.journal-topics {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 36px;
+}
+
+.journal-topics button {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: #8a6a64;
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-size: 14px;
+  transition: all .2s ease;
+}
+.journal-topics button:hover { border-color: #d9b382; color: var(--wine); }
+.journal-topics button.active {
+  background: var(--wine);
+  border-color: var(--wine);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(120, 27, 32, .18);
+}
+
+.list-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.list-kicker {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #c09a6b;
+}
+.list-title h2 {
+  margin: 4px 0 0;
+  font-family: var(--font-heading, 'Playfair Display'), serif;
+  font-size: 30px;
+  font-weight: 500;
+  color: var(--wine);
+}
+.list-count { font-size: 13px; color: #b19389; white-space: nowrap; }
+
+/* ===== Thẻ bài viết ===== */
+.journal article a { color: inherit; text-decoration: none; display: block; height: 100%; }
+
+.post-card {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+  transition: transform .3s ease, box-shadow .3s ease;
+}
+.post-card:hover { transform: translateY(-4px); box-shadow: 0 18px 36px rgba(120, 27, 32, .1); }
+.journal .post-card a { display: flex; flex-direction: column; }
+
+.post-media { overflow: hidden; aspect-ratio: 4 / 3; background: #f7ece7; }
+.post-media img,
+.featured-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform .6s ease;
+}
+.post-card:hover .post-media img,
+.post-featured:hover .featured-media img { transform: scale(1.05); }
+
+.post-copy { padding: 18px 20px 20px; display: flex; flex-direction: column; flex: 1; }
+
+.category {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #a14c50;
+  background: var(--wine-soft);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.post-copy h3 {
+  font-family: var(--font-heading, 'Playfair Display'), serif;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.4;
+  margin: 12px 0 8px;
+  color: var(--wine);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.post-copy p {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--muted);
+  margin: 0 0 16px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.post-meta {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  color: #ad9388;
+  border-top: 1px solid #f4e9e2;
+  padding-top: 12px;
+}
+.post-meta i { margin-right: 4px; }
+.post-meta .read-more { margin-left: auto; color: #9a4548; font-weight: 700; }
+.post-meta .read-more i { margin: 0 0 0 4px; transition: transform .2s ease; }
+article:hover .read-more i { transform: translateX(3px); }
+
+/* Bài lớn đầu trang */
+.post-featured {
+  border-radius: 20px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 14px 34px rgba(120, 27, 32, .08);
+  margin-bottom: 28px;
+}
+.journal .post-featured a { display: grid; grid-template-columns: 1.25fr 1fr; }
+.featured-media { position: relative; overflow: hidden; min-height: 340px; }
+.featured-media img { position: absolute; inset: 0; }
+.featured-badge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #FFD36E;
+  color: var(--wine);
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, .15);
+}
+.post-featured .post-copy { padding: 34px 36px; justify-content: center; }
+.post-featured .post-copy h3 { font-size: 30px; -webkit-line-clamp: 3; }
+.post-featured .post-copy p { font-size: 15px; -webkit-line-clamp: 5; }
+
+.journal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+/* 8 bài còn lại → 2 hàng x 4 cho khỏi lẻ hàng cuối (chỉ desktop) */
+@media (min-width: 1025px) {
+  .journal-grid.grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
+  .journal-grid.grid-4 .post-copy h3 { font-size: 18px; }
+}
+
+/* Skeleton khi đang tải */
+.post-skeleton { border-radius: 16px; background: #fff; border: 1px solid var(--line); overflow: hidden; }
+.post-skeleton div { aspect-ratio: 4 / 3; }
+.post-skeleton p { height: 14px; margin: 16px 20px; border-radius: 6px; }
+.post-skeleton p:last-child { width: 60%; }
+.post-skeleton div,
+.post-skeleton p {
+  background: linear-gradient(90deg, #f6ebe6 25%, #fbf4f0 50%, #f6ebe6 75%);
+  background-size: 200% 100%;
+  animation: blog-shimmer 1.2s linear infinite;
+}
+@keyframes blog-shimmer { to { background-position: -200% 0; } }
+
+/* Phân trang */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 40px;
+}
+.pagination button {
+  min-width: 40px;
+  height: 40px;
+  border: 1px solid #e8cec8;
+  background: #fff;
+  border-radius: 999px;
+  color: var(--wine);
+  font-size: 14px;
+}
+.pagination button.active { background: var(--wine); border-color: var(--wine); color: #fff; }
+.pagination button:disabled { opacity: .35; cursor: default; }
+
+.state { grid-column: 1 / -1; padding: 40px 0; text-align: center; font-size: 15px; color: #ad8078; }
+
+/* ===== Tablet ===== */
+@media (max-width: 1024px) {
+  .journal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+  .journal .post-featured a { grid-template-columns: 1fr 1fr; }
+  .post-featured .post-copy { padding: 26px; }
+  .post-featured .post-copy h3 { font-size: 24px; }
+}
+
+/* ===== Phone ===== */
+@media (max-width: 640px) {
+  .blog-banner img { aspect-ratio: 16 / 9; object-position: 22% center; }
+  .journal-search { margin-top: -24px; padding: 0 16px; }
+  .journal-search form { padding: 6px 6px 6px 16px; gap: 8px; }
+  .journal-search input { font-size: 14px; }
+  .journal-search button { padding: 10px 16px; font-size: 13px; }
+  .journal-main { padding: 24px 16px 0; }
+  .journal-topics {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    margin: 0 -16px 24px;
+    padding: 0 16px 4px;
+    scrollbar-width: none;
+  }
+  .journal-topics::-webkit-scrollbar { display: none; }
+  .journal-topics button { flex: 0 0 auto; font-size: 13px; padding: 8px 14px; }
+  .list-title h2 { font-size: 22px; }
+  .journal .post-featured a { grid-template-columns: 1fr; }
+  .featured-media { min-height: 0; aspect-ratio: 16 / 10; }
+  .post-featured .post-copy { padding: 18px 18px 20px; }
+  .post-featured .post-copy h3 { font-size: 21px; }
+  .journal-grid { grid-template-columns: 1fr; gap: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .post-card, .post-media img, .featured-media img, .post-skeleton div, .post-skeleton p { transition: none; animation: none; }
+}

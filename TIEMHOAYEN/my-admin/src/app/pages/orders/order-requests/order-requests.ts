@@ -44,6 +44,26 @@ export class OrderRequests implements OnInit, OnDestroy {
   }
   /** Yêu cầu đang ở bước shop có thể gửi phương án hoặc chốt đơn. */
   get canDecide() { return ['Sales đang xử lý', 'Chờ khách xác nhận'].includes(String(this.active?.status || '')); }
+  /** Thẻ "Đã tạo đơn hàng": đơn đã được xác nhận tiền (hoặc không cần trả trước) thì tô xanh, còn chờ tiền thì tô vàng. */
+  orderResultPaid(result: any): boolean {
+    return result?.paymentConfirmed === true || result?.paymentStatus === 'Thành công' || result?.requiresPayment === false;
+  }
+  orderResultPaymentLabel(result: any): string {
+    if (result?.paymentConfirmed === true || result?.paymentStatus === 'Thành công') return 'Đã thanh toán';
+    if (result?.requiresPayment === false) return 'Thanh toán khi nhận hàng';
+    return 'Chờ khách thanh toán';
+  }
+  copiedOrderId = '';
+  private copiedTimer?: ReturnType<typeof setTimeout>;
+  copyOrderId(orderId: string) {
+    if (!orderId || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    void navigator.clipboard.writeText(orderId).then(() => {
+      this.copiedOrderId = orderId;
+      if (this.copiedTimer) clearTimeout(this.copiedTimer);
+      this.copiedTimer = setTimeout(() => { this.copiedOrderId = ''; this.cdr.markForCheck(); }, 1800);
+      this.cdr.markForCheck();
+    }).catch(() => {});
+  }
   /**
    * Chốt theo đúng yêu cầu gốc khách đã đặt thì không cần khách xác nhận lại.
    * Còn khi đã có phương án (hoặc đang sửa khác yêu cầu gốc) thì shop chỉ được chốt thay khách
@@ -263,13 +283,20 @@ export class OrderRequests implements OnInit, OnDestroy {
         referenceCode: this.paymentReference.trim() } };
     this.busy = true; this.error = '';
     this.http.post(`${this.url}/${this.active.requestId}/confirm`, body).subscribe({
-      next: () => this.afterDealClosed(), error: err => this.fail(err),
+      next: (updated: any) => this.afterDealClosed(updated), error: err => this.fail(err),
     });
   }
-  private afterDealClosed() {
+  private afterDealClosed(updated?: any) {
     this.busy = false; this.showOriginalConfirm = false; this.editing = false; this.draft = null;
     this.urgentDealConfirmed = false; this.urgentDealNote = '';
     this.paymentReceivedConfirmed = false; this.paymentReceivedAmount = null; this.paymentReference = '';
+    // Yêu cầu vừa chốt thường rời khỏi nhóm đang xem (vd. "Cần xử lý" → "Đã lên đơn"), nên load() không tìm lại được
+    // để làm mới. Cập nhật ngay yêu cầu đang mở bằng dữ liệu máy chủ trả về để hiện trạng thái mới và nút "Xem đơn".
+    if (updated && this.active && updated.requestId === this.active.requestId) {
+      this.active = { ...this.active, status: updated.status, quote: updated.quote ?? this.active.quote,
+        acceptedQuoteId: updated.acceptedQuoteId ?? this.active.acceptedQuoteId,
+        orderResult: updated.orderResult ?? this.active.orderResult, orderId: updated.orderResult?.orderId ?? this.active.orderId };
+    }
     this.workTab = 'stock'; this.status = ''; this.load(); this.cdr.markForCheck();
   }
   selectWorkTab(tab: string) {
@@ -371,7 +398,7 @@ export class OrderRequests implements OnInit, OnDestroy {
       note: 'Shop xác nhận có thể đáp ứng nguyên mẫu, số lượng, giá tham chiếu và lịch giao khách đã yêu cầu.' };
     this.busy = true; this.error = '';
     this.http.post(`${this.url}/${this.active.requestId}/confirm`, body).subscribe({
-      next: () => this.afterDealClosed(),
+      next: (updated: any) => this.afterDealClosed(updated),
       error: err => this.fail(err),
     });
   }
@@ -451,7 +478,8 @@ export class OrderRequests implements OnInit, OnDestroy {
   private buildDraft() {
     const q = this.active.quote;
     return { items: q ? q.items.map((item: any) => ({ ...item, materials: item.custom ? item.bom.materials.map((m: any) => ({ ...m })) : [], designFee: item.bom?.designFee || 0, extraFee: item.bom?.extraFee || 0 }))
-      : this.active.items.map((i: any) => i.designId ? {id:i.productId,qty:i.quantity,custom:true,designId:i.designId,name:i.name,image:i.image,imageDescription:'Thiết kế 3D khách gửi; cần xác nhận khả năng thực hiện',materials:i.bom.materials.map((m:any)=>({...m})),designFee:i.bom.designFee || 0,extraFee:i.bom.extraFee || 0} : { id: i.productId, qty: i.quantity, custom: false }),
+      : this.active.items.map((i: any) => i.designId ? {id:i.productId,qty:i.quantity,custom:true,designId:i.designId,name:i.name,image:i.image,imageDescription:'Thiết kế 3D khách gửi; cần xác nhận khả năng thực hiện',// Yêu cầu bó 3D thường chỉ lưu designId: để trống thành phần/phí thì máy chủ tự lấy từ thiết kế.
+        materials:(i.bom?.materials || []).map((m:any)=>({...m})),...(i.bom ? {designFee:i.bom.designFee || 0,extraFee:i.bom.extraFee || 0} : {})} : { id: i.productId, qty: i.quantity, custom: false }),
       date: this.dateInput(q?.delivery.date || this.active.delivery?.date), time: String(q?.delivery.time || this.active.delivery?.time || '').match(/\b\d{2}:\d{2}\b/)?.[0] || '',
       shippingFee: q?.summary.shippingFee ?? this.active.originalSummary?.shippingFee ?? 0,
       paymentMethod: q?.payment.method || 'bank', depositAmount: q?.summary.depositAmount || 0, note: q?.note || '' };

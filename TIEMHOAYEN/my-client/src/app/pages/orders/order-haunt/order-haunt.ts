@@ -236,7 +236,7 @@ export class OrderHauntComponent implements OnInit {
   availableWards: Ward[] = [];
   openAddrDropdown: AddrDropdownType = null;
 
-  get hasDesignReview(): boolean { return this.orderItems.some(i=>!!i.requiresReview); }
+  get hasDesignReview(): boolean { return this.orderItems.some(i=>!!i.requiresReview || String(i.id || '').startsWith('SP3D_')); }
   orderItems: OrderItem[] = [];
 
   paymentMethods: PaymentMethod[] = [
