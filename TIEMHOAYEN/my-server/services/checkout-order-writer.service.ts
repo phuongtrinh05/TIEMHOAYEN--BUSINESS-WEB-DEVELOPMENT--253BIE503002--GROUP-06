@@ -120,7 +120,7 @@ export async function writeCheckoutOrder(session: ClientSession, orderId: string
     SO_LUONG: item.qty, GIA: item.price, ...(item.bom ? { BOM_SNAPSHOT: item.bom } : {}),
     CART_LINE_KEYS: item.cartLineKeys || [item.lineKey || item.id],
     TEN_SAN_PHAM_SNAPSHOT: item.name, HINH_ANH_SNAPSHOT: item.image,
-    SAN_PHAM_TUY_CHINH: !!item.custom,
+    SAN_PHAM_TUY_CHINH: !!item.custom, ...(item.designId ? { THIET_KE_3D_ID: item.designId } : {}),
   })), { session });
   if (options.voucher) {
     await (await getCollection<any>('DON_HANG_VOUCHER')).insertOne({

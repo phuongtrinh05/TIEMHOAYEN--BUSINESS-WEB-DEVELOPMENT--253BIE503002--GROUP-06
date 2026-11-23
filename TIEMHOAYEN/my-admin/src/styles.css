@@ -33,6 +33,8 @@
 @media (min-width: 1024px){
     :root{ --admin-zoom:.85; }
     html{ zoom: var(--admin-zoom); }
+    /* Trang đăng nhập giữ kích cỡ thật và nền phủ kín màn hình. */
+    :root:has(.admin-login-page){ --admin-zoom:1; }
 }
 
 *{

@@ -6,21 +6,25 @@ const uri=process.env.TEST_MONGO_URI;
 if(!uri) test('3D integration requires isolated TEST_MONGO_URI',{skip:true},()=>{});
 else {
   process.env.MONGO_URI=uri;
+  // Giờ giao phải nằm trong giờ mở cửa, nên cố định đồng hồ test ở 10:00 giờ Việt Nam của ngày hiện tại.
+  const RealDate=Date,vnDay=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new RealDate()),clockOffset=new RealDate(`${vnDay}T10:00:00+07:00`).getTime()-RealDate.now();
+  class ShopHoursDate extends RealDate{constructor(...args:any[]){if(args.length)super(...(args as [any]));else super(RealDate.now()+clockOffset);}static now(){return RealDate.now()+clockOffset;}}
+  globalThis.Date=ShopHoursDate as any;
   process.env.MONGO_DATABASE='YEN_3D_TEST_'+randomUUID().replaceAll('-','');
   let mongo:typeof import('../mongo.js'), design:typeof import('../services/design3d.service.js');
   let requests:typeof import('../services/order-request.service.js'), flow:typeof import('../services/sales-proposal.service.js');
   const collection=async(name:string)=>(await mongo.getCollection<any>(name));
   const invoke=async(handler:any,body:any,params:any={})=>{
     let code=200,data:any;
-    await handler({body,params,headers:{}},{status(n:number){code=n;return this;},json(d:any){data=d;return this;}});
+    await handler({body,params,headers:{}},{locals:{},status(n:number){code=n;return this;},json(d:any){data=d;return this;}});
     return {code,data};
   };
   const image='data:image/png;base64,aGVsbG8=';
   const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const submit=async(d:any,date=today(),overrides:any={})=>{
     const {createOrder}=await import('../controllers/order.js');
-    return invoke(createOrder,{sender:{name:'Khách thử',phone:'0901234567'},receiver:{name:'Người nhận',phone:'0912345678',address:'Test'},
-      delivery:{date,time:'23:59'},items:[{id:d.productId,qty:1,price:d.price}],payment:{method:'bank',methodName:'Chuyển khoản'},
+    return invoke(createOrder,{sender:{name:'Khách thử',phone:'0901234567'},receiver:{name:'Người nhận',phone:'0912345678',address:'1 Test, Phường Bến Nghé, Quận 1, Thành phố Hồ Chí Minh'},
+      delivery:{date,time:'21:00'},items:[{id:d.productId,qty:1,price:d.price}],payment:{method:'bank',methodName:'Chuyển khoản'},
       summary:{subtotal:d.price,total:d.price,shippingFee:0},flags:{},checkoutSessionId:randomUUID(),...overrides});
   };
   const sales={NHAN_VIEN_ID:'NV_SALES',HO_TEN:'Tư vấn viên'};
