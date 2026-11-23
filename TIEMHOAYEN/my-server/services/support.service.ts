@@ -10,7 +10,7 @@ export const SUPPORT_TICKETS = 'YEU_CAU_HO_TRO';
 const MESSAGES = 'TIN_NHAN_CHAT';
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 export async function ensureSupportIndexes() {
-    await (await getCollection<any>(SUPPORT_TICKETS)).createIndex({ customerId: 1, updatedAt: -1 });
+    await (await getCollection<any>(SUPPORT_TICKETS)).createIndex({ KHACH_HANG_ID: 1, NGAY_CAP_NHAT: -1 }, { name: 'std_khach_ngay_cap_nhat' });
     await (await getCollection<any>('TIN_NHAN_CHAT')).createIndex({ HO_TRO_ID: 1, THOI_GIAN_GUI: 1 });
     await (await getCollection<any>('CAU_HOI_CO_SAN')).createIndex({ CAU_HOI_CHUAN: 1 }, { unique: true, partialFilterExpression: { CAU_HOI_CHUAN: { $type: 'string' } } });
 }

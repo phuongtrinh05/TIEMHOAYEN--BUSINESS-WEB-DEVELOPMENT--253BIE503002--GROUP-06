@@ -629,7 +629,11 @@ export async function consultationOptions(id: string, search: string, employee: 
 
 export async function ensureSalesRequestIndexes() {
   await (await getCollection<any>(MESSAGES)).createIndex({ YEU_CAU_ID: 1, THOI_GIAN_GUI: -1 }, { name: 'sales_request_conversation_time' });
-  await (await getCollection<any>(REQUESTS)).createIndex({ status: 1, createdAt: -1 }, { name: 'sales_queue_status_time' });
+  await (await getCollection<any>(REQUESTS)).createIndex({ TRANG_THAI: 1, NGAY_TAO: -1 }, { name: 'std_sales_queue_trang_thai_ngay_tao' });
+  const afterSales = await getCollection<any>('YEU_CAU_HAU_MAI');
+  await afterSales.createIndex({ DON_HANG_ID: 1, NGAY_TAO: -1 }, { name: 'std_hau_mai_don_ngay_tao' });
+  // Mỗi đơn chỉ có một hồ sơ hậu mãi đang mở.
+  await afterSales.createIndex({ DON_HANG_ID: 1, DANG_HOAT_DONG: 1 }, { name: 'std_hau_mai_mot_ho_so_mo', unique: true, partialFilterExpression: { DANG_HOAT_DONG: true } });
 }
 
 export async function messages(id: string, actor: { token?: string; employee?: any }) {

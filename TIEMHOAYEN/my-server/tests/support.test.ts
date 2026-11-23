@@ -449,4 +449,26 @@ else {
         assert.equal(bucket.SO_LUONG, 2);
         await Promise.all([rawRequests.deleteOne({ _id: 'W7R-REQ' as any }), rawLedger.deleteOne({ _id: 'W7R-RF' as any }), rawAccess.deleteOne({ _id: 'W7R-RATE' as any })]);
     });
+    test('startup indexes use standard field names and keep one open after-sales case per order', async () => {
+        const db = await mongo.getDb();
+        const { ensureOrderAccessIndexes } = await import('../services/order-access.service.js');
+        const { ensureSupportIndexes } = await import('../services/support.service.js');
+        const { ensureSalesRequestIndexes } = await import('../services/sales-proposal.service.js');
+        for (let round = 0; round < 2; round++) { await ensureOrderAccessIndexes(); await ensureSupportIndexes(); await ensureSalesRequestIndexes(); }
+        const indexOf = async (table: string, name: string) => (await db.collection(table).indexes()).find((index) => index.name === name) as any;
+        assert.deepEqual((await indexOf('XAC_THUC_TRA_CUU_DON', 'std_het_han_ttl')).key, { HET_HAN: 1 });
+        assert.equal((await indexOf('XAC_THUC_TRA_CUU_DON', 'std_het_han_ttl')).expireAfterSeconds, 0);
+        assert.deepEqual((await indexOf('YEU_CAU_HO_TRO', 'std_khach_ngay_cap_nhat')).key, { KHACH_HANG_ID: 1, NGAY_CAP_NHAT: -1 });
+        assert.deepEqual((await indexOf('YEU_CAU_DAT_HANG', 'std_sales_queue_trang_thai_ngay_tao')).key, { TRANG_THAI: 1, NGAY_TAO: -1 });
+        assert.deepEqual((await indexOf('YEU_CAU_HAU_MAI', 'std_hau_mai_don_ngay_tao')).key, { DON_HANG_ID: 1, NGAY_TAO: -1 });
+        const unique = await indexOf('YEU_CAU_HAU_MAI', 'std_hau_mai_mot_ho_so_mo');
+        assert.equal(unique.unique, true);
+        assert.deepEqual(unique.partialFilterExpression, { DANG_HOAT_DONG: true });
+        const cases = await mongo.getCollection<any>('YEU_CAU_HAU_MAI');
+        await cases.insertOne({ _id: 'IDX-A', orderId: 'IDX-ORDER', active: true, createdAt: new Date() });
+        await assert.rejects(cases.insertOne({ _id: 'IDX-B', orderId: 'IDX-ORDER', active: true, createdAt: new Date() }), (error: any) => error?.code === 11000);
+        await cases.updateOne({ _id: 'IDX-A' }, { $set: { active: false } });
+        await cases.insertOne({ _id: 'IDX-B', orderId: 'IDX-ORDER', active: true, createdAt: new Date() });
+        await cases.deleteMany({ _id: { $in: ['IDX-A', 'IDX-B'] } });
+    });
 }
