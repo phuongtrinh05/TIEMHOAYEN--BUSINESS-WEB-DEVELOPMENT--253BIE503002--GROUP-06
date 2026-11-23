@@ -85,7 +85,7 @@ const LUCKY_FIELD_ALIASES: Record<string, string> = {
 };
 const LUCKY_TABLES = ['VQ_CHUONG_TRINH', 'VQ_LUOT_QUAY', 'VQ_KET_QUA', 'VQ_PHAN_THUONG', 'VQ_HAN_MUC', 'VQ_NHAT_KY', 'VQ_THONG_BAO', 'VQ_YEU_CAU_QUAY', 'VQ_DONG_BO_META'];
 const READ_STANDARD_TABLES = new Set([...LUCKY_TABLES, 'YEU_CAU_HO_TRO', 'YEU_CAU_TAO_ANH', 'THIET_KE_3D', 'PHIEN_DANG_NHAP_ADMIN', 'BO_DEM_MA', 'KHACH_HANG', 'HOAN_TIEN', 'PHIEN_DAT_HANG', 'YEU_CAU_DAT_HANG', 'YEU_CAU_HAU_MAI', 'XAC_THUC_TRA_CUU_DON']);
-const STANDARD_ONLY_TABLES = new Set([...LUCKY_TABLES, 'YEU_CAU_HO_TRO']);
+const STANDARD_ONLY_TABLES = READ_STANDARD_TABLES;
 const FIELD_ALIASES: Record<string, Record<string, string>> = {
   ...Object.fromEntries(LUCKY_TABLES.map((table) => {
     const aliases: Record<string, string> = { ...LUCKY_FIELD_ALIASES, id: `${table}_ID` };
