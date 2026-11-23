@@ -47,6 +47,17 @@ interface HomeBlog {
   date: string;
 }
 
+interface HeroSlide {
+  id: string;
+  theme: 'brand' | 'pink' | 'wine' | 'cream';
+  kicker: string;
+  title: string;
+  subtitle: string;
+  cta: string;
+  link: string;
+  image: string;
+}
+
 @Component({
   selector: 'app-home',
   standalone: true,
@@ -97,6 +108,63 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
   private bestSellerProductIndex = 0;
   private bestSellerProductTimer: ReturnType<typeof setInterval> | null = null;
   private bestSellerProductFadeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ===== Banner chiến dịch (thay video hero) =====
+  readonly heroSlides: HeroSlide[] = [
+    {
+      id: 'brand',
+      theme: 'brand',
+      kicker: 'Tiệm Hoa Yên',
+      title: 'Hoa tươi mỗi ngày, gửi trọn yêu thương',
+      subtitle: 'Bó hoa thủ công, giao nhanh trong ngày — hoặc tự thiết kế bó hoa 3D theo ý bạn.',
+      cta: 'Khám phá ngay',
+      link: '/category',
+      image: 'assets/images/homepage-banner-main.png'
+    },
+    {
+      id: 'vn-women-2010',
+      theme: 'pink',
+      kicker: '20/10 · Ngày Phụ nữ Việt Nam',
+      title: 'Tặng nàng một đóa dịu dàng',
+      subtitle: 'Những bó hoa hồng, tulip ngọt ngào dành cho mẹ, cho vợ và người thương.',
+      cta: 'Xem BST 20/10',
+      link: '/bo-suu-tap/BST007',
+      image: 'assets/images/homepage-PinkRomance.png'
+    },
+    {
+      id: 'men-1911',
+      theme: 'wine',
+      kicker: '19/11 · Quốc tế Nam giới',
+      title: 'Lịch lãm như chính anh ấy',
+      subtitle: 'Gam đỏ rượu vang, thiết kế tinh gọn — món quà tinh tế cho chồng, bạn trai.',
+      cta: 'Chọn quà cho anh',
+      link: '/doi-tuong/DT006',
+      image: 'assets/images/homepage-BurgundyElegance.png'
+    },
+    {
+      id: 'teacher-2011',
+      theme: 'cream',
+      kicker: '20/11 · Tri ân Thầy Cô',
+      title: 'Một bó hoa, vạn lời tri ân',
+      subtitle: 'Hoa trang nhã gửi đến thầy cô — người đã chắp cánh ước mơ.',
+      cta: 'Xem BST 20/11',
+      link: '/bo-suu-tap/BST006',
+      image: 'assets/images/homepage-WhiteElegance.png'
+    }
+  ];
+  heroIndex = 0;
+  heroPointerStartX: number | null = null;
+  private heroTimer: ReturnType<typeof setInterval> | null = null;
+  private heroPaused = false;
+  private readonly heroDelay = 5500;
+
+  // ===== Đếm ngược chiến dịch đang chạy =====
+  campaignCountdown: { days: string; hours: string; minutes: string; seconds: string } | null = null;
+  private campaignCountdownTimer: ReturnType<typeof setInterval> | null = null;
+
+  get maxSaleDiscount(): number {
+    return this.allSaleProducts.reduce((max, item) => Math.max(max, item.discountPercent || 0), 0);
+  }
 
   wishlistIds = new Set<string>();
   private readonly authChangedHandler = () => this.loadCustomerWishlist();
@@ -161,6 +229,114 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
     this.loadBestSellerProducts();
     this.loadLatestBlogs();
     this.loadCustomerWishlist();
+    this.restartHeroTimer();
+  }
+
+  // ===== Banner chiến dịch =====
+  goHero(index: number): void {
+    const total = this.heroSlides.length;
+    this.heroIndex = ((index % total) + total) % total;
+    this.restartHeroTimer();
+  }
+
+  nextHero(): void {
+    this.goHero(this.heroIndex + 1);
+  }
+
+  prevHero(): void {
+    this.goHero(this.heroIndex - 1);
+  }
+
+  pauseHero(): void {
+    this.heroPaused = true;
+  }
+
+  resumeHero(): void {
+    this.heroPaused = false;
+  }
+
+  onHeroPointerDown(event: PointerEvent): void {
+    if ((event.target as HTMLElement | null)?.closest('button')) {
+      return;
+    }
+    this.heroPointerStartX = event.clientX;
+  }
+
+  onHeroPointerUp(event: PointerEvent): void {
+    if (this.heroPointerStartX === null) {
+      return;
+    }
+    const deltaX = event.clientX - this.heroPointerStartX;
+    this.heroPointerStartX = null;
+    if (Math.abs(deltaX) < 50) {
+      return;
+    }
+    if (deltaX < 0) {
+      this.nextHero();
+    } else {
+      this.prevHero();
+    }
+  }
+
+  private restartHeroTimer(): void {
+    if (!isPlatformBrowser(this.platformId)) {
+      return;
+    }
+    if (this.heroTimer) {
+      clearInterval(this.heroTimer);
+    }
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      this.heroTimer = null;
+      return;
+    }
+    this.heroTimer = setInterval(() => {
+      if (this.heroPaused || document.hidden) {
+        return;
+      }
+      this.heroIndex = (this.heroIndex + 1) % this.heroSlides.length;
+      this.cdr.detectChanges();
+    }, this.heroDelay);
+  }
+
+  scrollToSaleProducts(): void {
+    if (!isPlatformBrowser(this.platformId)) {
+      return;
+    }
+    document.getElementById('sale-products')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  private startCampaignCountdown(): void {
+    if (this.campaignCountdownTimer) {
+      clearInterval(this.campaignCountdownTimer);
+      this.campaignCountdownTimer = null;
+    }
+    this.campaignCountdown = null;
+    const endRaw = this.activeCampaign?.NGAY_KET_THUC;
+    if (!endRaw || !isPlatformBrowser(this.platformId)) {
+      return;
+    }
+    const end = new Date(endRaw).getTime();
+    if (!Number.isFinite(end)) {
+      return;
+    }
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const tick = () => {
+      const remaining = Math.max(0, end - Date.now());
+      const totalSeconds = Math.floor(remaining / 1000);
+      this.campaignCountdown = {
+        days: pad(Math.floor(totalSeconds / 86400)),
+        hours: pad(Math.floor((totalSeconds % 86400) / 3600)),
+        minutes: pad(Math.floor((totalSeconds % 3600) / 60)),
+        seconds: pad(totalSeconds % 60)
+      };
+      if (remaining <= 0 && this.campaignCountdownTimer) {
+        clearInterval(this.campaignCountdownTimer);
+        this.campaignCountdownTimer = null;
+      }
+      this.cdr.detectChanges();
+    };
+    tick();
+    this.campaignCountdownTimer = setInterval(tick, 1000);
   }
 
   previousCustomerReviews(): void {
@@ -259,6 +435,12 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
 
 
   ngOnDestroy(): void {
+    if (this.heroTimer) {
+      clearInterval(this.heroTimer);
+    }
+    if (this.campaignCountdownTimer) {
+      clearInterval(this.campaignCountdownTimer);
+    }
     if (isPlatformBrowser(this.platformId)) {
       window.removeEventListener('auth-changed', this.authChangedHandler);
       window.removeEventListener('wishlist-changed', this.wishlistChangedHandler);
@@ -354,6 +536,7 @@ export class Homepage implements OnInit, AfterViewInit, OnDestroy {
             return !status.includes('ngừng') && !status.includes('ẩn') && !status.includes('xóa') && start <= now && end >= now;
           })
           .sort((a, b) => new Date(b.NGAY_BAT_DAU || 0).getTime() - new Date(a.NGAY_BAT_DAU || 0).getTime())[0] || null;
+        this.startCampaignCountdown();
         this.cdr.detectChanges();
       },
       error: () => {
