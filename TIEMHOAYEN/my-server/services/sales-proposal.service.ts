@@ -13,6 +13,7 @@ import { reserveOrderLines } from './order-stock.service.js';
 import { releaseReservations, sweepExpiredReservations } from './inventory/stock.service.js';
 import { writeCheckoutOrder } from './checkout-order-writer.service.js';
 import { changeCheckoutPayment } from './checkout-payment.service.js';
+import { approveDesignFromProposal, normalizeColorQuantities } from './design3d.service.js';
 
 export const MESSAGES = 'TIN_NHAN_CHAT';
 export const SALES_CHAT_TYPES = ['sales_request_customer', 'sales_request_staff'];
@@ -161,7 +162,11 @@ async function snapshotItem(raw: any, index: number, session: ClientSession) {
       const m = await (await getCollection<any>('NGUYEN_VAT_LIEU')).findOne({ NGUYEN_VAT_LIEU_ID: id }, { session });
       if (!m || inactive(m.TRANG_THAI)) throw new InventoryError(400, `Nguyên vật liệu ${id} không còn sử dụng.`);
       if (!(Number(m.GIA_BAN) > 0)) throw new InventoryError(400, `${m.TEN_NGUYEN_VAT_LIEU}: chưa có giá bán NVL. Cần cập nhật trước khi báo giá.`);
-      materials.push({ materialId: id, name: m.TEN_NGUYEN_VAT_LIEU, quantity: quantity(l.quantity), unit: m.DON_VI_TINH, price: amount(m.GIA_BAN),
+      const lineQty = quantity(l.quantity);
+      // Giữ phân bổ màu của bó 3D để đơn cắm đúng màu và để nhận ra mẫu gốc khi duyệt.
+      const colors = l.colors === undefined ? undefined : normalizeColorQuantities(l.colors, lineQty);
+      materials.push({ materialId: id, name: m.TEN_NGUYEN_VAT_LIEU, quantity: lineQty, unit: m.DON_VI_TINH, price: amount(m.GIA_BAN),
+        ...(colors ? { colors } : {}),
         ...(l.replacesMaterialId ? { replacesMaterialId: String(l.replacesMaterialId) } : {}) });
     }
     const baseProductId = String(raw.baseProductId || '');
@@ -193,8 +198,10 @@ async function snapshotItem(raw: any, index: number, session: ClientSession) {
     const designFee = amount(raw.designFee || 0), extraFee = amount(raw.extraFee || 0);
     const price = amount(Math.round(materials.reduce((sum, l) => sum + l.quantity * l.price, 0)) + designFee + extraFee);
     if (price <= 0) throw new InventoryError(400, 'Giá bó hoa phải lớn hơn 0.');
-    const designSource = raw.designSource === 'CUSTOMER_3D' ? 'CUSTOMER_3D' : 'SALES_CUSTOM';
-    return { id: `SPYC_${index}`, name, qty, price, image, custom: true, designSource, ...(baseProductId ? { baseProductId } : {}),
+    // Phương án dựng từ bó khách tự thiết kế 3D giữ mã thiết kế; convertProposal kiểm tra mã này thuộc đúng yêu cầu.
+    const designId = /^TK3D[a-f0-9]{32}$/.test(String(raw.designId || '')) ? String(raw.designId) : '';
+    const designSource = raw.designSource === 'CUSTOMER_3D' || designId ? 'CUSTOMER_3D' : 'SALES_CUSTOM';
+    return { id: `SPYC_${index}`, name, qty, price, image, custom: true, designSource, ...(designId ? { designId } : {}), ...(baseProductId ? { baseProductId } : {}),
       bom: { source: designSource, materials, designFee, extraFee }, description: String(raw.description || '').slice(0, 2000) };
   }
   const id = String(raw.id || '');
@@ -465,6 +472,9 @@ export async function convertProposal(id: string, body: any, employee: any) {
         staffOverride: { reason: stockPlan.uncovered.length ? 'Sales chốt đơn khi hệ thống còn thiếu NVL (chưa có hàng nhập đủ trên hệ thống)' : 'Sales chốt đơn chờ hàng về',
           at: new Date(), actor: employee.NHAN_VIEN_ID, shortages: stockPlan.shortages } } : {}) };
     let result: any = { kind: 'order', ...await writeCheckoutOrder(session, orderId, checkoutData, { requestId: id, quote: row.quote, pendingOrderStatus: SALES_CONFIRMED_ORDER_STATUS }) };
+    // Ghi "mẫu shop đã từng làm" kèm phí đã chốt cho bó 3D giữ nguyên đúng mẫu gốc của khách.
+    // Chỉ để lần sau báo giá có sẵn phí; mẫu 3D vẫn luôn qua Yêu cầu đặt hàng.
+    for (const item of row.quote.items) await approveDesignFromProposal(item, { ...row, requestId: row.requestId || id }, employee, session);
     const paymentConfirmation = body.paymentConfirmation;
     const paymentConfirmedBySales = paymentConfirmation?.confirmed === true;
     if (paymentConfirmedBySales) {

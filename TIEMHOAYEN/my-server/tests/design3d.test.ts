@@ -96,7 +96,8 @@ else {
     const add=await invoke(cart.addCartItem,{customerId:'KH_3D',productId:approved.productId,quantity:1});assert.equal(add.code,200);
     const detail=await (await collection('GIO_HANG_CHI_TIET')).findOne({SAN_PHAM_ID:approved.productId});assert.equal(detail.THIET_KE_3D_ID,approved.designId);
     const read=await invoke(cart.getCartByCustomer,{}, {customerId:'KH_3D'});assert.equal(read.code,200);assert.equal(read.data.items[0].GIA,55000);
-    await invoke(cart.updateCartItem,{customerId:'KH_3D',productId:approved.productId,quantity:100});
+    // Giỏ tối đa 99 sản phẩm (MAX_CART_ITEMS); 60 bó × 2 cành vẫn vượt tồn hồng khả dụng.
+    const updated=await invoke(cart.updateCartItem,{customerId:'KH_3D',productId:approved.productId,quantity:60});assert.equal(updated.code,200,JSON.stringify(updated));
     const short=await invoke(cart.getCartByCustomer,{}, {customerId:'KH_3D'});assert.equal(short.data.items[0].CAN_SHOP_DUYET,true);
     assert.equal((await (await collection('NGUYEN_VAT_LIEU')).findOne({NGUYEN_VAT_LIEU_ID:'ROSE'})).TON_DANG_GIU,before);
   });
