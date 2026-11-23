@@ -8,6 +8,7 @@ import { assertDeliverySlotStart, assertWithinShopHours } from './delivery-polic
 
 import { slot24h } from './time-format.js';
 import { evaluateVoucher, loadVoucherContext } from './voucher-policy.service.js';
+import { getDesign, isDesignProduct } from './design3d.service.js';
 export { slot24h };
 
 /** Bỏ các phần địa chỉ rỗng hoặc chữ "null"/"undefined" (do ghép chuỗi khi số nhà trống). */
@@ -320,6 +321,18 @@ export async function priceCheckout(payload: any, session?: ClientSession, colle
   const imageByProduct = new Map<string, any>();
   for (const image of images) if (!imageByProduct.has(image.SAN_PHAM_ID)) imageByProduct.set(image.SAN_PHAM_ID, image);
   for (const [id, qty] of merged) {
+    // Mẫu thiết kế 3D (SP3D_TK3D…) không nằm trong SAN_PHAM: lấy giá/tên/ảnh từ thiết kế đã lưu.
+    // Giá này là giá tạm tính; mẫu 3D luôn được routeCheckout chuyển thành Yêu cầu đặt hàng để Sales chốt.
+    if (isDesignProduct(id)) {
+      const design = await getDesign(id, session);
+      const price = Number(design.price);
+      if (!Number.isSafeInteger(price) || price < 0) throw new InventoryError(409, `Thiết kế ${id} chưa có giá hợp lệ.`);
+      const cartLineKeys = (payload.items || [])
+        .filter((item: any) => String(item.id || item.productId || item.SAN_PHAM_ID || '') === id)
+        .map((item: any) => String(item.lineKey || item.LINE_KEY || id));
+      items.push({ id, qty, price, name: design.name, image: design.image || '', cartLineKeys, custom: true, designId: design.designId });
+      continue;
+    }
     const product: any = productById.get(id);
     if (!product || /ngừng|ngưng|ẩn|khóa|đã xóa/i.test(String(product.TRANG_THAI || ''))) throw new InventoryError(400, `Sản phẩm ${id} không còn bán.`);
     const regular = Number(product.GIA), sale = Number(product.GIA_KHUYEN_MAI);
