@@ -174,18 +174,29 @@ else{
     assert.equal((await (await c(lucky.LUCKY.reward)).findOne({_id:r.rewardId})).status,'Đang giữ chỗ');
   });
 
-  test('writes keep legacy fields and mirror standard dictionary names',async()=>{
+  test('writes store only standard dictionary names and code still reads legacy names',async()=>{
     const raw=async(name:string)=>(await mongo.getDb()).collection<any>(name);
     await order('ALIAS-SOURCE');
     const spin=await (await raw(lucky.LUCKY.spin)).findOne({_id:'ALIAS-SOURCE'});
-    assert.equal(spin.customerId,'KH1');assert.equal(spin.KHACH_HANG_ID,'KH1');assert.equal(spin.VQ_LUOT_QUAY_ID,'ALIAS-SOURCE');assert.equal(spin.TRANG_THAI,spin.status);
+    assert.equal(spin.customerId,undefined);assert.equal(spin.status,undefined);assert.equal(spin.KHACH_HANG_ID,'KH1');assert.equal(spin.VQ_LUOT_QUAY_ID,'ALIAS-SOURCE');assert.ok(spin.TRANG_THAI);
     const result=await lucky.spinLucky('KH1','ALIAS-SOURCE');
     const updated=await (await raw(lucky.LUCKY.spin)).findOne({_id:'ALIAS-SOURCE'});
-    assert.equal(updated.status,'Đã quay');assert.equal(updated.TRANG_THAI,'Đã quay');assert.equal(updated.NGAY_QUAY.getTime(),updated.spunAt.getTime());
+    assert.equal(updated.status,undefined);assert.equal(updated.TRANG_THAI,'Đã quay');assert.ok(updated.NGAY_QUAY instanceof Date);assert.equal(updated.spunAt,undefined);
+    const read=await (await c(lucky.LUCKY.spin)).findOne({_id:'ALIAS-SOURCE',status:'Đã quay'});assert.equal(read.status,'Đã quay');assert.equal(read.customerId,'KH1');assert.equal(read.TRANG_THAI,undefined);
     const reward=await (await raw(lucky.LUCKY.reward)).findOne({_id:result.rewardId});
-    assert.equal(reward.MA,reward.code);assert.equal(reward.DON_HANG_NGUON_ID,'ALIAS-SOURCE');assert.deepEqual(reward.PHAN_THUONG,reward.prize);
+    assert.ok(reward.MA);assert.equal(reward.code,undefined);assert.equal(reward.DON_HANG_NGUON_ID,'ALIAS-SOURCE');assert.ok(reward.PHAN_THUONG);assert.equal(reward.prize,undefined);
     await (await c('VQ_HAN_MUC')).updateOne({_id:'ALIAS-QUOTA'},{$inc:{count:2}},{upsert:true});
-    const quota=await (await raw('VQ_HAN_MUC')).findOne({_id:'ALIAS-QUOTA'});assert.equal(quota.count,2);assert.equal(quota.SO_LUONG,2);
+    const quota=await (await raw('VQ_HAN_MUC')).findOne({_id:'ALIAS-QUOTA'});assert.equal(quota.count,undefined);assert.equal(quota.SO_LUONG,2);
+    const notices=await raw('VQ_THONG_BAO'),wrapped=await c('VQ_THONG_BAO');
+    await notices.insertOne({_id:'STALE-1',customerId:'OLD-KH',KHACH_HANG_ID:'NEW-KH',text:'cũ',NOI_DUNG:'mới',read:true,DA_DOC:false});
+    assert.equal(await wrapped.countDocuments({customerId:'OLD-KH'}),0);
+    await wrapped.updateOne({_id:'STALE-1'},{$unset:{read:''},$set:{text:'sau cùng'}});
+    const stale=await wrapped.findOne({_id:'STALE-1'});assert.equal(stale.customerId,'NEW-KH');assert.equal(stale.text,'sau cùng');assert.equal('read' in stale,false);
+    await wrapped.updateOne({_id:'STALE-1'},[{$set:{text:{$concat:['$text','!']},read:true}}]);
+    const piped=await notices.findOne({_id:'STALE-1'});assert.equal(piped.NOI_DUNG,'sau cùng!');assert.equal(piped.DA_DOC,true);assert.equal(piped.text,'cũ');
+    await wrapped.bulkWrite([{updateOne:{filter:{_id:'STALE-1'},update:{$set:{text:'bulk'}}}},{insertOne:{document:{_id:'STALE-2',customerId:'NEW-KH',text:'hai'}}}] as any);
+    assert.equal((await notices.findOne({_id:'STALE-1'})).NOI_DUNG,'bulk');const inserted=await notices.findOne({_id:'STALE-2'});assert.equal(inserted.KHACH_HANG_ID,'NEW-KH');assert.equal(inserted.customerId,undefined);
+    await notices.deleteMany({_id:{$in:['STALE-1','STALE-2']}});
   });
 
   test('reads filter and sort by standard names while returning legacy fields',async()=>{

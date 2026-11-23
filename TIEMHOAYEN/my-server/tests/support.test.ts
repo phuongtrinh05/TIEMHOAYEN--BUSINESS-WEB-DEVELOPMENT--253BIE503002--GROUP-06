@@ -237,27 +237,31 @@ else {
             await new Promise<void>(resolve => server.close(() => resolve()));
         }
     });
-    test('support tickets mirror standard names without exposing them on read', async () => {
+    test('support tickets store only standard names and code still reads legacy names', async () => {
         const r: any = await guest();
         const raw = (await mongo.getDb()).collection<any>('YEU_CAU_HO_TRO');
         const row = await raw.findOne({ _id: r.ticket.id });
-        assert.equal(row.SDT, row.phone);
-        assert.equal(row.MA_BAM_KHACH_VANG_LAI, row.guestHash);
-        assert.equal(row.TRANG_THAI, row.status);
+        assert.ok(row.SDT);
+        assert.ok(row.MA_BAM_KHACH_VANG_LAI);
+        assert.ok(row.TRANG_THAI);
+        assert.equal(row.phone, undefined);
+        assert.equal(row.guestHash, undefined);
+        assert.equal(row.status, undefined);
         await send(r, 'Cửa hàng mở cửa lúc mấy giờ?');
         const updated = await raw.findOne({ _id: r.ticket.id });
-        assert.ok(updated.version > 0);
-        assert.equal(updated.PHIEN_BAN, updated.version);
-        assert.equal(updated.SO_TIN_NHAN, updated.messageCount);
+        assert.ok(updated.PHIEN_BAN > 0);
+        assert.equal(updated.version, undefined);
+        assert.ok(updated.SO_TIN_NHAN > 0);
+        assert.equal(updated.messageCount, undefined);
         assert.equal(updated.busyUntil, undefined);
         assert.equal(updated.KHOA_XU_LY_DEN, undefined);
         const wrapped = await mongo.getCollection<any>('YEU_CAU_HO_TRO');
-        const read = await wrapped.findOne({ _id: r.ticket.id, status: updated.status });
-        assert.equal(read.guestHash, row.guestHash);
+        const read = await wrapped.findOne({ _id: r.ticket.id, status: updated.TRANG_THAI });
+        assert.equal(read.guestHash, row.MA_BAM_KHACH_VANG_LAI);
         assert.equal(read.MA_BAM_KHACH_VANG_LAI, undefined);
         assert.equal(read.SDT, undefined);
         const [listed] = await wrapped.find({ _id: r.ticket.id }).toArray();
-        assert.equal(listed.phone, row.phone);
+        assert.equal(listed.phone, row.SDT);
         assert.equal(listed.TEN, undefined);
     });
     test('wave 2 tables filter, sort and project by standard names', async () => {
