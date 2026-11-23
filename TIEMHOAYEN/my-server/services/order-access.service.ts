@@ -22,7 +22,7 @@ export async function staffAccess(token: unknown, collections: typeof getCollect
   return employee;
 }
 export async function ensureOrderAccessIndexes() {
-  await (await getCollection<any>(ACCESS)).createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  await (await getCollection<any>(ACCESS)).createIndex({ HET_HAN: 1 }, { name: 'std_het_han_ttl', expireAfterSeconds: 0 });
 }
 export function normalizeOrderPhone(value: unknown): string {
   const raw = String(value || '').replace(/[\s().-]/g, '').replace(/^\+84|^84/, '0');

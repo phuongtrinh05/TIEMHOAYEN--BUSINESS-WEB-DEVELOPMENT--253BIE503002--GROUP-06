@@ -31,9 +31,9 @@ export function startLuckyJobs(){
   // Live database events preserve the actual completion event time when Atlas changes an order.
   void getDb().then(db=>{
     void Promise.all([
-      db.collection(LUCKY.spin).createIndex({customerId:1,grantedAt:-1}),db.collection(LUCKY.result).createIndex({customerId:1,at:-1}),
-      db.collection(LUCKY.reward).createIndex({customerId:1,issuedAt:-1}),db.collection(LUCKY.reward).createIndex({sourceOrderId:1,status:1}),
-      db.collection(LUCKY.audit).createIndex({programId:1,at:-1}),db.collection('PHIEN_DANG_NHAP_ADMIN').createIndex({expiresAt:1},{expireAfterSeconds:0})
+      db.collection(LUCKY.spin).createIndex({KHACH_HANG_ID:1,NGAY_CAP:-1},{name:'std_khach_ngay_cap'}),db.collection(LUCKY.result).createIndex({KHACH_HANG_ID:1,THOI_DIEM:-1},{name:'std_khach_thoi_diem'}),
+      db.collection(LUCKY.reward).createIndex({KHACH_HANG_ID:1,NGAY_PHAT_HANH:-1},{name:'std_khach_ngay_phat_hanh'}),db.collection(LUCKY.reward).createIndex({DON_HANG_NGUON_ID:1,TRANG_THAI:1},{name:'std_don_nguon_trang_thai'}),
+      db.collection(LUCKY.audit).createIndex({CHUONG_TRINH_ID:1,THOI_DIEM:-1},{name:'std_chuong_trinh_thoi_diem'}),db.collection('PHIEN_DANG_NHAP_ADMIN').createIndex({HET_HAN:1},{name:'std_het_han_ttl',expireAfterSeconds:0})
     ]).catch(e=>console.warn('[lucky] indexes:',e.message));
     for(const name of ['DON_HANG','THANH_TOAN']){
       void (async()=>{
