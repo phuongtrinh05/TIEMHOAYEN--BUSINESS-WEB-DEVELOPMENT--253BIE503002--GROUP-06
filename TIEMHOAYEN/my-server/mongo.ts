@@ -68,6 +68,7 @@ export const getMongoClient = async (): Promise<MongoClient> => {
  * Đổi tên trường theo từ điển dữ liệu. Lệnh ghi luôn lưu cả tên cũ và tên chuẩn để có thể quay lại bản trước.
  * - Bảng trong READ_STANDARD_TABLES: truy vấn dùng tên chuẩn, kết quả đổi lại tên cũ.
  * - Bảng còn lại đang ghi song song: truy vấn dùng tên cũ, kết quả bỏ tên chuẩn để không lộ thêm trường qua API.
+ * - Bảng trong STANDARD_ONLY_TABLES: chỉ ghi tên chuẩn; code và API vẫn dùng tên cũ qua lớp đổi tên này.
  */
 const LUCKY_FIELD_ALIASES: Record<string, string> = {
   name: 'TEN', terms: 'DIEU_KHOAN', status: 'TRANG_THAI', startAt: 'NGAY_BAT_DAU', endAt: 'NGAY_KET_THUC', prizes: 'DS_PHAN_THUONG',
@@ -84,6 +85,7 @@ const LUCKY_FIELD_ALIASES: Record<string, string> = {
 };
 const LUCKY_TABLES = ['VQ_CHUONG_TRINH', 'VQ_LUOT_QUAY', 'VQ_KET_QUA', 'VQ_PHAN_THUONG', 'VQ_HAN_MUC', 'VQ_NHAT_KY', 'VQ_THONG_BAO', 'VQ_YEU_CAU_QUAY', 'VQ_DONG_BO_META'];
 const READ_STANDARD_TABLES = new Set([...LUCKY_TABLES, 'YEU_CAU_HO_TRO', 'YEU_CAU_TAO_ANH', 'THIET_KE_3D', 'PHIEN_DANG_NHAP_ADMIN', 'BO_DEM_MA', 'KHACH_HANG', 'HOAN_TIEN', 'PHIEN_DAT_HANG', 'YEU_CAU_DAT_HANG', 'YEU_CAU_HAU_MAI', 'XAC_THUC_TRA_CUU_DON']);
+const STANDARD_ONLY_TABLES = new Set([...LUCKY_TABLES, 'YEU_CAU_HO_TRO']);
 const FIELD_ALIASES: Record<string, Record<string, string>> = {
   ...Object.fromEntries(LUCKY_TABLES.map((table) => {
     const aliases: Record<string, string> = { ...LUCKY_FIELD_ALIASES, id: `${table}_ID` };
@@ -142,6 +144,7 @@ const toStandardKeys = <V extends Document | undefined>(fields: V, aliases: Reco
 const toStandardFilter = (filter: Document | undefined, aliases: Record<string, string>): Document => (
   Object.fromEntries(Object.entries(filter || {}).map(([key, value]) => {
     if (['$or', '$and', '$nor'].includes(key)) return [key, (value as Document[]).map((item) => toStandardFilter(item, aliases))];
+    if (key === '$expr') return [key, toStandardExpression(value, aliases)];
     return [key.startsWith('$') ? key : toStandardPath(key, aliases), value];
   }))
 );
@@ -199,6 +202,20 @@ const toLegacyDocument = <D extends Document | null>(doc: D, aliases: Record<str
   return legacy as D;
 };
 
+/** Bảng chỉ ghi tên chuẩn: tên cũ còn sót trong dữ liệu không được trả ra vì có thể đã lỗi thời. */
+const fromStandardDocument = <D extends Document | null>(doc: D, aliases: Record<string, string>): D => {
+  if (!doc) return doc;
+  const legacy: Document = { ...doc };
+  for (const oldName of Object.keys(aliases)) delete legacy[oldName];
+  for (const [oldName, standardName] of Object.entries(aliases)) {
+    if (standardName in doc) {
+      legacy[oldName] = doc[standardName];
+      delete legacy[standardName];
+    }
+  }
+  return legacy as D;
+};
+
 const withoutStandardFields = <D extends Document | null>(doc: D, aliases: Record<string, string>): D => {
   if (!doc) return doc;
   const legacy: Document = { ...doc };
@@ -206,10 +223,9 @@ const withoutStandardFields = <D extends Document | null>(doc: D, aliases: Recor
   return legacy as D;
 };
 
-const withStandardCursor = (cursor: any, aliases: Record<string, string>, readsStandard: boolean) => {
+const withStandardCursor = (cursor: any, aliases: Record<string, string>, readsStandard: boolean, documentOf: (doc: Document) => Document) => {
   const keysOf = (fields: Document) => (readsStandard ? toStandardKeys(fields, aliases) : fields);
-  const documentOf = readsStandard ? toLegacyDocument : withoutStandardFields;
-  const proxy: any = new Proxy(cursor.map((doc: Document) => documentOf(doc, aliases)), {
+  const proxy: any = new Proxy(cursor.map((doc: Document) => documentOf(doc)), {
     get(target, property) {
       if (property === 'sort') return (sort: Document, ...rest: unknown[]) => { target.sort(keysOf(sort), ...rest); return proxy; };
       if (property === 'project') return (projection: Document) => { target.project(readsStandard ? toStandardProjection(projection, aliases) : projection); return proxy; };
@@ -259,6 +275,27 @@ const mirrorUpdate = (update: Document | Document[], aliases: Record<string, str
   ]));
 };
 
+/** Cập nhật dạng pipeline của bảng chỉ ghi tên chuẩn: đổi cả tên đích và tên được tham chiếu. */
+const toStandardUpdatePipeline = (pipeline: Document[], aliases: Record<string, string>): Document[] => pipeline.map((stage) => {
+  const [operator, value] = Object.entries(stage)[0];
+  if (operator === '$set' || operator === '$addFields') {
+    return { [operator]: Object.fromEntries(Object.entries(value as Document).map(([key, item]) => [toStandardPath(key, aliases), toStandardExpression(item, aliases)])) };
+  }
+  if (operator === '$unset') {
+    const fields = [value].flat() as string[];
+    return { $unset: fields.map((field) => toStandardPath(field, aliases)) };
+  }
+  throw new Error(`Bước cập nhật ${operator} chưa hỗ trợ đổi sang tên chuẩn.`);
+});
+
+const toStandardUpdate = (update: Document | Document[], aliases: Record<string, string>): Document | Document[] => {
+  if (Array.isArray(update)) return toStandardUpdatePipeline(update, aliases);
+  return Object.fromEntries(Object.entries(update).map(([operator, fields]) => [
+    operator,
+    operator.startsWith('$') && fields && typeof fields === 'object' ? toStandardKeys(fields, aliases) : fields,
+  ]));
+};
+
 const withFieldAliases = <T extends Document>(collection: Collection<T>): Collection<T> => {
   const aliases = FIELD_ALIASES[collection.collectionName];
   if (!aliases) return collection;
@@ -266,24 +303,28 @@ const withFieldAliases = <T extends Document>(collection: Collection<T>): Collec
   const filterOf = (filter: Document) => (readsStandard ? toStandardFilter(filter, aliases) : filter);
   const optionsOf = (options?: Document) => (readsStandard ? toStandardOptions(options, aliases) : options);
   const pipelineOf = (pipeline: Document[] = []) => (readsStandard ? toStandardPipeline(pipeline, aliases) : pipeline);
-  const documentOf = <D extends Document | null>(doc: D) => (readsStandard ? toLegacyDocument(doc, aliases) : withoutStandardFields(doc, aliases));
+  const standardOnly = STANDARD_ONLY_TABLES.has(collection.collectionName);
+  const documentOf = <D extends Document | null>(doc: D) => (standardOnly ? fromStandardDocument(doc, aliases)
+    : readsStandard ? toLegacyDocument(doc, aliases) : withoutStandardFields(doc, aliases));
+  const fieldsToWrite = (doc: Document) => (standardOnly ? toStandardKeys(doc, aliases) : mirrorFields(doc, aliases));
+  const updateToWrite = (update: Document | Document[]) => (standardOnly ? toStandardUpdate(update, aliases) : mirrorUpdate(update, aliases));
   const writers: Record<string, (target: any, args: any[]) => unknown> = {
-    insertOne: (target, [doc, ...rest]) => target.insertOne(mirrorFields(doc, aliases), ...rest),
-    insertMany: (target, [docs, ...rest]) => target.insertMany(docs.map((doc: Document) => mirrorFields(doc, aliases)), ...rest),
-    replaceOne: (target, [filter, doc, ...rest]) => target.replaceOne(filterOf(filter), mirrorFields(doc, aliases), ...rest),
-    updateOne: (target, [filter, update, ...rest]) => target.updateOne(filterOf(filter), mirrorUpdate(update, aliases), ...rest),
-    updateMany: (target, [filter, update, ...rest]) => target.updateMany(filterOf(filter), mirrorUpdate(update, aliases), ...rest),
-    findOneAndUpdate: async (target, [filter, update, options]) => documentOf(await target.findOneAndUpdate(filterOf(filter), mirrorUpdate(update, aliases), optionsOf(options))),
+    insertOne: (target, [doc, ...rest]) => target.insertOne(fieldsToWrite(doc), ...rest),
+    insertMany: (target, [docs, ...rest]) => target.insertMany(docs.map((doc: Document) => fieldsToWrite(doc)), ...rest),
+    replaceOne: (target, [filter, doc, ...rest]) => target.replaceOne(filterOf(filter), fieldsToWrite(doc), ...rest),
+    updateOne: (target, [filter, update, ...rest]) => target.updateOne(filterOf(filter), updateToWrite(update), ...rest),
+    updateMany: (target, [filter, update, ...rest]) => target.updateMany(filterOf(filter), updateToWrite(update), ...rest),
+    findOneAndUpdate: async (target, [filter, update, options]) => documentOf(await target.findOneAndUpdate(filterOf(filter), updateToWrite(update), optionsOf(options))),
     findOne: async (target, [filter, options]) => documentOf(await target.findOne(filterOf(filter), optionsOf(options))),
-    find: (target, [filter, options]) => withStandardCursor(target.find(filterOf(filter), optionsOf(options)), aliases, readsStandard),
+    find: (target, [filter, options]) => withStandardCursor(target.find(filterOf(filter), optionsOf(options)), aliases, readsStandard, documentOf),
     countDocuments: (target, [filter, options]) => target.countDocuments(filterOf(filter), options),
     deleteOne: (target, [filter, options]) => target.deleteOne(filterOf(filter), options),
     deleteMany: (target, [filter, options]) => target.deleteMany(filterOf(filter), options),
     bulkWrite: (target, [operations, ...rest]) => target.bulkWrite(operations.map((operation: Document) => {
-      if (operation.insertOne) return { insertOne: { ...operation.insertOne, document: mirrorFields(operation.insertOne.document, aliases) } };
-      if (operation.replaceOne) return { replaceOne: { ...operation.replaceOne, filter: filterOf(operation.replaceOne.filter), replacement: mirrorFields(operation.replaceOne.replacement, aliases) } };
-      if (operation.updateOne) return { updateOne: { ...operation.updateOne, filter: filterOf(operation.updateOne.filter), update: mirrorUpdate(operation.updateOne.update, aliases) } };
-      if (operation.updateMany) return { updateMany: { ...operation.updateMany, filter: filterOf(operation.updateMany.filter), update: mirrorUpdate(operation.updateMany.update, aliases) } };
+      if (operation.insertOne) return { insertOne: { ...operation.insertOne, document: fieldsToWrite(operation.insertOne.document) } };
+      if (operation.replaceOne) return { replaceOne: { ...operation.replaceOne, filter: filterOf(operation.replaceOne.filter), replacement: fieldsToWrite(operation.replaceOne.replacement) } };
+      if (operation.updateOne) return { updateOne: { ...operation.updateOne, filter: filterOf(operation.updateOne.filter), update: updateToWrite(operation.updateOne.update) } };
+      if (operation.updateMany) return { updateMany: { ...operation.updateMany, filter: filterOf(operation.updateMany.filter), update: updateToWrite(operation.updateMany.update) } };
       if (operation.deleteOne) return { deleteOne: { ...operation.deleteOne, filter: filterOf(operation.deleteOne.filter) } };
       if (operation.deleteMany) return { deleteMany: { ...operation.deleteMany, filter: filterOf(operation.deleteMany.filter) } };
       return operation;
