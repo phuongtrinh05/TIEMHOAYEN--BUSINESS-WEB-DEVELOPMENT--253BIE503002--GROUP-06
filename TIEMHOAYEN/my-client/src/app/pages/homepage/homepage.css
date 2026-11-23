@@ -1652,8 +1652,8 @@
 .hero-dot.active { width: 28px; background: #fff; }
 
 @media (max-width: 1024px) {
-    .hero-slide-content { padding: 0 32px 0 40px; }
-    .hero-slide.theme-brand .hero-slide-content { padding-left: 48px; }
+    .hero-slide-content { padding: 0 28px 0 76px; }
+    .hero-slide.theme-brand .hero-slide-content { padding-left: 76px; }
     .hero-arrow { opacity: 1; width: 38px; height: 38px; font-size: 15px; }
 }
 
