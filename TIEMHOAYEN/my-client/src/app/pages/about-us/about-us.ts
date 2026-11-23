@@ -1,10 +1,11 @@
 import { AfterViewInit, Component, ElementRef, HostListener, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 
 @Component({
   selector: 'app-about-us',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RouterLink],
   templateUrl: './about-us.html',
   styleUrl: './about-us.css'
 })
@@ -41,6 +42,31 @@ export class AboutUs implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.observer?.disconnect();
   }
+
+  /** Các bước khớp với quy trình thật trên website (lịch chuẩn bị T, ảnh bàn giao, hỗ trợ 1 giờ sau giao). */
+  journey = [
+    { icon: 'bi-flower1', title: 'Chọn mẫu hoặc tự thiết kế',
+      text: 'Chọn bó hoa có sẵn, hoặc tự phối loại hoa, màu và số cành trên mô hình 3D.' },
+    { icon: 'bi-calendar2-check', title: 'Xác nhận và lên lịch',
+      text: 'Tiệm kiểm tra hoa, nguyên liệu và chốt giờ bắt đầu cắm theo giờ giao bạn chọn.' },
+    { icon: 'bi-camera', title: 'Cắm hoa và gửi ảnh',
+      text: 'Bó hoa được cắm đúng giờ; bạn xem ảnh, video bó hoa thật trước khi giao.' },
+    { icon: 'bi-truck', title: 'Giao tận tay',
+      text: 'Giao trong khung 08:00–22:00, trạng thái đơn cập nhật ngay trên website.' },
+    { icon: 'bi-chat-heart', title: 'Hỗ trợ sau khi nhận',
+      text: 'Trong 1 giờ sau khi nhận, gửi ảnh nếu hoa có vấn đề để tiệm đổi hoặc hoàn tiền theo chính sách.' },
+  ];
+
+  values = [
+    { icon: 'bi-droplet', title: 'Tươi',
+      text: 'Hoa được cắm sát giờ giao và kiểm tra lại trước khi rời tiệm.' },
+    { icon: 'bi-clock-history', title: 'Đúng hẹn',
+      text: 'Chỉ nhận đơn khi chuẩn bị kịp; đơn gấp hay thiếu hoa được nhân viên gọi xác nhận trước.' },
+    { icon: 'bi-eye', title: 'Minh bạch',
+      text: 'Giá, tiền cọc và phí giao hiện rõ trước khi đặt; ảnh bó hoa thật trước khi giao.' },
+    { icon: 'bi-heart', title: 'Tận tâm',
+      text: 'Tư vấn hoa theo dịp và thông điệp, hướng dẫn giữ hoa tươi lâu sau khi nhận.' },
+  ];
 
   teamMembers = [
     {

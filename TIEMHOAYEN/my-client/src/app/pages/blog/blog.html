@@ -1,18 +1,24 @@
 <section class="journal">
-  <!-- Banner (thay video) -->
-  <section class="blog-banner">
-    <img src="assets/images/blog.png" alt="Blog Tiệm Hoa Yên – Nơi cảm xúc nở hoa, mỗi ngày thêm ý nghĩa" fetchpriority="high">
+  <!-- Banner -->
+  <section class="journal-hero">
+    <div class="hero-copy">
+      <span class="hero-kicker">Nhật ký Hoa Yên</span>
+      <h1>Chuyện hoa &amp; những điều nhỏ xinh</h1>
+      <p>Mẹo chọn hoa theo dịp, cách giữ hoa tươi lâu và những câu chuyện phía sau mỗi bó hoa mà tiệm gửi đi.</p>
+      <form class="hero-search" (ngSubmit)="filter()" role="search">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <label class="sr-only" for="blog-search">Tìm bài viết</label>
+        <input id="blog-search" [(ngModel)]="keyword" name="keyword" maxlength="150" placeholder="Bạn muốn đọc gì hôm nay?">
+        <button type="submit">Tìm kiếm</button>
+      </form>
+    </div>
+    <div class="hero-mosaic" aria-hidden="true">
+      <img class="m-main" src="assets/images/blog/blog_BV003.jpg" alt="">
+      <img class="m-top" src="assets/images/blog/blog_BV010.jpg" alt="">
+      <img class="m-bottom" src="assets/images/blog/blog_BV008.jpg" alt="">
+      <span class="m-badge"><i class="bi bi-flower1"></i> Mẹo hay từ tiệm hoa</span>
+    </div>
   </section>
-
-  <!-- Thanh tìm kiếm nổi trên banner -->
-  <div class="journal-search">
-    <form (ngSubmit)="filter()" role="search">
-      <i class="bi bi-search" aria-hidden="true"></i>
-      <label class="sr-only" for="blog-search">Tìm bài viết</label>
-      <input id="blog-search" [(ngModel)]="keyword" name="keyword" maxlength="150" placeholder="Bạn muốn đọc gì hôm nay?">
-      <button type="submit">Tìm kiếm</button>
-    </form>
-  </div>
 
   <main class="journal-main">
     <!-- Chủ đề dạng pill -->

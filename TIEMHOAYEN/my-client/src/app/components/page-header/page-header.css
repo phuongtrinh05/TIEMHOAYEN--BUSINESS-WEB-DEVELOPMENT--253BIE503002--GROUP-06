@@ -1142,7 +1142,10 @@ z-index:100000;
 }
 
 .account-name {
-    max-width: 115px;
+    display: block;
+    min-width: 0;
+    max-width: 110px;
+    overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
     color: #731919;
