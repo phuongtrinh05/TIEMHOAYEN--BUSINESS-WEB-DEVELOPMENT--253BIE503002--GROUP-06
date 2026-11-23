@@ -13,7 +13,7 @@ import { reserveOrderLines } from './order-stock.service.js';
 import { releaseReservations, sweepExpiredReservations } from './inventory/stock.service.js';
 import { writeCheckoutOrder } from './checkout-order-writer.service.js';
 import { changeCheckoutPayment } from './checkout-payment.service.js';
-import { approveDesignFromProposal, normalizeColorQuantities } from './design3d.service.js';
+import { approveDesignFromProposal, getDesign, isDesignProduct, normalizeColorQuantities } from './design3d.service.js';
 
 export const MESSAGES = 'TIN_NHAN_CHAT';
 export const SALES_CHAT_TYPES = ['sales_request_customer', 'sales_request_staff'];
@@ -600,7 +600,19 @@ export async function consultationOptions(id: string, search: string, employee: 
   });
   // Bó phối riêng không có SAN_PHAM tương ứng vẫn phải xuất hiện đầy đủ trong
   // card yêu cầu hiện tại, bao gồm thành phần và tồn khả dụng của từng NVL.
-  for (const item of row.quote?.items || []) {
+  // Trước khi có phương án, bó khách tự thiết kế 3D lấy thành phần từ chính thiết kế đã lưu
+  // (tồn khả dụng đọc mới mỗi lần), để Sales thấy đối chiếu NVL thay vì "không tìm thấy sản phẩm gốc".
+  const customSources: any[] = [...(row.quote?.items || [])];
+  if (!row.quote?.items?.length) {
+    for (const item of row.items || []) {
+      if (!item.custom && !isDesignProduct(String(item.productId || ''))) continue;
+      const design = await getDesign(String(item.designId || item.productId)).catch(() => null);
+      if (!design) continue;
+      customSources.push({ id: item.productId, name: item.name || design.name, price: item.price ?? design.price, image: item.image || design.image || '',
+        qty: item.quantity, custom: true, bom: { materials: design.materials.map((line: any) => ({ materialId: line.materialId, quantity: line.quantity })) } });
+    }
+  }
+  for (const item of customSources) {
     if (!item.custom || item.baseProductId || choices.some(choice => choice.id === item.id)) continue;
     const requestedQuantity = Number(item.qty || 1);
     const requirements = (item.bom?.materials || []).map((line: any) => {
