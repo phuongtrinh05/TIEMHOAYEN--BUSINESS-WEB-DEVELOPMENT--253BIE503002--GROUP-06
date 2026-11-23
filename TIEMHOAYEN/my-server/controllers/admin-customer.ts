@@ -4,6 +4,7 @@ import { getCollection, getNextPrefixedId } from '../mongo.js';
 import { summarizePayments } from '../services/admin-order.service.js';
 import { audit, AuthError, revokeAllSessions } from '../services/auth.service.js';
 import { formatDate, normalizeOrderStatus, normalizeText, toDate } from './admin.js';
+import { isLockedStatus } from '../utils/account-status.js';
 
 /*
  * Quản lý khách hàng phía Admin (AD33–AD40).
@@ -25,7 +26,7 @@ const fail = (res: Response, error: any, fallback: string) => {
   console.error(fallback, error?.message);
   return res.status(500).json({ message: fallback });
 };
-const isLocked = (customer: any) => /khóa|khoa|ngừng|ngung|inactive/i.test(String(customer?.TRANG_THAI || ''));
+const isLocked = (customer: any) => isLockedStatus(customer?.TRANG_THAI);
 const customerStatus = (customer: any) => /chờ xác minh/i.test(String(customer?.TRANG_THAI || '')) ? 'Chờ xác minh' : isLocked(customer) ? LOCKED_STATUS : 'Hoạt động';
 const initials = (name: unknown) => String(name || '').trim().split(/\s+/).filter(Boolean).slice(-2).map(part => part[0]).join('').toUpperCase() || 'KH';
 const isoDate = (value: unknown) => { const date = toDate(value); return date ? date.toISOString() : ''; };

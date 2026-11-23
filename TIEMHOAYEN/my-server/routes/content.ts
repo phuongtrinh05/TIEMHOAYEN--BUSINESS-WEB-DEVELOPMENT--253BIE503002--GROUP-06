@@ -6,6 +6,7 @@ import AdmZip from 'adm-zip';
 import { getDb, getCollection } from '../mongo.js';
 import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
 import { requireContentStaff, contentError, cleanHtml, plain, newContentId, versionQuery } from '../services/content.service.js';
+import { isInactiveStatus } from '../utils/account-status.js';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
 router.post('/files', requireContentStaff, (req, res, next) => upload.single('file')(req, res, e => e ? res.status(400).json({ message: 'File không hợp lệ hoặc vượt 10 MB.' }) : next()), async (req, res) => {
@@ -69,7 +70,7 @@ router.get('/files/:id', async (req, res) => {
         if (isAdmin) {
             const employee = await (await getCollection<any>('NHAN_VIEN')).findOne({ NHAN_VIEN_ID: isAdmin });
             const { hasPermission } = await import('../services/role-permission.service.js');
-            permitted = !!employee && !/khóa|ngừng|nghỉ|inactive/i.test(employee.TRANG_THAI || '') && hasPermission(employee.VAI_TRO, 'content', 'view');
+            permitted = !!employee && !isInactiveStatus(employee.TRANG_THAI) && hasPermission(employee.VAI_TRO, 'content', 'view');
         }
         if (!permitted) {
             const blog = await (await getCollection<any>('BAI_VIET')).findOne({ TRANG_THAI: { $in: ['Đã đăng', 'Hiển thị'] }, $or: [{ ANH_BIA: { $regex: String(id) + '$' } }, { NOI_DUNG: { $regex: String(id) } }] });

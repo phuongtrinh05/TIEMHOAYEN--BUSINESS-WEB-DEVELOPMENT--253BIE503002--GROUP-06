@@ -4,6 +4,7 @@ import {lookupAccess} from '../services/order-access.service.js';
 import {col,InventoryError} from '../services/inventory/helpers.js';
 import {hasPermission} from '../services/role-permission.service.js';
 import {createHash,randomUUID} from 'node:crypto';
+import { isInactiveStatus } from '../utils/account-status.js';
 const router=Router();
 const handle=(fn:any)=>async(req:any,res:any)=>{try{res.json(await fn(req));}catch(e:any){if(!(e instanceof InventoryError))console.error('[lucky]',e);res.status(e instanceof InventoryError?e.status:500).json({message:e instanceof InventoryError?e.message:'Không xử lý được vòng quay. Bạn thử lại nhé.'});}};
 const member=async(req:any,res:any,next:any)=>{try{const a=await lookupAccess(req.headers['x-order-access']);if(a.authType!=='member'||!a.customerId)throw new InventoryError(401,'Đăng nhập tài khoản để tham gia vòng quay.');req.luckyCustomerId=a.customerId;next();}catch(e:any){res.status(e.status||401).json({message:e.message});}};
@@ -13,7 +14,7 @@ const staff=(action:any)=>async(req:any,res:any,next:any)=>{try{
   const access=await (await col('PHIEN_DANG_NHAP_ADMIN')).findOne({_id:createHash('sha256').update(token).digest('hex') as any,expiresAt:{$gt:new Date()}});
   if(!access)throw new InventoryError(401,'Phiên Admin đã hết hạn. Đăng nhập lại để tiếp tục.');
   const id=access.employeeId,e=await (await col('NHAN_VIEN')).findOne({NHAN_VIEN_ID:id});
-  if(!e||/khóa|ngừng/i.test(String(e.TRANG_THAI||''))||!hasPermission(e.VAI_TRO,'promotions',action))throw new InventoryError(403,'Bạn không có quyền quản lý vòng quay.');req.luckyActor=id;next();
+  if(!e||isInactiveStatus(e.TRANG_THAI)||!hasPermission(e.VAI_TRO,'promotions',action))throw new InventoryError(403,'Bạn không có quyền quản lý vòng quay.');req.luckyActor=id;next();
 }catch(e:any){res.status(e.status||403).json({message:e.message});}};
 router.get('/program',handle(()=>lucky.publicLuckyProgram()));
 router.get('/wallet',member,handle((r:any)=>lucky.getLuckyWallet(r.luckyCustomerId,r.query)));

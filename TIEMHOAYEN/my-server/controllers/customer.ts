@@ -7,6 +7,7 @@ import { createCustomerOrderAccess } from '../services/order-access.service.js';
 import { assertLoginNotLocked, assertStrongPassword, audit, AuthError, recordLoginFailure, recordLoginSuccess, wrongPasswordError } from '../services/auth.service.js';
 import { derivePromotionStatus } from '../services/pricing-voucher.service.js';
 import { expireCustomerPoints } from '../services/loyalty-policy.service.js';
+import { isLockedStatus } from '../utils/account-status.js';
 
 
 const normalizeAddressText = (value: unknown): string => {
@@ -225,7 +226,7 @@ export const loginCustomer = async (req: Request, res: Response) => {
       customer.TRANG_THAI = 'Hoạt động';
       await audit(req, 'KICH_HOAT_TAI_KHOAN', customer.KHACH_HANG_ID, { LY_DO: 'Bỏ xác minh email khi đăng ký' });
     }
-    if (/khóa|ngừng|inactive/i.test(String(customer.TRANG_THAI || ''))) return res.status(403).json({ locked: true, message: 'Tài khoản đã bị khóa. Vui lòng liên hệ cửa hàng để được hỗ trợ.' });
+    if (isLockedStatus(customer.TRANG_THAI)) return res.status(403).json({ locked: true, message: 'Tài khoản đã bị khóa. Vui lòng liên hệ cửa hàng để được hỗ trợ.' });
 
     if (!isPasswordHash(customer.MAT_KHAU)) {
       await customerCollection.updateOne(
