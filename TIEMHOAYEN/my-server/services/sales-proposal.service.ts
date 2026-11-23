@@ -146,6 +146,13 @@ function salesPaymentDeadline(delivery: any, acceptedAt: Date, urgentOverride = 
 async function snapshotItem(raw: any, index: number, session: ClientSession) {
   const qty = quantity(raw.qty);
   if (!Number.isInteger(qty)) throw new InventoryError(400, 'Số bó phải là số nguyên.');
+  if (raw.custom && /^TK3D[a-f0-9]{32}$/.test(String(raw.designId || '')) && !(Array.isArray(raw.materials) && raw.materials.length)) {
+    // Yêu cầu bó 3D chỉ lưu designId: lấy thành phần (kèm màu), phí đã chốt và ảnh từ thiết kế khách đã lưu.
+    const design = await getDesign(String(raw.designId), session);
+    raw = { ...raw, name: raw.name || design.name, image: raw.image || design.image || '',
+      materials: design.materials.map((line: any) => ({ materialId: line.materialId, quantity: line.quantity, ...(line.colors ? { colors: line.colors } : {}) })),
+      designFee: raw.designFee ?? design.designFee ?? 0, extraFee: raw.extraFee ?? design.extraFee ?? 0 };
+  }
   if (raw.custom) {
     const name = text(raw.name, 150);
     const image = String(raw.image || '');
