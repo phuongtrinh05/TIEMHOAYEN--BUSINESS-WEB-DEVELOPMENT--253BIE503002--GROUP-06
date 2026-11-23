@@ -18,7 +18,12 @@ else {
   };
   const customer = (id: string, allowed = true) => ({ _id: id, KHACH_HANG_ID: id, TEN: 'Khách ' + id, EMAIL: id + '@example.com', DOB: new Date('2000-11-01T00:00:00Z'), LOAI_THANH_VIEN: 'Đồng', TRANG_THAI: 'Hoạt động', DONG_Y_NHAN_QUANG_CAO: allowed });
   const template = (id: string, extra: any = {}) => ({ _id: id, MAU_ID: id, TEN_MAU: 'Mẫu ' + id, MUC_DICH: 'Quảng cáo', KENH_GUI: 'website', TIEU_DE: 'Chào {{ten_khach}}', NOI_DUNG: 'Hoa mới cho {{ten_khach}}', TRANG_THAI: 'Đang bật', PHIEN_BAN: 1, ...extra });
-  const config = (id: string, templateId: string, extra: any = {}) => ({ _id: id, CAU_HINH_ID: id, MAU_ID: templateId, TEN_CAU_HINH: id, SU_KIEN_KICH_HOAT: 'schedule', THOI_DIEM_GUI: new Date(Date.now() - 60000), TRANG_THAI: 'Đang bật', BAT_DAU_AP_DUNG: new Date(Date.now() - 3600000), PHIEN_BAN: 1, DO_TRE_PHUT: 0, ...extra });
+  // Fixtures model configs already approved (preview + test) against template version 1.
+  const config = (id: string, templateId: string, extra: any = {}) => {
+    const c = { _id: id, CAU_HINH_ID: id, MAU_ID: templateId, TEN_CAU_HINH: id, SU_KIEN_KICH_HOAT: 'schedule', THOI_DIEM_GUI: new Date(Date.now() - 60000), TRANG_THAI: 'Đang bật', BAT_DAU_AP_DUNG: new Date(Date.now() - 3600000), PHIEN_BAN: 1, DO_TRE_PHUT: 0, ...extra };
+    const fingerprint = m.approvalFingerprint(c, { MAU_ID: templateId, PHIEN_BAN: 1 });
+    return { XEM_TRUOC_HASH: fingerprint, GUI_THU_HASH: fingerprint, ...c };
+  };
   const col = (n: string) => mongo.getCollection<any>(n);
   before(async () => {
     mongo = await import('../mongo.js'); m = await import('../services/marketing.service.js');
@@ -160,6 +165,50 @@ else {
     await assert.rejects(m.sendEmail('staff@example.com', 'A', 'B', 'test'), /chưa được cấu hình/);
     await request('/marketing/admin/templates/' + t.data.MAU_ID, 'PUT', { ...t.data, NOI_DUNG: 'Đã sửa' });
     assert.equal((await request(path + '/status', 'POST', { TRANG_THAI: 'Đang bật', PHIEN_BAN: 1 })).status, 400);
+  });
+  test('scheduler skips enabled configs without current approval; editing a template pauses its configs', async () => {
+    await (await col('MAU_TIN_NHAN')).insertOne(template('TAPPR'));
+    await (await col('CAU_HINH_GUI_TU_DONG')).insertOne(config('CNOAPPR', 'TAPPR', { XEM_TRUOC_HASH: null, GUI_THU_HASH: null }));
+    await m.scheduleMarketing();
+    assert.equal(await (await col('LICH_SU_GUI')).countDocuments({ CAU_HINH_ID: 'CNOAPPR' }), 0);
+
+    const t = await request('/marketing/admin/templates', 'POST', template('TEDIT'));
+    const c = await request('/marketing/admin/configs', 'POST', { TEN_CAU_HINH: 'CEDIT', MAU_ID: t.data.MAU_ID, SU_KIEN_KICH_HOAT: 'schedule', THOI_DIEM_GUI: new Date(Date.now() + 86400000).toISOString() });
+    const path = '/marketing/admin/configs/' + c.data.CAU_HINH_ID;
+    await request(path + '/preview', 'POST', {});
+    await (await col('LICH_SU_GUI')).deleteMany({ LA_GUI_THU: true, NHAN_VIEN_ID: 'NV_MKT' });
+    await request(path + '/test', 'POST', {});
+    assert.equal((await request(path + '/status', 'POST', { TRANG_THAI: 'Đang bật', PHIEN_BAN: 1 })).status, 200);
+    assert.equal((await request('/marketing/admin/templates/' + t.data.MAU_ID, 'PUT', { ...t.data, NOI_DUNG: 'Nội dung mới chưa duyệt' })).status, 200);
+    const after = await (await col('CAU_HINH_GUI_TU_DONG')).findOne({ CAU_HINH_ID: c.data.CAU_HINH_ID });
+    assert.equal(after?.TRANG_THAI, 'Tạm dừng');
+    // Even if someone re-enables it directly in the DB, the stale approval does not schedule sends.
+    await (await col('CAU_HINH_GUI_TU_DONG')).updateOne({ CAU_HINH_ID: c.data.CAU_HINH_ID }, { $set: { TRANG_THAI: 'Đang bật', THOI_DIEM_GUI: new Date(Date.now() - 1000) } });
+    await m.scheduleMarketing();
+    assert.equal(await (await col('LICH_SU_GUI')).countDocuments({ CAU_HINH_ID: c.data.CAU_HINH_ID, LA_GUI_THU: { $ne: true } }), 0);
+  });
+  test('auto campaign/voucher announcements are drafted paused and need approval again only when source changes', async () => {
+    const campaign = { CHIEN_DICH_ID: 'CAMP_AUTO', TEN_CHIEN_DICH: 'Mùa hoa cúc', MO_TA: 'Ưu đãi mùa thu', NGAY_BAT_DAU: new Date(Date.now() + 86400000) };
+    await m.registerAutomaticCampaignAnnouncement(campaign);
+    const configs = await col('CAU_HINH_GUI_TU_DONG');
+    let c = await configs.findOne({ CAU_HINH_ID: 'AUTO_CAMPAIGN_CFG_CAMP_AUTO' });
+    assert.equal(c?.TRANG_THAI, 'Tạm dừng');
+    await m.scheduleMarketing(new Date(Date.now() + 2 * 86400000));
+    assert.equal(await (await col('LICH_SU_GUI')).countDocuments({ CAU_HINH_ID: 'AUTO_CAMPAIGN_CFG_CAMP_AUTO' }), 0);
+    // Simulate staff approval + enable, then an unrelated campaign save keeps it enabled.
+    const t = await (await col('MAU_TIN_NHAN')).findOne({ MAU_ID: 'AUTO_CAMPAIGN_CAMP_AUTO' });
+    const fingerprint = m.approvalFingerprint(c, t);
+    await configs.updateOne({ CAU_HINH_ID: c!.CAU_HINH_ID }, { $set: { XEM_TRUOC_HASH: fingerprint, GUI_THU_HASH: fingerprint, TRANG_THAI: 'Đang bật' } });
+    await m.registerAutomaticCampaignAnnouncement({ ...campaign });
+    c = await configs.findOne({ CAU_HINH_ID: 'AUTO_CAMPAIGN_CFG_CAMP_AUTO' });
+    assert.equal(c?.TRANG_THAI, 'Đang bật');
+    await m.registerAutomaticCampaignAnnouncement({ ...campaign, TEN_CHIEN_DICH: 'Mùa hoa cúc (đổi tên)' });
+    c = await configs.findOne({ CAU_HINH_ID: 'AUTO_CAMPAIGN_CFG_CAMP_AUTO' });
+    assert.equal(c?.TRANG_THAI, 'Tạm dừng');
+    assert.equal(c?.XEM_TRUOC_HASH, null);
+
+    await m.registerAutomaticVoucherAnnouncement([{ VOUCHER_ID: 'V_AUTO', MA_VOUCHER: 'AUTO10' }]);
+    assert.equal((await configs.findOne({ CAU_HINH_ID: 'AUTO_VOUCHER_CFG_V_AUTO' }))?.TRANG_THAI, 'Tạm dừng');
   });
   test('preferences require the member session, not a submitted customer id; unsubscribe GET does not mutate', async () => {
     assert.equal((await request('/marketing/preferences', 'PUT', { allowed: true, customerId: 'C2' }, {})).status, 401);

@@ -290,7 +290,7 @@
             <div class="form-row">
                 <label><input type="checkbox" [(ngModel)]="editingCampaign.firstOrderOnly"> Chỉ đơn đầu tiên</label>
                 <label><input type="checkbox" [(ngModel)]="editingCampaign.active"> Kích hoạt</label>
-                <label><input type="checkbox" [(ngModel)]="editingCampaign.approved"> Đã được duyệt</label>
+                <label [title]="canApprove ? '' : 'Chỉ Admin được duyệt chiến dịch'"><input type="checkbox" [(ngModel)]="editingCampaign.approved" [disabled]="!canApprove"> Đã được duyệt</label>
             </div>
         </div>
 
@@ -386,7 +386,7 @@
             <div class="form-row">
                 <label><input type="checkbox" [(ngModel)]="newCampaign.firstOrderOnly"> Chỉ đơn đầu tiên</label>
                 <label><input type="checkbox" [(ngModel)]="newCampaign.active"> Kích hoạt</label>
-                <label><input type="checkbox" [(ngModel)]="newCampaign.approved"> Đã được duyệt</label>
+                <label [title]="canApprove ? '' : 'Chỉ Admin được duyệt chiến dịch'"><input type="checkbox" [(ngModel)]="newCampaign.approved" [disabled]="!canApprove"> Đã được duyệt</label>
             </div>
         </div>
 

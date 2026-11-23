@@ -420,6 +420,8 @@ export class Login implements AfterViewInit {
       this.formData.password = '';
       this.submitted = false;
       this.loginError = '';
+      // Callback chạy ngoài luồng cập nhật giao diện: phải vẽ lại để popup thực sự đóng.
+      this.cdr.detectChanges();
       this.router.navigate(['/login']);
     }, 1200);
     });

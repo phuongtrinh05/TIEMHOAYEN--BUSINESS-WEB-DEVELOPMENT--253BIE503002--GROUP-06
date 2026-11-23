@@ -62,8 +62,8 @@ export const defaultRolePermissions: Record<string, RolePermissionSet> = {
   }),
   'Nhân viên giao hàng': makePermissions({
     dashboard: allow('view'),
+    // Tên, SĐT, địa chỉ người nhận đã có trong đơn; không cần xem toàn bộ hồ sơ khách hàng.
     orders: allow('view', 'update'),
-    customers: allow('view'),
   }),
   'Nhân viên Marketing': makePermissions({
     dashboard: allow('view'),
@@ -76,6 +76,9 @@ export const defaultRolePermissions: Record<string, RolePermissionSet> = {
   'Nhân viên CSKH': makePermissions({
     dashboard: allow('view'),
     orders: allow('view'),
+    // Chỉ XEM: tra mẫu hoa/giá để tư vấn và xem trạng thái thanh toán khi khách hỏi; xác nhận hoàn tiền vẫn là Admin.
+    payments: allow('view'),
+    products: allow('view'),
     customers: allow('view', 'update'),
     promotions: allow('view'),
     customerService: allow('view', 'create', 'update'),

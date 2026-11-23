@@ -20,6 +20,12 @@ const otpSecret = () => {
 const otpHash = (customerId: string, challengeId: string, code: string) => createHmac('sha256', otpSecret())
   .update(`${customerId}|${challengeId}|${code}`).digest('hex');
 export const revision = (v: any) => hash(JSON.stringify(v));
+// Approval is bound to the exact config + template versions; any edit to either invalidates it.
+export const approvalFingerprint = (c: any, t: any) => revision([c.CAU_HINH_ID, c.PHIEN_BAN, t.MAU_ID, t.PHIEN_BAN]);
+export const isApproved = (c: any, t: any) => {
+  const fingerprint = approvalFingerprint(c, t);
+  return c.XEM_TRUOC_HASH === fingerprint && c.GUI_THU_HASH === fingerprint;
+};
 const active = (c: any) => c && !c.DA_XOA && !/khóa|ngừng|inactive/i.test(c.TRANG_THAI || '');
 const voucherAvailable = (v: any, now: Date) => {
   if (!v || v.KICH_HOAT === false || v.DA_XOA) return false;
@@ -154,12 +160,24 @@ const scheduledAt = (value: unknown, now: Date) => {
   return Number.isFinite(date.getTime()) && date > now ? date : new Date(now.getTime() - 1000);
 };
 
+// Auto-drafted announcements always start paused: staff must preview, test-send and enable them
+// like any other config. Re-registering with unchanged source data keeps an existing approval.
+async function draftAutomaticAnnouncement(templateId: string, configId: string, template: any, config: any, sourceStart: unknown, now: Date) {
+  const configs = await col('CAU_HINH_GUI_TU_DONG');
+  const source = revision([template, { ...config, THOI_DIEM_GUI: undefined }, sourceStart ? String(sourceStart) : null]);
+  if ((await configs.findOne({ CAU_HINH_ID: configId }, { projection: { NGUON_HASH: 1 } }))?.NGUON_HASH === source) return;
+  await (await col('MAU_TIN_NHAN')).updateOne({ MAU_ID: templateId }, { $set: { MAU_ID: templateId, ...template, TRANG_THAI: 'Đang bật', NGAY_CAP_NHAT: now }, $inc: { PHIEN_BAN: 1 }, $setOnInsert: { _id: templateId, NGAY_TAO: now } }, { upsert: true });
+  await configs.updateOne({ CAU_HINH_ID: configId }, { $set: { CAU_HINH_ID: configId, MAU_ID: templateId, ...config, TRANG_THAI: 'Tạm dừng', XEM_TRUOC_HASH: null, GUI_THU_HASH: null, BAN_XEM_TRUOC: null, NGUON_HASH: source, NGAY_CAP_NHAT: now }, $inc: { PHIEN_BAN: 1 }, $setOnInsert: { _id: configId, NGAY_TAO: now, BAT_DAU_AP_DUNG: now } }, { upsert: true });
+}
+
 export async function registerAutomaticCampaignAnnouncement(campaign: any, now = new Date()) {
   if (!campaign?.CHIEN_DICH_ID) return;
   const sourceId = String(campaign.CHIEN_DICH_ID), templateId = `AUTO_CAMPAIGN_${sourceId}`, configId = `AUTO_CAMPAIGN_CFG_${sourceId}`;
   const name = cleanText(campaign.TEN_CHIEN_DICH, 'Chiến dịch mới');
-  await (await col('MAU_TIN_NHAN')).updateOne({ MAU_ID: templateId }, { $set: { MAU_ID: templateId, TEN_MAU: `Tự động - ${name}`.slice(0, 150), MUC_DICH: 'Quảng cáo', KENH_GUI: 'email', TIEU_DE: `Tiệm Hoa Yên - ${name}`.slice(0, 200), NOI_DUNG: `Xin chào {{ten_khach}}, Tiệm Hoa Yên vừa có chiến dịch mới: ${name}. ${cleanText(campaign.MO_TA, 'Mời bạn ghé xem những ưu đãi mới nhất.')}`, TRANG_THAI: 'Đang bật', PHIEN_BAN: 1, NGAY_CAP_NHAT: now }, $setOnInsert: { _id: templateId, NGAY_TAO: now } }, { upsert: true });
-  await (await col('CAU_HINH_GUI_TU_DONG')).updateOne({ CAU_HINH_ID: configId }, { $set: { CAU_HINH_ID: configId, TEN_CAU_HINH: `Gửi chiến dịch ${name}`.slice(0, 150), MAU_ID: templateId, SU_KIEN_KICH_HOAT: 'schedule', CHIEN_DICH_ID: sourceId, THOI_DIEM_GUI: scheduledAt(campaign.NGAY_BAT_DAU, now), DO_TRE_PHUT: 0, TRANG_THAI: 'Đang bật', BAT_DAU_AP_DUNG: now, PHIEN_BAN: 1, NGAY_CAP_NHAT: now }, $setOnInsert: { _id: configId, NGAY_TAO: now } }, { upsert: true });
+  await draftAutomaticAnnouncement(templateId, configId,
+    { TEN_MAU: `Tự động - ${name}`.slice(0, 150), MUC_DICH: 'Quảng cáo', KENH_GUI: 'email', TIEU_DE: `Tiệm Hoa Yên - ${name}`.slice(0, 200), NOI_DUNG: `Xin chào {{ten_khach}}, Tiệm Hoa Yên vừa có chiến dịch mới: ${name}. ${cleanText(campaign.MO_TA, 'Mời bạn ghé xem những ưu đãi mới nhất.')}` },
+    { TEN_CAU_HINH: `Gửi chiến dịch ${name}`.slice(0, 150), SU_KIEN_KICH_HOAT: 'schedule', CHIEN_DICH_ID: sourceId, THOI_DIEM_GUI: scheduledAt(campaign.NGAY_BAT_DAU, now), DO_TRE_PHUT: 0 },
+    campaign.NGAY_BAT_DAU, now);
 }
 
 export async function registerAutomaticVoucherAnnouncement(vouchers: any[], now = new Date()) {
@@ -167,8 +185,10 @@ export async function registerAutomaticVoucherAnnouncement(vouchers: any[], now 
   if (!seed?.VOUCHER_ID) return;
   const group = String(seed.NHOM_PHAT_HANH_ID || seed.VOUCHER_ID).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80);
   const templateId = `AUTO_VOUCHER_${group}`, configId = `AUTO_VOUCHER_CFG_${group}`;
-  await (await col('MAU_TIN_NHAN')).updateOne({ MAU_ID: templateId }, { $set: { MAU_ID: templateId, TEN_MAU: `Tự động - Voucher ${seed.MA_VOUCHER_GOC || seed.MA_VOUCHER}`.slice(0, 150), MUC_DICH: 'Voucher', KENH_GUI: 'email', TIEU_DE: 'Tiệm Hoa Yên - Voucher mới dành cho {{ten_khach}}', NOI_DUNG: 'Xin chào {{ten_khach}}, bạn có voucher mới: {{ma_voucher}}. Hãy đăng nhập và mở mục Voucher của tôi để xem chi tiết.', TRANG_THAI: 'Đang bật', PHIEN_BAN: 1, NGAY_CAP_NHAT: now }, $setOnInsert: { _id: templateId, NGAY_TAO: now } }, { upsert: true });
-  await (await col('CAU_HINH_GUI_TU_DONG')).updateOne({ CAU_HINH_ID: configId }, { $set: { CAU_HINH_ID: configId, TEN_CAU_HINH: `Gửi voucher ${seed.MA_VOUCHER_GOC || seed.MA_VOUCHER}`.slice(0, 150), MAU_ID: templateId, SU_KIEN_KICH_HOAT: 'schedule', VOUCHER_ID: seed.VOUCHER_ID, CHIEN_DICH_ID: seed.CHIEN_DICH_ID || '', THOI_DIEM_GUI: scheduledAt(seed.NGAY_BAT_DAU, now), DO_TRE_PHUT: 0, TRANG_THAI: 'Đang bật', BAT_DAU_AP_DUNG: now, PHIEN_BAN: 1, NGAY_CAP_NHAT: now }, $setOnInsert: { _id: configId, NGAY_TAO: now } }, { upsert: true });
+  await draftAutomaticAnnouncement(templateId, configId,
+    { TEN_MAU: `Tự động - Voucher ${seed.MA_VOUCHER_GOC || seed.MA_VOUCHER}`.slice(0, 150), MUC_DICH: 'Voucher', KENH_GUI: 'email', TIEU_DE: 'Tiệm Hoa Yên - Voucher mới dành cho {{ten_khach}}', NOI_DUNG: 'Xin chào {{ten_khach}}, bạn có voucher mới: {{ma_voucher}}. Hãy đăng nhập và mở mục Voucher của tôi để xem chi tiết.' },
+    { TEN_CAU_HINH: `Gửi voucher ${seed.MA_VOUCHER_GOC || seed.MA_VOUCHER}`.slice(0, 150), SU_KIEN_KICH_HOAT: 'schedule', VOUCHER_ID: seed.VOUCHER_ID, CHIEN_DICH_ID: seed.CHIEN_DICH_ID || '', THOI_DIEM_GUI: scheduledAt(seed.NGAY_BAT_DAU, now), DO_TRE_PHUT: 0 },
+    seed.NGAY_BAT_DAU, now);
 }
 
 export async function requestPreferenceEmailOtp(customerId: string, rawEmail: unknown, now = new Date()) {
@@ -256,7 +276,7 @@ export async function scheduleMarketing(now = new Date()) {
   const vn = new Date(now.getTime() + 7 * 3600000), today = vn.toISOString().slice(0, 10);
   for await (const c of (await col('CAU_HINH_GUI_TU_DONG')).find({ TRANG_THAI: 'Đang bật' })) {
     const t = await (await col('MAU_TIN_NHAN')).findOne({ MAU_ID: c.MAU_ID, TRANG_THAI: 'Đang bật' });
-    if (!t) continue;
+    if (!t || !isApproved(c, t)) continue;
     if (c.SU_KIEN_KICH_HOAT === 'schedule' && new Date(c.THOI_DIEM_GUI) > now) continue;
     if (c.SU_KIEN_KICH_HOAT === 'annual' && (vn.getUTCMonth() + 1 !== c.THANG || vn.getUTCDate() !== c.NGAY)) continue;
     let inserted = 0;

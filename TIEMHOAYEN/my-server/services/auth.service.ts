@@ -5,6 +5,7 @@ import { Request, Response, NextFunction } from 'express';
 import { getCollection } from '../mongo.js';
 import { hashPassword, verifyPassword, isPasswordHash } from '../utils/passwordHash.js';
 import { getRolePermissions, resolveRoleName } from './role-permission.service.js';
+import { isInactiveStatus } from '../utils/account-status.js';
 
 export type AccountType = 'KHACH_HANG' | 'NHAN_VIEN';
 export type Identity = { id: string; type: AccountType; account: any; sessionId: string };
@@ -17,8 +18,7 @@ export const accountKey = (type: AccountType) => type === 'KHACH_HANG' ? 'KHACH_
 // việc xác thực phiên nhất quán với luồng đăng nhập hiện tại.
 export const active = (row: any) => {
   if (!row || row.DA_XOA === true || row.DA_XOA === 1) return false;
-  const status = String(row.TRANG_THAI || '').trim().toLowerCase();
-  return !/(chờ xác minh|cho xac minh|bị khóa|bi khoa|khóa|khoa|ngừng|ngung|inactive|vô hiệu|vo hieu|đã xóa|da xoa|nghỉ việc|nghi viec)/i.test(status);
+  return !isInactiveStatus(row.TRANG_THAI);
 };
 const collection = (name: string) => getCollection<any>(name);
 export const endpoint = (handler: (req: Request, res: Response) => Promise<any>) => async (req: Request, res: Response) => {

@@ -8,6 +8,7 @@ import { accessToken } from './order-access.js';
 import { ownedRequestQuery } from '../services/order-access.service.js';
 import { consultationOptions, confirmOriginalRequest, convertProposal, messages, propose, respondToProposal, sendMessage, recordContact, customerChangeRequest, unreadCustomerMessages } from '../services/sales-proposal.service.js';
 import { authenticatedEmployee } from '../middleware/rolePermission.js';
+import { isInactiveStatus } from '../utils/account-status.js';
 
 const failure = (res: Response, error: any) => res.status(error instanceof InventoryError ? error.status : 500)
   .json({ message: error instanceof InventoryError ? error.message : 'Không thể xử lý yêu cầu đặt hàng.',
@@ -66,7 +67,7 @@ export async function watchCustomerRequests(req: Request, res: Response) {
 export async function requireSales(req: Request, res: Response, next: NextFunction) {
   try {
     const employee = await authenticatedEmployee(req);
-    if (!employee || !['Admin', 'Nhân viên bán hàng'].includes(resolveRoleName(employee.VAI_TRO)) || /khóa|ngừng|ngưng|nghỉ|inactive/i.test(String(employee.TRANG_THAI || ''))) {
+    if (!employee || !['Admin', 'Nhân viên bán hàng'].includes(resolveRoleName(employee.VAI_TRO)) || isInactiveStatus(employee.TRANG_THAI)) {
       return res.status(403).json({ message: 'Chỉ nhân viên Sales hoặc Admin đang hoạt động được xử lý yêu cầu.' });
     }
     res.locals.salesEmployee = employee;

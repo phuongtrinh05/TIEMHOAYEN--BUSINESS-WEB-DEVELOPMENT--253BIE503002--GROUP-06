@@ -9,13 +9,14 @@ import { SUPPORT_TICKETS, cancelSupportHandoff, publicMessage, rateSupport, read
 import { MESSAGES as SALES_MESSAGES, SALES_CHAT_TYPES, sendMessage as sendSalesMessage } from '../services/sales-proposal.service.js';
 import { REQUESTS, REQUEST_STATUS, updateSalesRequest } from '../services/order-request.service.js';
 import { resolveRoleName } from '../services/role-permission.service.js';
+import { isInactiveStatus } from '../utils/account-status.js';
 const actor = (req: Request) => ({ orderToken: String(req.headers['x-order-access'] || ''), guestToken: String(req.headers['x-support-token'] || '') });
 const fail = (res: Response, e: any) => res.status(e instanceof InventoryError ? e.status : 500).json({ message: e instanceof InventoryError ? e.message : 'Chưa xử lý được cuộc tư vấn. Vui lòng thử lại.' });
 export async function requireSupportStaff(req: Request, res: Response, next: NextFunction) {
     try {
         const employee = await (await getCollection<any>('NHAN_VIEN')).findOne({ NHAN_VIEN_ID: String(req.headers['x-admin-id'] || '') });
         const sales = employee && ['Admin', 'Nhân viên bán hàng'].includes(resolveRoleName(employee.VAI_TRO));
-        if (!employee || /khóa|ngừng|nghỉ|inactive/i.test(String(employee.TRANG_THAI || '')) || (!hasPermission(employee.VAI_TRO, 'customerService', 'view') && !sales))
+        if (!employee || isInactiveStatus(employee.TRANG_THAI) || (!hasPermission(employee.VAI_TRO, 'customerService', 'view') && !sales))
             throw new InventoryError(403, 'Bạn không có quyền xem hộp thư hỗ trợ.');
         const action = req.method === 'GET' ? 'view' : req.method === 'DELETE' ? 'delete' : req.method === 'POST' && req.baseUrl === '/api/faqs' ? 'create' : 'update';
         if (!hasPermission(employee.VAI_TRO, 'customerService', action) && !sales)
@@ -199,7 +200,7 @@ export async function media(req: Request, res: Response) {
 }
 export async function staff(req: Request, res: Response) { try {
     const rows = await (await getCollection<any>('NHAN_VIEN')).find({}, { projection: { NHAN_VIEN_ID: 1, HO_TEN: 1, VAI_TRO: 1, TRANG_THAI: 1 } }).toArray();
-    res.json(rows.filter(e => hasPermission(e.VAI_TRO, 'customerService', 'update') && !/khóa|ngừng|nghỉ|inactive/i.test(String(e.TRANG_THAI || ''))).map(e => ({ id: e.NHAN_VIEN_ID, name: e.HO_TEN || e.NHAN_VIEN_ID })));
+    res.json(rows.filter(e => hasPermission(e.VAI_TRO, 'customerService', 'update') && !isInactiveStatus(e.TRANG_THAI)).map(e => ({ id: e.NHAN_VIEN_ID, name: e.HO_TEN || e.NHAN_VIEN_ID })));
 }
 catch (e) {
     fail(res, e);

@@ -18,6 +18,8 @@ import { derivePromotionStatus, ensureVoucherStorage, normalizeVoucherCode } fro
 import { registerAutomaticCampaignAnnouncement, registerAutomaticVoucherAnnouncement } from '../services/marketing.service.js';
 import { deliveryWindow } from '../services/shipping-edit-policy.service.js';
 import { isWithinShopHours } from '../services/delivery-policy.service.js';
+import { isInactiveStatus } from '../utils/account-status.js';
+import { resolveRoleName } from '../services/role-permission.service.js';
 const escapeAfterSalesSearch = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const toDate = (value: unknown): Date | null => {
@@ -1281,7 +1283,7 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
         const employeeId = String(req.body.shipperId || '').trim();
         const employee = await (await getCollection<any>('NHAN_VIEN')).findOne({ NHAN_VIEN_ID: employeeId }, { session });
         if (!employee) throw new InventoryError(404, 'Không tìm thấy nhân viên giao hàng.');
-        if (/khóa|nghỉ|ngung|inactive/i.test(String(employee.TRANG_THAI || ''))) throw new InventoryError(409, 'Nhân viên hiện không hoạt động.');
+        if (isInactiveStatus(employee.TRANG_THAI)) throw new InventoryError(409, 'Nhân viên hiện không hoạt động.');
         if (!/giao|shipper|van chuyen|vận chuyển/i.test(String(employee.VAI_TRO || employee.CHUC_VU || ''))) throw new InventoryError(409, 'Nhân viên không có vai trò giao hàng.');
         changes.NHAN_VIEN_GIAO_HANG_ID = employeeId;
         changes.NHAN_VIEN_GIAO_HANG = { id:employeeId, name:String(employee.HO_TEN || employee.TEN || employeeId), phone:String(employee.SDT || ''), avatar:String(employee.AVATAR || '') };
@@ -1527,7 +1529,8 @@ export const createAdminCampaign = async (req: Request, res: Response) => {
       NGAY_KET_THUC: end,
       TRANG_THAI: req.body.status || req.body.TRANG_THAI || null,
       KICH_HOAT: req.body.active === true,
-      DA_DUYET: req.body.approved === true,
+      // Chỉ Admin được duyệt chiến dịch; Marketing tạo ra luôn ở trạng thái chờ duyệt.
+      DA_DUYET: isAdminRequester(res) && req.body.approved === true,
       DOI_TUONG: req.body.audience || 'Tất cả',
       HANG_THANH_VIEN: req.body.membershipTiers || [],
       GIOI_HAN_TONG: Math.max(0, Number(req.body.totalLimit || 0)),
@@ -1559,7 +1562,8 @@ export const updateAdminCampaign = async (req: Request, res: Response) => {
           NGAY_KET_THUC: end,
           TRANG_THAI: body.status ?? body.TRANG_THAI ?? null,
           KICH_HOAT: body.active === true,
-          DA_DUYET: body.approved === true,
+          // Marketing sửa chiến dịch thì phải chờ Admin duyệt lại.
+          DA_DUYET: isAdminRequester(res) && body.approved === true,
           DOI_TUONG: body.audience || 'Tất cả',
           HANG_THANH_VIEN: body.membershipTiers || [],
           GIOI_HAN_TONG: Math.max(0, Number(body.totalLimit || 0)),
@@ -1577,8 +1581,15 @@ export const updateAdminCampaign = async (req: Request, res: Response) => {
   }
 };
 
+const isAdminRequester = (res: Response) => resolveRoleName(res.locals.adminEmployee?.VAI_TRO) === 'Admin';
+
 export const deleteAdminCampaign = async (req: Request, res: Response) => {
   try {
+    if (!isAdminRequester(res)) {
+      const row = await (await getCollection<any>('CHIEN_DICH')).findOne({ CHIEN_DICH_ID: req.params.campaignId }, { projection: { DA_DUYET: 1, KICH_HOAT: 1 } });
+      if (row?.DA_DUYET === true) return res.status(403).json({ message: 'Chiến dịch đã được duyệt: chỉ Admin được xóa. Hãy tắt kích hoạt nếu cần ngừng.' });
+      if (row?.KICH_HOAT !== false && row) return res.status(409).json({ message: 'Tắt kích hoạt chiến dịch trước khi xóa.' });
+    }
     const result = await (await getCollection<any>('CHIEN_DICH')).updateOne(
       { CHIEN_DICH_ID: req.params.campaignId },
       { $set: { DA_XOA: true, KICH_HOAT: false, TRANG_THAI: 'Đã xóa', NGAY_CAP_NHAT: new Date() } },
@@ -1778,6 +1789,11 @@ export const updateAdminVoucher = async (req: Request, res: Response) => {
 
 export const deleteAdminVoucher = async (req: Request, res: Response) => {
   try {
+    if (!isAdminRequester(res)) {
+      const row = await (await getCollection<any>('VOUCHER')).findOne({ VOUCHER_ID: req.params.voucherId }, { projection: { KICH_HOAT: 1, LUOT_DA_DUNG: 1 } });
+      if (row && Number(row.LUOT_DA_DUNG || 0) > 0) return res.status(403).json({ message: 'Voucher đã có khách sử dụng: chỉ Admin được xóa. Hãy tắt kích hoạt nếu cần ngừng.' });
+      if (row && row.KICH_HOAT !== false) return res.status(409).json({ message: 'Tắt kích hoạt voucher trước khi xóa.' });
+    }
     const result = await (await getCollection<any>('VOUCHER')).updateOne(
       { VOUCHER_ID: req.params.voucherId },
       { $set: { DA_XOA: true, KICH_HOAT: false, TRANG_THAI: 'Đã xóa', NGAY_CAP_NHAT: new Date() } },
