@@ -261,3 +261,20 @@ main.rq-page{font-size:15.5px}
 .rq-page .rq-row .queue-actions button:not(.secondary){min-height:36px;border-radius:10px;font-size:14.5px;font-weight:700}
 .rq-page .rq-row .rq-owner-note{display:block;width:100%;color:#9a8a85;font-size:13px;line-height:1.35;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rq-page .rq-row .rq-col-info small i{margin-right:3px;color:#b29a92}
+
+/* Thẻ kết quả "Đã tạo đơn hàng" sau khi Sales chốt (thay link trần "Xem đơn …"). */
+.rq-page .order-result-card,.order-result-card{display:flex;align-items:center;gap:14px;margin-top:14px;padding:14px 16px;border:1px solid #ead5ca;border-radius:12px;background:#fffaf6;box-shadow:0 4px 14px rgba(115,25,25,.05)}
+.order-result-icon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:#e2f3e6;color:#26623a;font-size:20px}
+.order-result-card[data-tone=pending] .order-result-icon{background:#fff2c7;color:#805d00;font-size:17px}
+.order-result-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.order-result-label{color:#a16d5c;font-size:11px;font-weight:900;letter-spacing:.15em;text-transform:uppercase}
+.order-result-id{display:flex;align-items:center;gap:6px;min-width:0}
+.order-result-id strong{overflow:hidden;color:#731919;font-size:17px;font-weight:800;letter-spacing:.02em;text-overflow:ellipsis;white-space:nowrap}
+.order-result-copy{flex:none;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:#9b7b70;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+.order-result-copy:hover{border-color:#ead5ca;background:#fff;color:#731919}
+.order-result-status{display:inline-flex;align-items:center;gap:7px;width:max-content;max-width:100%;padding:3px 10px;border-radius:999px;background:#e2f3e6;color:#26623a;font-size:12.5px;font-weight:700}
+.order-result-status i{flex:none;width:7px;height:7px;border-radius:50%;background:currentColor}
+.order-result-card[data-tone=pending] .order-result-status{background:#fff2c7;color:#805d00}
+.rq-page .order-result-link,.order-result-link{flex:none;align-self:center;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:38px;padding:0 14px;border:1px solid #d9b382;border-radius:10px;background:#fff8f5;color:#731919;font-size:14.5px;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
+.rq-page .order-result-link:hover,.order-result-link:hover{background:#731919;border-color:#731919;color:#fff}
+@media(max-width:620px){.order-result-card{flex-wrap:wrap}.order-result-link{width:100%}}

@@ -44,6 +44,26 @@ export class OrderRequests implements OnInit, OnDestroy {
   }
   /** Yêu cầu đang ở bước shop có thể gửi phương án hoặc chốt đơn. */
   get canDecide() { return ['Sales đang xử lý', 'Chờ khách xác nhận'].includes(String(this.active?.status || '')); }
+  /** Thẻ "Đã tạo đơn hàng": đơn đã được xác nhận tiền (hoặc không cần trả trước) thì tô xanh, còn chờ tiền thì tô vàng. */
+  orderResultPaid(result: any): boolean {
+    return result?.paymentConfirmed === true || result?.paymentStatus === 'Thành công' || result?.requiresPayment === false;
+  }
+  orderResultPaymentLabel(result: any): string {
+    if (result?.paymentConfirmed === true || result?.paymentStatus === 'Thành công') return 'Đã thanh toán';
+    if (result?.requiresPayment === false) return 'Thanh toán khi nhận hàng';
+    return 'Chờ khách thanh toán';
+  }
+  copiedOrderId = '';
+  private copiedTimer?: ReturnType<typeof setTimeout>;
+  copyOrderId(orderId: string) {
+    if (!orderId || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    void navigator.clipboard.writeText(orderId).then(() => {
+      this.copiedOrderId = orderId;
+      if (this.copiedTimer) clearTimeout(this.copiedTimer);
+      this.copiedTimer = setTimeout(() => { this.copiedOrderId = ''; this.cdr.markForCheck(); }, 1800);
+      this.cdr.markForCheck();
+    }).catch(() => {});
+  }
   /**
    * Chốt theo đúng yêu cầu gốc khách đã đặt thì không cần khách xác nhận lại.
    * Còn khi đã có phương án (hoặc đang sửa khác yêu cầu gốc) thì shop chỉ được chốt thay khách

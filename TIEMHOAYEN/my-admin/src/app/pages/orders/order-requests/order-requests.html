@@ -165,7 +165,22 @@
       }
       @if(workTab==='stock' && r.quote) {
       @if (['Chờ thanh toán','Chờ khách thanh toán'].includes(r.status)) { <p class="payment-notice"><b>Đơn đã tạo ở trạng thái Đã xác nhận đơn hàng, đang chờ khách thanh toán@if(r.paymentDeadlineAt){ trước {{r.paymentDeadlineAt | date:'dd/MM HH:mm'}}}.</b> Khi khoản trả trước được xác nhận thành công, yêu cầu sẽ chuyển sang luồng đơn chờ giao hàng.</p> }
-      @if (r.orderResult) { <a [routerLink]="['/orders/order-detail', r.orderResult.orderId]">Xem đơn {{r.orderResult.orderId}}</a> }
+      @if (r.orderResult) {
+        <div class="order-result-card" [attr.data-tone]="orderResultPaid(r.orderResult) ? 'success' : 'pending'">
+          <span class="order-result-icon" aria-hidden="true"><i class="bi" [class.bi-check-lg]="orderResultPaid(r.orderResult)" [class.bi-hourglass-split]="!orderResultPaid(r.orderResult)"></i></span>
+          <div class="order-result-body">
+            <span class="order-result-label">Đã tạo đơn hàng</span>
+            <div class="order-result-id">
+              <strong>{{ r.orderResult.orderId }}</strong>
+              <button type="button" class="order-result-copy" (click)="copyOrderId(r.orderResult.orderId)" [title]="copiedOrderId === r.orderResult.orderId ? 'Đã sao chép' : 'Sao chép mã đơn'" [attr.aria-label]="'Sao chép mã đơn ' + r.orderResult.orderId">
+                <i class="bi" [class.bi-clipboard]="copiedOrderId !== r.orderResult.orderId" [class.bi-clipboard-check]="copiedOrderId === r.orderResult.orderId"></i>
+              </button>
+            </div>
+            <span class="order-result-status"><i aria-hidden="true"></i>{{ r.orderResult.orderStatus || 'Đã tạo đơn' }} · {{ orderResultPaymentLabel(r.orderResult) }}</span>
+          </div>
+          <a class="order-result-link" [routerLink]="['/orders/order-detail', r.orderResult.orderId]">Xem đơn <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+        </div>
+      }
       @if (false) {
         <div class="editor">
           <section class="proposal-products"><div class="section-title"><b>1</b><div><h3>Bó hoa trong phương án</h3><p>Thêm mẫu trong danh mục hoặc bó phối riêng theo BOM.</p></div></div>
