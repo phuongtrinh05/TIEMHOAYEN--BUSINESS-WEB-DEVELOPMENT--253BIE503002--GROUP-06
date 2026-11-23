@@ -26,7 +26,8 @@ test('admin login returns both sessions accepted by admin identity and business 
     assert.match(result.adminSessionToken, /^as_[a-f0-9]{64}$/);
     assert.match(result.accessToken, /^sa_[a-f0-9]{64}$/);
     const stored = await db.collection('PHIEN_DANG_NHAP_ADMIN').findOne({ _id: createHash('sha256').update(result.adminSessionToken).digest('hex') as any });
-    assert.equal(stored?.employeeId, 'NV_TEST');
+    assert.equal(stored?.NHAN_VIEN_ID, 'NV_TEST');
+    assert.equal(stored?.employeeId, undefined);
     assert.equal((await identify({ headers: { 'x-admin-session': result.adminSessionToken } } as any))?.id, 'NV_TEST');
     assert.equal((await authenticatedEmployee({ headers: { authorization: `Bearer ${result.accessToken}` } } as any)).NHAN_VIEN_ID, 'NV_TEST');
     assert.ok(!JSON.stringify(result).includes('MAT_KHAU'));

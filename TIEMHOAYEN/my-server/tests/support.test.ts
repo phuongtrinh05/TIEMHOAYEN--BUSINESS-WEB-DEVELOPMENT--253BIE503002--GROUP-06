@@ -289,16 +289,17 @@ else {
         assert.equal(design.image, 'new-image');
         await Promise.all([tickets.deleteMany({ _id: { $in: ['W2-A', 'W2-B'] } }), images.deleteOne({ _id: 'W2-IMG' }), designs.deleteOne({ _id: 'W2-DESIGN' })]);
     });
-    test('wave 3 mirrors counters and admin sessions without exposing standard names', async () => {
+    test('wave 3 stores counters and admin sessions only by standard names', async () => {
         const { nextCode } = await import('../services/inventory/helpers.js');
         const db = await mongo.getDb();
         await db.collection<any>('W3_TEST').insertOne({ _id: 'W30007', W3_ID: 'W30007' });
         assert.equal(await nextCode('W3_TEST', 'W3_ID', 'W3', 4), 'W30008');
         assert.equal(await nextCode('W3_TEST', 'W3_ID', 'W3', 4), 'W30009');
         const counter = await db.collection<any>('BO_DEM_MA').findOne({ _id: 'W3_TEST:W3' });
-        assert.equal(counter.value, 9);
+        assert.equal(counter.value, undefined);
         assert.equal(counter.GIA_TRI, 9);
-        assert.equal(counter.NGAY_TAO.getTime(), counter.createdAt.getTime());
+        assert.ok(counter.NGAY_TAO instanceof Date);
+        assert.equal(counter.createdAt, undefined);
         const wrappedCounter = await (await mongo.getCollection<any>('BO_DEM_MA')).findOne({ _id: 'W3_TEST:W3' });
         assert.equal(wrappedCounter.value, 9);
         assert.equal(wrappedCounter.GIA_TRI, undefined);
@@ -308,6 +309,8 @@ else {
         const raw = await db.collection<any>('PHIEN_DANG_NHAP_ADMIN').findOne({ _id: 'W3-SESSION' as any });
         assert.equal(raw.NHAN_VIEN_ID, 'NV_W3');
         assert.equal(raw.HET_HAN.getTime(), expiresAt.getTime());
+        assert.equal(raw.employeeId, undefined);
+        assert.equal(raw.expiresAt, undefined);
         const row = await sessions.findOne({ _id: 'W3-SESSION', expiresAt: { $gt: new Date() } });
         assert.equal(row.employeeId, 'NV_W3');
         assert.equal(row.NHAN_VIEN_ID, undefined);
@@ -381,7 +384,7 @@ else {
         assert.equal(hiddenRow.AVATAR, '/new.png');
         await raw.deleteOne({ _id: 'W5R-CUSTOMER' });
     });
-    test('wave 7 mirrors order workflow writes, including bulk OTP buckets and refund upserts', async () => {
+    test('wave 7 stores order workflow writes only by standard names, including bulk OTP buckets and refund upserts', async () => {
         const db = await mongo.getDb();
         const access = await mongo.getCollection<any>('XAC_THUC_TRA_CUU_DON'), rawAccess = db.collection<any>('XAC_THUC_TRA_CUU_DON');
         const now = new Date(), expiresAt = new Date(now.getTime() + 60000);
@@ -389,7 +392,7 @@ else {
         await access.bulkWrite([rate, rate, { insertOne: { document: { _id: 'W7-OTP', kind: 'otp', phone: '0900000007', consumed: false, codeHash: 'hash', expiresAt } } },
             { updateMany: { filter: { _id: 'W7-OTP', consumed: false }, update: { $set: { consumed: true } } } }] as any, { ordered: true });
         const bucket = await rawAccess.findOne({ _id: 'W7-RATE' });
-        assert.equal(bucket.count, 2);
+        assert.equal(bucket.count, undefined);
         assert.equal(bucket.SO_LUONG, 2);
         assert.equal(bucket.PHAN_LOAI, 'rate');
         const otp = await rawAccess.findOne({ _id: 'W7-OTP' });
@@ -406,7 +409,9 @@ else {
         assert.equal(refund.SO_TIEN, 50000);
         assert.equal(refund.SO_TIEN_DA_HOAN, 50000);
         assert.equal(refund.TRANG_THAI, 'Succeeded');
-        assert.deepEqual(refund.LICH_SU, refund.history);
+        assert.equal(refund.LICH_SU.length, 1);
+        assert.equal(refund.history, undefined);
+        assert.equal(refund.requestId, undefined);
         const cases = await mongo.getCollection<any>('YEU_CAU_HAU_MAI'), rawCases = db.collection<any>('YEU_CAU_HAU_MAI');
         await cases.insertOne({ _id: 'W7-CASE', requestId: 'W7-CASE', orderId: 'W7-ORDER', type: 'refund', status: 'Chờ tiếp nhận', active: true, version: 0, sla: { claimBy: now }, history: [] });
         await cases.updateOne({ _id: 'W7-CASE', version: 0 }, { $set: { 'sla.decideBy': expiresAt, status: 'Đang xem xét' }, $inc: { version: 1 } });
@@ -414,6 +419,8 @@ else {
         assert.equal(row.PHIEN_BAN, 1);
         assert.equal(row.TRANG_THAI, 'Đang xem xét');
         assert.equal(row.THOI_HAN_XU_LY.decideBy.getTime(), expiresAt.getTime());
+        assert.equal(row.status, undefined);
+        assert.equal(row.sla, undefined);
         const [listed] = await cases.find({ _id: 'W7-CASE', active: true }).toArray();
         assert.equal(listed.status, 'Đang xem xét');
         assert.equal(listed.TRANG_THAI, undefined);
@@ -449,7 +456,7 @@ else {
         await access.bulkWrite([rate()] as any);
         await assert.rejects(access.bulkWrite([rate()] as any), (error: any) => error?.code === 11000);
         const bucket = await rawAccess.findOne({ _id: 'W7R-RATE' as any });
-        assert.equal(bucket.count, 2);
+        assert.equal(bucket.count, undefined);
         assert.equal(bucket.SO_LUONG, 2);
         await Promise.all([rawRequests.deleteOne({ _id: 'W7R-REQ' as any }), rawLedger.deleteOne({ _id: 'W7R-RF' as any }), rawAccess.deleteOne({ _id: 'W7R-RATE' as any })]);
     });
