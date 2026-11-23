@@ -140,6 +140,12 @@
   border-radius: 0;
 }
 
+/* Ảnh bó thiết kế 3D là ảnh vuông chụp từ khung 3D: hiện trọn ảnh, không cắt/phóng. */
+.item-image.design-image {
+  object-fit: contain;
+  background: #fff;
+}
+
 .item-name {
   font-size: 0.98rem;
   font-weight: 800;

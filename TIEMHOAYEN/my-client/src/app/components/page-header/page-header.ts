@@ -1449,7 +1449,9 @@ export class PageHeader implements OnInit, OnDestroy {
       value.startsWith('http://') ||
       value.startsWith('https://') ||
       value.startsWith('assets/') ||
-      value.startsWith('/')
+      value.startsWith('/') ||
+      // Ảnh bó thiết kế 3D được lưu dạng data URL (chụp từ khung 3D).
+      value.startsWith('data:image/')
     ) {
       return value;
     }

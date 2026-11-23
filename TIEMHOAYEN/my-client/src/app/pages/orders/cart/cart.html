@@ -55,6 +55,7 @@
               [src]="item.image"
               [alt]="item.name"
               class="item-image"
+              [class.design-image]="!!item.designId || item.id.startsWith('SP3D_')"
               [class.clickable]="canOpenProductDetail(item)"
               [attr.role]="canOpenProductDetail(item) ? 'link' : null"
               (click)="goToProductDetail(item)">
