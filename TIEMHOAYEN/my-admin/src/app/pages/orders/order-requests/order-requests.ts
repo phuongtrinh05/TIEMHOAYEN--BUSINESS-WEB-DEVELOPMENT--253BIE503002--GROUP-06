@@ -263,13 +263,20 @@ export class OrderRequests implements OnInit, OnDestroy {
         referenceCode: this.paymentReference.trim() } };
     this.busy = true; this.error = '';
     this.http.post(`${this.url}/${this.active.requestId}/confirm`, body).subscribe({
-      next: () => this.afterDealClosed(), error: err => this.fail(err),
+      next: (updated: any) => this.afterDealClosed(updated), error: err => this.fail(err),
     });
   }
-  private afterDealClosed() {
+  private afterDealClosed(updated?: any) {
     this.busy = false; this.showOriginalConfirm = false; this.editing = false; this.draft = null;
     this.urgentDealConfirmed = false; this.urgentDealNote = '';
     this.paymentReceivedConfirmed = false; this.paymentReceivedAmount = null; this.paymentReference = '';
+    // Yêu cầu vừa chốt thường rời khỏi nhóm đang xem (vd. "Cần xử lý" → "Đã lên đơn"), nên load() không tìm lại được
+    // để làm mới. Cập nhật ngay yêu cầu đang mở bằng dữ liệu máy chủ trả về để hiện trạng thái mới và nút "Xem đơn".
+    if (updated && this.active && updated.requestId === this.active.requestId) {
+      this.active = { ...this.active, status: updated.status, quote: updated.quote ?? this.active.quote,
+        acceptedQuoteId: updated.acceptedQuoteId ?? this.active.acceptedQuoteId,
+        orderResult: updated.orderResult ?? this.active.orderResult, orderId: updated.orderResult?.orderId ?? this.active.orderId };
+    }
     this.workTab = 'stock'; this.status = ''; this.load(); this.cdr.markForCheck();
   }
   selectWorkTab(tab: string) {
@@ -371,7 +378,7 @@ export class OrderRequests implements OnInit, OnDestroy {
       note: 'Shop xác nhận có thể đáp ứng nguyên mẫu, số lượng, giá tham chiếu và lịch giao khách đã yêu cầu.' };
     this.busy = true; this.error = '';
     this.http.post(`${this.url}/${this.active.requestId}/confirm`, body).subscribe({
-      next: () => this.afterDealClosed(),
+      next: (updated: any) => this.afterDealClosed(updated),
       error: err => this.fail(err),
     });
   }
