@@ -24,44 +24,67 @@
 }
 
 /* ===== Banner ===== */
-.blog-banner {
-  width: 100%;
-  overflow: hidden;
-  background: #fbefe7;
-}
-
-.blog-banner img {
-  display: block;
-  width: 100%;
-  aspect-ratio: 2048 / 783;
-  max-height: 520px;
-  object-fit: cover;
-  object-position: 30% center;
-}
-
-/* ===== Tìm kiếm nổi trên banner ===== */
-.journal-search {
+.journal-hero {
   position: relative;
-  z-index: 2;
-  max-width: 760px;
-  margin: -34px auto 0;
-  padding: 0 20px;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 48px;
+  padding: 56px max(30px, calc((100% - 1200px) / 2)) 64px;
+  background:
+    radial-gradient(circle at 8% 15%, rgba(255, 255, 255, .9), transparent 40%),
+    radial-gradient(circle at 92% 85%, rgba(217, 179, 130, .25), transparent 45%),
+    linear-gradient(135deg, #FBF1EC 0%, #F6E3DA 55%, #F1D6CB 100%);
+}
+.journal-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto -80px -120px auto;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  border: 1px dashed rgba(120, 27, 32, .15);
+  pointer-events: none;
 }
 
-.journal-search form {
+.hero-kicker {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: #b07a52;
+}
+.journal-hero h1 {
+  margin: 14px 0 14px;
+  font-family: var(--font-heading, 'Playfair Display'), serif;
+  font-size: clamp(32px, 4vw, 52px);
+  font-weight: 500;
+  line-height: 1.12;
+  color: var(--wine);
+}
+.hero-copy p {
+  margin: 0 0 28px;
+  max-width: 470px;
+  font-size: 16px;
+  line-height: 1.7;
+  color: #8a6a64;
+}
+
+.hero-search {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 8px 8px 20px;
+  max-width: 520px;
+  padding: 7px 7px 7px 20px;
   border-radius: 999px;
   background: #fff;
   border: 1px solid var(--line);
-  box-shadow: 0 16px 36px rgba(120, 27, 32, .12);
+  box-shadow: 0 16px 36px rgba(120, 27, 32, .10);
 }
-
-.journal-search .bi-search { color: #b48d85; font-size: 16px; }
-
-.journal-search input {
+.hero-search .bi-search { color: #b48d85; font-size: 16px; }
+.hero-search input {
   flex: 1;
   min-width: 0;
   border: 0;
@@ -71,24 +94,56 @@
   color: var(--ink);
   padding: 10px 0;
 }
-
-.journal-search button {
+.hero-search button {
   border: 0;
   border-radius: 999px;
-  padding: 12px 26px;
+  padding: 12px 24px;
   background: var(--wine);
   color: #fff;
   font-weight: 700;
   font-size: 14px;
   transition: background .2s ease;
 }
-.journal-search button:hover { background: #5f1418; }
+.hero-search button:hover { background: #5f1418; }
+
+.hero-mosaic {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 14px;
+  height: 380px;
+}
+.hero-mosaic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 22px;
+  box-shadow: 0 18px 36px rgba(120, 27, 32, .14);
+  border: 5px solid #fff;
+}
+.hero-mosaic .m-main { grid-row: 1 / 3; }
+.m-badge {
+  position: absolute;
+  left: -22px;
+  bottom: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--wine);
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .12);
+}
 
 /* ===== Nội dung ===== */
 .journal-main {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 36px 30px 0;
+  padding: 40px 30px 0;
 }
 
 .journal-topics {
@@ -296,6 +351,8 @@ article:hover .read-more i { transform: translateX(3px); }
 
 /* ===== Tablet ===== */
 @media (max-width: 1024px) {
+  .journal-hero { gap: 28px; }
+  .hero-mosaic { height: 320px; }
   .journal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
   .journal .post-featured a { grid-template-columns: 1fr 1fr; }
   .post-featured .post-copy { padding: 26px; }
@@ -304,11 +361,14 @@ article:hover .read-more i { transform: translateX(3px); }
 
 /* ===== Phone ===== */
 @media (max-width: 640px) {
-  .blog-banner img { aspect-ratio: 16 / 9; object-position: 22% center; }
-  .journal-search { margin-top: -24px; padding: 0 16px; }
-  .journal-search form { padding: 6px 6px 6px 16px; gap: 8px; }
-  .journal-search input { font-size: 14px; }
-  .journal-search button { padding: 10px 16px; font-size: 13px; }
+  .journal-hero { grid-template-columns: 1fr; gap: 26px; padding: 32px 16px 36px; }
+  .hero-copy p { font-size: 14px; margin-bottom: 20px; }
+  .hero-search { padding: 6px 6px 6px 16px; gap: 8px; }
+  .hero-search input { font-size: 14px; }
+  .hero-search button { padding: 10px 16px; font-size: 13px; }
+  .hero-mosaic { height: 230px; gap: 10px; }
+  .hero-mosaic img { border-radius: 16px; border-width: 3px; }
+  .m-badge { left: 10px; bottom: 10px; font-size: 12px; padding: 8px 12px; }
   .journal-main { padding: 24px 16px 0; }
   .journal-topics {
     flex-wrap: nowrap;

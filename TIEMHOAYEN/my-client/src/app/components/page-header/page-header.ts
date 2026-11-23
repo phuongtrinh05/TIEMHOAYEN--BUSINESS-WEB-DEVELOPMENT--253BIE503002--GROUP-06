@@ -202,6 +202,12 @@ export class PageHeader implements OnInit, OnDestroy {
   private onLanguageChanged: ((event: Event) => void) | null = null;
   currentCustomer: any = null;
   customerDisplayName = '';
+
+  /** Tên gọi ngắn trên header (tên riêng = từ cuối của họ tên); họ tên đầy đủ hiện ở menu tài khoản. */
+  get customerShortName(): string {
+    const parts = String(this.customerDisplayName || '').trim().split(/\s+/).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : '';
+  }
   customerAvatar = '';
 
   cartCount = 0;
