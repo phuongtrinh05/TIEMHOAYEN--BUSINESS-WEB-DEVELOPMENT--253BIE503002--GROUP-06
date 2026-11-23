@@ -1,4 +1,5 @@
 import { getCollection } from '../mongo.js';
+import { getDesign, isDesignProduct } from './design3d.service.js';
 import type { ClientSession } from 'mongodb';
 import { InventoryError, withTransaction } from './inventory/helpers.js';
 import { INVENTORY_CONFIG } from './inventory/constants.js';
@@ -302,7 +303,8 @@ export async function priceCheckout(payload: any, session?: ClientSession, colle
     merged.set(id, (merged.get(id) || 0) + qty);
   }
   if (!merged.size) throw new InventoryError(400, 'Đơn hàng chưa có sản phẩm.');
-  const productIds = [...merged.keys()];
+  // Mẫu 3D không nằm trong SAN_PHAM: giá và tên lấy từ THIET_KE_3D ở server.
+  const productIds = [...merged.keys()].filter(id => !isDesignProduct(id));
   const productCollection = await collections<any>('SAN_PHAM');
   const imageCollection = await collections<any>('HINH_ANH_SAN_PHAM');
   const productCursor: any = productCollection.find({ SAN_PHAM_ID: { $in: productIds } }, { session });
@@ -320,15 +322,22 @@ export async function priceCheckout(payload: any, session?: ClientSession, colle
   const imageByProduct = new Map<string, any>();
   for (const image of images) if (!imageByProduct.has(image.SAN_PHAM_ID)) imageByProduct.set(image.SAN_PHAM_ID, image);
   for (const [id, qty] of merged) {
+    const cartLineKeys = (payload.items || [])
+      .filter((item: any) => String(item.id || item.productId || item.SAN_PHAM_ID || '') === id)
+      .map((item: any) => String(item.lineKey || item.LINE_KEY || id));
+    if (isDesignProduct(id)) {
+      const design = await getDesign(id, session);
+      if (!Number.isSafeInteger(design.price) || design.price <= 0) throw new InventoryError(409, 'Thiết kế chưa có giá hợp lệ.');
+      items.push({ id, qty, price: design.price, name: design.name, image: design.image || '', cartLineKeys, designId: design.designId, custom: true,
+        bom: { source: 'THIET_KE_3D', designId: design.designId, fingerprint: design.fingerprint, designFee: design.designFee, extraFee: design.extraFee, materials: design.materials } });
+      continue;
+    }
     const product: any = productById.get(id);
     if (!product || /ngừng|ngưng|ẩn|khóa|đã xóa/i.test(String(product.TRANG_THAI || ''))) throw new InventoryError(400, `Sản phẩm ${id} không còn bán.`);
     const regular = Number(product.GIA), sale = Number(product.GIA_KHUYEN_MAI);
     const price = sale > 0 && sale < regular ? sale : regular;
     if (!Number.isSafeInteger(price) || price <= 0) throw new InventoryError(409, `Sản phẩm ${id} chưa có giá hợp lệ.`);
     const image = imageByProduct.get(id);
-    const cartLineKeys = (payload.items || [])
-      .filter((item: any) => String(item.id || item.productId || item.SAN_PHAM_ID || '') === id)
-      .map((item: any) => String(item.lineKey || item.LINE_KEY || id));
     items.push({ id, qty, price, name: product.TEN_SAN_PHAM, image: image?.URL || '', cartLineKeys });
   }
   const subtotal = items.reduce((sum, i) => sum + i.qty * i.price, 0);

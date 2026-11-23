@@ -148,7 +148,9 @@ async function snapshotItem(raw: any, index: number, session: ClientSession) {
   if (raw.custom) {
     const name = text(raw.name, 150);
     const image = String(raw.image || '');
-    if (!/^\/(?:uploads|assets)\/[\w./-]+$/.test(image) && !/^https?:\/\//.test(image)) throw new InventoryError(400, 'Bó phối mới cần ảnh mẫu hoặc ảnh minh họa hợp lệ.');
+    // Ảnh của bó khách tự thiết kế được lưu dạng data URL (cùng giới hạn với createDesign).
+    const designImage = /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(image) && image.length <= 700000;
+    if (!designImage && !/^\/(?:uploads|assets)\/[\w./-]+$/.test(image) && !/^https?:\/\//.test(image)) throw new InventoryError(400, 'Bó phối mới cần ảnh mẫu hoặc ảnh minh họa hợp lệ.');
     if (!Array.isArray(raw.materials) || !raw.materials.length || raw.materials.length > 40) throw new InventoryError(400, 'Bó phối mới cần 1–40 nguyên vật liệu.');
     const seen = new Set<string>();
     const materials = [];
