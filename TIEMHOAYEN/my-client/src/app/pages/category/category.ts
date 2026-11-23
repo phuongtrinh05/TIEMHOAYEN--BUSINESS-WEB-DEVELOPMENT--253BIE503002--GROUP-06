@@ -17,6 +17,7 @@ import {
   ProductSearchQuery
 } from '../../services/category-product.service';
 import { CartService } from '../../services/cart.service';
+import { CollectionService } from '../../services/collection.service';
 import { CustomerService } from '../../services/customer.service';
 
 type FilterGroup = 'chuDe' | 'kieuDang' | 'hoaTuoi' | 'doiTuong' | 'mauSac';
@@ -62,6 +63,8 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   private requestVersion = 0;
   private currentCollectionId = '';
   private breadcrumbFallbackLabels: string[] = [];
+  private collectionNames: Record<string, string> | null = null;
+  private collectionNamesLoading = false;
 
   private categoryBreadcrumb!: HTMLElement;
   private productGrid!: HTMLDivElement;
@@ -146,7 +149,8 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     private router: Router,
     private categoryProductService: CategoryProductService,
     private cartService: CartService,
-    private customerService: CustomerService
+    private customerService: CustomerService,
+    private collectionService: CollectionService
   ) {}
 
   ngAfterViewInit(): void {
@@ -268,6 +272,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
         this.currentPage = Math.max(1, Number(queryParams.get('page') || 1));
         this.currentCollectionId = path.startsWith('bo-suu-tap') ? String(id || '') : '';
         this.syncPriceFilterUi();
+        this.applyCollectionLabel();
         this.requestServerProducts(false);
         return;
       }
@@ -306,6 +311,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       } else if (id && path.startsWith('bo-suu-tap')) {
         this.pageTitle = 'Bộ sưu tập';
         this.setBreadcrumb('Bộ sưu tập');
+        this.applyCollectionLabel();
       } else {
         this.pageTitle = 'Sản phẩm';
         this.setBreadcrumb(selectedTopicIds.length ? 'Chủ đề' : '');
@@ -318,6 +324,44 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   private getFilterValueById(group: FilterGroup, id: string): string {
     const checkbox = document.querySelector<HTMLInputElement>(`input[data-group="${group}"][data-id="${CSS.escape(id)}"]`);
     return checkbox ? this.getCheckboxValue(checkbox) : '';
+  }
+
+  /** Hiện tên bộ sưu tập (vd "Ngày 20/10") ở tiêu đề và chip lọc, để khách
+   *  thấy rõ đang xem đúng BST chứ không phải toàn bộ sản phẩm. */
+  private applyCollectionLabel(): void {
+    const collectionId = this.currentCollectionId;
+    if (!collectionId) {
+      return;
+    }
+    const name = this.collectionNames?.[collectionId];
+    if (name) {
+      this.pageTitle = name;
+      this.breadcrumbFallbackLabels = ['Bộ sưu tập', name];
+      this.updateBreadcrumbLabels();
+      if (this.selectedFilterList) {
+        this.renderSelectedFilters();
+      }
+      return;
+    }
+    if (this.collectionNames || this.collectionNamesLoading) {
+      return;
+    }
+    this.collectionNamesLoading = true;
+    this.collectionService.getAll().subscribe({
+      next: (collections) => {
+        this.collectionNames = {};
+        (Array.isArray(collections) ? collections : []).forEach((item) => {
+          if (item?.BO_SUU_TAP_ID) {
+            this.collectionNames![String(item.BO_SUU_TAP_ID)] = String(item.TEN_BO_SUU_TAP || '').trim();
+          }
+        });
+        this.collectionNamesLoading = false;
+        this.applyCollectionLabel();
+      },
+      error: () => {
+        this.collectionNamesLoading = false;
+      }
+    });
   }
 
   private setBreadcrumb(mainLabel = ''): void {
@@ -1191,6 +1235,17 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   private renderSelectedFilters(): void {
     const chips: string[] = [];
 
+    const collectionName = this.currentCollectionId ? this.collectionNames?.[this.currentCollectionId] : '';
+    if (collectionName) {
+      const safeName = this.escapeHtml(collectionName);
+      chips.push(`
+          <span class="selected-chip">
+            Bộ sưu tập: ${safeName}
+            <button type="button" data-action="clear-collection" aria-label="Gỡ bộ sưu tập ${safeName}">×</button>
+          </span>
+        `);
+    }
+
     (Object.keys(this.selectedFilters) as FilterGroup[]).forEach((group) => {
       this.selectedFilters[group].forEach((value) => {
         const safeValue = this.escapeHtml(value);
@@ -1223,6 +1278,11 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
     this.selectedFilterList.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
       button.addEventListener('click', () => {
+        if (button.dataset['action'] === 'clear-collection') {
+          this.clearAllFiltersButton.click();
+          return;
+        }
+
         if (button.dataset['action'] === 'clear-price') {
           this.resetPriceFilter();
           this.currentPage = 1;

@@ -1,1 +1,101 @@
-<section class="journal"><section class="blog-banner"><video class="blog-video" src="assets/video/blog_video.mp4" autoplay muted loop playsinline>Trình duyệt của bạn không hỗ trợ video.</video></section><div class="journal-top-search"><form (ngSubmit)="filter()"><label for="blog-search">Tìm bài viết</label><input id="blog-search" [(ngModel)]="keyword" name="keyword" maxlength="150" placeholder="Bạn muốn đọc gì?"><button type="submit">Tìm kiếm →</button></form></div><main class="journal-layout"><aside><h2>Chủ đề</h2><button [class.active]="!category" (click)="filter('')">Tất cả bài viết</button>@for(c of categories;track c){<button [class.active]="category===c" (click)="filter(c)">{{c}}</button>}</aside><section><div class="list-title"><h2>{{category||'Khám phá cùng Hoa Yên'}}</h2><span>{{total}} bài viết</span></div>@if(loading){<p class="state" role="status">Đang tải câu chuyện…</p>}@else if(error){<p class="state" role="alert">{{error}}</p>}@else{<div class="journal-grid">@for(p of posts;track p.BAI_VIET_ID){<article><a [routerLink]="['/blog-detail',p.BAI_VIET_ID]" [queryParams]="{category:category||null,keyword:keyword||null,page:page}"><img [src]="image(p.ANH_BIA)" (error)="fallback($event)" [alt]="p.TIEU_DE" loading="lazy"><div class="post-copy"><span class="category">{{p.DANH_MUC_BLOG}}</span><h3>{{p.TIEU_DE}}</h3><p>{{excerpt(p.NOI_DUNG)}}</p><div class="post-meta"><span><i class="bi bi-calendar3" aria-hidden="true"></i> {{p.NGAY_DANG|date:'dd/MM/yyyy':'+0700'}}</span><span><i class="bi bi-eye" aria-hidden="true"></i> {{p.LUOT_XEM||0|number}}</span><span class="read-more">Đọc tiếp →</span></div></div></a></article>}@empty{<p class="state">Chưa có bài viết phù hợp. Bạn thử chủ đề khác nhé.</p>}</div><nav class="pagination" aria-label="Phân trang Blog"><button [disabled]="page<=1" (click)="turn(page-1)">← Trước</button><span>Trang {{page}}</span><button [disabled]="page*8>=total" (click)="turn(page+1)">Sau →</button></nav>}</section></main></section>
+<section class="journal">
+  <!-- Banner (thay video) -->
+  <section class="blog-banner">
+    <img src="assets/images/blog.png" alt="Blog Tiệm Hoa Yên – Nơi cảm xúc nở hoa, mỗi ngày thêm ý nghĩa" fetchpriority="high">
+  </section>
+
+  <!-- Thanh tìm kiếm nổi trên banner -->
+  <div class="journal-search">
+    <form (ngSubmit)="filter()" role="search">
+      <i class="bi bi-search" aria-hidden="true"></i>
+      <label class="sr-only" for="blog-search">Tìm bài viết</label>
+      <input id="blog-search" [(ngModel)]="keyword" name="keyword" maxlength="150" placeholder="Bạn muốn đọc gì hôm nay?">
+      <button type="submit">Tìm kiếm</button>
+    </form>
+  </div>
+
+  <main class="journal-main">
+    <!-- Chủ đề dạng pill -->
+    <nav class="journal-topics" aria-label="Chủ đề blog">
+      <button type="button" [class.active]="!category" (click)="filter('')">Tất cả bài viết</button>
+      @for (c of categories; track c) {
+        <button type="button" [class.active]="category === c" (click)="filter(c)">{{ c }}</button>
+      }
+    </nav>
+
+    <div class="list-title">
+      <div>
+        <span class="list-kicker">{{ keyword ? 'Kết quả tìm kiếm' : 'Nhật ký Hoa Yên' }}</span>
+        <h2>{{ category || (keyword ? '“' + keyword + '”' : 'Khám phá cùng Hoa Yên') }}</h2>
+      </div>
+      <span class="list-count">{{ total }} bài viết</span>
+    </div>
+
+    @if (loading) {
+      <div class="journal-grid" aria-busy="true">
+        @for (s of [1, 2, 3]; track s) {
+          <div class="post-skeleton"><div></div><p></p><p></p></div>
+        }
+      </div>
+    } @else if (error) {
+      <p class="state" role="alert">{{ error }}</p>
+    } @else {
+      @if (featured; as f) {
+        <article class="post-featured">
+          <a [routerLink]="['/blog-detail', f.BAI_VIET_ID]" [queryParams]="{ category: category || null, keyword: keyword || null, page: page }">
+            <div class="featured-media">
+              <img [src]="image(f.ANH_BIA)" (error)="fallback($event)" [alt]="f.TIEU_DE">
+              @if (isTopFeatured) {<span class="featured-badge">Bài nổi bật</span>}
+            </div>
+            <div class="post-copy">
+              <span class="category">{{ f.DANH_MUC_BLOG }}</span>
+              <h3>{{ f.TIEU_DE }}</h3>
+              <p>{{ excerpt(f.NOI_DUNG, 260) }}</p>
+              <div class="post-meta">
+                <span><i class="bi bi-calendar3" aria-hidden="true"></i> {{ f.NGAY_DANG | date: 'dd/MM/yyyy' : '+0700' }}</span>
+                <span><i class="bi bi-eye" aria-hidden="true"></i> {{ f.LUOT_XEM || 0 | number }}</span>
+                <span class="read-more">Đọc tiếp <i class="bi bi-arrow-right"></i></span>
+              </div>
+            </div>
+          </a>
+        </article>
+      }
+
+      <div class="journal-grid" [class.grid-4]="gridPosts.length % 4 === 0 && gridPosts.length % 3 !== 0">
+        @for (p of gridPosts; track p.BAI_VIET_ID) {
+          <article class="post-card">
+            <a [routerLink]="['/blog-detail', p.BAI_VIET_ID]" [queryParams]="{ category: category || null, keyword: keyword || null, page: page }">
+              <div class="post-media">
+                <img [src]="image(p.ANH_BIA)" (error)="fallback($event)" [alt]="p.TIEU_DE" loading="lazy">
+              </div>
+              <div class="post-copy">
+                <span class="category">{{ p.DANH_MUC_BLOG }}</span>
+                <h3>{{ p.TIEU_DE }}</h3>
+                <p>{{ excerpt(p.NOI_DUNG) }}</p>
+                <div class="post-meta">
+                  <span><i class="bi bi-calendar3" aria-hidden="true"></i> {{ p.NGAY_DANG | date: 'dd/MM/yyyy' : '+0700' }}</span>
+                  <span><i class="bi bi-eye" aria-hidden="true"></i> {{ p.LUOT_XEM || 0 | number }}</span>
+                  <span class="read-more">Đọc tiếp <i class="bi bi-arrow-right"></i></span>
+                </div>
+              </div>
+            </a>
+          </article>
+        } @empty {
+          @if (!featured) {
+            <p class="state">Chưa có bài viết phù hợp. Bạn thử chủ đề khác nhé.</p>
+          }
+        }
+      </div>
+
+      @if (totalPages > 1) {
+        <nav class="pagination" aria-label="Phân trang Blog">
+          <button type="button" [disabled]="page <= 1" (click)="turn(page - 1)" aria-label="Trang trước"><i class="bi bi-chevron-left"></i></button>
+          @for (n of pageNumbers; track n) {
+            <button type="button" class="page-num" [class.active]="n === page" [attr.aria-current]="n === page ? 'page' : null" (click)="turn(n)">{{ n }}</button>
+          }
+          <button type="button" [disabled]="page >= totalPages" (click)="turn(page + 1)" aria-label="Trang sau"><i class="bi bi-chevron-right"></i></button>
+        </nav>
+      }
+    }
+  </main>
+</section>
