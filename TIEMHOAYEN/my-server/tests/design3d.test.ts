@@ -53,7 +53,7 @@ else {
     await assert.rejects(design.createDesign({materials:[{materialId:'ROSE',quantity:2,colors:[{color:'Đỏ',quantity:3}]}]}),/Tổng/);
     await assert.rejects(design.createDesign({materials:[{materialId:'ROSE',quantity:2,colors:[{color:'Không tồn tại',quantity:2}]}]}),/màu/);
   });
-  test('new design goes to Sales; consent and exact staff proposal approve pattern, future order has no hold',async()=>{
+  test('new design goes to Sales; consent and exact staff proposal approve pattern; conversion holds stock when available',async()=>{
     const r=await submit(original,'2099-11-01');assert.equal(r.code,201,JSON.stringify(r));assert.equal(r.data.kind,'sales_request');
     assert.equal(await (await collection('THANH_TOAN')).countDocuments(),0);
     await requests.updateSalesRequest(r.data.requestId,{action:'claim',version:0},sales);
@@ -66,35 +66,29 @@ else {
     const row=await (await collection(requests.REQUESTS)).findOne({_id:r.data.requestId});
     const result=await flow.convertProposal(r.data.requestId,{quoteId:q.id,version:row.version},sales);
     assert.ok(result.orderId);
-    assert.equal(await (await collection('GIU_TON')).countDocuments({DON_HANG_ID:result.orderId}),0);
+    // planOrderStock: Sales chốt đơn mà tồn hiện tại đủ thì giữ ngay (HOLD_NOW), bất kể ngày giao.
+    assert.ok(await (await collection('GIU_TON')).countDocuments({DON_HANG_ID:result.orderId})>0);
     approved=await design.getDesign(original.designId);
     assert.equal(approved.price,55000);assert.equal(approved.requiresReview,false,'Below threshold still allowed');
     const changed=await design.createDesign({materials:[{materialId:'ROSE',quantity:3}]});assert.equal(changed.requiresReview,true);
     const recolored=await design.createDesign({materials:[{materialId:'ROSE',quantity:2,colors:[{color:'Đỏ',quantity:2}]}]});assert.equal(recolored.requiresReview,true,'Changing colors does not reuse approval for another layout');
   });
-  test('approved today: hold before payment, immutable material snapshot, repeat confirmation no double hold',async()=>{
-    const r=await submit(approved);assert.equal(r.code,201,JSON.stringify(r));assert.equal(r.data.kind,'order');
-    const detail=await (await collection('DON_HANG_CHI_TIET')).findOne({DON_HANG_ID:r.data.orderId});
-    assert.equal(detail.THIET_KE_3D_ID,approved.designId);assert.equal(detail.BOM_SNAPSHOT.materials[0].quantity,2);
-    assert.equal(detail.BOM_SNAPSHOT.materials[0].colors.length,2);
-    const held=await (await collection('NGUYEN_VAT_LIEU')).findOne({NGUYEN_VAT_LIEU_ID:'ROSE'});assert.equal(held.TON_DANG_GIU,2);
-    const {updateAdminOrderPaymentStatus}=await import('../controllers/admin.js');
-    for(let i=0;i<2;i++){const paid=await invoke(updateAdminOrderPaymentStatus,{status:'Thành công',amount:55000},{orderId:r.data.orderId});assert.equal(paid.code,200,JSON.stringify(paid));}
-    assert.equal((await (await collection('NGUYEN_VAT_LIEU')).findOne({NGUYEN_VAT_LIEU_ID:'ROSE'})).TON_DANG_GIU,2);
+  // Quy tắc nghiệp vụ: mọi mẫu 3D đều qua Yêu cầu đặt hàng để nhân viên duyệt (có thể phát sinh phí),
+  // kể cả mẫu shop đã từng làm. Checkout không tạo đơn, không tạo QR, không giữ tồn cho mẫu 3D.
+  test('approved design delivered today still goes to Sales: no order, no QR, no hold',async()=>{
+    const heldBefore=(await (await collection('NGUYEN_VAT_LIEU')).findOne({NGUYEN_VAT_LIEU_ID:'ROSE'})).TON_DANG_GIU;
+    const r=await submit(approved);assert.equal(r.code,201,JSON.stringify(r));assert.equal(r.data.kind,'sales_request');
+    assert.ok(r.data.requestId);assert.equal(r.data.orderId,undefined);
+    assert.equal(await (await collection('THANH_TOAN')).countDocuments({DON_HANG_ID:r.data.requestId}),0);
+    assert.equal((await (await collection('NGUYEN_VAT_LIEU')).findOne({NGUYEN_VAT_LIEU_ID:'ROSE'})).TON_DANG_GIU,heldBefore);
   });
-  test('approved future: no hold before/after payment; only verified payment creates frozen demand once',async()=>{
-    const r=await submit(approved,'2099-11-01');assert.equal(r.code,201,JSON.stringify(r));assert.equal(r.data.kind,'order');
-    assert.equal(await (await collection('GIU_TON')).countDocuments({DON_HANG_ID:r.data.orderId}),0);
-    assert.equal(await (await collection('NHU_CAU_NVL_DU_KIEN')).countDocuments({DON_HANG_ID:r.data.orderId}),0);
-    const {updateAdminOrderPaymentStatus}=await import('../controllers/admin.js');
-    for(let i=0;i<2;i++){const paid=await invoke(updateAdminOrderPaymentStatus,{status:'Thành công',amount:55000},{orderId:r.data.orderId});assert.equal(paid.code,200,JSON.stringify(paid));}
-    const demand=await (await collection('NHU_CAU_NVL_DU_KIEN')).find({DON_HANG_ID:r.data.orderId}).toArray();
-    assert.equal(demand.length,1);assert.equal(demand[0].SO_LUONG,2);
-    assert.equal(await (await collection('GIU_TON')).countDocuments({DON_HANG_ID:r.data.orderId}),0);
+  test('approved design delivered later still goes to Sales: no demand before staff converts',async()=>{
+    const r=await submit(approved,'2099-11-01');assert.equal(r.code,201,JSON.stringify(r));assert.equal(r.data.kind,'sales_request');
+    assert.equal(await (await collection('NHU_CAU_NVL_DU_KIEN')).countDocuments({DON_HANG_ID:r.data.requestId}),0);
+    assert.equal(await (await collection('GIU_TON')).countDocuments({DON_HANG_ID:r.data.requestId}),0);
   });
-  test('approved price/total tampering rejected before order/QR/hold',async()=>{
+  test('approved price tampering rejected before creating a request',async()=>{
     const price=await submit({...approved,price:1});assert.ok(price.code>=400,JSON.stringify(price));
-    const total=await submit(approved,today(),{summary:{subtotal:55000,total:1,shippingFee:0}});assert.ok(total.code>=400,JSON.stringify(total));
   });
   test('member cart resolves design and current price without reserving; quantity flags shortage',async()=>{
     const cart=await import('../controllers/cart.js');
@@ -111,24 +105,13 @@ else {
     assert.equal(r.code,201);assert.equal(r.data.kind,'sales_request');
     assert.equal(await (await collection('THANH_TOAN')).countDocuments({DON_HANG_ID:r.data.requestId}),0);
   });
-  test('expired future QR cannot create demand; retry keeps future order unreserved',async()=>{
-    const {retryOrderPayment}=await import('../controllers/order.js');
-    const {updateAdminOrderPaymentStatus}=await import('../controllers/admin.js');
-    const r=await submit(approved,'2099-11-01');assert.equal(r.code,201);
-    await (await collection('THANH_TOAN')).updateMany({DON_HANG_ID:r.data.orderId},{$set:{NGAY_THANH_TOAN:new Date(0)}});
-    assert.equal((await invoke(updateAdminOrderPaymentStatus,{status:'Thành công',amount:55000},{orderId:r.data.orderId})).code,410);
-    assert.equal(await (await collection('NHU_CAU_NVL_DU_KIEN')).countDocuments({DON_HANG_ID:r.data.orderId}),0);
-    const retry=await invoke(retryOrderPayment,{},{orderId:r.data.orderId});assert.equal(retry.code,200,JSON.stringify(retry));
-    assert.equal(await (await collection('GIU_TON')).countDocuments({DON_HANG_ID:r.data.orderId}),0);
-  });
-  test('concurrent approved orders for final materials cannot oversell',async()=>{
+  test('concurrent checkouts of an approved design for the last materials both become requests without holding stock',async()=>{
     const d=await design.createDesign({materials:[{materialId:'LAST',quantity:2}]});
     await (await collection('MAU_3D_DA_DUYET')).insertOne({_id:d.fingerprint,TRANG_THAI:'Đã duyệt',designFee:0,extraFee:0});
     const q=await design.getDesign(d.designId);
     const results=await Promise.all([submit(q),submit(q)]);
     assert.deepEqual(results.map(r=>r.code),[201,201]);
-    assert.equal(results.filter(r=>r.data.kind==='order').length,1,JSON.stringify(results));
-    assert.equal(results.filter(r=>r.data.kind==='sales_request').length,1);
-    assert.equal((await (await collection('NGUYEN_VAT_LIEU')).findOne({NGUYEN_VAT_LIEU_ID:'LAST'})).TON_DANG_GIU,2);
+    assert.equal(results.filter(r=>r.data.kind==='sales_request').length,2,JSON.stringify(results));
+    assert.equal((await (await collection('NGUYEN_VAT_LIEU')).findOne({NGUYEN_VAT_LIEU_ID:'LAST'})).TON_DANG_GIU,0);
   });
 }

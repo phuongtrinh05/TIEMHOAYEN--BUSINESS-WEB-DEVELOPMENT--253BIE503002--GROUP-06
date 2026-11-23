@@ -405,7 +405,8 @@ export class CartComponent implements OnInit {
       if(this.isLoggedIn)this.saveCustomerCartCache();else this.saveGuestCartToStorage();this.cdr.detectChanges();
     },error:()=>{item.requiresReview=true;item.badges=['Chưa xác minh được thiết kế; vui lòng tải lại trước khi đặt.'];this.cdr.detectChanges();}});
   }
-  get hasDesignReview():boolean{return this.cartItems.some(i=>i.selected && i.requiresReview);}
+  // Mọi mẫu 3D (SP3D_…) đều qua Yêu cầu đặt hàng để nhân viên duyệt, kể cả mẫu shop đã từng làm.
+  get hasDesignReview():boolean{return this.cartItems.some(i=>i.selected && (i.requiresReview || !!i.designId || i.id.startsWith('SP3D_')));}
 
   private getCartTopicName(value: unknown): string {
     const text = String(value || '').trim();
