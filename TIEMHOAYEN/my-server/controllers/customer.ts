@@ -4,7 +4,7 @@ import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordH
 import { randomUUID } from 'node:crypto';
 import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
 import { createCustomerOrderAccess } from '../services/order-access.service.js';
-import { assertLoginNotLocked, assertStrongPassword, audit, AuthError, recordLoginFailure, recordLoginSuccess, wrongPasswordError } from '../services/auth.service.js';
+import { assertLoginNotLocked, assertStrongPassword, audit, AuthError, recordLoginFailure, recordLoginSuccess, sendChallenge, wrongPasswordError } from '../services/auth.service.js';
 import { derivePromotionStatus } from '../services/pricing-voucher.service.js';
 import { expireCustomerPoints } from '../services/loyalty-policy.service.js';
 import { isLockedStatus } from '../utils/account-status.js';
@@ -138,6 +138,22 @@ export const getAllCustomers = async (_req: Request, res: Response) => {
 };
 
 const GENDERS = ['Nam', 'Nữ', 'Khác'];
+const PENDING_VERIFICATION = 'Chờ xác minh';
+const isPendingVerification = (row: any) => String(row?.TRANG_THAI || '') === PENDING_VERIFICATION;
+
+/** Gửi OTP xác minh đăng ký tới email (nếu có) hoặc số điện thoại của tài khoản đang chờ xác minh. */
+async function sendRegisterOtp(req: Request, phone: string) {
+  const otpReq = Object.assign(Object.create(req), { body: { SDT: phone } });
+  try {
+    const challenge: any = await sendChallenge('KHACH_HANG', otpReq, 'DANG_KY');
+    // Câu báo mã đã gửi tới email/số điện thoại nào (đã che bớt), hiển thị trong popup OTP.
+    return { otpSent: true, ...challenge, destinationMessage: challenge.message };
+  } catch (error: any) {
+    if (!(error instanceof AuthError)) throw error;
+    // Tài khoản đã được lưu: báo lý do chưa gửi được mã để khách bấm Gửi lại mã.
+    return { otpSent: false, otpError: error.message, resendAfter: Number(error.extra?.resendAfter) || 0 };
+  }
+}
 const authFailure = (res: Response, error: any, fallback: string) => {
   if (error instanceof AuthError) return res.status(error.status).json({ ...error.extra, message: error.message });
   console.error(fallback, error?.message);
@@ -160,14 +176,31 @@ export const registerCustomer = async (req: Request, res: Response) => {
     assertStrongPassword(password);
 
     const customerCollection = await getCustomerCollection();
-    if (await customerCollection.findOne({ SDT: phone })) {
+    const existing = await customerCollection.findOne({ SDT: phone });
+    // Số đã đăng ký nhưng chưa nhập OTP: cho đăng ký lại để cập nhật thông tin và nhận mã mới.
+    const pending = existing && !existing.DA_XOA && isPendingVerification(existing) ? existing : null;
+    if (existing && !pending) {
       return res.status(409).json({ field: 'phone', message: 'Số điện thoại đã được đăng ký. Vui lòng đăng nhập hoặc dùng Quên mật khẩu.' });
     }
     if (emailValue) {
       const escaped = emailValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      if (await customerCollection.findOne({ EMAIL: { $regex: `^${escaped}$`, $options: 'i' } })) {
+      const emailOwner = await customerCollection.findOne({ EMAIL: { $regex: `^${escaped}$`, $options: 'i' } });
+      if (emailOwner && emailOwner.KHACH_HANG_ID !== pending?.KHACH_HANG_ID) {
         return res.status(409).json({ field: 'email', message: 'Email đã được đăng ký.' });
       }
+    }
+
+    if (pending) {
+      const updated = { TEN: name, EMAIL: emailValue || null, GIOI_TINH: gender, MAT_KHAU: await hashPassword(password) };
+      await customerCollection.updateOne({ KHACH_HANG_ID: pending.KHACH_HANG_ID, TRANG_THAI: PENDING_VERIFICATION }, { $set: updated });
+      await audit(req, 'DANG_KY', pending.KHACH_HANG_ID, { LY_DO: 'Đăng ký lại khi chưa xác minh' });
+      const otp = await sendRegisterOtp(req, phone);
+      return res.status(201).json({
+        ...otp,
+        message: 'Số điện thoại này đang chờ xác minh. Vui lòng nhập mã xác minh để hoàn tất đăng ký.',
+        customer: sanitizeCustomer({ ...pending, ...updated }),
+        requiresVerification: true,
+      });
     }
 
     const newId = await getNextPrefixedId('KHACH_HANG', 'KHACH_HANG_ID', 'CUST', 4);
@@ -184,18 +217,20 @@ export const registerCustomer = async (req: Request, res: Response) => {
       LOAI_THANH_VIEN: 'Thành viên',
       DIEM_TICH_LUY: 0,
       AVATAR: null,
-      // Không còn bước xác minh email khi đăng ký: tài khoản dùng được ngay.
-      TRANG_THAI: 'Hoạt động',
+      // Tài khoản chỉ hoạt động sau khi khách nhập đúng mã OTP.
+      TRANG_THAI: PENDING_VERIFICATION,
       DA_XOA: false,
     };
 
     await customerCollection.insertOne(customer);
     await audit(req, 'DANG_KY', newId);
+    const otp = await sendRegisterOtp(req, phone);
 
     return res.status(201).json({
-      message: 'Đăng ký thành công. Bạn có thể đăng nhập ngay.',
+      ...otp,
+      message: 'Đã tạo tài khoản. Vui lòng nhập mã xác minh để hoàn tất đăng ký.',
       customer: sanitizeCustomer(customer),
-      requiresVerification: false,
+      requiresVerification: true,
     });
   } catch (error: any) {
     return authFailure(res, error, 'Chưa đăng ký được tài khoản. Vui lòng thử lại.');
@@ -220,11 +255,10 @@ export const loginCustomer = async (req: Request, res: Response) => {
       await audit(req, 'DANG_NHAP', customer.KHACH_HANG_ID, { LY_DO: 'Sai mật khẩu' }, false);
       throw wrongPasswordError(await recordLoginFailure('KHACH_HANG', customer), 'Mật khẩu không đúng.');
     }
-    // Tài khoản cũ còn "Chờ xác minh" (từ khi còn bắt buộc xác minh email) được kích hoạt khi đăng nhập đúng mật khẩu.
-    if (/chờ xác minh/i.test(String(customer.TRANG_THAI || ''))) {
-      await customerCollection.updateOne({ KHACH_HANG_ID: customer.KHACH_HANG_ID, TRANG_THAI: customer.TRANG_THAI }, { $set: { TRANG_THAI: 'Hoạt động' } });
-      customer.TRANG_THAI = 'Hoạt động';
-      await audit(req, 'KICH_HOAT_TAI_KHOAN', customer.KHACH_HANG_ID, { LY_DO: 'Bỏ xác minh email khi đăng ký' });
+    // Chưa nhập OTP khi đăng ký thì chưa được đăng nhập.
+    if (isPendingVerification(customer)) {
+      await audit(req, 'DANG_NHAP', customer.KHACH_HANG_ID, { LY_DO: 'Chưa xác minh đăng ký' }, false);
+      return res.status(403).json({ unverified: true, message: 'Tài khoản chưa được xác minh. Vui lòng đăng ký lại bằng số điện thoại này để nhận mã xác minh.' });
     }
     if (isLockedStatus(customer.TRANG_THAI)) return res.status(403).json({ locked: true, message: 'Tài khoản đã bị khóa. Vui lòng liên hệ cửa hàng để được hỗ trợ.' });
 

@@ -39,14 +39,16 @@ test('OTP: saved email uses Gmail; missing email uses SMS channel; 60s resend co
     ] as const) {
       await db.collection(type).insertOne({ [auth.accountKey(type)]: id, SDT: phone, EMAIL: email, MAT_KHAU: 'TestOnly!123', TRANG_THAI: purpose === 'DANG_KY' ? 'Chờ xác minh' : 'Hoạt động' });
       const req: any = { body: type === 'NHAN_VIEN' ? { EMAIL: email } : { SDT: phone }, ip: id, headers: {} };
+      // Đăng ký luôn gửi SMS tới số đã khai, kể cả khi có email.
+      const viaEmail = !!email && purpose !== 'DANG_KY';
       const send = async () => {
         logs = ''; const count = emails.length;
         const result: any = await auth.sendChallenge(type, req, purpose);
         assert.equal(result.expiresIn, 60); assert.equal(result.resendAfter, 60);
         assert.equal(result.attemptLimit, type === 'NHAN_VIEN' ? 3 : 5);
-        if (email) { assert.equal(result.delivery, 'email'); assert.equal(emails.length, count + 1); assert.equal(emails.at(-1)!.to, email); assert.equal(logs, ''); }
-        else { assert.equal(emails.length, count); assert.ok(logs.includes(phone)); }
-        const code = email ? emails.at(-1)!.code : logs.match(/: (\d{6}) /)![1];
+        if (viaEmail) { assert.equal(result.delivery, 'email'); assert.equal(emails.length, count + 1); assert.equal(emails.at(-1)!.to, email); assert.equal(logs, ''); }
+        else { assert.equal(result.delivery, type === 'KHACH_HANG' ? 'sms' : result.delivery); assert.equal(emails.length, count); assert.ok(logs.includes(phone)); }
+        const code = viaEmail ? emails.at(-1)!.code : logs.match(/: (\d{6}) /)![1];
         assert.ok(!JSON.stringify(result).includes(code));
         return { result, code };
       };

@@ -269,7 +269,8 @@ export async function sendChallenge(type: AccountType, req: Request, purpose = '
     throw new AuthError(403, purpose === 'DANG_KY' ? 'Tài khoản không ở trạng thái chờ xác minh.' : 'Tài khoản chưa xác minh hoặc đã bị khóa.');
   }
   const email = String(account.EMAIL || '').trim();
-  const sms = type === 'KHACH_HANG' && !EMAIL_PATTERN.test(email);
+  // Xác minh đăng ký luôn gửi SMS tới chính số điện thoại đã khai, để chứng minh khách giữ số đó (chống giả mạo SĐT).
+  const sms = type === 'KHACH_HANG' && (purpose === 'DANG_KY' || !EMAIL_PATTERN.test(email));
   if (!sms && !email) throw new AuthError(400, 'Tài khoản chưa có email nhận mã xác minh.');
   const challenges = await collection('XAC_THUC_TAI_KHOAN');
   const now = Date.now();
