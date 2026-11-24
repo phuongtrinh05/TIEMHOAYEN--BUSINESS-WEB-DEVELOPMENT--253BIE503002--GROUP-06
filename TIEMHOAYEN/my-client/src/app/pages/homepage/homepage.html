@@ -533,9 +533,11 @@
             <div class="review-grid">
                 @for(item of visibleCustomerReviews; track item.image) {
                     <div class="review-card">
-                        <img
-                            [src]="item.image"
-                            [alt]="item.content">
+                        <div class="review-card__media">
+                            <img
+                                [src]="item.image"
+                                [alt]="item.content">
+                        </div>
                         <p>{{item.content}}</p>
                     </div>
                 }

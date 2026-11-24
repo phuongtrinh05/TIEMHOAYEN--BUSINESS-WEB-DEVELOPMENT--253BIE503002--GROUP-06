@@ -684,10 +684,21 @@
     transform: scale(1.06);
 }
 
+.review-card__media {
+    overflow: hidden;
+}
+
 .review-card p {
     padding: 10px 12px;
     font-size: 13px;
     margin: 0;
+    transition: transform .5s ease, color .35s ease, background-color .35s ease;
+}
+
+.review-card:hover p {
+    transform: scale(1.06);
+    color: var(--primary-color);
+    background-color: #fff8f1;
 }
 
 .review-arrow {
