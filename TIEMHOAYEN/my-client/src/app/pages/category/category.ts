@@ -977,6 +977,9 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
 
     if (this.currentSort === 'priceAsc') sorted.sort((a, b) => a.price - b.price);
     if (this.currentSort === 'priceDesc') sorted.sort((a, b) => b.price - a.price);
+    // Sản phẩm mua kèm luôn nằm cuối (sort ổn định nên giữ thứ tự bên trong từng nhóm).
+    const isAddOn = (p: Product) => /^SPM/i.test(p.id) || (p.filters?.kieuDang || []).some(s => s.trim().toLowerCase() === 'sản phẩm mua kèm');
+    sorted.sort((a, b) => Number(isAddOn(a)) - Number(isAddOn(b)));
     return sorted;
   }
 
