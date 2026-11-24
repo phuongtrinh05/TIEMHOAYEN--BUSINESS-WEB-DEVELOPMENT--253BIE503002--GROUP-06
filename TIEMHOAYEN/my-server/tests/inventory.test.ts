@@ -58,10 +58,10 @@ if (!uri) {
       { _id: 'SPA', SAN_PHAM_ID: 'SPA', TEN_SAN_PHAM: 'Bó A (10 hồng)', TRANG_THAI: 'Đang bán', GIA: 500000 },
       { _id: 'SPB', SAN_PHAM_ID: 'SPB', TEN_SAN_PHAM: 'Bó B ruy băng', TRANG_THAI: 'Đang bán', GIA: 200000 },
     ]);
-    await db.collection<any>('DON_HANG').insertMany(['DH1', 'DH2', 'DH3'].map((id) => ({ _id: id, DON_HANG_ID: id, TRANG_THAI: 'Chờ xử lý' })));
+    await db.collection<any>('DON_HANG').insertMany(['DH1', 'DH2', 'DH3'].map((id) => ({ _id: id, DON_HANG_ID: id, TRANG_THAI: 'Chờ xử lý', THOI_DIEM_CHUAN_BI_DU_KIEN: new Date(Date.now() + 3_600_000), TONG_TIEN: 0 })));
     await db.collection<any>('DON_HANG_CHI_TIET').insertMany([{ DON_HANG_ID: 'DH1', SAN_PHAM_ID: 'SPA', SO_LUONG: 2 }]);
     await bom.createBomVersion('SPA', { activate: true, lines: [
-      { materialId: 'NVL001', quantity: 10, role: 'Chính', substitutes: ['NVL004'] },
+      { materialId: 'NVL001', quantity: 10, role: 'Chính', substitutes: ['NVL004'], allowSubstitution: true },
       { materialId: 'NVL051', quantity: 2, role: 'Phụ liệu' },
     ] }, actor);
     await bom.createBomVersion('SPB', { activate: true, lines: [
@@ -226,7 +226,7 @@ if (!uri) {
     });
 
     test('bỏ sót NVL đã giữ phải chặn Posted; dòng thực lấy 0 nhả hết phần dư', async () => {
-      await (await mongo.getCollection<any>('DON_HANG')).insertOne({ DON_HANG_ID: 'AUDIT-EXPORT' });
+      await (await mongo.getCollection<any>('DON_HANG')).insertOne({ DON_HANG_ID: 'AUDIT-EXPORT', TRANG_THAI: 'Chờ xử lý', THOI_DIEM_CHUAN_BI_DU_KIEN: new Date(Date.now() + 3_600_000), TONG_TIEN: 0 });
       const { withTransaction } = await import('../services/inventory/helpers.js');
       await withTransaction(session => stock.reserveMaterialNeeds(session, new Map([['NVL004', 1], ['NVL075', 1]]), {
         status: K.RESERVATION_STATUS.official, orderId: 'AUDIT-EXPORT', actor,
@@ -270,7 +270,7 @@ if (!uri) {
     });
 
     test('đơn tương lai: PO đang giao kịp → available; quá hạn PO → need_review', async () => {
-      const deliver = new Date(Date.now() + 3 * 86_400_000);
+      const deliver = new Date(Date.now() + 3 * 86_400_000); deliver.setHours(10, 0, 0, 0);
       const before = await avail.checkProductAvailability('SPA', 3, deliver.toISOString());
       assert.equal(before.decision, 'need_review');
       const po: any = await master.createPurchaseOrder({ supplierId: 'NCC001', expectedAt: new Date(Date.now() + 86_400_000), lines: [{ materialId: 'NVL001', quantity: 50 }, { materialId: 'NVL051', quantity: 10 }] }, actor);
@@ -557,7 +557,7 @@ if (!uri) {
       const b:any=await importAndPost([{materialId:'FIFO-FIX',receivedQty:5,unitPrice:200}],{receivedAt:'2020-01-02T01:00:00Z'});
       await (await mongo.getCollection<any>(K.COLLECTIONS.product)).insertOne({_id:'SP-FIFO',SAN_PHAM_ID:'SP-FIFO',TEN_SAN_PHAM:'FIFO',TRANG_THAI:'Đang bán'});
       await bom.createBomVersion('SP-FIFO',{activate:true,lines:[{materialId:'FIFO-FIX',quantity:5,role:'Chính'}]},actor);
-      await (await mongo.getCollection<any>(K.COLLECTIONS.order)).insertOne({_id:'DH-FIFO',DON_HANG_ID:'DH-FIFO',TRANG_THAI:'Chờ xử lý'});
+      await (await mongo.getCollection<any>(K.COLLECTIONS.order)).insertOne({_id:'DH-FIFO',DON_HANG_ID:'DH-FIFO',TRANG_THAI:'Chờ xử lý',THOI_DIEM_CHUAN_BI_DU_KIEN: new Date(Date.now() + 3_600_000), TONG_TIEN: 0});
       await stock.reserveProducts([{productId:'SP-FIFO',quantity:1}],{status:K.RESERVATION_STATUS.official,orderId:'DH-FIFO',actor});
       const px:any=await stock.createExport({type:K.EXPORT_TYPES.order,orderId:'DH-FIFO',details:[{materialId:'FIFO-FIX',quantity:7,sourceId:b.PHIEU_NHAP_ID}]},actor);
       assert.equal((await stock.getExport(px.PHIEU_XUAT_ID)).details[0].PHIEU_NHAP_CHI_DINH,null);
@@ -579,7 +579,7 @@ if (!uri) {
       const expiry=held.reservations[0].HET_HAN_LUC.getTime()-held.reservations[0].TAO_LUC.getTime();assert.equal(expiry,300000);
       await stock.releaseReservations({paymentSessionId:'SNAP-OLD-KEY'},actor);
       await bom.createBomVersion('SP-SNAP',{activate:true,lines:[{materialId:'SNAP-FIX',quantity:9,role:'Chính'}]},actor);
-      await (await mongo.getCollection<any>(K.COLLECTIONS.order)).insertOne({_id:'DH-SNAP',DON_HANG_ID:'DH-SNAP',TRANG_THAI:'Chờ xử lý'});
+      await (await mongo.getCollection<any>(K.COLLECTIONS.order)).insertOne({_id:'DH-SNAP',DON_HANG_ID:'DH-SNAP',TRANG_THAI:'Chờ xử lý',THOI_DIEM_CHUAN_BI_DU_KIEN: new Date(Date.now() + 3_600_000), TONG_TIEN: 0});
       await (await mongo.getCollection<any>(K.COLLECTIONS.orderDetail)).insertOne({DON_HANG_ID:'DH-SNAP',SAN_PHAM_ID:'SP-SNAP',SO_LUONG:3,BOM_SNAPSHOT:snapshot});
       await withTransaction(session=>reserveOrderLines(session,[{id:'SP-SNAP',qty:3,bom:snapshot}],{status:K.RESERVATION_STATUS.official,orderId:'DH-SNAP',actor}));
       assert.equal((await material('SNAP-FIX')).TON_DANG_GIU,6);
@@ -645,7 +645,7 @@ if (!uri) {
       await importAndPost([{materialId:'RESTORE-HOLD',receivedQty:10,unitPrice:100}]);
       await (await mongo.getCollection<any>(K.COLLECTIONS.product)).insertOne({_id:'SP-RESTORE',SAN_PHAM_ID:'SP-RESTORE',TEN_SAN_PHAM:'Khôi phục',TRANG_THAI:'Đang bán'});
       await bom.createBomVersion('SP-RESTORE',{activate:true,lines:[{materialId:'RESTORE-HOLD',quantity:1,role:'Chính'}]},actor);
-      await (await mongo.getCollection<any>(K.COLLECTIONS.order)).insertOne({_id:'DH-RESTORE',DON_HANG_ID:'DH-RESTORE',TRANG_THAI:'Chờ xử lý'});
+      await (await mongo.getCollection<any>(K.COLLECTIONS.order)).insertOne({_id:'DH-RESTORE',DON_HANG_ID:'DH-RESTORE',TRANG_THAI:'Chờ xử lý',THOI_DIEM_CHUAN_BI_DU_KIEN: new Date(Date.now() + 3_600_000), TONG_TIEN: 0});
       await stock.reserveProducts([{productId:'SP-RESTORE',quantity:5}],{status:K.RESERVATION_STATUS.official,orderId:'DH-RESTORE',actor});
       const px:any=await stock.createExport({type:K.EXPORT_TYPES.order,orderId:'DH-RESTORE',details:[{materialId:'RESTORE-HOLD',quantity:3}]},actor);
       await stock.postExport(px.PHIEU_XUAT_ID,actor);
