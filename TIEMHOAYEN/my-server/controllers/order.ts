@@ -10,7 +10,7 @@ import { syncCheckoutInventory, changeCheckoutPayment, removeOrderedCartItems } 
 import { confirmReservations, releaseReservations, reserveProducts } from '../services/inventory/stock.service.js';
 import { randomUUID } from 'node:crypto';
 import { reserveOrderLines } from '../services/order-stock.service.js';
-import { cancelUnpaidOrdersPastDelivery, expiredPaymentInfo, orderPaymentDeadline } from '../services/unpaid-order-expiry.service.js';
+import { cancelUnpaidOrdersPastDelivery, expiredPaymentInfo, orderPaymentDeadline, paymentRetryEligibility } from '../services/unpaid-order-expiry.service.js';
 import { orderDeliveryAt } from '../services/inventory/stock.service.js';
 import { URGENT_CONTACT_PHONE as SHOP_PHONE, URGENT_LEAD_MINUTES, workingMinutesBetween } from '../services/delivery-policy.service.js';
 import { assertCustomerReschedule, rescheduleModeForOrder } from '../services/shipping-edit-policy.service.js';
@@ -565,10 +565,19 @@ export const retryOrderPayment = async (req: Request, res: Response) => {
       if (paid >= amount && rows.some(p => isSuccessStatus(p.TRANG_THAI_THANH_TOAN))) return response(rows.find(p => isSuccessStatus(p.TRANG_THAI_THANH_TOAN)));
       // Đơn từ Yêu cầu đặt hàng ("Đã xác nhận đơn hàng") cũng được tạo lại QR khi còn hạn.
       if (!['Chờ thanh toán', 'Thanh toán thất bại', 'Đã xác nhận đơn hàng'].includes(order.TRANG_THAI)) throw new InventoryError(409, 'Trạng thái đơn không cho phép thanh toán lại.');
-      const payDeadline = orderPaymentDeadline(order);
-      if (order.HET_HAN_THANH_TOAN === true || (payDeadline && payDeadline.getTime() <= Date.now())) throw new InventoryError(409, 'Đơn đã quá hạn thanh toán, vui lòng đặt lại đơn.', { code: 'ORDER_PAYMENT_EXPIRED' });
-      const deliveryAtForRetry = orderDeliveryAt(order);
-      if (deliveryAtForRetry && workingMinutesBetween(Date.now(), deliveryAtForRetry) < URGENT_LEAD_MINUTES) throw new InventoryError(409, `Đơn còn dưới 4 giờ làm việc trước giờ giao nên không thể tạo mã thanh toán mới. Vui lòng liên hệ shop ${SHOP_PHONE}.`, { code: 'ORDER_PAYMENT_TOO_LATE' });
+      // Còn ≥ 4 giờ làm việc trước giờ giao: cho thanh toán lại, kể cả đơn đã quá hạn (gia hạn đơn thay vì bắt đặt lại).
+      const eligibility = paymentRetryEligibility(order);
+      if (!eligibility.allowed) throw new InventoryError(409, eligibility.code === 'ORDER_PAYMENT_TOO_LATE' ? `${eligibility.reason} Vui lòng liên hệ shop ${SHOP_PHONE}.` : String(eligibility.reason), { code: eligibility.code });
+      if (eligibility.expired) {
+        const revivedAt = new Date();
+        await orders.updateOne({ DON_HANG_ID: orderId }, {
+          $set: { TRANG_THAI: order.TRANG_THAI === 'Đã xác nhận đơn hàng' ? order.TRANG_THAI : 'Chờ thanh toán', HET_HAN_THANH_TOAN: false, GIA_HAN_THANH_TOAN_LUC: revivedAt, NGAY_CAP_NHAT: revivedAt },
+          $unset: { LY_DO_THAT_BAI: '', NGAY_HET_HAN_THANH_TOAN: '' },
+          $push: { LICH_SU_TRANG_THAI: { from: order.TRANG_THAI, to: 'Chờ thanh toán', at: revivedAt, actor: order.KHACH_HANG_ID || 'CUSTOMER', reason: 'Khách thanh toán lại khi giờ giao còn từ 4 giờ làm việc' } },
+        } as any, { session });
+        order.HET_HAN_THANH_TOAN = false;
+        order.GIA_HAN_THANH_TOAN_LUC = revivedAt;
+      }
       const pending = rows.find(p => p.TRANG_THAI_THANH_TOAN === 'Chờ thanh toán');
       const holds = await (await getCollection<any>('GIU_TON')).find({ DON_HANG_ID: orderId, MA_PHIEN_THANH_TOAN: order.MA_PHIEN_THANH_TOAN }, { session }).toArray();
       if (pending && getRemainingSeconds(order, pending) > 0 && holds.length && holds.every(h => h.TRANG_THAI === RESERVATION_STATUS.official || h.TRANG_THAI === RESERVATION_STATUS.temporary && new Date(h.HET_HAN_LUC).getTime() > Date.now())) return response(pending);
@@ -692,6 +701,8 @@ export const getOrderDetail = async (req: Request, res: Response) => {
       // Hạn thanh toán của đơn (khác hạn 5 phút của QR) và lý do nếu đơn đã quá hạn.
       HAN_THANH_TOAN_DON: orderPaymentDeadline(order)?.toISOString() || null,
       QUA_HAN_THANH_TOAN: expiredPaymentInfo(order),
+      // Nút "Thanh toán lại": còn ≥ 4 giờ làm việc trước giờ giao (kể cả đơn đã quá hạn); không thì khách "Đặt lại đơn này".
+      THANH_TOAN_LAI: paymentRetryEligibility(order),
       HAN_GUI_HO_TRO: supportDeadline(order),
       CHE_DO_DOI_LICH: rescheduleModeForOrder(order),
       KHUNG_GIO_MUON_GIAO: slot24h(order.KHUNG_GIO_MUON_GIAO),
@@ -902,7 +913,7 @@ export const updateShippingInfo = async (req: Request, res: Response) => {
     if (!/^0\d{9}$/.test(receiverPhone)) return res.status(400).json({ message: 'Số điện thoại người nhận phải gồm 10 chữ số, bắt đầu bằng 0.' });
     if (!deliveryAddress || deliveryAddress.length > 500) return res.status(400).json({ message: 'Vui lòng nhập địa chỉ giao hàng.' });
 
-    // Đổi ngày/giờ: ≥ 24 giờ cập nhật thẳng; 4–24 giờ liên hệ shop; < 4 giờ khóa; ngoài 08:00–22:00 hoặc đã qua thì từ chối.
+    // Đổi ngày/giờ: ≥ 24 giờ cập nhật thẳng; 4–24 giờ liên hệ shop; < 4 giờ khóa; ngoài 06:30–22:00 hoặc đã qua thì từ chối.
     const schedule = assertCustomerReschedule(order, deliveryDate, deliveryTime);
     const set: Record<string, unknown> = {
       TEN_NGUOI_NHAN: receiverName,

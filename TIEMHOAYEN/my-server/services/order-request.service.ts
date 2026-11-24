@@ -190,7 +190,7 @@ export async function routeCheckout(
       if (prepare) prepared = await prepare(session);
       const delivery = prepared.delivery || {};
       if (!delivery.deliveryAt) throw new InventoryError(400, 'Cần ngày và giờ giao hợp lệ.');
-      // Thời gian giao ngoài 08:00–22:00, đã qua hoặc dưới 4 giờ: lỗi 400, không tạo yêu cầu.
+      // Thời gian giao ngoài 06:30–22:00, đã qua hoặc dưới 4 giờ: lỗi 400, không tạo yêu cầu.
       evaluation = await evaluateCheckoutFulfillment(items, delivery, new Date(), session);
       // Nhân viên (Sales/Admin) tạo đơn: đã tự kiểm tra tồn với khách nên tạo THẲNG đơn hàng, không qua Yêu cầu đặt hàng.
       // Thiếu NVL thì không giữ tạm; sau thanh toán hệ thống lập nhu cầu NVL như đơn giao xa.

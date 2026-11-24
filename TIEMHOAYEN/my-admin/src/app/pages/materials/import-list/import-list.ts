@@ -3,6 +3,7 @@ import { InventoryReversalComponent } from '../inventory-reversal';
 import { exportInventoryCsv } from '../inventory-csv';
 import { InventoryPagerComponent } from '../inventory-pager';
 import { CommonModule } from '@angular/common';
+import { AdminApiService } from '../../../services/admin-api.service';
 import { Component, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -43,6 +44,12 @@ const toLocalInput = (d: Date | string | null | undefined) => {
   styleUrls: ['../inventory.css', './import-list.css'],
 })
 export class ImportListComponent implements OnInit {
+  /** Quyền module "materials" của tài khoản (Nhân viên bán hàng chỉ có xem): ẩn nút thêm/sửa/xóa/ghi nhận; backend cũng chặn. */
+  private readonly perms = inject(AdminApiService);
+  readonly canCreate = this.perms.can('materials', 'create');
+  readonly canUpdate = this.perms.can('materials', 'update');
+  readonly canDelete = this.perms.can('materials', 'delete');
+
   exportCsv(): void { exportInventoryCsv('import-list', ['Mã phiếu','Loại','NCC','PO','Nhận lúc','Tổng tiền','Trạng thái'], this.filtered().map(d => [d.PHIEU_NHAP_ID, d.LOAI_NHAP, d.TEN_NHA_CUNG_CAP, d.PO_ID, d.THOI_DIEM_NHAN || d.NGAY_NHAP, d.TONG_TIEN, d.TRANG_THAI])); }
   readonly listPage = signal(1);
   readonly displayPage = computed(() => Math.min(this.listPage(), Math.max(1, Math.ceil(this.filtered().length / 15))));
@@ -132,6 +139,7 @@ export class ImportListComponent implements OnInit {
   }
 
   openCreate(): void {
+    if (!(this.canCreate)) return;
     this.editingId = null;
     this.header = { type: 'Nhập mua NCC', supplierId: '', purchaseOrderId: '', originalExportId: '', receivedAt: toLocalInput(null), note: '' };
     this.lines = [this.newLine()];
@@ -140,6 +148,7 @@ export class ImportListComponent implements OnInit {
   }
 
   openEdit(doc: InvDocument): void {
+    if (!(this.canUpdate)) return;
     this.editingId = doc.PHIEU_NHAP_ID!;
     this.header = {
       type: doc.LOAI_NHAP || 'Nhập mua NCC', supplierId: doc.NHA_CUNG_CAP_ID || '', purchaseOrderId: doc.PO_ID || '',

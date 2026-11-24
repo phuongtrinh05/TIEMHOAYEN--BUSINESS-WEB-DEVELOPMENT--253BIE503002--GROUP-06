@@ -129,6 +129,8 @@ export async function lookupAccess(token: unknown, session?: ClientSession) {
   if (row.authType === 'member') {
     const customer = await (await getCollection<any>('KHACH_HANG')).findOne({ KHACH_HANG_ID: row.customerId }, { session });
     if (!customer || customer.DA_XOA === true || customer.DA_XOA === 1 || /khóa|ngừng|inactive/i.test(String(customer.TRANG_THAI || ''))) throw new InventoryError(401, 'Phiên đăng nhập không còn hiệu lực. Vui lòng đăng nhập lại.');
+    // Luôn dùng SĐT hiện tại của tài khoản (khách có thể đã đổi SĐT sau khi đăng nhập).
+    return { ...row, phone: normalizeOrderPhone(customer.SDT) };
   }
   return row;
 }
@@ -147,7 +149,19 @@ export async function createRequestAccess(requestId: string, session: ClientSess
   await (await getCollection<any>(ACCESS)).insertOne({ _id: hash(accessToken), kind: 'request', authType: 'guest_request', requestId, expiresAt, createdAt: new Date() }, { session });
   return { accessToken, expiresAt };
 }
-export const ownedRequestQuery = (access: any) => access.authType === 'member' ? { customerId: access.customerId }
+/**
+ * Phạm vi trang thành viên: đơn/yêu cầu của tài khoản + đơn/yêu cầu khách vãng lai (chưa gắn tài khoản nào)
+ * đặt bằng đúng SĐT của tài khoản. Nhờ vậy "Đơn hàng của tôi" và Tra cứu OTP theo SĐT cho kết quả gần như nhau.
+ * Không gộp đơn đã gắn tài khoản khác dù trùng SĐT.
+ */
+const memberPhone = (access: any) => normalizeOrderPhone(access?.phone);
+const memberRequestQuery = (access: any) => memberPhone(access)
+  ? { $or: [{ customerId: access.customerId }, { customerId: { $in: [null, ''] }, 'sender.phone': phonePattern(memberPhone(access)) }] }
+  : { customerId: access.customerId };
+const memberOrderQuery = (access: any) => memberPhone(access)
+  ? { $or: [{ KHACH_HANG_ID: access.customerId }, { KHACH_HANG_ID: { $in: [null, ''] }, SDT_NGUOI_DAT: phonePattern(memberPhone(access)) }] }
+  : { KHACH_HANG_ID: access.customerId };
+export const ownedRequestQuery = (access: any): any => access.authType === 'member' ? memberRequestQuery(access)
   : access.kind === 'request' ? { requestId: access.requestId, customerId: { $in: [null, ''] } }
   : access.orderId ? { _id:'__ORDER_ONLY__' }
   : access.requestId ? { requestId: access.requestId, 'sender.phone': phonePattern(access.phone) }
@@ -166,7 +180,7 @@ async function ownedOrderScope(access: any): Promise<any> {
   }
   if (access.requestId) return { DON_HANG_ID: '__REQUEST_ONLY__', KHACH_HANG_ID: { $in: [null, ''] } };
   if (access.orderId) return { DON_HANG_ID: access.orderId, SDT_NGUOI_DAT: phonePattern(access.phone) };
-  return access.authType === 'member' ? { KHACH_HANG_ID: access.customerId } : await orderPhoneQuery(access.phone);
+  return access.authType === 'member' ? memberOrderQuery(access) : await orderPhoneQuery(access.phone);
 }
 export async function requestByVerifiedPhone(id: string, token: string, session?: ClientSession) {
   const access = await lookupAccess(token, session);

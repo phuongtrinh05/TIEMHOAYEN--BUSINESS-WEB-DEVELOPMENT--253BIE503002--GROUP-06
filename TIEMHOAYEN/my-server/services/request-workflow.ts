@@ -31,7 +31,7 @@ export function requestWorkflow(row: any, now = new Date()) {
     severityRank = 0; severity = 'CRITICAL'; priorityLabel = 'Khẩn cấp';
     if (minutesUntilDelivery !== null && minutesUntilDelivery <= 60) priorityReasons.push('Còn không quá 1 giờ đến lịch giao');
     else if (minutesUntilDelivery !== null && minutesUntilDelivery <= 180) priorityReasons.push('Còn không quá 3 giờ đến lịch giao');
-    else priorityReasons.push('Lịch giao ngoài 08:00–22:00 và còn dưới 12 giờ');
+    else priorityReasons.push('Lịch giao ngoài 06:30–22:00 và còn dưới 12 giờ');
   } else if (isLargeOrder && !expired) {
     severityRank = 1; severity = 'ATTENTION'; priorityLabel = 'Đơn lớn';
     priorityReasons.push(`Đơn ${totalQuantity} bó cần kiểm tra NVL và kế hoạch chuẩn bị`);

@@ -6,7 +6,7 @@
         <button class="inv-btn" type="button" [class.primary]="statusFilter === s" [attr.aria-pressed]="statusFilter === s" (click)="statusFilter = s; load()">{{ s || 'Tất cả' }}</button>
       }
     </div>
-<div class="inv-toolbar inv-list-tools"><div class="grow"><input class="inv-input" placeholder="Tìm mã phiếu, NCC, PO, ghi chú…" [(ngModel)]="search" (ngModelChange)="refilter()"></div><button class="inv-btn" type="button" [class.inv-filter-active]="filtersOpen || typeFilter || supplierFilter || dateFrom || dateTo || createdBy || confirmedBy" [attr.aria-expanded]="filtersOpen" (click)="filtersOpen = !filtersOpen"><i class="bi bi-funnel"></i> Bộ lọc</button><button class="inv-btn" type="button" title="Tải lại" aria-label="Tải lại" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button><button class="inv-btn inv-add-btn" type="button" (click)="openCreate()" title="Lập phiếu nhập" aria-label="Lập phiếu nhập"><i class="bi bi-plus-circle" aria-hidden="true"></i></button><button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button></div>
+<div class="inv-toolbar inv-list-tools"><div class="grow"><input class="inv-input" placeholder="Tìm mã phiếu, NCC, PO, ghi chú…" [(ngModel)]="search" (ngModelChange)="refilter()"></div><button class="inv-btn" type="button" [class.inv-filter-active]="filtersOpen || typeFilter || supplierFilter || dateFrom || dateTo || createdBy || confirmedBy" [attr.aria-expanded]="filtersOpen" (click)="filtersOpen = !filtersOpen"><i class="bi bi-funnel"></i> Bộ lọc</button><button class="inv-btn" type="button" title="Tải lại" aria-label="Tải lại" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button>@if (canCreate) {<button class="inv-btn inv-add-btn" type="button" (click)="openCreate()" title="Lập phiếu nhập" aria-label="Lập phiếu nhập"><i class="bi bi-plus-circle" aria-hidden="true"></i></button>}<button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button></div>
 @if (filtersOpen) { <div class="inv-toolbar inv-filter-panel">
 <select class="inv-select" style="width:170px" [(ngModel)]="typeFilter" (ngModelChange)="load()">
         <option value="">Mọi loại nhập</option>
@@ -42,8 +42,8 @@
               <td class="muted"><span [title]="'Người lập: ' + (d.TEN_NGUOI_LAP || '—')">{{ d.TEN_NGUOI_LAP || '—' }}</span>@if (d.TEN_NGUOI_XAC_NHAN && d.TEN_NGUOI_XAC_NHAN !== d.TEN_NGUOI_LAP) { <div class="muted" [title]="'Người xác nhận: ' + d.TEN_NGUOI_XAC_NHAN">{{ d.TEN_NGUOI_XAC_NHAN }}</div> }</td>
               <td (click)="$event.stopPropagation()">
                 @if (d.TRANG_THAI === 'Nháp') {
-                  <button class="inv-icon-btn" title="Sửa" (click)="openEdit(d)"><i class="bi bi-pencil-square"></i></button>
-                  <button class="inv-btn sm success" (click)="post(d)">Ghi nhận</button>
+                  @if (canUpdate) {<button class="inv-icon-btn" title="Sửa" (click)="openEdit(d)"><i class="bi bi-pencil-square"></i></button>
+                  <button class="inv-btn sm success" (click)="post(d)">Ghi nhận</button>}
                 }
               </td>
             </tr>
@@ -116,16 +116,16 @@
       </div>
       <div class="inv-modal-foot">
         @if (d.TRANG_THAI === 'Nháp') {
-          <button class="inv-btn danger" (click)="remove(d)">Xóa nháp</button>
-          <button class="inv-btn" (click)="cancel(d)">Hủy phiếu</button>
+          @if (canDelete) {<button class="inv-btn danger" (click)="remove(d)">Xóa nháp</button>}
+          @if (canUpdate) {<button class="inv-btn" (click)="cancel(d)">Hủy phiếu</button>
           <button class="inv-btn" (click)="openEdit(d)"><i class="bi bi-pencil-square"></i> Sửa</button>
-          <button class="inv-btn success" (click)="post(d)"><i class="bi bi-check2-circle"></i> Ghi nhận vào kho</button>
+          <button class="inv-btn success" (click)="post(d)"><i class="bi bi-check2-circle"></i> Ghi nhận vào kho</button>}
         } @else if (d.TRANG_THAI === 'Đã hủy') {
-          <button class="inv-btn danger" (click)="remove(d)">Xóa phiếu đã hủy</button>
+          @if (canDelete) {<button class="inv-btn danger" (click)="remove(d)">Xóa phiếu đã hủy</button>}
         }
         @if (d.DA_DAO || d.TRANG_THAI === 'Đã ghi nhận') {
  @if(d.DA_DAO){<span class="muted">Đã đảo · {{d.DIEU_CHINH_ID}} · {{d.LY_DO_DAO}}</span>}
- @else {<span class="muted">@if(reversalDeadline(d); as deadline){ {{reversalExpired(d) ? 'Đã hết hạn đảo lúc:' : 'Có thể đảo đến:'}} {{deadline | date:'dd/MM/yyyy HH:mm'}} }@else{Thiếu thời điểm ghi nhận; cần đối soát trước khi đảo.}</span><button class="inv-btn" (click)="correctionMode = 'adjustment'; reversing.set(d)"><i class="bi bi-sliders"></i> Điều chỉnh tồn</button><button class="inv-btn danger" [disabled]="reversalExpired(d)" (click)="correctionMode = 'reverse'; reversing.set(d)"><i class="bi bi-arrow-counterclockwise"></i> Đảo phiếu ghi sai</button>}
+ @else {<span class="muted">@if(reversalDeadline(d); as deadline){ {{reversalExpired(d) ? 'Đã hết hạn đảo lúc:' : 'Có thể đảo đến:'}} {{deadline | date:'dd/MM/yyyy HH:mm'}} }@else{Thiếu thời điểm ghi nhận; cần đối soát trước khi đảo.}</span>@if (canUpdate) {<button class="inv-btn" (click)="correctionMode = 'adjustment'; reversing.set(d)"><i class="bi bi-sliders"></i> Điều chỉnh tồn</button><button class="inv-btn danger" [disabled]="reversalExpired(d)" (click)="correctionMode = 'reverse'; reversing.set(d)"><i class="bi bi-arrow-counterclockwise"></i> Đảo phiếu ghi sai</button>}}
  }
 <button class="inv-btn" (click)="viewing.set(null)">Đóng</button>
       </div>

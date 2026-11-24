@@ -148,9 +148,6 @@
             <p class="section-hint" *ngIf="activeSection === 'order-history'">
               Các đơn đã giao, đã hoàn thành, đã hủy hoặc trả hàng.
             </p>
-            <p class="section-hint" *ngIf="activeSection === 'orders'">
-              Các đơn đang xử lý, đang giao hoặc chờ thanh toán.
-            </p>
 
             <p class="section-empty" *ngIf="!ordersLoaded && !ordersLoadError">Đang tải đơn hàng…</p>
             <p class="section-empty section-empty--error" *ngIf="ordersLoadError">{{ ordersLoadError }}</p>
@@ -196,7 +193,7 @@
                         type="button"
                         *ngIf="needsPayment(order)"
                         (click)="goToOrderDetail(order)">
-                        Tiếp tục thanh toán
+                        Tiếp tục<br>thanh toán
                       </button>
                     </td>
                   </tr>

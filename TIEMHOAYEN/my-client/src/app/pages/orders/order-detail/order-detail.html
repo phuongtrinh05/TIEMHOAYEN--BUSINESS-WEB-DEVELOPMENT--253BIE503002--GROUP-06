@@ -139,7 +139,7 @@
 
             <div class="edit-field">
               <label for="edit-delivery-time">Khung giờ giao</label>
-              <input id="edit-delivery-time" type="text" [(ngModel)]="editShipping.deliveryTime" class="edit-input" placeholder="HH:mm hoặc HH:mm–HH:mm (08:00–22:00)" [disabled]="scheduleLocked"
+              <input id="edit-delivery-time" type="text" [(ngModel)]="editShipping.deliveryTime" class="edit-input" placeholder="HH:mm hoặc HH:mm–HH:mm (06:30–22:00)" [disabled]="scheduleLocked"
                 [attr.aria-invalid]="!!shippingTimeError" (ngModelChange)="shippingTimeError = ''">
               <small class="save-shipping-error" *ngIf="shippingTimeError">{{ shippingTimeError }}</small>
             </div>

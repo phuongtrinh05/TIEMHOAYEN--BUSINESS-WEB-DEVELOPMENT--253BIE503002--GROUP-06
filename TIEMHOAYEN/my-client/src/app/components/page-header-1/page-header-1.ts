@@ -188,6 +188,12 @@ export class PageHeader1 implements OnInit, OnDestroy {
   currentLanguage = 'vi';
   currentCustomer: any = null;
   customerDisplayName = '';
+
+  /** Tên gọi ngắn trên header (tên riêng = từ cuối của họ tên), giống page-header; họ tên đầy đủ hiện ở menu tài khoản. */
+  get customerShortName(): string {
+    const parts = String(this.customerDisplayName || '').trim().split(/\s+/).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : '';
+  }
   customerAvatar = '';
 
   cartCount = 0;
@@ -1515,8 +1521,9 @@ export class PageHeader1 implements OnInit, OnDestroy {
     this.showAccountMenu = false;
     this.showLanguageMenu = false;
 
-    // Đăng xuất là thoát tài khoản, ở lại trang đang xem như khách; chỉ rời trang dành riêng cho thành viên.
-    if (/^\/account(?:[/?#]|$)/.test(this.router.url)) this.router.navigate(['/']);
+    // Đăng xuất là thoát tài khoản, ở lại trang đang xem như khách; rời các trang chứa dữ liệu riêng của tài khoản
+    // (tài khoản, đơn hàng/yêu cầu của tôi, chi tiết đơn, đánh giá đơn) để về Trang chủ thay vì rơi vào màn xác minh OTP.
+    if (/^\/(?:account|order-requests|order-request|order-detail|order-review)(?:[/?#]|$)/.test(this.router.url)) this.router.navigate(['/']);
   }
 
   toggleMobileMenu() {

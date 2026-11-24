@@ -485,7 +485,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     if (!this.canEdit || this.savingDelivery) return;
     const slot = String(this.order.deliverySlot || '').trim().replace(/\s*[-–]\s*/g, '–');
     if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(this.order.deliveryDate || '').trim())) { this.showToast('Ngày giao theo dạng dd/mm/yyyy.', 'error'); return; }
-    if (!/^(?:[01]\d|2[0-3]):[0-5]\d(?:–(?:[01]\d|2[0-3]):[0-5]\d)?$/.test(slot)) { this.showToast('Khung giờ theo dạng HH:mm hoặc HH:mm–HH:mm, trong 08:00–22:00.', 'error'); return; }
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d(?:–(?:[01]\d|2[0-3]):[0-5]\d)?$/.test(slot)) { this.showToast('Khung giờ theo dạng HH:mm hoặc HH:mm–HH:mm, trong 06:30–22:00.', 'error'); return; }
     this.order.deliverySlot = slot;
     this.savingDelivery = true;
     const parts = String(this.order.deliveryDate || '').split('/');

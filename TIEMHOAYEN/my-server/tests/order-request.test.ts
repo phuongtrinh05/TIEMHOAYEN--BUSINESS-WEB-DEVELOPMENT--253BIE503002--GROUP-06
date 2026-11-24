@@ -2,7 +2,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 
-// Lịch giao hợp lệ theo quy tắc mới: trong 08:00–22:00, từ 5 giờ tới dưới 24 giờ kể từ lúc chạy test.
+// Lịch giao hợp lệ theo quy tắc mới: trong 06:30–22:00, từ 5 giờ tới dưới 24 giờ kể từ lúc chạy test.
 const soonDelivery = (() => {
   let at = new Date(Math.ceil((Date.now() + 5 * 3600_000) / 1800_000) * 1800_000);
   const vn = (d: Date) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d).map(p => [p.type, p.value]));
@@ -535,7 +535,7 @@ if (!uri) {
     assert.equal(result.customItems[0].materials[0].materialId, 'TULIP_T');
   });
 
-  test('delivery under 4 hours or outside 08:00–22:00 is refused, never turned into a request', async () => {
+  test('delivery under 4 hours or outside 06:30–22:00 is refused, never turned into a request', async () => {
     await seedRule();
     const soon = new Date(Date.now() + 2 * 3600_000).toISOString();
     await assert.rejects(service.evaluateCheckoutFulfillment([{ productId: 'SP_RULE_A', quantity: 1 }], { deliveryAt: soon }), (e: any) => ['URGENT_DELIVERY', 'OUTSIDE_SHOP_HOURS'].includes(e.details?.code));

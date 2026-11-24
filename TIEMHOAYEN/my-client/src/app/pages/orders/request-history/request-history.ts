@@ -9,7 +9,7 @@ import { requestStatusTone } from '../request-status-tone';
 import { requestStage } from '../request-stage';
 import { currentOrderAccountKey } from '../../../services/api-config';
 
-type HistoryTab='all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
+type HistoryTab='all'|'payment'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
 
 @Component({selector:'app-request-history',standalone:true,imports:[CommonModule,FormsModule,RouterLink],styleUrl:'../request-status-tone.css',template:`
 <main class="page">
@@ -24,13 +24,12 @@ type HistoryTab='all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
     }</section>
   }@else{
     <header class="page-head">
-      <div><h1>{{guestMode?'Đơn hàng đã tra cứu':'Đơn hàng của tôi'}}</h1><p>{{guestMode?'Các đơn hoa và yêu cầu đặt hàng theo số điện thoại bạn vừa xác minh.':'Theo dõi đơn hoa và các yêu cầu đặt hàng bạn đã gửi cho shop.'}}</p></div>
-      @if(guestMode){<button type="button" class="end-lookup" (click)="end()">Kết thúc tra cứu</button>}
+      <div><h1>{{guestMode?'Đơn hàng đã tra cứu':'Đơn hàng của tôi'}}</h1><p>{{guestMode?'Các đơn hoa và yêu cầu đặt hàng theo số điện thoại bạn vừa xác minh.':'Theo dõi đơn hoa và các yêu cầu đặt hàng bạn đã gửi cho shop.'}}</p>@if(guestMode){<button type="button" class="end-lookup" (click)="end()"><i class="bi bi-box-arrow-right" aria-hidden="true"></i> Kết thúc tra cứu</button>}</div>
       <label class="search"><i class="bi bi-search" aria-hidden="true"></i><input [(ngModel)]="search" placeholder="Tìm mã đơn, mã yêu cầu hoặc tên hoa" aria-label="Tìm đơn hàng"></label>
     </header>
     <section class="summary" aria-label="Tóm tắt">
       <div><span><i class="bi bi-hourglass-split" aria-hidden="true"></i> Đơn đang xử lý</span><b>{{tabCount('shipping')}}</b></div>
-      <div class="due"><span><i class="bi bi-wallet2" aria-hidden="true"></i> Còn phải thanh toán</span><b>{{totalRemaining|number:'1.0-0'}}đ</b><small>{{remainingOrders}} đơn chưa thanh toán đủ</small></div>
+      <div class="due"><span><i class="bi bi-wallet2" aria-hidden="true"></i> Cần thanh toán trước</span><b>{{totalRemaining|number:'1.0-0'}}đ</b><small>{{remainingOrders}} đơn chưa trả đủ cọc/tiền trước</small></div>
       <div><span><i class="bi bi-chat-heart" aria-hidden="true"></i> Yêu cầu đang tư vấn</span><b>{{tabCount('requests')}}</b></div>
     </section>
     <nav class="tabs" aria-label="Lọc đơn hàng">@for(tab of tabs;track tab.id){<button type="button" [class.active]="activeTab===tab.id" [attr.aria-current]="activeTab===tab.id?'page':null" (click)="selectTab(tab.id)"><span>{{tab.label}}</span><b>{{tabCount(tab.id)}}</b></button>}</nav>
@@ -54,12 +53,11 @@ type HistoryTab='all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
       @else{<p class="progress-note"><i class="bi bi-info-circle" aria-hidden="true"></i> {{progressNote(o)}}</p>}
     </article>}@empty{@if(activeTab!=='all'||!filteredRequests.length){<ng-container *ngTemplateOutlet="empty"></ng-container>}}</div>}
     <ng-template #empty><div class="empty"><div class="flower">❀</div><h2>Chưa có nội dung trong mục này</h2><p>Đơn hoặc yêu cầu mới sẽ xuất hiện tại đây.</p><a routerLink="/">Tiếp tục chọn hoa</a></div></ng-template>
-    @if(total>20){<div class="pager"><button type="button" (click)="page=page-1;load()" [disabled]="page===1">← Trước</button><span>Trang {{page}}</span><button type="button" (click)="page=page+1;load()" [disabled]="page*20>=total">Sau →</button></div>}
+    @if(totalPages>1){<nav class="pagination" aria-label="Phân trang"><button class="page-btn" type="button" (click)="goPage(page-1)" [disabled]="page===1" aria-label="Trang trước">‹</button>@for(p of visiblePages;track $index){@if(p==='...'){<span class="page-ellipsis">...</span>}@else{<button class="page-btn" type="button" [class.is-active]="p===page" [attr.aria-current]="p===page?'page':null" (click)="goPage(+p)">{{p}}</button>}}<button class="page-btn" type="button" (click)="goPage(page+1)" [disabled]="page===totalPages" aria-label="Trang sau">›</button></nav>}
   }
 </main>`,styles:[`
 :host(.embedded){min-height:0;background:transparent}
-:host(.embedded) .page{max-width:none;padding:0}
-.end-lookup{flex:none;align-self:center;padding:9px 16px;border:1px solid #d9b382;border-radius:999px;background:#fff;color:#731919;font:800 13px 'Nunito Sans',sans-serif;cursor:pointer}
+.end-lookup{display:inline-flex;align-items:center;gap:6px;margin-top:12px;padding:8px 16px;border:1px solid #d9b382;border-radius:999px;background:#fff;color:#731919;font:800 13px 'Nunito Sans',sans-serif;cursor:pointer}
 
 :host{display:block;min-height:100vh;background:#fff8f5;color:#351919;font-family:'Nunito Sans',sans-serif}
 .page{max-width:1120px;margin:auto;padding:32px 24px 64px}
@@ -164,8 +162,14 @@ input:focus{outline:none;border-color:#b98a6f;box-shadow:0 0 0 3px #d9b38233}
 .empty h2{margin:6px 0;font-size:20px;color:#571717}.empty p{color:#80635b}
 .flower{font-size:44px;color:#d9b382}.empty a{color:#731919;font-weight:900}
 .skeleton{height:134px;border-radius:16px;background:linear-gradient(90deg,#f5eae5 25%,#fff 50%,#f5eae5 75%);background-size:200% 100%;animation:shine 1.3s infinite}
-.pager{display:flex;justify-content:center;align-items:center;gap:15px;margin-top:24px;color:#80635b}
-.pager button{padding:9px 16px;border:1px solid #d9b382;border-radius:99px;background:#fff;color:#731919;font:inherit;cursor:pointer}
+/* Phân trang giống trang Danh mục sản phẩm */
+.pagination{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:28px}
+.page-btn{min-width:36px;height:34px;padding:0 10px;border:0;border-radius:8px;background:#731919;color:#d9b382;font:800 16px 'Nunito Sans',sans-serif;cursor:pointer;box-shadow:0 9px 18px rgba(115,25,25,.16),inset 0 1px 0 rgba(255,255,255,.16);transition:transform .25s ease,color .25s ease,background .25s ease,box-shadow .25s ease}
+.page-btn:hover:not(:disabled){background:#8f2222;color:#fff;transform:translateY(-4px) scale(1.05);box-shadow:0 14px 26px rgba(115,25,25,.26),inset 0 1px 0 rgba(255,255,255,.18)}
+.page-btn.is-active{background:#9b2929;color:#fff}
+.page-btn:disabled{opacity:.55;cursor:not-allowed;box-shadow:none;transform:none}
+.page-ellipsis{color:#731919;font-weight:800}
+@media(max-width:600px){.page-btn{min-width:32px;height:32px;font-size:14px}}
 @keyframes shine{to{background-position:-200% 0}}
 button:disabled{opacity:.5;cursor:not-allowed}
 
@@ -198,18 +202,18 @@ export class RequestHistory implements OnInit,OnDestroy{
   @Input() guestMode = false;
   @HostBinding('class.embedded') get embedded() { return this.guestMode; }
 
- readonly access=inject(OrderAccessService);private service=inject(OrderService);private cdr=inject(ChangeDetectorRef);private route=inject(ActivatedRoute);private router=inject(Router);readonly tabs:{id:HistoryTab;label:string}[]=[{id:'all',label:'Tất cả'},{id:'shipping',label:'Chờ giao hàng'},{id:'completed',label:'Đã giao'},{id:'returns',label:'Đang hỗ trợ'},{id:'cancelled',label:'Đã hủy'},{id:'requests',label:'Yêu cầu đặt hàng'}];activeTab:HistoryTab='all';search='';pendingFilter='all';counts:any={};orderId='';requests:any[]=[];orders:any[]=[];phone='';code='';challengeId='';error='';notice='';busy=false;resendAt=0;now=Date.now();page=1;total=0;pendingRequestId='';private timer?:ReturnType<typeof setInterval>;private lastRefreshAt=0;private refreshing=false;
+ readonly access=inject(OrderAccessService);private service=inject(OrderService);private cdr=inject(ChangeDetectorRef);private route=inject(ActivatedRoute);private router=inject(Router);readonly tabs:{id:HistoryTab;label:string}[]=[{id:'all',label:'Tất cả'},{id:'payment',label:'Chờ thanh toán'},{id:'shipping',label:'Chờ giao hàng'},{id:'completed',label:'Đã giao'},{id:'returns',label:'Đang hỗ trợ'},{id:'cancelled',label:'Đã hủy'},{id:'requests',label:'Yêu cầu đặt hàng'}];activeTab:HistoryTab='all';search='';pendingFilter='all';counts:any={};orderId='';requests:any[]=[];orders:any[]=[];phone='';code='';challengeId='';error='';notice='';busy=false;resendAt=0;now=Date.now();page=1;total=0;pendingRequestId='';private timer?:ReturnType<typeof setInterval>;private lastRefreshAt=0;private refreshing=false;
  private requestEvents?: Subscription;
  private historyLoad?: Subscription;
  private eventsToken = '';
  private refreshPending = false;
- get hasAccount(){return!!currentOrderAccountKey()}get validCode(){return/^\d{6}$/.test(this.code)}get resendSeconds(){return Math.max(0,Math.ceil((this.resendAt-this.now)/1000))}get filteredOrders(){const q=this.search.trim().toLocaleLowerCase('vi');return this.orders.filter(o=>this.activeTab==='all'||o.uiGroup===this.activeTab).filter(o=>!q||String(o.DON_HANG_ID).toLowerCase().includes(q)||o.items?.some((i:any)=>String(i.TEN_SAN_PHAM_SNAPSHOT||'').toLocaleLowerCase('vi').includes(q)))}get filteredRequests(){const q=this.search.trim().toLocaleLowerCase('vi');return this.requests.filter(r=>!q||String(r.requestId).toLowerCase().includes(q)||r.items?.some((i:any)=>String(i.name||'').toLocaleLowerCase('vi').includes(q)))}tabCount(id:HistoryTab){return Number(this.counts?.[id]||0)}
+ get hasAccount(){return!!currentOrderAccountKey()}get validCode(){return/^\d{6}$/.test(this.code)}get resendSeconds(){return Math.max(0,Math.ceil((this.resendAt-this.now)/1000))}get filteredOrders(){const q=this.search.trim().toLocaleLowerCase('vi');return this.orders.filter(o=>this.activeTab==='all'||o.uiGroup===this.activeTab).filter(o=>!q||String(o.DON_HANG_ID).toLowerCase().includes(q)||o.items?.some((i:any)=>String(i.TEN_SAN_PHAM_SNAPSHOT||'').toLocaleLowerCase('vi').includes(q)))}get filteredRequests(){const q=this.search.trim().toLocaleLowerCase('vi');return this.requests.filter(r=>!q||String(r.requestId).toLowerCase().includes(q)||r.items?.some((i:any)=>String(i.name||'').toLocaleLowerCase('vi').includes(q)))}tabCount(id:HistoryTab){return Number(this.counts?.[id]||0)}get totalPages(){return Math.max(1,Math.ceil(Number(this.total||0)/20))}get visiblePages():Array<number|'...'>{const t=this.totalPages,c=this.page;if(t<=5)return Array.from({length:t},(_,i)=>i+1);if(c<=3)return[1,2,3,'...',t];if(c>=t-2)return[1,'...',t-2,t-1,t];return[1,'...',c,'...',t]}goPage(n:number){if(!Number.isFinite(n)||n<1||n>this.totalPages||n===this.page)return;this.page=n;this.load();if(typeof window!=='undefined')window.scrollTo({top:0,behavior:'smooth'})}
  readonly steps=['Đã đặt','Đang chuẩn bị','Đang giao','Hoàn tất'];
  /** Bước hiện tại trên thanh tiến trình; -1 = đơn hủy / hoàn tiền (không vẽ thanh). */
  orderStep(o:any){const t=String(o?.TRANG_THAI||'');if(/hủy|hoàn tiền|trả hàng|thất bại/i.test(t))return-1;if(/đã giao|hoàn thành/i.test(t))return 3;if(/đang giao/i.test(t))return 2;if(/chuẩn bị|chờ vận chuyển/i.test(t))return 1;return 0}
  /** Tổng còn phải trả: chỉ tính lại khi tải tab "Tất cả", để đổi tab không làm con số nhảy về 0. */
  totalRemaining=0;remainingOrders=0;
- private updateRemaining(){const unpaid=this.orders.filter(o=>this.orderStep(o)>=0&&Number(o.paymentSummary?.remaining||0)>0);this.totalRemaining=unpaid.reduce((sum,o)=>sum+Number(o.paymentSummary?.remaining||0),0);this.remainingOrders=unpaid.length}isCancelled(o:any){return/hủy/i.test(String(o.TRANG_THAI||''))}
+ /** Server tính trên mọi đơn (không theo trang): tổng tiền cọc/tiền trả trước còn thiếu của đơn chưa hoàn thành, chưa hủy. */private updateRemaining(due:any){if(!due)return;this.totalRemaining=Number(due.amount||0);this.remainingOrders=Number(due.orders||0)}isCancelled(o:any){return/hủy/i.test(String(o.TRANG_THAI||''))}
   isPaymentFailed(o:any){return/thất bại/i.test(String(o.TRANG_THAI||''))}
   /** Ghi chú thay cho thanh tiến trình khi đơn không đi theo luồng giao thông thường. */
   progressNote(o:any){return this.isPaymentFailed(o)?'Thanh toán không thành công – đơn không được thực hiện':this.isCancelled(o)?'Đơn đã hủy':'Đơn đang được shop hỗ trợ hoàn tiền / đổi trả'}
@@ -286,7 +290,7 @@ export class RequestHistory implements OnInit,OnDestroy{
        this.requests = result.requests || [];
        this.orders = result.orders || [];
        this.counts = result.counts || {};
-       if (all) this.updateRemaining();
+       this.updateRemaining(result.prepaymentDue);
        this.total = Number(requests ? result.totalRequests : all ? result.total : result.totalOrders) || 0;
        this.cdr.markForCheck();
      },

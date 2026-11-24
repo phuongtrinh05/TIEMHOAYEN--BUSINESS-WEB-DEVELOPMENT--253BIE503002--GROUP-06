@@ -23,10 +23,10 @@ test('Lịch mới dưới 4 giờ: gọi shop', () => {
   assert.throws(() => assertCustomerReschedule(order, '2026-11-14', '17:00', now), (e: any) => e.details.code === 'RESCHEDULE_LOCKED');
 });
 
-test('Giờ đã qua hoặc ngoài 08:00–22:00 bị từ chối', () => {
+test('Giờ đã qua hoặc ngoài 06:30–22:00 bị từ chối', () => {
   assert.throws(() => assertCustomerReschedule(order, '2026-11-13', '10:00', now), /đã qua/);
-  assert.throws(() => assertCustomerReschedule(order, '2026-11-18', '22:30', now), /08:00 đến 22:00/);
-  assert.throws(() => assertCustomerReschedule(order, '2026-11-18', '21:00–23:00', now), /08:00 đến 22:00/);
+  assert.throws(() => assertCustomerReschedule(order, '2026-11-18', '22:30', now), /06:30 đến 22:00/);
+  assert.throws(() => assertCustomerReschedule(order, '2026-11-18', '21:00–23:00', now), /06:30 đến 22:00/);
 });
 
 test('Lịch hiện tại còn dưới 4 giờ: khóa đổi ngày/giờ', () => {

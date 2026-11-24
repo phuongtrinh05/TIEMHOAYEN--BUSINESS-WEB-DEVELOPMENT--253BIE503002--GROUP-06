@@ -52,7 +52,7 @@ export class AboutUs implements AfterViewInit, OnDestroy {
     { icon: 'bi-camera', title: 'Cắm hoa và gửi ảnh',
       text: 'Bó hoa được cắm đúng giờ; bạn xem ảnh, video bó hoa thật trước khi giao.' },
     { icon: 'bi-truck', title: 'Giao tận tay',
-      text: 'Giao trong khung 08:00–22:00, trạng thái đơn cập nhật ngay trên website.' },
+      text: 'Giao trong khung 06:30–22:00, trạng thái đơn cập nhật ngay trên website.' },
     { icon: 'bi-chat-heart', title: 'Hỗ trợ sau khi nhận',
       text: 'Trong 1 giờ sau khi nhận, gửi ảnh nếu hoa có vấn đề để tiệm đổi hoặc hoàn tiền theo chính sách.' },
   ];

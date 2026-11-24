@@ -1849,7 +1849,7 @@ export class OrderRegistrantComponent implements OnInit {
     return `${year}-${month}-${day}`;
   }
 
-  // ===== GIỜ GIAO: 08:00–22:00, khung 30 phút; dưới 4 giờ phải gọi shop =====
+  // ===== GIỜ GIAO: 06:30–22:00, khung 30 phút; dưới 4 giờ phải gọi shop =====
   urgentDeliveryPopup = false;
   readonly shopPhone = SHOP_PHONE;
   readonly slotLabel = deliverySlotLabel;
@@ -1882,7 +1882,7 @@ export class OrderRegistrantComponent implements OnInit {
     const isoDate = this.toIsoDate(this.formData.deliveryDate);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return true;
     if (!this.deliveryTimeOptions.includes(this.formData.deliveryTime)) {
-      this.deliveryScheduleError = 'Vui lòng chọn giờ giao trong khung 08:00–22:00 và chưa qua.';
+      this.deliveryScheduleError = 'Vui lòng chọn giờ giao trong khung 06:30–22:00 và chưa qua.';
       return false;
     }
     if (isUrgentDelivery(isoDate, this.formData.deliveryTime)) {

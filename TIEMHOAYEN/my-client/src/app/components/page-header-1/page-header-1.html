@@ -571,8 +571,8 @@
               </span>
             }
 
-            <span class="account-name">
-              {{ customerDisplayName }}
+            <span class="account-name" [title]="customerDisplayName">
+              {{ customerShortName }}
             </span>
           } @else {
             <i class="bi bi-person-circle"></i>

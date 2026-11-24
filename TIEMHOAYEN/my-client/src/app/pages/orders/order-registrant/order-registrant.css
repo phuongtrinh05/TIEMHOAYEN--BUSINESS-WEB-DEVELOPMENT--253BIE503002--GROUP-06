@@ -1825,3 +1825,21 @@ textarea.address-modal-input.address-detail-textarea {
 /* Lý do chưa đủ điều kiện dài: hiện tối đa 3 dòng, rê chuột xem đủ (title) */
 .voucher-item__desc--reason{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3}
 @media (max-width:576px){.voucher-dropdown{max-height:300px}}
+
+/* Voucher có sẵn: mã voucher nằm riêng một dòng, tên + ước giảm và nút ở dòng dưới */
+.voucher-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 8px;
+}
+
+.voucher-item__badge {
+  grid-column: 1 / -1;
+  justify-self: start;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}

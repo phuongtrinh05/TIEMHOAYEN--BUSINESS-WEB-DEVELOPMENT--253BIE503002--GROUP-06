@@ -2,15 +2,15 @@ import { InventoryError } from './inventory/helpers.js';
 
 /**
  * Quy tắc thời gian giao dùng chung cho Customer, Sales và Backend.
- * - Shop chỉ giao trong 08:00–22:00 (giờ Việt Nam).
+ * - Shop chỉ giao trong 06:30–22:00 (giờ Việt Nam).
  * - Giờ làm việc (nhân viên có mặt) 06:30–22:00. Mốc 4 giờ chỉ đếm thời gian trong giờ làm việc.
  * - Lịch giao còn dưới 4 giờ làm việc: không nhận online, khách gọi shop.
  * - Còn dưới 24 giờ: kiểm tra NVL thực tế ngay (giữ tạm khi tạo QR).
  * - Từ 24 giờ: thanh toán thẳng, NVL được lập nhu cầu theo T sau khi thanh toán.
  */
-export const SHOP_OPEN_TIME = '08:00';
+export const SHOP_OPEN_TIME = '06:30';
 export const SHOP_CLOSE_TIME = '22:00';
-/** Giờ làm việc của shop: nhân viên nhận đơn, chuẩn bị hoa. Khác khung giao 08:00–22:00. */
+/** Giờ làm việc của shop: nhân viên nhận đơn, chuẩn bị hoa. Khung giao hàng cũng là 06:30–22:00. */
 export const WORK_OPEN_TIME = '06:30';
 export const WORK_CLOSE_TIME = '22:00';
 /** Số phút làm việc tối thiểu từ lúc đặt tới đầu khung giao. */
@@ -20,7 +20,7 @@ export const URGENT_CONTACT_PHONE = '0909477488';
 export const URGENT_DELIVERY_CODE = 'URGENT_DELIVERY';
 export const URGENT_DELIVERY_MESSAGE = `Đơn hàng của bạn giao gấp. Vui lòng liên hệ với số điện thoại ${URGENT_CONTACT_PHONE}.`;
 export const OUTSIDE_HOURS_CODE = 'OUTSIDE_SHOP_HOURS';
-export const OUTSIDE_HOURS_MESSAGE = 'Shop chỉ giao hàng từ 08:00 đến 22:00. Vui lòng chọn lại giờ giao.';
+export const OUTSIDE_HOURS_MESSAGE = 'Shop chỉ giao hàng từ 06:30 đến 22:00. Vui lòng chọn lại giờ giao.';
 
 export type DeliveryScheduleClass = 'UNDER_24H' | 'FROM_24H';
 
@@ -59,7 +59,7 @@ const dayKey = (value: Date) => {
 const minuteOfDay = (value: Date) => { const p = vnParts(value); return p.hour * 60 + p.minute; };
 const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 
-/** Cả khoảng giao [start, end] phải nằm gọn trong 08:00–22:00 của cùng một ngày Việt Nam. */
+/** Cả khoảng giao [start, end] phải nằm gọn trong 06:30–22:00 của cùng một ngày Việt Nam. */
 export function isWithinShopHours(startInput: Date | string, endInput?: Date | string) {
   const start = new Date(startInput);
   const end = new Date(endInput ?? startInput);
@@ -110,7 +110,7 @@ export function assertWithinShopHours(start: Date | string, end?: Date | string)
   if (!isWithinShopHours(start, end)) throw new InventoryError(400, OUTSIDE_HOURS_MESSAGE, { code: OUTSIDE_HOURS_CODE });
 }
 
-/** Khách/Sales chọn khung giao 30 phút; chỉ lưu giờ bắt đầu nên giờ bắt đầu từ 08:00 đến 21:30 (khung cuối 21:30–22:00). */
+/** Khách/Sales chọn khung giao 30 phút; chỉ lưu giờ bắt đầu nên giờ bắt đầu từ 06:30 đến 21:30 (khung cuối 21:30–22:00). */
 export const DELIVERY_SLOT_MINUTES = 30;
 export function assertDeliverySlotStart(start: Date | string) {
   const startAt = new Date(start);

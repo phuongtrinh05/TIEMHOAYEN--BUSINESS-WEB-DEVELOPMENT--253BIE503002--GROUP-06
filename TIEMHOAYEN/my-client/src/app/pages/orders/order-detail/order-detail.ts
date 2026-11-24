@@ -57,6 +57,9 @@ interface OrderDetailView {
   paymentExpiredReason?: string;
   paymentExpiredAt?: string | null;
   paymentDeadline?: string | null;
+  /** Server quyết định: còn ≥ 4 giờ làm việc trước giờ giao thì được thanh toán lại (kể cả đơn đã quá hạn). */
+  paymentRetryAllowed?: boolean | null;
+  paymentRetryExpired?: boolean;
   returnRefundReason: string;
   rejectReason: string;
   hasReviewed: boolean;
@@ -409,6 +412,8 @@ export class OrderDetail implements OnInit, OnDestroy {
       paymentExpiredReason: String(row.QUA_HAN_THANH_TOAN?.reason || ''),
       paymentExpiredAt: row.QUA_HAN_THANH_TOAN?.at || null,
       paymentDeadline: row.HAN_THANH_TOAN_DON || null,
+      paymentRetryAllowed: typeof row.THANH_TOAN_LAI?.allowed === 'boolean' ? row.THANH_TOAN_LAI.allowed : null,
+      paymentRetryExpired: !!row.THANH_TOAN_LAI?.expired,
       returnRefundReason: String(row.LY_DO_HOAN_TIEN_TRA_HANG || ''),
       rejectReason: String(row.LY_DO_TU_CHOI || ''),
       hasReviewed: Number(row.DA_DANH_GIA || 0) > 0,
@@ -1014,8 +1019,11 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   canReorder(): boolean {
     const status = this.normalizeStatus(this.order.status);
-    // Đơn "Thanh toán thất bại" vì quá hạn thanh toán cũng được đặt lại.
-    return status === 'completed' || status === 'cancelled' || (status === 'payment_failed' && !!this.order.paymentExpiredReason);
+    if (status === 'completed' || status === 'cancelled') return true;
+    // Đơn quá hạn thanh toán: còn ≥ 4 giờ làm việc trước giờ giao thì chỉ "Thanh toán lại", không "Đặt lại đơn này";
+    // còn dưới 4 giờ (hoặc server không cho gia hạn) thì mới "Đặt lại đơn này".
+    if (status !== 'payment_failed' && status !== 'payment') return false;
+    return this.paymentDeadlinePassed() && this.order.paymentRetryAllowed !== true;
   }
 
   async reorder(): Promise<void> {
@@ -1104,7 +1112,18 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   canRetryPayment(): boolean {
     const status = this.normalizeStatus(this.order.status);
-    return status === 'payment_failed' || status === 'payment';
+    if (status !== 'payment_failed' && status !== 'payment') return false;
+    // Theo quyết định của server (THANH_TOAN_LAI). Nếu server chưa trả trường này thì đơn đã quá hạn
+    // không hiện "Thanh toán lại" mà hiện "Đặt lại đơn này".
+    if (typeof this.order.paymentRetryAllowed === 'boolean') return this.order.paymentRetryAllowed;
+    return !this.paymentDeadlinePassed();
+  }
+
+  /** Đơn đã quá hạn thanh toán (theo server, theo lý do quá hạn, hoặc hạn thanh toán của đơn đã qua). */
+  private paymentDeadlinePassed(): boolean {
+    if (this.order.paymentRetryExpired || this.order.paymentExpiredReason) return true;
+    const deadline = this.order.paymentDeadline ? Date.parse(this.order.paymentDeadline) : NaN;
+    return Number.isFinite(deadline) && deadline <= Date.now();
   }
 
   goToReview(): void {
@@ -1501,7 +1520,7 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   /**
    * Quy tắc đổi lịch (server kiểm tra lại):
-   * ≥ 24 giờ cập nhật trực tiếp; 4–24 giờ liên hệ shop; < 4 giờ làm việc (06:30–22:00) gọi shop; không nhận giờ đã qua hoặc ngoài 08:00–22:00.
+   * ≥ 24 giờ cập nhật trực tiếp; 4–24 giờ liên hệ shop; < 4 giờ làm việc (06:30–22:00) gọi shop; không nhận giờ đã qua hoặc ngoài 06:30–22:00.
    */
   private checkReschedule(deliveryDate: string, deliveryTime: string): string {
     const sameDate = deliveryDate === this.toInputDate(this.shippingDateLabel);
@@ -1513,7 +1532,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     const minutes = (startAt - Date.now()) / 60000;
     const toMinutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
     if (!Number.isFinite(startAt) || minutes <= 0) return 'Thời gian giao mới đã qua. Vui lòng chọn lại.';
-    if (toMinutes(start) < 8 * 60 || toMinutes(end) > 22 * 60 || toMinutes(end) < toMinutes(start)) return 'Shop chỉ giao hàng từ 08:00 đến 22:00. Vui lòng chọn lại giờ giao.';
+    if (toMinutes(start) < 6 * 60 + 30 || toMinutes(end) > 22 * 60 || toMinutes(end) < toMinutes(start)) return 'Shop chỉ giao hàng từ 06:30 đến 22:00. Vui lòng chọn lại giờ giao.';
     if (workingMinutesBetween(Date.now(), startAt) < 4 * 60) return `Lịch giao mới còn dưới 4 giờ làm việc. Vui lòng gọi shop ${this.shopPhone}.`;
     if (minutes < 24 * 60) return `Lịch giao mới cách hiện tại dưới 24 giờ nên shop cần kiểm tra hoa và người giao trước. Vui lòng liên hệ shop qua hotline ${this.shopPhone} hoặc chat để đổi lịch.`;
     return '';
