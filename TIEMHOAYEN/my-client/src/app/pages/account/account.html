@@ -198,12 +198,19 @@
               </table>
             </div>
 
-            <div class="text-center mt-3" *ngIf="hasMoreOrders">
-              <button class="btn-see-more" type="button" (click)="showAllOrders = !showAllOrders">
-                {{ showAllOrders ? 'Thu gọn' : 'Xem tất cả đơn hàng' }}
-                <i class="bi" [ngClass]="showAllOrders ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
-              </button>
-            </div>
+            @if (ordersTotalPages > 1) {
+              <nav class="orders-pagination" aria-label="Phân trang đơn hàng">
+                <button class="page-btn" type="button" (click)="goOrdersPage(ordersPage - 1)" [disabled]="ordersPage === 1" aria-label="Trang trước">‹</button>
+                @for (p of ordersVisiblePages; track $index) {
+                  @if (p === '...') {
+                    <span class="page-ellipsis">...</span>
+                  } @else {
+                    <button class="page-btn" type="button" [class.is-active]="p === ordersPage" [attr.aria-current]="p === ordersPage ? 'page' : null" (click)="goOrdersPage(+p)">{{ p }}</button>
+                  }
+                }
+                <button class="page-btn" type="button" (click)="goOrdersPage(ordersPage + 1)" [disabled]="ordersPage === ordersTotalPages" aria-label="Trang sau">›</button>
+              </nav>
+            }
           </div>
         }
 

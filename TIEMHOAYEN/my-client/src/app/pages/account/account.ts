@@ -270,8 +270,9 @@ export class AccountComponent implements OnInit, OnDestroy {
   // ===== TODO: replace with API call GET /api/orders =====
   orders: Order[] = [];
 
-  showAllOrders = false;
-  readonly ordersPreviewSize = 10;
+  /** Phân trang bảng Đơn hàng của tôi: 10 đơn mỗi trang, nút số trang giống Danh mục sản phẩm. */
+  ordersPage = 1;
+  readonly ordersPageSize = 10;
 
   /** Lịch sử = đơn đã kết thúc (đã giao/hoàn thành, đã hủy, trả hàng/hoàn tiền). */
   private isFinishedOrder(order: Order): boolean {
@@ -292,13 +293,29 @@ export class AccountComponent implements OnInit, OnDestroy {
     return this.orders;
   }
 
-  get displayedOrders(): Order[] {
-    const list = this.currentOrderList;
-    return this.showAllOrders ? list : list.slice(0, this.ordersPreviewSize);
+  get ordersTotalPages(): number {
+    return Math.max(1, Math.ceil(this.currentOrderList.length / this.ordersPageSize));
   }
 
-  get hasMoreOrders(): boolean {
-    return this.currentOrderList.length > this.ordersPreviewSize;
+  get displayedOrders(): Order[] {
+    const page = Math.min(this.ordersPage, this.ordersTotalPages);
+    const start = (page - 1) * this.ordersPageSize;
+    return this.currentOrderList.slice(start, start + this.ordersPageSize);
+  }
+
+  get ordersVisiblePages(): Array<number | '...'> {
+    const total = this.ordersTotalPages;
+    const current = Math.min(this.ordersPage, total);
+    if (total <= 5) return Array.from({ length: total }, (_, index) => index + 1);
+    if (current <= 3) return [1, 2, 3, '...', total];
+    if (current >= total - 2) return [1, '...', total - 2, total - 1, total];
+    return [1, '...', current, '...', total];
+  }
+
+  goOrdersPage(page: number): void {
+    if (!Number.isFinite(page) || page < 1 || page > this.ordersTotalPages || page === this.ordersPage) return;
+    this.ordersPage = page;
+    if (isPlatformBrowser(this.platformId)) document.getElementById('orders')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // ===== TODO: replace with API call GET /api/user/membership =====
@@ -543,7 +560,7 @@ export class AccountComponent implements OnInit, OnDestroy {
         return;
       }
 
-      if (this.activeSection !== section) this.showAllOrders = false;
+      if (this.activeSection !== section) this.ordersPage = 1;
       this.activeSection = section;
       this.loadAccountSection(section);
       this.cdr.detectChanges();

@@ -171,3 +171,12 @@
   text-align: center;
 }
 .order-table td:nth-child(6) .btn-view-detail + .btn-view-detail { margin-top: 6px; }
+
+/* Phân trang Đơn hàng của tôi: giống trang Danh mục sản phẩm */
+.orders-pagination { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 22px; }
+.orders-pagination .page-btn { min-width: 36px; height: 34px; padding: 0 10px; border: 0; border-radius: 8px; background: #731919; color: #d9b382; font-size: 16px; font-weight: 800; cursor: pointer; box-shadow: 0 9px 18px rgba(115, 25, 25, .16), inset 0 1px 0 rgba(255, 255, 255, .16); transition: transform .25s ease, color .25s ease, background .25s ease, box-shadow .25s ease; }
+.orders-pagination .page-btn:hover:not(:disabled) { background: #8f2222; color: #fff; transform: translateY(-4px) scale(1.05); box-shadow: 0 14px 26px rgba(115, 25, 25, .26), inset 0 1px 0 rgba(255, 255, 255, .18); }
+.orders-pagination .page-btn.is-active { background: #9b2929; color: #fff; }
+.orders-pagination .page-btn:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; transform: none; }
+.orders-pagination .page-ellipsis { color: #731919; font-weight: 800; }
+@media (max-width: 600px) { .orders-pagination .page-btn { min-width: 32px; height: 32px; font-size: 14px; } }
