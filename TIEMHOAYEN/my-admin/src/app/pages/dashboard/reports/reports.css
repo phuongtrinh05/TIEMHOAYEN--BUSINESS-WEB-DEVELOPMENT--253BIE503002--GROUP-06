@@ -1,5 +1,5 @@
 /* Danh sách báo cáo + chi tiết báo cáo */
-.list-title { font-family: var(--font-heading); font-size: 21px; color: var(--db-primary); margin: 8px 0 0; }
+.list-title { font-family: var(--font-body); font-size: 19px; font-weight: 800; color: var(--db-primary); margin: 8px 0 0; }
 .popular-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .pop-card {
   display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid var(--db-border); border-radius: 12px; padding: 14px; text-decoration: none; color: #2b2321;
@@ -73,3 +73,7 @@
 
 /* Viền thẻ báo cáo đậm hơn, đồng bộ thẻ KPI / khung biểu đồ */
 .pop-card, .card { border-color: #ddd1cb; }
+
+/* Danh sách / chi tiết báo cáo: Playfair chỉ cho tiêu đề trang; tiêu đề mục/khung dùng font chữ thường (đồng bộ Bảng phân tích). */
+.section-title h2 { font-family: var(--font-body); font-size: 19px; font-weight: 800; }
+.card-head h3, .section-loading h3 { font-family: var(--font-body); font-size: 16px; font-weight: 800; }
