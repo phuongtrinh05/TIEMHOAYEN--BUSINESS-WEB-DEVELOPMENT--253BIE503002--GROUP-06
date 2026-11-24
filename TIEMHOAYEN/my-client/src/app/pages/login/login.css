@@ -1059,7 +1059,9 @@ input[type="password"]::-ms-clear {
   max-width: 100%;
   font-style: italic;
   color: rgba(36, 24, 24, 0.62);
-  white-space: nowrap;
+  /* Cho chữ xuống dòng trong khung popup (trước đây nowrap làm câu tràn ra ngoài ở màn 1366px). */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .forgot-popup__input {
