@@ -10,6 +10,7 @@ const customerOrderGroup = (status: unknown, hasAfterSales = false) => {
   const value = String(status || '').toLowerCase();
   if (/chấp nhận hoàn tiền|đã hoàn tiền|hoàn tiền|trả hàng|đổi hàng/.test(value)) return 'returns';
   if (/đã hủy|hủy đơn|thanh toán thất bại/.test(value)) return 'cancelled';
+  if (/chờ thanh toán|chờ xác nhận thanh toán|chờ đặt cọc|tam_cho_qr/.test(value)) return 'payment';
   if (/hoàn thành|đã giao|giao thành công/.test(value)) return 'completed';
   if (/đã đặt hàng thành công|đang chuẩn bị|chờ giao hàng|chờ vận chuyển|đang giao/.test(value)) return 'shipping';
   return 'all';
@@ -64,7 +65,7 @@ export async function lookupHistory(req: Request, res: Response) {
     const status = String(req.query.status || '').trim().slice(0, 80);
     const requestedScope = String(req.query.scope || 'orders');
     const scope = ['orders','requests','all'].includes(requestedScope) ? requestedScope : 'orders';
-    const group = ['shipping','completed','returns','cancelled'].includes(String(req.query.group || '')) ? String(req.query.group) : '';
+    const group = ['payment','shipping','completed','returns','cancelled'].includes(String(req.query.group || '')) ? String(req.query.group) : '';
     const deliveryDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : '';
     const ownedOrders = await ownedOrderQuery(access);
     // Ngay khi yêu cầu đã tạo được DON_HANG, đơn phải xuất hiện ở luồng đơn
@@ -88,6 +89,7 @@ export async function lookupHistory(req: Request, res: Response) {
     const allAfterSales = await (await getCollection<any>('YEU_CAU_HAU_MAI')).find({ orderId: { $in: allOrderIds } }, { projection: { _id:0,orderId:1,status:1,active:1 } }).toArray();
     const afterSalesOrderIds = [...new Set(allAfterSales.map(row => row.orderId).filter(Boolean))];
     const filteredParts: any[] = [baseQuery];
+    if (group === 'payment') filteredParts.push({ TRANG_THAI: { $regex: 'chờ thanh toán|chờ xác nhận thanh toán|chờ đặt cọc|tam_cho_qr', $options: 'i' } });
     if (group === 'shipping') filteredParts.push({ TRANG_THAI: { $regex: 'đã đặt hàng thành công|đang chuẩn bị|chờ giao hàng|chờ vận chuyển|đang giao', $options: 'i' } });
     if (group === 'completed') filteredParts.push({ TRANG_THAI: { $regex: 'hoàn thành|đã giao|giao thành công', $options: 'i' } });
     if (group === 'returns') filteredParts.push({ $or: [
@@ -177,10 +179,10 @@ export async function lookupHistory(req: Request, res: Response) {
       items: request.quote.items.map((item: any) => ({ productId: item.id, name: item.name, quantity: item.qty, price: item.price, image: item.image, custom: !!item.custom })),
       delivery: request.quote.delivery,
     } : ({ ...request, linkedOrder: request.orderId ? linkedOrderMap.get(request.requestId) || { DON_HANG_ID: request.orderId } : null }));
-    const counts = { all:allOrderStates.length + allRequestCount, shipping:0, completed:0, returns:0, cancelled:0, requests:allRequestCount };
+    const counts = { all:allOrderStates.length + allRequestCount, payment:0, shipping:0, completed:0, returns:0, cancelled:0, requests:allRequestCount };
     for (const order of allOrderStates) {
       const bucket = customerOrderGroup(order.TRANG_THAI, afterMap.has(order.DON_HANG_ID));
-      if (bucket !== 'all') counts[bucket as 'shipping'|'completed'|'returns'|'cancelled']++;
+      if (bucket !== 'all') counts[bucket as 'payment'|'shipping'|'completed'|'returns'|'cancelled']++;
     }
     const statuses = [...new Set(allOrderStates.map(row => String(row.TRANG_THAI || '')).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'vi'));
     res.json({orders:enrichedOrders,requests:enrichedRequests,totalOrders,totalRequests,total:scope === 'all' ? totalOrders + totalRequests : scope === 'requests' ? totalRequests : totalOrders,page,pageSize,counts,statuses:scope === 'requests' ? [] : statuses,scope,group});

@@ -9,7 +9,7 @@ import { requestStatusTone } from '../request-status-tone';
 import { requestStage } from '../request-stage';
 import { currentOrderAccountKey } from '../../../services/api-config';
 
-type HistoryTab='all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
+type HistoryTab='all'|'payment'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
 
 @Component({selector:'app-request-history',standalone:true,imports:[CommonModule,FormsModule,RouterLink],styleUrl:'../request-status-tone.css',template:`
 <main class="page">
@@ -196,7 +196,7 @@ export class RequestHistory implements OnInit,OnDestroy{
   @Input() guestMode = false;
   @HostBinding('class.embedded') get embedded() { return this.guestMode; }
 
- readonly access=inject(OrderAccessService);private service=inject(OrderService);private cdr=inject(ChangeDetectorRef);private route=inject(ActivatedRoute);private router=inject(Router);readonly tabs:{id:HistoryTab;label:string}[]=[{id:'all',label:'Tất cả'},{id:'shipping',label:'Chờ giao hàng'},{id:'completed',label:'Đã giao'},{id:'returns',label:'Đang hỗ trợ'},{id:'cancelled',label:'Đã hủy'},{id:'requests',label:'Yêu cầu đặt hàng'}];activeTab:HistoryTab='all';search='';pendingFilter='all';counts:any={};orderId='';requests:any[]=[];orders:any[]=[];phone='';code='';challengeId='';error='';notice='';busy=false;resendAt=0;now=Date.now();page=1;total=0;pendingRequestId='';private timer?:ReturnType<typeof setInterval>;private lastRefreshAt=0;private refreshing=false;
+ readonly access=inject(OrderAccessService);private service=inject(OrderService);private cdr=inject(ChangeDetectorRef);private route=inject(ActivatedRoute);private router=inject(Router);readonly tabs:{id:HistoryTab;label:string}[]=[{id:'all',label:'Tất cả'},{id:'payment',label:'Chờ thanh toán'},{id:'shipping',label:'Chờ giao hàng'},{id:'completed',label:'Đã giao'},{id:'returns',label:'Đang hỗ trợ'},{id:'cancelled',label:'Đã hủy'},{id:'requests',label:'Yêu cầu đặt hàng'}];activeTab:HistoryTab='all';search='';pendingFilter='all';counts:any={};orderId='';requests:any[]=[];orders:any[]=[];phone='';code='';challengeId='';error='';notice='';busy=false;resendAt=0;now=Date.now();page=1;total=0;pendingRequestId='';private timer?:ReturnType<typeof setInterval>;private lastRefreshAt=0;private refreshing=false;
  private requestEvents?: Subscription;
  private historyLoad?: Subscription;
  private eventsToken = '';
