@@ -268,7 +268,7 @@ export interface AnalysisPage {
   revenue: {
     reportKey: string;
     kpis: AnalysisKpi[];
-    series: { labels: string[]; prevLabels: string[]; netRevenue: number[]; netRevenuePrev: number[]; completedOrders: number[]; completedOrdersPrev: number[]; grossProfit: number[]; cashCollected: number[] };
+    series: { labels: string[]; prevLabels: string[]; netRevenue: number[]; netRevenuePrev: number[]; completedOrders: number[]; completedOrdersPrev: number[]; grossProfit: number[]; cashCollected: number[]; grossProfitPrev?: number[]; cashCollectedPrev?: number[] };
     byWeekday: { label: string; revenue: number; orders: number }[];
     coverage: number | null;
   };
