@@ -15,6 +15,7 @@ import {
   inject,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { UiSelect, UiSelectOption } from '../../../components/ui-select/ui-select';
 import {
   CreateOrderResponse,
   OrderDetailProductResponse,
@@ -86,7 +87,7 @@ interface OrderDetailVoucher {
 @Component({
   selector: 'app-order-detail',
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule],
+  imports: [CommonModule, RouterLink, FormsModule, UiSelect],
   templateUrl: './order-detail.html',
   styleUrl: './order-detail.css',
 })
@@ -1343,6 +1344,18 @@ export class OrderDetail implements OnInit, OnDestroy {
   provinces: any[] = [];
   districts: any[] = [];
   wards: any[] = [];
+  get provinceOptions(): UiSelectOption[] { return this.provinces.map((p: any) => ({ value: p.name, label: p.name })); }
+  get districtOptions(): UiSelectOption[] { return this.districts.map((d: any) => ({ value: d.name, label: d.name })); }
+  get wardOptions(): UiSelectOption[] { return this.wards.map((w: any) => ({ value: w.name, label: w.name })); }
+  readonly afterSalesIssueOptions: UiSelectOption[] = [
+    { value: 'wrong_item', label: 'Giao sai mẫu đã xác nhận' }, { value: 'damaged', label: 'Hoa hư hỏng nghiêm trọng' },
+    { value: 'partial_damage', label: 'Hoa hỏng một phần' }, { value: 'missing_item', label: 'Thiếu sản phẩm trong đơn' },
+    { value: 'missing_accessory', label: 'Thiếu thiệp hoặc phụ kiện' }, { value: 'wrong_address', label: 'Giao sai địa chỉ do shop' },
+    { value: 'overpayment', label: 'Thanh toán dư' }, { value: 'other', label: 'Vấn đề khác' },
+  ];
+  readonly afterSalesTypeOptions: UiSelectOption[] = [
+    { value: 'exchange', label: 'Đổi hoặc giao bổ sung' }, { value: 'return', label: 'Trả lại sản phẩm' }, { value: 'refund', label: 'Đề nghị hoàn tiền' },
+  ];
 
   selectedProvince = '';
   selectedDistrict = '';

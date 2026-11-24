@@ -421,7 +421,6 @@
     <section class="membership-section reveal">
         <div class="membership-heading">
             <H2>CHÍNH SÁCH KHÁCH HÀNG THÂN THIẾT</H2>
-            <span>Chính sách tích điểm và quy đổi đang được hoàn thiện.</span>
         </div>
 
         <div class="membership-grid">
@@ -523,9 +522,6 @@
             </article>
         </div>
 
-        <div class="membership-note">
-            Điểm thưởng được ghi nhận sau khi đơn hàng hoàn tất thanh toán và có hạn sử dụng trong 12 tháng. Điểm không quy đổi thành tiền mặt, không chuyển nhượng và không áp dụng cho đơn hủy/hoàn trả.
-        </div>
     </section>
     <!-- REVIEW -->
     <section class="review-section reveal">
@@ -537,9 +533,11 @@
             <div class="review-grid">
                 @for(item of visibleCustomerReviews; track item.image) {
                     <div class="review-card">
-                        <img
-                            [src]="item.image"
-                            [alt]="item.content">
+                        <div class="review-card__media">
+                            <img
+                                [src]="item.image"
+                                [alt]="item.content">
+                        </div>
                         <p>{{item.content}}</p>
                     </div>
                 }

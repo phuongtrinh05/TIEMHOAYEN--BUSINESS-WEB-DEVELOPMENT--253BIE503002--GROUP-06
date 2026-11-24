@@ -2089,3 +2089,64 @@ body {
     cursor: pointer;
   }
 }
+
+
+/* =========================
+   Dropdown cùng kiểu ô chọn địa chỉ (trắng, bo góc, danh sách có thanh cuộn)
+========================= */
+.sort-dropdown-toggle {
+  height: 42px;
+  border: 1.5px solid #D9D9D9;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-color);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  font-weight: 500 !important;
+  padding: 0 12px 0 14px;
+  box-shadow: none;
+  transform: none;
+}
+.sort-dropdown-toggle span { font-weight: 500 !important; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sort-dropdown-toggle i { color: var(--primary-color); transition: transform .2s; }
+.sort-dropdown-toggle:hover,
+.sort-dropdown-toggle:focus-visible,
+.sort-dropdown.is-open .sort-dropdown-toggle {
+  background: #fff;
+  border-color: var(--accent-color);
+  color: var(--text-color);
+  transform: none;
+  box-shadow: none;
+  outline: none;
+}
+.sort-dropdown-menu {
+  top: calc(100% + 6px);
+  padding: 6px 0;
+  border: none;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 32px rgba(115, 25, 25, 0.14);
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #c9a98a transparent;
+}
+.sort-dropdown-menu::-webkit-scrollbar { width: 6px; }
+.sort-dropdown-menu::-webkit-scrollbar-thumb { background: #c9a98a; border-radius: 6px; }
+.sort-option {
+  min-height: 0;
+  border-radius: 0;
+  padding: 9px 16px;
+  color: #1f1f1f;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  font-weight: 500;
+  background: #fff;
+}
+.sort-dropdown .sort-option:hover,
+.sort-dropdown .sort-option.is-selected { background: #f0e6d8; color: #1f1f1f; transform: none; }
+.sort-dropdown .sort-option.is-selected { color: var(--primary-color); font-weight: 700 !important; }
+.sort-dropdown .sort-option.is-selected::after { content: none; }
+.mobile-filter-dropdown { width: 100%; }
+.dropdown-group-title { padding: 8px 16px 4px; font-size: 0.74rem; font-weight: 700; color: var(--primary-color); text-transform: uppercase; letter-spacing: .4px; }

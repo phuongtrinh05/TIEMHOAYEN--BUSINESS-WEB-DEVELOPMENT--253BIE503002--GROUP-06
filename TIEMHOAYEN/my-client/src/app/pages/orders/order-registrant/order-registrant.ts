@@ -20,6 +20,7 @@ import {
 } from '../../../services/order.service';
 import { SalesRequestResultComponent } from '../sales-request-result/sales-request-result';
 import { MAX_CART_ITEMS } from '../../../services/cart-limit';
+import { UiSelect, UiSelectOption } from '../../../components/ui-select/ui-select';
 
 export interface OrderItem {
   requiresReview?: boolean;
@@ -135,7 +136,7 @@ export interface WardOption extends Ward {
 @Component({
   selector: 'app-order-registrant',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, PageHeader, PageFooter, SalesRequestResultComponent, LuckyRewardPicker],
+  imports: [CommonModule, FormsModule, RouterLink, PageHeader, PageFooter, SalesRequestResultComponent, LuckyRewardPicker, UiSelect],
   templateUrl: './order-registrant.html',
   styleUrl: './order-registrant.css',
 })
@@ -1855,6 +1856,11 @@ export class OrderRegistrantComponent implements OnInit {
   get deliveryTimeOptions(): string[] {
     const isoDate = this.toIsoDate(this.formData.deliveryDate);
     return deliveryTimeSlots(/^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? isoDate : '');
+  }
+
+  /** Lựa chọn cho ô Khung giờ giao (dropdown dùng chung kiểu ô địa chỉ). */
+  get deliveryTimeSelectOptions(): UiSelectOption[] {
+    return this.deliveryTimeOptions.map(slot => ({ value: slot, label: this.slotLabel(slot) + (this.isUrgentSlot(slot) ? ' – cần gọi shop' : '') }));
   }
 
   isUrgentSlot(slot: string): boolean {

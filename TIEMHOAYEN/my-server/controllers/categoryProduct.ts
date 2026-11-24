@@ -131,7 +131,12 @@ export const getAllCategoryProducts = async (req: Request, res: Response) => {
       const date = new Date(raw?.NGAY_TAO || raw?.NGAY_CAP_NHAT || 0).getTime();
       return Number.isFinite(date) ? date : 0;
     };
+    // Sản phẩm mua kèm (túi quà, móc khóa, nến, gấu…) luôn nằm cuối danh sách, với mọi kiểu sắp xếp.
+    const isAddOn = (product: any) => /^SPM/i.test(String(product.SAN_PHAM_ID || ''))
+      || String(product.KIEU_DANG || '').trim().toLowerCase() === 'sản phẩm mua kèm';
     enriched.sort((left, right) => {
+      const addOnOrder = Number(isAddOn(left)) - Number(isAddOn(right));
+      if (addOnOrder) return addOnOrder;
       if (sort === 'oldest') return dateValue(left) - dateValue(right) || String(left.SAN_PHAM_ID).localeCompare(String(right.SAN_PHAM_ID), 'vi');
       if (sort === 'bestSeller') return Number(right.DA_BAN || 0) - Number(left.DA_BAN || 0) || dateValue(right) - dateValue(left);
       if (sort === 'nameAsc') return String(left.TEN_SAN_PHAM || '').localeCompare(String(right.TEN_SAN_PHAM || ''), 'vi');

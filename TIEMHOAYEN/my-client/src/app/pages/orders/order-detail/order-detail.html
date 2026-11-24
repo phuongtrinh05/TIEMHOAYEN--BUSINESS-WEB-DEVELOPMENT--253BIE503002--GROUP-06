@@ -146,28 +146,20 @@
 
             <div class="edit-field">
               <label>Tỉnh/Thành phố</label>
-              <select [(ngModel)]="selectedProvince" class="edit-input" (change)="onProvinceChange()">
-                <option value="">-- Chọn tỉnh/thành phố --</option>
-                <option *ngFor="let p of provinces" [value]="p.name">{{ p.name }}</option>
-              </select>
+              <app-ui-select [(ngModel)]="selectedProvince" (ngModelChange)="onProvinceChange()"
+                [options]="provinceOptions" placeholder="Chọn tỉnh/thành phố" ariaLabel="Tỉnh/Thành phố"></app-ui-select>
             </div>
 
             <div class="edit-field">
               <label>Quận/Huyện</label>
-              <select [(ngModel)]="selectedDistrict" class="edit-input" [disabled]="!selectedProvince"
-                (change)="onDistrictChange()">
-                <option value="">-- Chọn quận/huyện --</option>
-                <option *ngFor="let d of districts" [value]="d.name">{{ d.name }}</option>
-              </select>
+              <app-ui-select [(ngModel)]="selectedDistrict" (ngModelChange)="onDistrictChange()" [disabled]="!selectedProvince"
+                [options]="districtOptions" placeholder="Chọn quận/huyện" ariaLabel="Quận/Huyện"></app-ui-select>
             </div>
 
             <div class="edit-field">
               <label>Phường/Xã</label>
-              <select [(ngModel)]="selectedWard" class="edit-input" [disabled]="!selectedDistrict"
-                (change)="buildAddress()">
-                <option value="">-- Chọn phường/xã --</option>
-                <option *ngFor="let w of wards" [value]="w.name">{{ w.name }}</option>
-              </select>
+              <app-ui-select [(ngModel)]="selectedWard" (ngModelChange)="buildAddress()" [disabled]="!selectedDistrict"
+                [options]="wardOptions" placeholder="Chọn phường/xã" ariaLabel="Phường/Xã"></app-ui-select>
             </div>
 
             <div class="edit-field">
@@ -476,7 +468,7 @@
           </div>
         </article>
         <div class="support-form" *ngIf="canRequestReturnRefund() && !afterSales.some(r=>r.active)">
-          <div class="support-grid"><label>Vấn đề gặp phải<select [(ngModel)]="afterSalesIssueType"><option value="wrong_item">Giao sai mẫu đã xác nhận</option><option value="damaged">Hoa hư hỏng nghiêm trọng</option><option value="partial_damage">Hoa hỏng một phần</option><option value="missing_item">Thiếu sản phẩm trong đơn</option><option value="missing_accessory">Thiếu thiệp hoặc phụ kiện</option><option value="wrong_address">Giao sai địa chỉ do shop</option><option value="overpayment">Thanh toán dư</option><option value="other">Vấn đề khác</option></select></label><label>Hướng xử lý mong muốn<select [(ngModel)]="afterSalesType"><option value="exchange">Đổi hoặc giao bổ sung</option><option value="return">Trả lại sản phẩm</option><option value="refund">Đề nghị hoàn tiền</option></select></label><label>Thời điểm phát hiện<input type="datetime-local" [(ngModel)]="afterSalesDetectedAt" [min]="detectedAtMin" [max]="detectedAtMax"></label><label *ngIf="afterSalesIssueType==='missing_accessory'">Phụ kiện còn thiếu<input [(ngModel)]="afterSalesAccessory" maxlength="120" placeholder="Ví dụ: thiệp, nơ, hộp quà"></label></div>
+          <div class="support-grid"><div class="support-field"><span>Vấn đề gặp phải</span><app-ui-select [(ngModel)]="afterSalesIssueType" [options]="afterSalesIssueOptions" ariaLabel="Vấn đề gặp phải"></app-ui-select></div><div class="support-field"><span>Hướng xử lý mong muốn</span><app-ui-select [(ngModel)]="afterSalesType" [options]="afterSalesTypeOptions" ariaLabel="Hướng xử lý mong muốn"></app-ui-select></div><label>Thời điểm phát hiện<input type="datetime-local" [(ngModel)]="afterSalesDetectedAt" [min]="detectedAtMin" [max]="detectedAtMax"></label><label *ngIf="afterSalesIssueType==='missing_accessory'">Phụ kiện còn thiếu<input [(ngModel)]="afterSalesAccessory" maxlength="120" placeholder="Ví dụ: thiệp, nơ, hộp quà"></label></div>
           <label class="full-field">Mô tả chi tiết<textarea [(ngModel)]="afterSalesReason" maxlength="2000" placeholder="Mô tả tình trạng thực tế và hỗ trợ bạn mong muốn"></textarea></label>
           <div class="full-field evidence-field"><span>Ảnh/video bằng chứng <small>{{evidenceRequired ? '(bắt buộc)' : '(không bắt buộc)'}}</small></span><input #evidenceImageInput type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" multiple hidden (change)="onAfterSalesImagesSelected($event)"><div class="evidence-upload-grid"><figure class="evidence-preview" *ngFor="let preview of afterSalesEvidencePreviews; let i=index"><video *ngIf="isVideo(afterSalesEvidenceFiles[i])" [src]="preview" muted playsinline></video><img *ngIf="!isVideo(afterSalesEvidenceFiles[i])" [src]="preview" [alt]="'Ảnh bằng chứng ' + (i + 1)"><button type="button" aria-label="Xóa ảnh" (click)="removeAfterSalesImage(i)"><i class="bi bi-x-lg"></i></button></figure><button type="button" class="evidence-upload-button" [disabled]="afterSalesEvidenceFiles.length >= 5 || afterSalesBusy" (click)="evidenceImageInput.click()"><i class="bi bi-cloud-arrow-up"></i><span>{{afterSalesEvidenceFiles.length ? afterSalesEvidenceFiles.length + '/5 tệp' : 'Tải ảnh/video lên'}}</span></button></div><small class="evidence-note">Tối đa 5 tệp: ảnh JPG, PNG, WEBP (≤ 5 MB) hoặc video MP4, WEBM, MOV (≤ 30 MB).</small></div>
           <p class="support-policy-note">Điểm thưởng và voucher đã dùng không được trả lại; shop chỉ hoàn số tiền bạn đã thanh toán.</p><button type="button" class="review-request-button" (click)="sendAfterSales()" [disabled]="afterSalesBusy">{{afterSalesBusy?'Đang gửi…':'Gửi yêu cầu'}}</button>

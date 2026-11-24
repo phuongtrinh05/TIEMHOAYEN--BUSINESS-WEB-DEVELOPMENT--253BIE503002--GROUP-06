@@ -3,7 +3,8 @@ import {CommonModule,isPlatformBrowser} from '@angular/common';
 import {RouterLink,ActivatedRoute} from '@angular/router';
 import {LuckyWheelService} from '../../services/lucky-wheel.service';
 import {orderAccessSession} from '../../services/api-config';
-@Component({selector:'app-lucky-wheel',standalone:true,imports:[CommonModule,RouterLink],templateUrl:'./lucky-wheel.html',styleUrl:'./lucky-wheel.css'})
+import {UiSelect,UiSelectOption} from '../../components/ui-select/ui-select';
+@Component({selector:'app-lucky-wheel',standalone:true,imports:[CommonModule,RouterLink,UiSelect],templateUrl:'./lucky-wheel.html',styleUrl:'./lucky-wheel.css'})
 export class LuckyWheel implements OnInit,OnDestroy{
   @Input() embedded=false;
   @Input() initialSpinId='';
@@ -19,6 +20,7 @@ export class LuckyWheel implements OnInit,OnDestroy{
     (this.member?this.api.wallet({rewardPage:this.rewardPage,historyPage:this.historyPage}):this.api.program()).subscribe({next:d=>{this.data.set(this.member?d:{program:d,spins:[],rewards:[],history:[]});if(!this.selectedSpin)this.selectedSpin=this.availableSpins[0]?.id||'';this.loading.set(false);},error:e=>{this.loading.set(false);this.error.set(e.error?.message||'Không tải được chương trình.');}});
   }
   get program(){return this.data()?.spins?.find((s:any)=>s.id===this.selectedSpin)?.program||this.data()?.program;}
+  get spinOptions():UiSelectOption[]{return this.availableSpins.map((s:any)=>({value:s.id,label:this.spinLabel(s)}));}
   get availableSpins(){return (this.data()?.spins||[]).filter((s:any)=>s.status==='Chưa quay'&&!s.paused&&(!this.embedded||s.id===this.initialSpinId));}
   get pendingCount(){return (this.data()?.spins||[]).filter((s:any)=>s.status==='Chưa quay'&&(!this.embedded||s.id===this.initialSpinId)).length;}
   get prizes(){return this.program?.prizes||[];}

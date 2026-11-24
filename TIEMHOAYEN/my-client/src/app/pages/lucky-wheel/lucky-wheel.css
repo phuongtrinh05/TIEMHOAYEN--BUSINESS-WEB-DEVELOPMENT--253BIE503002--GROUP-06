@@ -22,3 +22,5 @@ a.secondary{display:block;text-align:center;text-decoration:none}
 button.wheel-center{z-index:1;padding:0;font:inherit;cursor:default;transition:transform .2s,box-shadow .2s}button.wheel-center:disabled{opacity:1}button.wheel-center.ready{cursor:pointer;box-shadow:0 0 0 4px #73191922,0 4px 14px #73191926}button.wheel-center.ready:hover{transform:scale(1.05);box-shadow:0 0 0 6px #73191930,0 6px 18px #73191930}button.wheel-center:focus-visible{outline:3px solid #731919;outline-offset:3px}button.wheel-center span{font-weight:600}
 .result-dialog{position:relative}.result-close{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:50%;border:1px solid #e9dfd9;background:#fff;color:#8b7770;display:grid;place-items:center;font-size:14px}.result-close:hover{color:#731919;border-color:#731919}
 @media(max-width:650px){.embedded .wheel-box{width:min(100%,250px,36dvh)}}
+
+.spin-select{display:flex;flex-direction:column;gap:7px;font-size:12px;margin:16px 0}

@@ -30,13 +30,10 @@
           </ul>
 
           <!-- Màn hình nhỏ: chọn mục bằng select -->
-          <label class="sidebar-select-wrap">
-            <span class="visually-hidden">Chọn mục tài khoản</span>
-            <select class="sidebar-select" [value]="activeSection" (change)="onMobileSectionChange($event)">
-              <option *ngFor="let item of accountSections" [value]="item.key" [selected]="activeSection === item.key">{{ item.label }}</option>
-              <option value="__logout">Đăng xuất</option>
-            </select>
-          </label>
+          <div class="sidebar-select-wrap">
+            <app-ui-select class="sidebar-select" [value]="activeSection" (valueChange)="onMobileSection($event)"
+              [options]="mobileSectionOptions" ariaLabel="Chọn mục tài khoản"></app-ui-select>
+          </div>
         </nav>
       </div>
 
@@ -626,18 +623,16 @@
           <label class="modal-label" for="edit-gender">Giới tính:</label>
 
           <div class="modal-input-group">
-            <select
-              id="edit-gender"
+            <app-ui-select
+              inputId="edit-gender"
               name="gender"
-              class="modal-input modal-select"
               [(ngModel)]="editData.gender"
               (ngModelChange)="clearProfileError('gender')"
               [disabled]="savingProfile"
-              [class.is-invalid]="profileFieldErrors.gender"
-            >
-              <option value="" disabled>Chọn giới tính</option>
-              <option *ngFor="let gender of genderOptions" [value]="gender">{{ gender }}</option>
-            </select>
+              [invalid]="!!profileFieldErrors.gender"
+              [options]="genderSelectOptions"
+              placeholder="Chọn giới tính"
+            ></app-ui-select>
 
             <span class="error-msg" *ngIf="profileFieldErrors.gender">{{ profileFieldErrors.gender }}</span>
           </div>

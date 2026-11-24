@@ -182,13 +182,13 @@
 
             <div class="form-group">
               <div class="time-input-wrap">
-                <select name="deliveryTime" class="form-input delivery-time-select"
+                <app-ui-select name="deliveryTime" class="delivery-time-select"
                   [(ngModel)]="formData.deliveryTime" (ngModelChange)="onDeliveryTimeChange()"
-                  required #deliveryTime="ngModel"
-                  [class.is-invalid]="(deliveryTime.invalid && (deliveryTime.touched || orForm.submitted)) || deliveryScheduleError">
-                  <option value="" disabled>Chọn khung giờ giao (08:00 - 22:00)</option>
-                  <option *ngFor="let slot of deliveryTimeOptions" [value]="slot">{{ slotLabel(slot) }}{{ isUrgentSlot(slot) ? ' – cần gọi shop' : '' }}</option>
-                </select>
+                  required #deliveryTime="ngModel" ariaLabel="Khung giờ giao"
+                  [options]="deliveryTimeSelectOptions" placeholder="Chọn khung giờ giao (08:00 - 22:00)"
+                  emptyText="Ngày này đã hết khung giờ giao"
+                  [invalid]="!!((deliveryTime.invalid && (deliveryTime.touched || orForm.submitted)) || deliveryScheduleError)">
+                </app-ui-select>
               </div>
 
               <span class="error-msg" *ngIf="deliveryTime.invalid && (deliveryTime.touched || orForm.submitted)">

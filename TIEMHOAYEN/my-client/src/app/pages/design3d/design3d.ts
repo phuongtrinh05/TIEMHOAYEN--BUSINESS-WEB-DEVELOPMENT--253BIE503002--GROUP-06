@@ -19,6 +19,7 @@ import * as THREE from 'three';
 
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { UiSelect, UiSelectOption } from '../../components/ui-select/ui-select';
 
 interface FlowerDef {
   materialId?: string; available?: number; price?: number; unit?: string; threshold?: number;
@@ -63,7 +64,7 @@ interface SelectedFlower extends FlowerDef {
 @Component({
   selector: 'app-design3d',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, UiSelect],
   templateUrl: './design3d.html',
   styleUrl: './design3d.css',
 })
@@ -157,6 +158,10 @@ export class Design3d implements OnInit, OnDestroy {
    * - Nếu flower dùng modelPath dùng chung (không phân biệt theo màu): giữ nguyên
    *   toàn bộ danh sách màu như cũ.
    */
+  getColorOptions(flower: FlowerDef): UiSelectOption[] {
+    return this.getAvailableColors(flower).map(color => ({ value: color, label: color }));
+  }
+
   getAvailableColors(flower: FlowerDef): string[] {
     if (flower.modelPathsByColor) {
       return flower.colors.filter(c => !!flower.modelPathsByColor![c]);

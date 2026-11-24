@@ -386,13 +386,10 @@
     font-size: 13px;
 }
 .flower-color-select {
-    border: none;
-    background: transparent;
-    font-size: 12px;
-    color: #666;
-    padding: 0;
-    margin-top: 2px;
-    cursor: pointer;
+    display: block;
+    width: 150px;
+    max-width: 100%;
+    margin-top: 4px;
 }
 
 .flower-color-label {

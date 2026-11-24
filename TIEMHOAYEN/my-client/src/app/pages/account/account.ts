@@ -13,6 +13,7 @@ import { catchError } from 'rxjs/operators';
 import { LuckyWheelService } from '../../services/lucky-wheel.service';
 import { AccountChangePassword } from './change-password/change-password';
 import { ACCOUNT_SECTIONS, AccountSection, DEFAULT_ACCOUNT_SECTION, resolveAccountSection } from './account-sections';
+import { UiSelect, UiSelectOption } from '../../components/ui-select/ui-select';
 
 
 // ===== INTERFACES =====
@@ -109,7 +110,7 @@ interface WardOption extends Ward {
 @Component({
   selector: 'app-account',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, PageFooter, PageHeader, MarketingPreferences, AccountChangePassword],
+  imports: [CommonModule, FormsModule, RouterLink, PageFooter, PageHeader, MarketingPreferences, AccountChangePassword, UiSelect],
   templateUrl: './account.html',
   styleUrls: ['./account.css', './account-sections.css'],
 })
@@ -435,6 +436,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   };
 
   readonly genderOptions = ['Nam', 'Nữ', 'Khác'];
+  readonly genderSelectOptions: UiSelectOption[] = this.genderOptions.map(g => ({ value: g, label: g }));
   savingProfile = false;
   profileError = '';
   profileFieldErrors: { fullName?: string; phone?: string; email?: string; birthDate?: string; gender?: string } = {};
@@ -1347,8 +1349,12 @@ export class AccountComponent implements OnInit, OnDestroy {
     });
   }
 
-  onMobileSectionChange(event: Event): void {
-    const value = (event.target as HTMLSelectElement).value;
+  readonly mobileSectionOptions: UiSelectOption[] = [
+    ...ACCOUNT_SECTIONS.map(item => ({ value: item.key, label: item.label })),
+    { value: '__logout', label: 'Đăng xuất' },
+  ];
+
+  onMobileSection(value: string): void {
     if (value === '__logout') {
       this.logout();
       return;
