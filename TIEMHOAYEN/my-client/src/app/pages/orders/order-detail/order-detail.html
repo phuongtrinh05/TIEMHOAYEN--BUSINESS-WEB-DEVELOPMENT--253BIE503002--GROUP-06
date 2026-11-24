@@ -405,10 +405,6 @@
               Yêu cầu hoàn tiền/trả hàng
             </button>
 
-            <button type="button" *ngIf="canReview()" (click)="goToReview()">
-              <i class="bi bi-star"></i>
-              Viết đánh giá
-            </button>
 
 
             <div class="order-reason-box" *ngIf="order.paymentExpiredReason && !order.cancelReason">

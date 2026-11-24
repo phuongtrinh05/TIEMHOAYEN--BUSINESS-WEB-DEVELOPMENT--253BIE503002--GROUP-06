@@ -207,7 +207,8 @@ export class OrderDetail implements OnInit, OnDestroy {
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
   }
-  hasOrderActions(): boolean { return this.canReorder() || this.canRetryPayment() || this.canCancel() || this.canReview() || !!this.retryPaymentError || !!this.order.cancelReason || !!this.order.returnRefundReason || this.shouldShowRejectReason(); }
+  /** Đánh giá nằm ở cột Đánh giá của Danh sách sản phẩm, không còn trong khung Thao tác đơn hàng. */
+  hasOrderActions(): boolean { return this.canReorder() || this.canRetryPayment() || this.canCancel() || !!this.retryPaymentError || !!this.order.cancelReason || !!this.order.returnRefundReason || this.shouldShowRejectReason(); }
   openAfterSalesPopup(): void {
     if (!this.canOpenOrderSupport()) return;
     this.showAfterSalesPopup = true;
