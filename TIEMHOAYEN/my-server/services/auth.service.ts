@@ -333,7 +333,7 @@ export async function verifyChallenge(type: AccountType, req: Request, purpose =
   if (purpose === 'DANG_KY') {
     await (await collection(type)).updateOne({ [accountKey(type)]: row.TAI_KHOAN_ID, TRANG_THAI: 'Chờ xác minh' }, { $set: { TRANG_THAI: 'Hoạt động' } });
     await audit(req, 'XAC_MINH_DANG_KY', row.TAI_KHOAN_ID);
-    return { message: 'Xác minh thành công. Bạn có thể đăng nhập.' };
+    return { message: 'Xác minh thành công. Bạn có thể đăng nhập.', accountId: String(row.TAI_KHOAN_ID) };
   }
   const token = randomBytes(32).toString('hex');
   const account = await (await collection(type)).findOne({ [accountKey(type)]: row.TAI_KHOAN_ID });

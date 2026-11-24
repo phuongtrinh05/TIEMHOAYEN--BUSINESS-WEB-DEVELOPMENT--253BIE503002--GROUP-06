@@ -329,6 +329,6 @@
       Bạn nhận được Voucher ưu đãi cho đơn hàng đầu tiên!
     </p>
     <img class="success-popup__voucher" src="assets/images/register-voucher.png" alt="Voucher YEN20">
-    <button type="button" class="success-popup__button" (click)="closeSuccessPopup()">Đăng nhập</button>
+    <button type="button" class="success-popup__button" (click)="closeSuccessPopup()">{{ signedIn ? 'Mua sắm ngay' : 'Đăng nhập' }}</button>
   </div>
 </div>

@@ -47,6 +47,11 @@ export class RegisterService {
     );
   }
 
+  /** Nhập đúng OTP đăng ký: server kích hoạt tài khoản và trả phiên đăng nhập (giống đăng nhập). */
+  verifyRegisterOtp(data: { challengeId: string; OTP: string }): Observable<any> {
+    return this.http.post(`${this.apiUrl}/register/verify-otp`, data);
+  }
+
   /** Lấy nhãn quy tắc mật khẩu từ server; lỗi mạng thì dùng bộ quy tắc mặc định. */
   passwordRules(): Observable<PasswordRule[]> {
     return this.http.get<{ rules?: PasswordRule[] }>(this.rulesUrl).pipe(

@@ -4,7 +4,7 @@ import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordH
 import { randomUUID } from 'node:crypto';
 import { InventoryError, withTransaction } from '../services/inventory/helpers.js';
 import { createCustomerOrderAccess } from '../services/order-access.service.js';
-import { assertLoginNotLocked, assertStrongPassword, audit, AuthError, recordLoginFailure, recordLoginSuccess, sendChallenge, wrongPasswordError } from '../services/auth.service.js';
+import { active, assertLoginNotLocked, assertStrongPassword, audit, AuthError, recordLoginFailure, recordLoginSuccess, sendChallenge, verifyChallenge, wrongPasswordError } from '../services/auth.service.js';
 import { derivePromotionStatus } from '../services/pricing-voucher.service.js';
 import { expireCustomerPoints } from '../services/loyalty-policy.service.js';
 import { isLockedStatus } from '../utils/account-status.js';
@@ -234,6 +234,27 @@ export const registerCustomer = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     return authFailure(res, error, 'Chưa đăng ký được tài khoản. Vui lòng thử lại.');
+  }
+};
+
+/** Nhập đúng OTP đăng ký: kích hoạt tài khoản rồi tạo phiên đăng nhập ngay, khách không phải đăng nhập lại. */
+export const verifyRegisterOtp = async (req: Request, res: Response) => {
+  try {
+    const verified: any = await verifyChallenge('KHACH_HANG', req, 'DANG_KY');
+    const customer = await (await getCustomerCollection()).findOne({ KHACH_HANG_ID: verified.accountId });
+    if (!customer || !active(customer)) {
+      return res.status(403).json({ message: 'Tài khoản chưa được kích hoạt. Vui lòng thử lại.' });
+    }
+    const orderAccess = await createCustomerOrderAccess(customer);
+    req.identity = { id: customer.KHACH_HANG_ID, type: 'KHACH_HANG', account: customer, sessionId: '' };
+    const lastLogin = await recordLoginSuccess('KHACH_HANG', customer, req);
+    await audit(req, 'DANG_NHAP', customer.KHACH_HANG_ID, { LY_DO: 'Đăng nhập sau khi xác minh đăng ký' });
+    return res.status(200).json({
+      message: 'Đăng ký thành công.', token: orderAccess.accessToken, orderAccess, lastLogin,
+      customer: sanitizeCustomer(customer),
+    });
+  } catch (error: any) {
+    return authFailure(res, error, 'Chưa xác minh được mã. Vui lòng thử lại.');
   }
 };
 
