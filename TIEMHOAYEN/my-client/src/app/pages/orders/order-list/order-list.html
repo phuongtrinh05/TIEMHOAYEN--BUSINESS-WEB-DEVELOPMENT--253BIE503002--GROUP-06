@@ -1,5 +1,5 @@
 <main class="lookup-page">
-  <section class="intro"><h1>Tra cứu đơn hàng của khách vãng lai</h1></section>
+  @if(!access.session||lookupCode){<section class="intro"><h1>Tra cứu đơn hàng của khách vãng lai</h1></section>}
   @if(error&&access.session){<div class="alert" role="alert">{{error}}</div>}
   @if(!access.session){
     <section class="verify-card" [class.otp-step]="!!challengeId">
@@ -18,6 +18,8 @@
       </div>
     </section>
   }@else{
+    @if(!lookupCode){<app-request-history [guestMode]="true"></app-request-history>}
+    @else{
     <div class="lookup-actions">@if(isMember){<a routerLink="/order-requests">Đơn hàng của tôi</a>}<button type="button" (click)="end()">Kết thúc tra cứu</button></div>
     @if(!lookupCode){<nav class="lookup-tabs" aria-label="Nhóm đơn hàng">@for(tab of tabs;track tab.id){<button type="button" [class.active]="activeTab===tab.id" (click)="selectTab(tab.id)"><span>{{tab.label}}</span><b>{{tabCount(tab.id)}}</b></button>}</nav>}
     @if(!lookupCode){<section class="filters" aria-label="Tìm và lọc đơn hàng"><label class="search"><span>⌕</span><input [(ngModel)]="search" (ngModelChange)="searchChanged()" [placeholder]="activeTab==='requests'?'Tìm mã yêu cầu hoặc tên hoa':'Tìm mã đơn, tên hoa, người đặt hoặc người nhận'"></label><label class="date-filter" aria-label="Lọc theo ngày đặt hoặc ngày giao"><input type="date" title="Ngày đặt hoặc ngày giao" [(ngModel)]="date" (ngModelChange)="filterChanged()"></label>@if(search||date){<button class="clear" type="button" (click)="clearFilters()">Xóa lọc</button>}</section>}
@@ -28,5 +30,6 @@
       @if(!requests.length&&!orders.length){<section class="empty"><span>❀</span><h2>{{activeTab==='requests'?'Không tìm thấy yêu cầu đặt hàng':'Không tìm thấy đơn hàng'}}</h2>@if(search||status||date){<button type="button" (click)="clearFilters()">Xóa bộ lọc</button>}</section>}
     }
     @if(totalPages>1){<nav class="pager" aria-label="Phân trang"><button (click)="goToPage(page-1)" [disabled]="page===1">← Trước</button><span>Trang <b>{{page}}</b> / {{totalPages}}</span><button (click)="goToPage(page+1)" [disabled]="page===totalPages">Sau →</button></nav>}
+    }
   }
 </main>

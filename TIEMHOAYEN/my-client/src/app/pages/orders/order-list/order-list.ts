@@ -9,13 +9,14 @@ import { OrderService } from '../../../services/order.service';
 import { Subscription } from 'rxjs';
 import { requestStatusTone } from '../request-status-tone';
 import { requestStage } from '../request-stage';
+import { RequestHistory } from '../request-history/request-history';
 
 type LookupTab = 'all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
 
 @Component({
   selector: 'app-order-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, RequestHistory],
   templateUrl: './order-list.html',
   styleUrls: ['./order-list.css', '../request-status-tone.css'],
 })
@@ -134,6 +135,8 @@ export class OrderList implements OnInit, OnDestroy {
     this.load(true);
   }
   load(quiet = false) {
+    // Tra cứu theo SĐT (không kèm mã) dùng giao diện Đơn hàng của tôi nhúng bên dưới, tự tải dữ liệu.
+    if (!this.lookupCode) return;
     const token = this.access.session?.accessToken;
     if (this.busy || (quiet && this.refreshing) || !token) return;
     this.syncRequestEvents();
