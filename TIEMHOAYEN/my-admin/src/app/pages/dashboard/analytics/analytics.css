@@ -49,3 +49,7 @@
 .heat-card .tbl.heat th.r { text-align: center; }
 .heat-card .tbl.heat td.r { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
 .heat-card .tbl.heat td { padding: 10px 8px; }
+
+/* Bảng phân tích: font tiêu đề (Playfair) chỉ dùng cho tiêu đề trang; tiêu đề mục/khung dùng font chữ thường như trang Tổng quan. */
+.section-title h2 { font-family: var(--font-body); font-size: 19px; font-weight: 800; }
+.card-head h3, .section-loading h3 { font-family: var(--font-body); font-size: 16px; font-weight: 800; }
