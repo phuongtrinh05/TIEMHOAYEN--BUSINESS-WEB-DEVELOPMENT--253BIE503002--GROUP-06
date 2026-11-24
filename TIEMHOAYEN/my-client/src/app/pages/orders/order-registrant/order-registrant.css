@@ -1815,3 +1815,13 @@ textarea.address-modal-input.address-detail-textarea {
   font-weight: 400;
   line-height: 1.3;
 }
+
+/* Danh sách voucher: giới hạn chiều cao, lướt bằng thanh cuộn thay vì kéo dài cả trang */
+.voucher-dropdown{max-height:340px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#c9a98a transparent}
+.voucher-dropdown>*{flex-shrink:0}
+.voucher-dropdown::-webkit-scrollbar{width:6px}
+.voucher-dropdown::-webkit-scrollbar-thumb{background:#c9a98a;border-radius:6px}
+.voucher-dropdown::-webkit-scrollbar-track{background:transparent}
+/* Lý do chưa đủ điều kiện dài: hiện tối đa 3 dòng, rê chuột xem đủ (title) */
+.voucher-item__desc--reason{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3}
+@media (max-width:576px){.voucher-dropdown{max-height:300px}}
