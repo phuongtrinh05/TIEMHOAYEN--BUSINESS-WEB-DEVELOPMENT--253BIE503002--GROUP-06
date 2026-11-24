@@ -1,4 +1,4 @@
-<section class="blog-detail-page"><form class="detail-search" (ngSubmit)="find()"><label for="detail-blog-search">Tìm bài viết</label><input id="detail-blog-search" [(ngModel)]="search" name="search" maxlength="150" placeholder="Nhập từ khóa"><select [(ngModel)]="category" name="category" aria-label="Chủ đề bài viết"><option value="">Tất cả chủ đề</option>@for(c of categories;track c){<option>{{c}}</option>}</select><button type="submit">Tìm kiếm →</button></form>
+<section class="blog-detail-page"><form class="detail-search" (ngSubmit)="find()"><label for="detail-blog-search">Tìm bài viết</label><input id="detail-blog-search" [(ngModel)]="search" name="search" maxlength="150" placeholder="Nhập từ khóa"><app-ui-select class="detail-category-select" [(ngModel)]="category" name="category" ariaLabel="Chủ đề bài viết" placeholder="Tất cả chủ đề" [options]="categoryOptions"></app-ui-select><button type="submit">Tìm kiếm →</button></form>
     <main class="detail-layout" *ngIf="post">
         <article class="detail-main"><a class="back-link" routerLink="/blog" [queryParams]="returnFilters">← Quay lại Blog</a>
             <h1>{{ post.title }}</h1>

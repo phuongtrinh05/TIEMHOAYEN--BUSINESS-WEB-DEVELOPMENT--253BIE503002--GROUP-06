@@ -1372,3 +1372,6 @@ h3{
 .edit-shipping-rule a { color: #731919; font-weight: 600; }
 .edit-shipping-rule--locked { background: #fdf0ec; border-color: #e7b9a8; }
 .edit-input:disabled { background: #f3eeeb; color: #8b7d78; cursor: not-allowed; }
+
+/* Dropdown dùng chung trong form hậu mãi */
+.support-field{display:flex;flex-direction:column;gap:6px;color:#613d36;font-weight:700}

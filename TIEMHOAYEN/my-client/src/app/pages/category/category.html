@@ -15,8 +15,15 @@
       Bộ lọc
     </button>
     <div class="mobile-filter-field">
-      <label for="mobileFilterSelect">Lọc sản phẩm:</label>
-      <select id="mobileFilterSelect">
+      <label for="mobileFilterToggle">Lọc sản phẩm:</label>
+      <div class="sort-dropdown mobile-filter-dropdown" id="mobileFilterDropdown">
+        <button type="button" class="sort-dropdown-toggle" id="mobileFilterToggle" aria-haspopup="listbox" aria-expanded="false">
+          <span>Chọn mục lọc</span>
+          <i class="bi bi-chevron-down"></i>
+        </button>
+        <div class="sort-dropdown-menu" id="mobileFilterMenu" role="listbox" aria-labelledby="mobileFilterToggle"></div>
+      </div>
+      <select id="mobileFilterSelect" class="native-sort-select" aria-hidden="true" tabindex="-1">
         <option value="" selected>Chọn mục lọc</option>
       </select>
     </div>

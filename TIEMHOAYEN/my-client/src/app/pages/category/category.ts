@@ -1692,6 +1692,30 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
   private initMobileFilterControls(): void {
     this.populateMobileFilterOptions();
 
+    // Dropdown hiển thị cùng kiểu với các ô chọn khác; select gốc ẩn vẫn giữ luồng lọc cũ.
+    const dropdown = document.querySelector<HTMLDivElement>('#mobileFilterDropdown');
+    const toggle = document.querySelector<HTMLButtonElement>('#mobileFilterToggle');
+    const menu = document.querySelector<HTMLDivElement>('#mobileFilterMenu');
+    if (dropdown && toggle && menu) {
+      const close = () => { dropdown.classList.remove('is-open'); toggle.setAttribute('aria-expanded', 'false'); };
+      toggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const open = !dropdown.classList.contains('is-open');
+        dropdown.classList.toggle('is-open', open);
+        toggle.setAttribute('aria-expanded', String(open));
+      });
+      menu.addEventListener('click', (event) => {
+        const option = (event.target as HTMLElement).closest<HTMLButtonElement>('.sort-option');
+        if (!option) return;
+        event.stopPropagation();
+        this.mobileFilterSelect.value = option.dataset['value'] || '';
+        this.mobileFilterSelect.dispatchEvent(new Event('change'));
+        close();
+      });
+      document.addEventListener('click', (event) => { if (!dropdown.contains(event.target as Node)) close(); });
+      dropdown.addEventListener('keydown', (event) => { if (event.key === 'Escape') { close(); toggle.focus(); } });
+    }
+
     this.mobileFilterSelect.addEventListener('change', () => {
       const [group, value] = this.mobileFilterSelect.value.split('::') as [FilterGroup | '', string | undefined];
 
@@ -1742,6 +1766,16 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
       '<option value="" selected>Chọn mục lọc</option>',
       ...optionGroups,
     ].join('');
+
+    const menu = document.querySelector<HTMLDivElement>('#mobileFilterMenu');
+    if (menu) {
+      menu.innerHTML = Array.from(this.mobileFilterSelect.querySelectorAll('optgroup')).map((group) =>
+        `<div class="dropdown-group-title" role="presentation">${this.escapeHtml(group.label)}</div>` +
+        Array.from(group.querySelectorAll('option')).map((option) =>
+          `<button class="sort-option" type="button" role="option" aria-selected="false" data-value="${this.escapeHtml(option.value)}">${this.escapeHtml(option.textContent || '')}</button>`
+        ).join('')
+      ).join('');
+    }
   }
 
   private findFilterCheckbox(group: FilterGroup, value: string): HTMLInputElement | null {

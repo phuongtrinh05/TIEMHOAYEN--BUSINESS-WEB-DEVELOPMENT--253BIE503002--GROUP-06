@@ -93,19 +93,15 @@
                 <div class="flower-info">
                     <div>{{ flower.name }}</div>
 
-                    <select
+                    <app-ui-select
                         *ngIf="getAvailableColors(flower).length > 1; else singleColorLabel"
                         class="flower-color-select"
+                        [compact]="true"
+                        [ariaLabel]="'Màu ' + flower.name"
+                        [options]="getColorOptions(flower)"
                         [(ngModel)]="flower.selectedColor"
                         (ngModelChange)="onColorChange(flower, $event)"
-                    >
-                        <option
-                            *ngFor="let color of getAvailableColors(flower)"
-                            [value]="color"
-                        >
-                            {{ color }}
-                        </option>
-                    </select>
+                    ></app-ui-select>
 
                     <ng-template #singleColorLabel>
                         <div class="flower-color-label">

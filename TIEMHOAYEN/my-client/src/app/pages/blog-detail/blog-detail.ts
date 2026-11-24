@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, ChangeDetectorRef, ViewEncapsulation } from '@angular/core';
 import { ActivatedRoute, RouterLink, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { UiSelect, UiSelectOption } from '../../components/ui-select/ui-select';
 import { apiBaseUrl } from '../../services/api-config';
 import { BlogService, Blog } from '../../services/blog.service';
 
@@ -16,7 +17,7 @@ interface BlogPost {
 @Component({
   selector: 'app-blog-detail',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, UiSelect],
   templateUrl: './blog-detail.html',
   styleUrl: './blog-detail.css',
   encapsulation: ViewEncapsulation.None
@@ -31,6 +32,7 @@ export class BlogDetailComponent implements OnInit {
   } | null = null;
 
   author = ''; category = ''; search = ''; categories:string[]=[];
+  get categoryOptions(): UiSelectOption[] { return [{ value: '', label: 'Tất cả chủ đề' }, ...this.categories.map(c => ({ value: c, label: c }))]; }
   returnFilters: any = {};
   image(url: string) { return url?.startsWith('/') ? apiBaseUrl().replace(/\/api$/, '')+url : url || 'assets/images/blog.png'; }
   fallback(e: Event) { const img=e.target as HTMLImageElement; if(!img.src.endsWith('/assets/images/blog.png'))img.src='assets/images/blog.png'; }

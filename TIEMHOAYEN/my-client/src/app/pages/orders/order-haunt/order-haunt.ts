@@ -14,6 +14,7 @@ import { apiBaseUrl } from '../../../services/api-config';
 import { SalesRequestResultComponent } from '../sales-request-result/sales-request-result';
 import { PricingService, ServerQuote, SHOP_PHONE, deliverySlotLabel, deliveryTimeSlots, isUrgentDelivery, isWithin24h } from '../../../services/pricing.service';
 import { MAX_CART_ITEMS } from '../../../services/cart-limit';
+import { UiSelect, UiSelectOption } from '../../../components/ui-select/ui-select';
 
 export interface OrderItem {
   requiresReview?: boolean;
@@ -104,7 +105,7 @@ type AddrDropdownType = 'province' | 'district' | 'ward' | null;
 @Component({
   selector: 'app-order',
   standalone: true,
-  imports: [CommonModule, FormsModule, SalesRequestResultComponent],
+  imports: [CommonModule, FormsModule, SalesRequestResultComponent, UiSelect],
   templateUrl: './order-haunt.html',
   styleUrl: './order-haunt.css',
 })
@@ -662,6 +663,11 @@ export class OrderHauntComponent implements OnInit {
   get deliveryTimeOptions(): string[] {
     const isoDate = this.toIsoDate(this.formData.deliveryDate);
     return deliveryTimeSlots(/^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? isoDate : '');
+  }
+
+  /** Lựa chọn cho ô Khung giờ giao (dropdown dùng chung kiểu ô địa chỉ). */
+  get deliveryTimeSelectOptions(): UiSelectOption[] {
+    return this.deliveryTimeOptions.map(slot => ({ value: slot, label: this.slotLabel(slot) + (this.isUrgentSlot(slot) ? ' – cần gọi shop' : '') }));
   }
 
   isUrgentSlot(slot: string): boolean {
