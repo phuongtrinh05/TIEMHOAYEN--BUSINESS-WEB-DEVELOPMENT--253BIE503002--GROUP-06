@@ -156,10 +156,14 @@
               <table class="order-table w-100">
                 <thead>
                   <tr>
-                    <th>Mã đơn</th>
-                    <th>Ngày đặt</th>
-                    <th>Tổng tiền</th>
-                    <th>Trạng thái</th>
+                    @for (col of [{ key: 'id', label: 'Mã đơn' }, { key: 'date', label: 'Ngày đặt' }, { key: 'total', label: 'Tổng tiền' }, { key: 'status', label: 'Trạng thái' }]; track col.key) {
+                      <th [attr.aria-sort]="orderSortAria(col.key)">
+                        <button type="button" class="sort-header" [class.is-sorted]="orderSortKey === col.key" (click)="toggleOrderSort($any(col.key))"
+                          [title]="'Sắp xếp theo ' + col.label">
+                          {{ col.label }} <i class="bi" [ngClass]="orderSortIcon(col.key)" aria-hidden="true"></i>
+                        </button>
+                      </th>
+                    }
                     <th>Đánh giá</th>
                     <th>Thao tác</th>
                   </tr>

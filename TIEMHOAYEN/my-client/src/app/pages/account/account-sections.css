@@ -180,3 +180,9 @@
 .orders-pagination .page-btn:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; transform: none; }
 .orders-pagination .page-ellipsis { color: #731919; font-weight: 800; }
 @media (max-width: 600px) { .orders-pagination .page-btn { min-width: 32px; height: 32px; font-size: 14px; } }
+
+/* Tiêu đề cột sắp xếp được (bấm: tăng → giảm → mặc định) */
+.order-table .sort-header { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap; }
+.order-table .sort-header i { font-size: 13px; opacity: .35; transition: opacity .2s; }
+.order-table .sort-header:hover i, .order-table .sort-header.is-sorted i { opacity: 1; color: #731919; }
+.order-table .sort-header.is-sorted { color: #731919; }

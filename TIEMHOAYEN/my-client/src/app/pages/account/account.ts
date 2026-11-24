@@ -290,7 +290,41 @@ export class AccountComponent implements OnInit, OnDestroy {
 
   /** "Đơn hàng của tôi" gồm cả đơn đang xử lý và lịch sử (đã giao, hoàn thành, hủy, trả hàng), mới nhất trước. */
   get currentOrderList(): Order[] {
-    return this.orders;
+    const key = this.orderSortKey;
+    if (!key || !this.orderSortDir) return this.orders;
+    const dir = this.orderSortDir === 'asc' ? 1 : -1;
+    const value = (order: Order): string | number =>
+      key === 'total' ? Number(order.total || 0)
+      : key === 'date' ? (Date.parse(order.createdAt || '') || 0)
+      : key === 'status' ? String(order.status || '')
+      : String(order.id || '');
+    return [...this.orders].sort((a, b) => {
+      const left = value(a), right = value(b);
+      const result = typeof left === 'number' && typeof right === 'number'
+        ? left - right
+        : String(left).localeCompare(String(right), 'vi', { numeric: true, sensitivity: 'base' });
+      return result * dir;
+    });
+  }
+
+  /** Sắp xếp kiểu bảng Power BI: bấm cột lần 1 tăng dần, lần 2 giảm dần, lần 3 về thứ tự mặc định (mới nhất trước). */
+  orderSortKey: 'id' | 'date' | 'total' | 'status' | '' = '';
+  orderSortDir: 'asc' | 'desc' | '' = '';
+
+  toggleOrderSort(key: 'id' | 'date' | 'total' | 'status'): void {
+    if (this.orderSortKey !== key) { this.orderSortKey = key; this.orderSortDir = 'asc'; }
+    else if (this.orderSortDir === 'asc') this.orderSortDir = 'desc';
+    else { this.orderSortKey = ''; this.orderSortDir = ''; }
+    this.ordersPage = 1;
+  }
+
+  orderSortIcon(key: string): string {
+    if (this.orderSortKey !== key) return 'bi-arrow-down-up';
+    return this.orderSortDir === 'asc' ? 'bi-sort-up' : 'bi-sort-down';
+  }
+
+  orderSortAria(key: string): 'ascending' | 'descending' | 'none' {
+    return this.orderSortKey !== key ? 'none' : this.orderSortDir === 'asc' ? 'ascending' : 'descending';
   }
 
   get ordersTotalPages(): number {
