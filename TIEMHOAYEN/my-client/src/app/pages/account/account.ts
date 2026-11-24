@@ -34,6 +34,8 @@ interface Order {
   total: number;
   status: string;
   reviewLabel: string;
+  reviewedCount: number;
+  reviewTotal: number;
 }
 
 interface WishlistItem {
@@ -270,8 +272,9 @@ export class AccountComponent implements OnInit, OnDestroy {
   // ===== TODO: replace with API call GET /api/orders =====
   orders: Order[] = [];
 
-  showAllOrders = false;
-  readonly ordersPreviewSize = 10;
+  /** Phân trang bảng Đơn hàng của tôi: 10 đơn mỗi trang, nút số trang giống Danh mục sản phẩm. */
+  ordersPage = 1;
+  readonly ordersPageSize = 10;
 
   /** Lịch sử = đơn đã kết thúc (đã giao/hoàn thành, đã hủy, trả hàng/hoàn tiền). */
   private isFinishedOrder(order: Order): boolean {
@@ -287,17 +290,77 @@ export class AccountComponent implements OnInit, OnDestroy {
     return this.orders.filter(order => this.isFinishedOrder(order));
   }
 
+  /** "Đơn hàng của tôi" gồm cả đơn đang xử lý và lịch sử (đã giao, hoàn thành, hủy, trả hàng), mới nhất trước. */
   get currentOrderList(): Order[] {
-    return this.activeSection === 'order-history' ? this.historyOrders : this.activeOrders;
+    const key = this.orderSortKey;
+    if (!key || !this.orderSortDir) return this.orders;
+    const dir = this.orderSortDir === 'asc' ? 1 : -1;
+    const value = (order: Order): string | number =>
+      key === 'total' ? Number(order.total || 0)
+      : key === 'date' ? (Date.parse(order.createdAt || '') || 0)
+      : key === 'status' ? String(order.status || '')
+      : String(order.id || '');
+    return [...this.orders].sort((a, b) => {
+      const left = value(a), right = value(b);
+      const result = typeof left === 'number' && typeof right === 'number'
+        ? left - right
+        : String(left).localeCompare(String(right), 'vi', { numeric: true, sensitivity: 'base' });
+      return result * dir;
+    });
+  }
+
+  /** Sắp xếp kiểu bảng Power BI: bấm cột lần 1 tăng dần, lần 2 giảm dần, lần 3 về thứ tự mặc định (mới nhất trước). */
+  orderSortKey: 'id' | 'date' | 'total' | 'status' | '' = '';
+  orderSortDir: 'asc' | 'desc' | '' = '';
+
+  toggleOrderSort(key: 'id' | 'date' | 'total' | 'status'): void {
+    if (this.orderSortKey !== key) { this.orderSortKey = key; this.orderSortDir = 'asc'; }
+    else if (this.orderSortDir === 'asc') this.orderSortDir = 'desc';
+    else { this.orderSortKey = ''; this.orderSortDir = ''; }
+    this.ordersPage = 1;
+  }
+
+  orderSortIcon(key: string): string {
+    if (this.orderSortKey !== key) return 'bi-arrow-down-up';
+    return this.orderSortDir === 'asc' ? 'bi-sort-up' : 'bi-sort-down';
+  }
+
+  orderSortAria(key: string): 'ascending' | 'descending' | 'none' {
+    return this.orderSortKey !== key ? 'none' : this.orderSortDir === 'asc' ? 'ascending' : 'descending';
+  }
+
+  /** Đơn đã giao/hoàn thành còn sản phẩm chưa đánh giá: hiện nút mở trang Đánh giá đơn hàng. */
+  canReviewOrder(order: Order): boolean {
+    return order.reviewTotal > 0 && order.reviewedCount < order.reviewTotal && /hoàn thành|đã giao|giao thành công/i.test(String(order.status || ''));
+  }
+
+  goToOrderReview(order: Order): void {
+    this.router.navigate(['/order-review'], { queryParams: { orderId: order.id } });
+  }
+
+  get ordersTotalPages(): number {
+    return Math.max(1, Math.ceil(this.currentOrderList.length / this.ordersPageSize));
   }
 
   get displayedOrders(): Order[] {
-    const list = this.currentOrderList;
-    return this.showAllOrders ? list : list.slice(0, this.ordersPreviewSize);
+    const page = Math.min(this.ordersPage, this.ordersTotalPages);
+    const start = (page - 1) * this.ordersPageSize;
+    return this.currentOrderList.slice(start, start + this.ordersPageSize);
   }
 
-  get hasMoreOrders(): boolean {
-    return this.currentOrderList.length > this.ordersPreviewSize;
+  get ordersVisiblePages(): Array<number | '...'> {
+    const total = this.ordersTotalPages;
+    const current = Math.min(this.ordersPage, total);
+    if (total <= 5) return Array.from({ length: total }, (_, index) => index + 1);
+    if (current <= 3) return [1, 2, 3, '...', total];
+    if (current >= total - 2) return [1, '...', total - 2, total - 1, total];
+    return [1, '...', current, '...', total];
+  }
+
+  goOrdersPage(page: number): void {
+    if (!Number.isFinite(page) || page < 1 || page > this.ordersTotalPages || page === this.ordersPage) return;
+    this.ordersPage = page;
+    if (isPlatformBrowser(this.platformId)) document.getElementById('orders')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // ===== TODO: replace with API call GET /api/user/membership =====
@@ -518,7 +581,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   /** Tải dữ liệu của mục đang mở (mỗi nhóm dữ liệu chỉ tải một lần). */
   private loadAccountSection(section: AccountSection): void {
     const dataKey =
-      section === 'orders' || section === 'order-history' || section === 'points' ? 'orders'
+      section === 'orders' || section === 'points' ? 'orders'
       : section === 'vouchers' ? 'vouchers'
       : section === 'wishlist' ? 'wishlist'
       : section === 'addresses' ? 'addresses'
@@ -542,7 +605,7 @@ export class AccountComponent implements OnInit, OnDestroy {
         return;
       }
 
-      if (this.activeSection !== section) this.showAllOrders = false;
+      if (this.activeSection !== section) this.ordersPage = 1;
       this.activeSection = section;
       this.loadAccountSection(section);
       this.cdr.detectChanges();
@@ -643,6 +706,8 @@ export class AccountComponent implements OnInit, OnDestroy {
             subtotal: Number(item.TAM_TINH || 0),
             total: item.TONG_TIEN || 0,
             status: item.TRANG_THAI as Order['status'],
+            reviewedCount: Number(item.DANH_GIA_DA_GUI || 0),
+            reviewTotal: Number(item.DANH_GIA_TONG_SAN_PHAM || 0),
             reviewLabel: this.reviewProgressLabel(Number(item.DANH_GIA_DA_GUI || 0), Number(item.DANH_GIA_TONG_SAN_PHAM || 0), item.DANH_GIA_SO_SAO_TB, item.TRANG_THAI),
           }))
           .filter(order => !this.isExpiredPaymentOrder(order));

@@ -5,7 +5,6 @@ import { RedirectFunction, Router } from '@angular/router';
 export type AccountSection =
   | 'profile'
   | 'orders'
-  | 'order-history'
   | 'addresses'
   | 'wishlist'
   | 'vouchers'
@@ -17,7 +16,6 @@ export const DEFAULT_ACCOUNT_SECTION: AccountSection = 'profile';
 export const ACCOUNT_SECTIONS: readonly { key: AccountSection; label: string; icon: string }[] = [
   { key: 'profile', label: 'Hồ sơ', icon: 'bi-person' },
   { key: 'orders', label: 'Đơn hàng của tôi', icon: 'bi-bag' },
-  { key: 'order-history', label: 'Lịch sử đơn hàng', icon: 'bi-clock-history' },
   { key: 'addresses', label: 'Địa chỉ', icon: 'bi-geo-alt' },
   { key: 'wishlist', label: 'Wishlist', icon: 'bi-heart' },
   { key: 'vouchers', label: 'Voucher', icon: 'bi-ticket-perforated' },
@@ -30,8 +28,10 @@ const LEGACY_ALIASES: Record<string, AccountSection> = {
   thongtin: 'profile',
   'ho-so': 'profile',
   donhang: 'orders',
-  'lich-su': 'order-history',
-  history: 'order-history',
+  // "Lịch sử đơn hàng" đã gộp vào "Đơn hàng của tôi": link cũ chuyển về /account/orders.
+  'order-history': 'orders',
+  'lich-su': 'orders',
+  history: 'orders',
   diachi: 'addresses',
   voucher: 'vouchers',
   diem: 'points',

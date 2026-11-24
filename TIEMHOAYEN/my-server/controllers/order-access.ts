@@ -144,10 +144,13 @@ export async function lookupHistory(req: Request, res: Response) {
       scope !== 'orders' ? requestsCollection.countDocuments(requestQuery) : 0,
     ]);
     const orderIds = orders.map(order => order.DON_HANG_ID);
-    const [details, payments] = await Promise.all([
+    const [details, payments, reviewRows] = await Promise.all([
       detailsCollection.find({ DON_HANG_ID: { $in: orderIds } }, { projection: { _id:0,DON_HANG_ID:1,SAN_PHAM_ID:1,TEN_SAN_PHAM_SNAPSHOT:1,HINH_ANH_SNAPSHOT:1,SO_LUONG:1 } }).toArray(),
       (await getCollection<any>('THANH_TOAN')).find({ DON_HANG_ID: { $in: orderIds } }).toArray(),
+      (await getCollection<any>('DANH_GIA')).find({ DON_HANG_ID: { $in: orderIds } }, { projection: { _id:0,DON_HANG_ID:1,SAN_PHAM_ID:1 } }).toArray(),
     ]);
+    const reviewedByOrder = new Map<string, Set<string>>();
+    for (const row of reviewRows) reviewedByOrder.set(row.DON_HANG_ID, (reviewedByOrder.get(row.DON_HANG_ID) || new Set<string>()).add(String(row.SAN_PHAM_ID)));
     const detailsByOrder = new Map<string, any[]>();
     for (const detail of details) {
       const rows = detailsByOrder.get(detail.DON_HANG_ID) || [];
@@ -168,7 +171,9 @@ export async function lookupHistory(req: Request, res: Response) {
       return { ...order, items: itemRows, uiGroup: customerOrderGroup(order.TRANG_THAI, afterMap.has(order.DON_HANG_ID)),
         paymentExpired: expiredPaymentInfo(order),
         paymentSummary: { deposit: Number(order.TIEN_COC || 0), paid, remaining: Math.max(0, Number(order.TONG_TIEN || 0) - paid) },
-        afterSales: afterMap.get(order.DON_HANG_ID) || null };
+        afterSales: afterMap.get(order.DON_HANG_ID) || null,
+        // Tiến độ đánh giá để thẻ đơn đã giao hiện nút "Đánh giá".
+        review: { reviewed: reviewedByOrder.get(order.DON_HANG_ID)?.size || 0, total: new Set(itemRows.map((row: any) => String(row.SAN_PHAM_ID))).size } };
     });
     const linkedOrderMap = new Map(orders.filter(order => order.YEU_CAU_DAT_HANG_ID).map(order => [order.YEU_CAU_DAT_HANG_ID, order]));
     const enrichedRequests = requests.map(request => request.quote ? {
