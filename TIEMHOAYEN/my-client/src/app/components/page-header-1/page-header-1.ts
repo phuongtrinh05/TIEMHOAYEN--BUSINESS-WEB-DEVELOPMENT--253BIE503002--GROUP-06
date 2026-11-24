@@ -1515,8 +1515,9 @@ export class PageHeader1 implements OnInit, OnDestroy {
     this.showAccountMenu = false;
     this.showLanguageMenu = false;
 
-    // Đăng xuất là thoát tài khoản, ở lại trang đang xem như khách; chỉ rời trang dành riêng cho thành viên.
-    if (/^\/account(?:[/?#]|$)/.test(this.router.url)) this.router.navigate(['/']);
+    // Đăng xuất là thoát tài khoản, ở lại trang đang xem như khách; rời các trang chứa dữ liệu riêng của tài khoản
+    // (tài khoản, đơn hàng/yêu cầu của tôi, chi tiết đơn, đánh giá đơn) để về Trang chủ thay vì rơi vào màn xác minh OTP.
+    if (/^\/(?:account|order-requests|order-request|order-detail|order-review)(?:[/?#]|$)/.test(this.router.url)) this.router.navigate(['/']);
   }
 
   toggleMobileMenu() {
