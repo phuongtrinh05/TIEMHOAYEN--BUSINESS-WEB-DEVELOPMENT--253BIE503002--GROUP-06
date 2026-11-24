@@ -34,7 +34,6 @@
     <div class="section-title" id="doanh-thu">
       <div>
         <h2><span class="num">1</span> Xu hướng doanh thu</h2>
-        <p>Doanh thu thuần, lợi nhuận gộp và số đơn hoàn thành theo thời gian — so với {{ compareShort().toLowerCase() }}.</p>
       </div>
       <div class="page-links no-print">
         <a class="card-link" routerLink="/dashboard/reports/sales-by-time" [queryParams]="rangeParams()">Doanh thu theo thời gian <i class="bi bi-arrow-right-short"></i></a>
@@ -65,12 +64,11 @@
         </div>
         <div class="chart-fill"><canvas baseChart type="bar" [data]="revenueChart()" [options]="revenueOptions"></canvas></div>
         @if (d.revenue.coverage !== null && d.revenue.coverage < 100) {
-          <p class="muted small foot-note">LN gộp chỉ tính trên {{ d.revenue.coverage }}% doanh thu hàng có đủ giá vốn.</p>
         }
       </section>
       <section class="card fixed h-md">
         <div class="card-head">
-          <div><h3>Doanh thu theo thứ trong tuần</h3><p class="muted small">Biết ngày nào đông để chuẩn bị hoa & nhân sự</p></div>
+          <div><h3>Doanh thu theo thứ trong tuần</h3></div>
         </div>
         <div class="chart-fill"><canvas baseChart type="bar" [data]="weekdayChart()" [options]="moneyBar"></canvas></div>
       </section>
@@ -80,7 +78,6 @@
     <div class="section-title" id="dip-tang">
       <div>
         <h2><span class="num">2</span> Hiệu quả sản phẩm theo dịp tặng</h2>
-        <p>Dịp nào mang lại doanh thu & lợi nhuận, kiểu dáng nào được chọn cho từng dịp.</p>
       </div>
       <div class="page-links no-print">
         <a class="card-link" routerLink="/dashboard/reports/sales-by-occasion" [queryParams]="rangeParams()">Theo dịp tặng <i class="bi bi-arrow-right-short"></i></a>
@@ -111,7 +108,7 @@
     </div>
     <!-- Ma trận Dịp tặng × kiểu dáng: hàng riêng, rộng hết trang -->
     <section class="card heat-card">
-      <div class="card-head"><div><h3>Dịp tặng × kiểu dáng</h3><p class="muted small">Ô càng đậm doanh thu càng cao</p></div></div>
+      <div class="card-head"><div><h3>Dịp tặng × kiểu dáng</h3></div></div>
       <div class="table-wrap">
           <table class="tbl heat">
             <thead><tr><th>Dịp \ Kiểu</th>@for (s of d.occasions.matrix.styles; track s) {<th class="r">{{ s }}</th>}</tr></thead>
@@ -154,7 +151,6 @@
     <div class="section-title" id="khach-hang">
       <div>
         <h2><span class="num">3</span> Khách hàng</h2>
-        <p>Khách mới hay khách quay lại tạo ra doanh thu, mức độ hài lòng qua đánh giá.</p>
       </div>
       <div class="page-links no-print">
         <a class="card-link" routerLink="/dashboard/reports/sales-by-customer" [queryParams]="rangeParams()">Theo khách hàng <i class="bi bi-arrow-right-short"></i></a>
@@ -226,7 +222,6 @@
     <div class="section-title" id="chi-phi">
       <div>
         <h2><span class="num">4</span> Chi phí</h2>
-        <p>{{ d.costs.note }}</p>
       </div>
       <div class="page-links no-print">
         <a class="card-link" routerLink="/dashboard/reports/business-result" [queryParams]="rangeParams()">Kết quả kinh doanh <i class="bi bi-arrow-right-short"></i></a>
@@ -247,7 +242,7 @@
     </section>
     <div class="row-2">
       <section class="card fixed h-md">
-        <div class="card-head"><div><h3>Kết quả kinh doanh rút gọn</h3><p class="muted small">Từ doanh thu đến lợi nhuận sau hao hụt</p></div></div>
+        <div class="card-head"><div><h3>Kết quả kinh doanh rút gọn</h3></div></div>
         <ul class="statement fill">
           @for (s of d.costs.statement; track s.key) {
             <li [class]="s.kind">
@@ -280,7 +275,7 @@
       </section>
     </div>
     <section class="card fixed h-sm">
-      <div class="card-head"><div><h3>Doanh thu so với chi phí NVL theo thời gian</h3><p class="muted small">Cột chồng: giá vốn + hao hụt; cột xanh: tiền nhập NVL</p></div></div>
+      <div class="card-head"><div><h3>Doanh thu so với chi phí NVL theo thời gian</h3></div></div>
       <div class="chart-fill"><canvas baseChart type="bar" [data]="costChart()" [options]="costLine"></canvas></div>
     </section>
 
@@ -288,7 +283,6 @@
     <div class="section-title" id="van-hanh">
       <div>
         <h2><span class="num">5</span> Hiệu quả vận hành</h2>
-        <p>Tốc độ xử lý, tỷ lệ hủy / hoàn, phễu đơn hàng và khung giờ giao cao điểm.</p>
       </div>
       <div class="page-links no-print">
         <a class="card-link" routerLink="/dashboard/reports/cancellations" [queryParams]="rangeParams()">Đơn hủy & lý do <i class="bi bi-arrow-right-short"></i></a>
@@ -308,11 +302,10 @@
       }
     </section>
     @if (d.operations.sample.explicitCompletions < d.operations.sample.totalCompletions) {
-      <p class="muted small">Thời gian xử lý & đúng hẹn tính trên {{ d.operations.sample.explicitCompletions }}/{{ d.operations.sample.totalCompletions }} đơn có ngày hoàn thành thật.</p>
     }
     <div class="row-2">
       <section class="card fixed h-md">
-        <div class="card-head"><div><h3>Phễu đơn hàng</h3><p class="muted small">Đơn tạo trong kỳ đi được tới bước nào</p></div></div>
+        <div class="card-head"><div><h3>Phễu đơn hàng</h3></div></div>
         <ul class="funnel fill">
           @for (s of d.operations.funnel; track s.label; let i = $index) {
             <li>
@@ -323,7 +316,7 @@
         </ul>
       </section>
       <section class="card fixed h-md">
-        <div class="card-head"><div><h3>Khung giờ giao cao điểm</h3><p class="muted small">Số đơn theo giờ hẹn giao</p></div></div>
+        <div class="card-head"><div><h3>Khung giờ giao cao điểm</h3></div></div>
         <div class="chart-fill"><canvas baseChart type="bar" [data]="hourChart()" [options]="countBar"></canvas></div>
       </section>
     </div>
