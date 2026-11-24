@@ -64,14 +64,14 @@ export const loginAdminEmployee = async (req: Request, res: Response) => {
     const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const employee = await employeeCollection.findOne({ EMAIL: { $regex: `^${escaped}$`, $options: 'i' } });
     if (!employee || employee.DA_XOA === true || employee.DA_XOA === 1) {
-      await audit(req, 'DANG_NHAP_ADMIN', email, { LY_DO: 'Sai thông tin' }, false);
-      return res.status(401).json({ message: 'Email hoặc mật khẩu không đúng.' });
+      await audit(req, 'DANG_NHAP_ADMIN', email, { LY_DO: 'Email chưa đăng ký' }, false);
+      return res.status(404).json({ field: 'email', message: 'Email này chưa được đăng ký tài khoản nhân viên.' });
     }
     assertLoginNotLocked(employee);
     if (!(await verifyPassword(password, employee.MAT_KHAU))) {
       req.identity = { id: employee.NHAN_VIEN_ID, type: 'NHAN_VIEN', account: employee, sessionId: '' };
       await audit(req, 'DANG_NHAP_ADMIN', employee.NHAN_VIEN_ID, { LY_DO: 'Sai mật khẩu' }, false);
-      throw wrongPasswordError(await recordLoginFailure('NHAN_VIEN', employee), 'Email hoặc mật khẩu không đúng.');
+      throw wrongPasswordError(await recordLoginFailure('NHAN_VIEN', employee), 'Mật khẩu không đúng.');
     }
 
     if (!active(employee)) {
