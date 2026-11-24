@@ -6,6 +6,27 @@ import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
+interface PublicFaqRow {
+  CAU_HOI?: string;
+  CAU_TRA_LOI?: string;
+}
+
+const POPULAR_FAQ_QUESTIONS = [
+  'Tôi cần cung cấp những thông tin gì khi đặt hoa?',
+  'Shop giao hoa ở những khu vực nào?',
+  'Các khung giờ giao hàng là gì?',
+  'Phí giao hàng là bao nhiêu?',
+  'Shop hỗ trợ những hình thức thanh toán nào?',
+  'Tôi có thể hủy đơn không?',
+] as const;
+
+const normalizeFaqQuestion = (value: string): string =>
+  value
+    .normalize('NFC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('vi-VN');
+
 @Component({
   selector: 'app-contact',
   standalone: true,
@@ -16,7 +37,29 @@ import { RouterLink } from '@angular/router';
 export class Contact implements OnInit {
   private http=inject(HttpClient);
   fieldErrors: Record<string,string> = {};
-  ngOnInit() { this.http.get<any[]>(apiBaseUrl()+'/faqs/public').subscribe({next:rows=>{this.faqs=rows.map(r=>({question:r.CAU_HOI,answer:r.CAU_TRA_LOI}));this.cdr.markForCheck();},error:()=>{this.faqs=[];this.cdr.markForCheck();}}); }
+  ngOnInit(): void {
+    this.http.get<PublicFaqRow[]>(`${apiBaseUrl()}/faqs/public`).subscribe({
+      next: rows => {
+        const faqByQuestion = new Map(
+          rows
+            .filter(row => row.CAU_HOI?.trim() && row.CAU_TRA_LOI?.trim())
+            .map(row => [normalizeFaqQuestion(row.CAU_HOI!), row] as const)
+        );
+
+        this.faqs = POPULAR_FAQ_QUESTIONS.flatMap(question => {
+          const row = faqByQuestion.get(normalizeFaqQuestion(question));
+          return row
+            ? [{ question: row.CAU_HOI!.trim(), answer: row.CAU_TRA_LOI!.trim() }]
+            : [];
+        });
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.faqs = [];
+        this.cdr.markForCheck();
+      },
+    });
+  }
   private pendingRequest: {fingerprint:string;id:string}|null=null;
   private get contactApiUrl() { return `${apiBaseUrl()}/contacts`; }
   private readonly support = inject(SupportChatService);
