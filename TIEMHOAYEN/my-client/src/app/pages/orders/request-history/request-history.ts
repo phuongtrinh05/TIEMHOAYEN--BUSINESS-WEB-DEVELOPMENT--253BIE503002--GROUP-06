@@ -50,7 +50,7 @@ type HistoryTab='all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
       <div class="body"><div class="head"><b class="code">{{o.DON_HANG_ID}}</b><span class="order-status" [attr.data-tone]="orderTone(o)">{{o.TRANG_THAI}}</span></div><h3>{{o.items?.[0]?.TEN_SAN_PHAM_SNAPSHOT||'Đơn hoa Tiệm Hoa Yên'}} <small>× {{o.items?.[0]?.SO_LUONG||1}}</small></h3><p class="meta"><i class="bi bi-calendar3" aria-hidden="true"></i> Ngày giao <strong>{{o.NGAY_MUON_GIAO|date:'dd/MM/yyyy'}} · {{o.KHUNG_GIO_MUON_GIAO||'Chưa chốt'}}</strong></p>@if(o.YEU_CAU_DAT_HANG_ID){<a class="source-request" [routerLink]="['/order-request',o.YEU_CAU_DAT_HANG_ID]"><i class="bi bi-chat-dots" aria-hidden="true"></i> Từ yêu cầu đặt hàng · Xem trao đổi</a>}</div>
       <div class="side"><div class="money"><div class="money-total"><span>Tổng tiền</span><b>{{o.TONG_TIEN|number:'1.0-0'}}đ</b></div>@if(!isCompleted(o)){<dl><div><dt>Cọc</dt><dd>{{o.paymentSummary?.deposit|number:'1.0-0'}}đ</dd></div><div><dt>Đã thu</dt><dd>{{o.paymentSummary?.paid|number:'1.0-0'}}đ</dd></div><div class="due"><dt>Còn lại</dt><dd>{{o.paymentSummary?.remaining|number:'1.0-0'}}đ</dd></div></dl>}</div><a class="detail" [routerLink]="['/order-detail',o.DON_HANG_ID]">Xem chi tiết <i class="bi bi-arrow-right" aria-hidden="true"></i></a></div>
       @if(orderStep(o)>=0){<ol class="order-steps" [attr.aria-label]="'Tiến trình: '+steps[orderStep(o)]">@for(step of steps;track step;let i=$index){<li [class.done]="i<orderStep(o)" [class.current]="i===orderStep(o)"><span class="bar"></span><span class="label">{{step}}</span></li>}</ol>}
-      @else{<p class="progress-note"><i class="bi bi-info-circle" aria-hidden="true"></i> {{isCancelled(o)?'Đơn đã hủy':'Đơn đang được shop hỗ trợ hoàn tiền / đổi trả'}}</p>}
+      @else{<p class="progress-note"><i class="bi bi-info-circle" aria-hidden="true"></i> {{progressNote(o)}}</p>}
     </article>}@empty{@if(activeTab!=='all'||!filteredRequests.length){<ng-container *ngTemplateOutlet="empty"></ng-container>}}</div>}
     <ng-template #empty><div class="empty"><div class="flower">❀</div><h2>Chưa có nội dung trong mục này</h2><p>Đơn hoặc yêu cầu mới sẽ xuất hiện tại đây.</p><a routerLink="/">Tiếp tục chọn hoa</a></div></ng-template>
     @if(total>20){<div class="pager"><button type="button" (click)="page=page-1;load()" [disabled]="page===1">← Trước</button><span>Trang {{page}}</span><button type="button" (click)="page=page+1;load()" [disabled]="page*20>=total">Sau →</button></div>}
@@ -201,6 +201,9 @@ export class RequestHistory implements OnInit,OnDestroy{
  /** Tổng còn phải trả: chỉ tính lại khi tải tab "Tất cả", để đổi tab không làm con số nhảy về 0. */
  totalRemaining=0;remainingOrders=0;
  private updateRemaining(){const unpaid=this.orders.filter(o=>this.orderStep(o)>=0&&Number(o.paymentSummary?.remaining||0)>0);this.totalRemaining=unpaid.reduce((sum,o)=>sum+Number(o.paymentSummary?.remaining||0),0);this.remainingOrders=unpaid.length}isCancelled(o:any){return/hủy/i.test(String(o.TRANG_THAI||''))}
+  isPaymentFailed(o:any){return/thất bại/i.test(String(o.TRANG_THAI||''))}
+  /** Ghi chú thay cho thanh tiến trình khi đơn không đi theo luồng giao thông thường. */
+  progressNote(o:any){return this.isPaymentFailed(o)?'Thanh toán không thành công – đơn không được thực hiện':this.isCancelled(o)?'Đơn đã hủy':'Đơn đang được shop hỗ trợ hoàn tiền / đổi trả'}
  /** Nhóm màu cho nhãn trạng thái đơn. Thứ tự kiểm tra quan trọng: "Đã đặt hàng thành công" không phải "Giao thành công". */
  orderTone(o:any){const s=String(o?.TRANG_THAI||'').toLowerCase();
   if(/hủy/.test(s))return'cancelled';
