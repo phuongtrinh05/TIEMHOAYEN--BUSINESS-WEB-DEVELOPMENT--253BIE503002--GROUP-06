@@ -185,11 +185,12 @@ export async function lookupHistory(req: Request, res: Response) {
       const bucket = customerOrderGroup(order.TRANG_THAI, afterMap.has(order.DON_HANG_ID));
       if (bucket !== 'all') counts[bucket as 'payment'|'shipping'|'completed'|'returns'|'cancelled']++;
     }
-    // "Cần thanh toán trước": trên TẤT CẢ đơn trong phạm vi (không theo trang), chỉ đơn chưa hoàn thành/hủy/hỗ trợ.
+    // "Cần thanh toán trước": trên TẤT CẢ đơn trong phạm vi (không theo trang), chỉ đơn ở tab "Chờ thanh toán".
+    // Đơn shop đã nhận xử lý (đã đặt hàng thành công, đang chuẩn bị, đang giao…) không còn tính là cần trả trước.
     // Mỗi đơn cộng phần trả trước còn thiếu: COD là tiền cọc, chuyển khoản/ví là toàn bộ đơn; đơn không yêu cầu cọc = 0.
     const prepayCandidates = allOrderStates.filter(order => {
       const bucket = customerOrderGroup(order.TRANG_THAI, afterMap.has(order.DON_HANG_ID));
-      return (bucket === 'payment' || bucket === 'shipping') && !order.KHONG_YEU_CAU_COC;
+      return bucket === 'payment' && !order.KHONG_YEU_CAU_COC;
     });
     const prepayReceipts = prepayCandidates.length ? await (await getCollection<any>('THANH_TOAN')).find({ DON_HANG_ID: { $in: prepayCandidates.map(order => order.DON_HANG_ID) } }).toArray() : [];
     const receiptsByOrder = new Map<string, any[]>();
