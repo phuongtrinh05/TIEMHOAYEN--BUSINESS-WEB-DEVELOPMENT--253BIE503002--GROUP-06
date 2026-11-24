@@ -99,8 +99,8 @@ export class Dashboard implements OnInit {
   notiGroup = signal('');
 
   /** Kết quả kinh doanh: 4 thẻ chính + 3 thẻ phụ. */
-  mainKpis = computed(() => this.pick(['netRevenue', 'cashCollected', 'newOrders', 'depositHeld']));
-  subKpis = computed(() => this.pick(['completedOrders', 'avgOrderValue', 'cancelRate']));
+  /** Kết quả kinh doanh: 8 thẻ (2 hàng × 4). Hàng 2 gồm 3 chỉ số phụ trước đây + Khách hàng mới. */
+  mainKpis = computed(() => this.pick(['netRevenue', 'cashCollected', 'newOrders', 'depositHeld', 'completedOrders', 'avgOrderValue', 'cancelRate', 'newCustomers']));
 
   statusTotal = computed(() => (this.overview()?.statusBreakdown || []).reduce((s, x) => s + x.count, 0));
 
@@ -348,6 +348,8 @@ export class Dashboard implements OnInit {
       case 'cashCollected': return { path: '/dashboard/reports/cashflow-by-day', label: 'Xem dòng tiền' };
       case 'newOrders': return { path: '/dashboard/reports/orders-detail', label: 'Xem chi tiết đơn' };
       case 'cancelRate': return { path: '/dashboard/analytics', fragment: 'van-hanh', label: 'Phân tích vận hành' };
+      case 'completedOrders': return { path: '/dashboard/reports/orders-detail', label: 'Xem chi tiết đơn' };
+      case 'newCustomers': return { path: '/customers', label: 'Xem danh sách khách hàng' };
       default: return { path: '/dashboard/analytics', fragment: 'doanh-thu', label: 'Phân tích xu hướng' };
     }
   }

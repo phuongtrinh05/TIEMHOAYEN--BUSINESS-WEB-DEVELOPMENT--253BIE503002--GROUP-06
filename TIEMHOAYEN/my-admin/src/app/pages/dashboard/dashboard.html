@@ -49,9 +49,6 @@
         }
       </div>
       <div class="mini">
-        @for (k of subKpis(); track k.key) {
-          <span class="mini-item"><span class="muted">{{ k.label }}</span> <b>{{ f.kpiValue(k.value, k.unit) }}</b></span>
-        }
         @if (isEmptyRange() && ov.latestOrderAt) {
           <span class="mini-note no-print"><i class="bi bi-info-circle"></i> Kỳ này chưa có đơn · đơn gần nhất {{ f.dateOnly(ov.latestOrderAt) }}
             <button class="link" (click)="jumpToLatest()">Xem tháng đó</button></span>
