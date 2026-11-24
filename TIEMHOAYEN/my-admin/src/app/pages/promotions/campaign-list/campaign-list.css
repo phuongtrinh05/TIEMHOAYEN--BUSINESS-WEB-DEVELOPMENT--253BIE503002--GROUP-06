@@ -859,3 +859,75 @@
 }
 
 .promotion-load-error{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 15px;margin-bottom:16px;border:1px solid #efcdd1;background:#fff1f2;color:#8e3542;border-radius:8px;font-size:13px}.promotion-load-error button{border:1px solid #e5c3c8;border-radius:6px;background:white;color:#781b20;padding:6px 12px}.promotion-empty{text-align:center;padding:35px!important;color:#ab8d92;font-size:13px}
+
+/* =====================================================================
+   ĐỒNG BỘ GIAO DIỆN THEO TRANG NGUYÊN VẬT LIỆU (chỉ giao diện, không đổi luồng)
+   Thanh công cụ · bảng · nhãn trạng thái · phân trang · popup thêm/sửa
+   ===================================================================== */
+.promotion-page { background: #f9fafb; color: #263238; font-family: var(--font-body, "Nunito Sans", sans-serif); font-size: 13px; line-height: 1.5; }
+.promotion-page .promotion-card { border: 1px solid #ececec; border-radius: 12px; padding: 24px; box-shadow: 0 1px 4px rgba(0, 0, 0, .06); background: #fff; }
+
+/* Thanh công cụ */
+.promotion-page .promotion-toolbar { gap: 8px; margin-bottom: 20px; }
+.promotion-page .toolbar-right { gap: 8px; }
+.promotion-page .search-box { height: 38px; border: 1px solid transparent; border-radius: 8px; background: #f8f9fa; padding: 0 10px; }
+.promotion-page .search-box input { font-size: 13px; background: transparent; }
+.promotion-page .tool-btn { height: 38px; min-width: 38px; padding: 0 14px; border: 1px solid #d9dee5; border-radius: 8px; background: #fff; color: #4d5968; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.promotion-page .tool-btn:hover { border-color: #731919; color: #731919; background: #fff; }
+.promotion-page .tool-btn.add-btn { width: 40px; height: 40px; padding: 0; border-color: #d1d5db; color: #6b7280; }
+.promotion-page .tool-btn.add-btn i { font-size: 16px; }
+.promotion-page .export-btn { height: 38px; padding: 0 14px; border: 1px solid #731919; border-radius: 8px; background: #731919; color: #fff; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.promotion-page .export-btn:hover { background: #5c1414; color: #fff; }
+.promotion-page .dropdown-menu { border: 1px solid #ececec; border-radius: 10px; box-shadow: 0 10px 25px rgba(0, 0, 0, .12); }
+.promotion-page .filter-group select { height: 38px; border: 1px solid #d9dee5; border-radius: 8px; font-size: 13px; }
+
+/* Bảng */
+.promotion-page .table-wrapper { border-radius: 8px; }
+.promotion-page .promotion-table thead tr { background: #ffd9d9; }
+.promotion-page .promotion-table th { height: auto; padding: 16px 12px; background: #ffd9d9; color: #731919; font-size: 13px; font-weight: 600; }
+.promotion-page .promotion-table th:first-child { border-radius: 8px 0 0 0; }
+.promotion-page .promotion-table th:last-child { border-radius: 0 8px 0 0; }
+.promotion-page .promotion-table td { height: auto; padding: 14px 12px; border-bottom: 1px solid #e5e7eb; color: #263238; font-size: 13px; }
+.promotion-page .promotion-table tbody tr:hover td { background: #fffafa; }
+.promotion-page .promotion-empty { color: #8a8f98; padding: 28px 8px; text-align: center; }
+.promotion-page .icon-btn { border: none; background: none; color: #6b7280; border-radius: 6px; padding: 4px 6px; }
+.promotion-page .icon-btn:hover { background: #fde8ea; color: #731919; }
+
+/* Nhãn trạng thái */
+.promotion-page .badge-s { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.promotion-page .badge-s.ok { background: #e7f6ee; color: #1f7a4d; }
+.promotion-page .badge-s.waiting { background: #fff4d6; color: #92600a; }
+.promotion-page .badge-s.info { background: #e7efff; color: #1d4ed8; }
+.promotion-page .badge-s.gray { background: #f1f2f4; color: #4d5968; }
+
+/* Phân trang */
+.promotion-page .pagination { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; margin-top: 32px; }
+.promotion-page .page-nav { justify-self: start; height: 38px; min-width: 88px; padding: 0 16px; border: 1px solid #d9dee5; border-radius: 8px; background: #fff; color: #111; font-size: 13px; font-weight: 500; box-shadow: 0 1px 4px rgb(0 0 0 / 8%); display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.promotion-page .page-nav:last-child { justify-self: end; }
+.promotion-page .page-nav:hover:not(:disabled) { border-color: #731919; color: #731919; }
+.promotion-page .page-numbers { display: flex; gap: 10px; justify-content: center; }
+.promotion-page .page-numbers button { height: 36px; min-width: 36px; padding: 0 6px; border: 1px solid #d9dee5; border-radius: 6px; background: #fff; color: #003c3c; font-size: 13px; }
+.promotion-page .page-numbers button.active { background: #ffd4d7; border-color: #ffd4d7; color: #731919; font-weight: 700; }
+.promotion-page .page-numbers button:hover:not(.active) { border-color: #731919; background: #fff; }
+
+/* Popup thêm / sửa */
+.promotion-page .edit-modal-overlay { background: rgba(17, 24, 39, .42); }
+.promotion-page .campaign-form-modal,
+.promotion-page .voucher-form-modal { border-radius: 12px; box-shadow: 0 20px 50px rgba(0, 0, 0, .25); font-size: 13px; }
+.promotion-page .campaign-form-header,
+.promotion-page .voucher-form-header { padding: 16px 20px; border-bottom: 1px solid #f3e7e7; }
+.promotion-page .campaign-form-header h2,
+.promotion-page .voucher-form-header h2 { margin: 0; font-family: var(--font-body, "Nunito Sans", sans-serif); font-size: 17px; font-weight: 600; color: #731919; }
+.promotion-page .campaign-form-actions,
+.promotion-page .voucher-form-actions { gap: 8px; padding: 12px 20px; border-top: 1px solid #f3e7e7; }
+.promotion-page .form-group label { font-size: 12px; font-weight: 600; color: #505761; margin-bottom: 7px; }
+.promotion-page .form-group input,
+.promotion-page .form-group select { height: 38px; border: 1px solid #d9dee5; border-radius: 8px; font-size: 13px; }
+.promotion-page .form-group textarea { border: 1px solid #d9dee5; border-radius: 8px; font-size: 13px; }
+.promotion-page .form-group input:focus,
+.promotion-page .form-group select:focus,
+.promotion-page .form-group textarea:focus { outline: 2px solid #ffd4d7; border-color: #c97a7a; box-shadow: none; }
+.promotion-page .cancel-btn { height: 38px; padding: 0 14px; border: 1px solid #d9dee5; border-radius: 8px; background: #fff; color: #4d5968; font-size: 13px; font-weight: 500; }
+.promotion-page .cancel-btn:hover { border-color: #731919; color: #731919; background: #fff; }
+.promotion-page .save-btn { height: 38px; padding: 0 14px; border: 1px solid #731919; border-radius: 8px; background: #731919; color: #fff; font-size: 13px; font-weight: 600; }
+.promotion-page .save-btn:hover { background: #5c1414; }
