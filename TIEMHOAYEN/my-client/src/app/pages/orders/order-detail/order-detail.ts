@@ -1,4 +1,4 @@
-import { deliverySlotLabel } from '../../../services/pricing.service';
+import { deliverySlotLabel, workingMinutesBetween } from '../../../services/pricing.service';
 import { apiBaseUrl, orderAccessSession, orderLookupRoute } from '../../../services/api-config';
 import { memberAccessToken } from '../../../services/session-auth';
 import { LuckyWheelService } from '../../../services/lucky-wheel.service';
@@ -1483,25 +1483,25 @@ export class OrderDetail implements OnInit, OnDestroy {
   }
 
   readonly shopPhone = '0909477488';
-  /** Lịch hiện tại còn dưới 4 giờ: khóa ô ngày/giờ. */
+  /** Lịch hiện tại còn dưới 4 giờ làm việc: khóa ô ngày/giờ. */
   get scheduleLocked(): boolean { return this.order.rescheduleMode === 'locked'; }
 
   /**
    * Quy tắc đổi lịch (server kiểm tra lại):
-   * ≥ 24 giờ cập nhật trực tiếp; 4–24 giờ liên hệ shop; < 4 giờ gọi shop; không nhận giờ đã qua hoặc ngoài 08:00–22:00.
+   * ≥ 24 giờ cập nhật trực tiếp; 4–24 giờ liên hệ shop; < 4 giờ làm việc (06:30–22:00) gọi shop; không nhận giờ đã qua hoặc ngoài 08:00–22:00.
    */
   private checkReschedule(deliveryDate: string, deliveryTime: string): string {
     const sameDate = deliveryDate === this.toInputDate(this.shippingDateLabel);
     const sameTime = deliveryTime === String(this.order.deliveryTime || '').replace(/\s*[-–]\s*/g, '–');
     if (sameDate && sameTime) return '';
-    if (this.scheduleLocked) return `Đơn sắp đến giờ giao (dưới 4 giờ) nên không đổi ngày/giờ trên website. Vui lòng gọi shop ${this.shopPhone}.`;
+    if (this.scheduleLocked) return `Đơn sắp đến giờ giao (dưới 4 giờ làm việc) nên không đổi ngày/giờ trên website. Vui lòng gọi shop ${this.shopPhone}.`;
     const [start, end = start] = deliveryTime.split('–');
     const startAt = new Date(`${deliveryDate}T${start}:00+07:00`).getTime();
     const minutes = (startAt - Date.now()) / 60000;
     const toMinutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
     if (!Number.isFinite(startAt) || minutes <= 0) return 'Thời gian giao mới đã qua. Vui lòng chọn lại.';
     if (toMinutes(start) < 8 * 60 || toMinutes(end) > 22 * 60 || toMinutes(end) < toMinutes(start)) return 'Shop chỉ giao hàng từ 08:00 đến 22:00. Vui lòng chọn lại giờ giao.';
-    if (minutes < 4 * 60) return `Lịch giao mới còn dưới 4 giờ. Vui lòng gọi shop ${this.shopPhone}.`;
+    if (workingMinutesBetween(Date.now(), startAt) < 4 * 60) return `Lịch giao mới còn dưới 4 giờ làm việc. Vui lòng gọi shop ${this.shopPhone}.`;
     if (minutes < 24 * 60) return `Lịch giao mới cách hiện tại dưới 24 giờ nên shop cần kiểm tra hoa và người giao trước. Vui lòng liên hệ shop qua hotline ${this.shopPhone} hoặc chat để đổi lịch.`;
     return '';
   }

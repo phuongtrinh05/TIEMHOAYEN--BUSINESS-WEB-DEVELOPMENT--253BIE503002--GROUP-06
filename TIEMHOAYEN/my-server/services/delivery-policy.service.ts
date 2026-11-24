@@ -3,12 +3,17 @@ import { InventoryError } from './inventory/helpers.js';
 /**
  * Quy tắc thời gian giao dùng chung cho Customer, Sales và Backend.
  * - Shop chỉ giao trong 08:00–22:00 (giờ Việt Nam).
- * - Lịch giao còn dưới 4 giờ: không nhận online, khách gọi shop.
+ * - Giờ làm việc (nhân viên có mặt) 06:30–22:00. Mốc 4 giờ chỉ đếm thời gian trong giờ làm việc.
+ * - Lịch giao còn dưới 4 giờ làm việc: không nhận online, khách gọi shop.
  * - Còn dưới 24 giờ: kiểm tra NVL thực tế ngay (giữ tạm khi tạo QR).
  * - Từ 24 giờ: thanh toán thẳng, NVL được lập nhu cầu theo T sau khi thanh toán.
  */
 export const SHOP_OPEN_TIME = '08:00';
 export const SHOP_CLOSE_TIME = '22:00';
+/** Giờ làm việc của shop: nhân viên nhận đơn, chuẩn bị hoa. Khác khung giao 08:00–22:00. */
+export const WORK_OPEN_TIME = '06:30';
+export const WORK_CLOSE_TIME = '22:00';
+/** Số phút làm việc tối thiểu từ lúc đặt tới đầu khung giao. */
 export const URGENT_LEAD_MINUTES = 4 * 60;
 export const MATERIAL_CHECK_WINDOW_MINUTES = 24 * 60;
 export const URGENT_CONTACT_PHONE = '0909477488';
@@ -30,6 +35,8 @@ export type DeliveryRouting = {
   timezone: 'Asia/Ho_Chi_Minh';
   minutesUntilDelivery: number;
   hoursUntilDelivery: number;
+  /** Số phút nằm trong giờ làm việc 06:30–22:00 từ lúc đặt tới đầu khung giao. */
+  workingMinutesUntilDelivery: number;
   sameDay: boolean;
 };
 
@@ -61,6 +68,44 @@ export function isWithinShopHours(startInput: Date | string, endInput?: Date | s
   return minuteOfDay(start) >= toMinutes(SHOP_OPEN_TIME) && minuteOfDay(end) <= toMinutes(SHOP_CLOSE_TIME);
 }
 
+const VN_OFFSET_MS = 7 * 3_600_000;
+const DAY_MS = 86_400_000;
+/** Mốc 00:00 giờ Việt Nam của ngày chứa `ms` (Việt Nam không đổi giờ mùa hè). */
+const vnDayStart = (ms: number) => Math.floor((ms + VN_OFFSET_MS) / DAY_MS) * DAY_MS - VN_OFFSET_MS;
+const workWindow = (dayStart: number): [number, number] =>
+  [dayStart + toMinutes(WORK_OPEN_TIME) * 60_000, dayStart + toMinutes(WORK_CLOSE_TIME) * 60_000];
+
+/** Số phút nằm trong giờ làm việc (06:30–22:00 giờ Việt Nam) giữa hai thời điểm; đêm không được tính. */
+export function workingMinutesBetween(fromInput: Date | string | number, toInput: Date | string | number): number {
+  const from = new Date(fromInput).getTime();
+  const to = new Date(toInput).getTime();
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return 0;
+  let total = 0;
+  for (let day = vnDayStart(from); day < to; day += DAY_MS) {
+    const [open, close] = workWindow(day);
+    total += Math.max(0, Math.min(close, to) - Math.max(open, from));
+  }
+  return Math.floor(total / 60_000);
+}
+
+/**
+ * Lùi `minutes` phút làm việc từ `toInput`, bỏ qua giờ shop nghỉ.
+ * Vd giao 12:00 → 08:00 cùng ngày; giao 10:00 → 21:30 hôm trước (06:30–10:00 mới được 3 giờ 30 phút).
+ */
+export function subtractWorkingMinutes(toInput: Date | string | number, minutes: number): Date {
+  const to = new Date(toInput).getTime();
+  let remaining = Math.max(0, minutes) * 60_000;
+  if (!Number.isFinite(to) || remaining === 0) return new Date(to);
+  for (let day = vnDayStart(to), i = 0; i < 400; day -= DAY_MS, i++) {
+    const [open, close] = workWindow(day);
+    const end = Math.min(close, to);
+    if (end <= open) continue;
+    if (end - open >= remaining) return new Date(end - remaining);
+    remaining -= end - open;
+  }
+  return new Date(to - minutes * 60_000);
+}
+
 export function assertWithinShopHours(start: Date | string, end?: Date | string) {
   if (!isWithinShopHours(start, end)) throw new InventoryError(400, OUTSIDE_HOURS_MESSAGE, { code: OUTSIDE_HOURS_CODE });
 }
@@ -85,7 +130,8 @@ export function classifyDeliverySchedule(deliveryAtInput: Date | string, nowInpu
   }
   assertWithinShopHours(startAt, deliveryAt);
   const minutesUntilDelivery = Math.floor((startAt.getTime() - now.getTime()) / 60_000);
-  if (minutesUntilDelivery < URGENT_LEAD_MINUTES) {
+  const workingMinutesUntilDelivery = workingMinutesBetween(now, startAt);
+  if (workingMinutesUntilDelivery < URGENT_LEAD_MINUTES) {
     throw new InventoryError(400, URGENT_DELIVERY_MESSAGE, { code: URGENT_DELIVERY_CODE, phone: URGENT_CONTACT_PHONE });
   }
   const under24h = minutesUntilDelivery < MATERIAL_CHECK_WINDOW_MINUTES;
@@ -100,6 +146,7 @@ export function classifyDeliverySchedule(deliveryAtInput: Date | string, nowInpu
     timezone: VN_TZ,
     minutesUntilDelivery,
     hoursUntilDelivery: Math.round(minutesUntilDelivery / 6) / 10,
+    workingMinutesUntilDelivery,
     sameDay: dayKey(startAt) === dayKey(now),
   };
 }

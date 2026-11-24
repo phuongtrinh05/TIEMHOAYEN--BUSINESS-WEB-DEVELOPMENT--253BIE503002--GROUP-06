@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { reserveOrderLines } from '../services/order-stock.service.js';
 import { cancelUnpaidOrdersPastDelivery, expiredPaymentInfo, orderPaymentDeadline } from '../services/unpaid-order-expiry.service.js';
 import { orderDeliveryAt } from '../services/inventory/stock.service.js';
-import { URGENT_CONTACT_PHONE as SHOP_PHONE } from '../services/delivery-policy.service.js';
+import { URGENT_CONTACT_PHONE as SHOP_PHONE, URGENT_LEAD_MINUTES, workingMinutesBetween } from '../services/delivery-policy.service.js';
 import { assertCustomerReschedule, rescheduleModeForOrder } from '../services/shipping-edit-policy.service.js';
 import { lookupAccess } from '../services/order-access.service.js';
 import { priceCheckout, sumVerifiedPayments, validateCheckoutDelivery, ensureCancelRefundCase, pendingCashTotal } from '../services/admin-order.service.js';
@@ -568,7 +568,7 @@ export const retryOrderPayment = async (req: Request, res: Response) => {
       const payDeadline = orderPaymentDeadline(order);
       if (order.HET_HAN_THANH_TOAN === true || (payDeadline && payDeadline.getTime() <= Date.now())) throw new InventoryError(409, 'Đơn đã quá hạn thanh toán, vui lòng đặt lại đơn.', { code: 'ORDER_PAYMENT_EXPIRED' });
       const deliveryAtForRetry = orderDeliveryAt(order);
-      if (deliveryAtForRetry && deliveryAtForRetry.getTime() - Date.now() < 4 * 3600_000) throw new InventoryError(409, `Đơn còn dưới 4 giờ trước giờ giao nên không thể tạo mã thanh toán mới. Vui lòng liên hệ shop ${SHOP_PHONE}.`, { code: 'ORDER_PAYMENT_TOO_LATE' });
+      if (deliveryAtForRetry && workingMinutesBetween(Date.now(), deliveryAtForRetry) < URGENT_LEAD_MINUTES) throw new InventoryError(409, `Đơn còn dưới 4 giờ làm việc trước giờ giao nên không thể tạo mã thanh toán mới. Vui lòng liên hệ shop ${SHOP_PHONE}.`, { code: 'ORDER_PAYMENT_TOO_LATE' });
       const pending = rows.find(p => p.TRANG_THAI_THANH_TOAN === 'Chờ thanh toán');
       const holds = await (await getCollection<any>('GIU_TON')).find({ DON_HANG_ID: orderId, MA_PHIEN_THANH_TOAN: order.MA_PHIEN_THANH_TOAN }, { session }).toArray();
       if (pending && getRemainingSeconds(order, pending) > 0 && holds.length && holds.every(h => h.TRANG_THAI === RESERVATION_STATUS.official || h.TRANG_THAI === RESERVATION_STATUS.temporary && new Date(h.HET_HAN_LUC).getTime() > Date.now())) return response(pending);

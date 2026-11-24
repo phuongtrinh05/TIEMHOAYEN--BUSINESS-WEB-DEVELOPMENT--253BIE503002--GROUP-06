@@ -6,7 +6,23 @@ import { AdminApiService, AdminCustomer, AdminOrderQuoteSummary, AdminProduct, A
 
 /* ===== Quy tắc giao hàng dùng chung với trang Khách (backend kiểm tra lại) ===== */
 export const SHOP_PHONE = '0909477488';
-const URGENT_LEAD_MS = 4 * 60 * 60 * 1000;
+const URGENT_LEAD_MINUTES = 4 * 60;
+/** Giờ làm việc của shop (06:30–22:00): mốc 4 giờ trước giờ giao chỉ đếm thời gian trong khung này. */
+export const WORK_OPEN_MINUTES = 6 * 60 + 30;
+export const WORK_CLOSE_MINUTES = 22 * 60;
+const VN_OFFSET_MS = 7 * 3_600_000;
+const DAY_MS = 86_400_000;
+
+/** Số phút nằm trong giờ làm việc giữa hai thời điểm (giờ Việt Nam); giống backend workingMinutesBetween. */
+export function workingMinutesBetween(from: Date | number, to: Date | number): number {
+  const a = new Date(from).getTime(), b = new Date(to).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 0;
+  let total = 0;
+  for (let day = Math.floor((a + VN_OFFSET_MS) / DAY_MS) * DAY_MS - VN_OFFSET_MS; day < b; day += DAY_MS) {
+    total += Math.max(0, Math.min(day + WORK_CLOSE_MINUTES * 60_000, b) - Math.max(day + WORK_OPEN_MINUTES * 60_000, a));
+  }
+  return Math.floor(total / 60_000);
+}
 /** Nội thành theo bảng phí giao của Khách và backend priceCheckout. */
 export const INNER_DISTRICTS = ['Quận 1', 'Quận 3', 'Quận 4', 'Quận 5', 'Quận 6', 'Quận 7', 'Quận 8', 'Quận 10', 'Quận 11',
   'Quận Bình Thạnh', 'Quận Phú Nhuận', 'Quận Tân Bình', 'Quận Tân Phú', 'Quận Gò Vấp'];
@@ -32,10 +48,10 @@ export function deliveryTimeSlots(isoDate: string, now = new Date()): string[] {
   return slots.filter(slot => (vnDeliveryDate(isoDate, slot)?.getTime() ?? 0) > now.getTime());
 }
 
-/** Lịch giao còn dưới 4 giờ: giống Khách, không nhận online. */
+/** Lịch giao còn dưới 4 giờ làm việc (06:30–22:00): giống Khách, không nhận online. */
 export function isUrgentDelivery(isoDate: string, time: string, now = new Date()): boolean {
   const at = vnDeliveryDate(isoDate, time);
-  return !!at && at.getTime() > now.getTime() && at.getTime() - now.getTime() < URGENT_LEAD_MS;
+  return !!at && at.getTime() > now.getTime() && workingMinutesBetween(now, at) < URGENT_LEAD_MINUTES;
 }
 
 /** Bảng phí giao giống hệt trang Khách / backend (chỉ để hiển thị tức thời, backend tính lại). */
@@ -881,7 +897,7 @@ export class CreateOrder implements OnInit {
     else if (this.form.deliveryDate < vnTodayIso()) this.errors.deliveryDate = 'Ngày giao phải từ hôm nay trở đi';
     if (!this.form.deliverySlot) this.errors.deliverySlot = 'Vui lòng chọn giờ giao';
     else if (!this.deliverySlots.includes(this.form.deliverySlot)) this.errors.deliverySlot = 'Giờ giao đã qua, vui lòng chọn lại (08:00–22:00)';
-    else if (this.urgentDeliverySelected) this.errors.deliverySlot = `Lịch giao dưới 4 giờ là đơn gấp, vui lòng xử lý qua số ${SHOP_PHONE}`;
+    else if (this.urgentDeliverySelected) this.errors.deliverySlot = `Lịch giao dưới 4 giờ làm việc là đơn gấp, vui lòng xử lý qua số ${SHOP_PHONE}`;
     if (!this.form.provinceCode) this.errors.provinceCode = 'Vui lòng chọn Tỉnh/Thành phố';
     if (!this.form.districtCode) this.errors.districtCode = 'Vui lòng chọn Quận/Huyện';
     if (!this.form.wardCode) this.errors.wardCode = 'Vui lòng chọn Phường/Xã';
