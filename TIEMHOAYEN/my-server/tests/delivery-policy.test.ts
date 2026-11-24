@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertDeliverySlotStart, classifyDeliverySchedule, isWithinShopHours, URGENT_CONTACT_PHONE } from '../services/delivery-policy.service.js';
+import { assertDeliverySlotStart, classifyDeliverySchedule, isWithinShopHours, subtractWorkingMinutes, URGENT_CONTACT_PHONE, workingMinutesBetween } from '../services/delivery-policy.service.js';
 
 const now = new Date('2026-11-01T08:00:00+07:00');
 
@@ -45,4 +45,25 @@ test('a 30-minute slot must start between 08:00 and 21:30', () => {
   assert.doesNotThrow(() => assertDeliverySlotStart('2026-11-01T21:30:00+07:00'));
   assert.throws(() => assertDeliverySlotStart('2026-11-01T22:00:00+07:00'), (error: any) => error.details.code === 'OUTSIDE_SHOP_HOURS');
   assert.throws(() => assertDeliverySlotStart('2026-11-01T07:30:00+07:00'), (error: any) => error.details.code === 'OUTSIDE_SHOP_HOURS');
+});
+
+test('4-hour lead counts only shop working hours 06:30–22:00', () => {
+  const late = new Date('2026-11-01T23:00:00+07:00');
+  // 23:00 → 08:00 hôm sau: chỉ có 06:30–08:00 = 1 giờ 30 phút làm việc → đơn gấp.
+  assert.throws(() => classifyDeliverySchedule('2026-11-02T08:00:00+07:00', late), (error: any) => error.details.code === 'URGENT_DELIVERY');
+  // 05:00 → 09:00: 06:30–09:00 = 2 giờ 30 phút → đơn gấp.
+  assert.throws(() => classifyDeliverySchedule('2026-11-02T09:00:00+07:00', new Date('2026-11-02T05:00:00+07:00')), (error: any) => error.details.code === 'URGENT_DELIVERY');
+  // 23:00 → 10:30 hôm sau: đúng 4 giờ làm việc → nhận.
+  const ok = classifyDeliverySchedule('2026-11-02T10:30:00+07:00', late);
+  assert.equal(ok.workingMinutesUntilDelivery, 240);
+  assert.equal(ok.scheduleClass, 'UNDER_24H');
+  // 20:00 → 10:00 hôm sau: 20:00–22:00 + 06:30–10:00 = 5 giờ 30 phút → nhận.
+  assert.equal(classifyDeliverySchedule('2026-11-02T10:00:00+07:00', new Date('2026-11-01T20:00:00+07:00')).workingMinutesUntilDelivery, 330);
+});
+test('working minutes skip the night and can be subtracted back across days', () => {
+  assert.equal(workingMinutesBetween('2026-11-01T21:00:00+07:00', '2026-11-02T07:30:00+07:00'), 120);
+  assert.equal(workingMinutesBetween('2026-11-01T22:30:00+07:00', '2026-11-02T06:00:00+07:00'), 0);
+  assert.equal(subtractWorkingMinutes('2026-11-02T12:00:00+07:00', 240).toISOString(), new Date('2026-11-02T08:00:00+07:00').toISOString());
+  assert.equal(subtractWorkingMinutes('2026-11-02T10:00:00+07:00', 240).toISOString(), new Date('2026-11-01T21:30:00+07:00').toISOString());
+  assert.equal(subtractWorkingMinutes('2026-11-02T20:00:00+07:00', 240).toISOString(), new Date('2026-11-02T16:00:00+07:00').toISOString());
 });

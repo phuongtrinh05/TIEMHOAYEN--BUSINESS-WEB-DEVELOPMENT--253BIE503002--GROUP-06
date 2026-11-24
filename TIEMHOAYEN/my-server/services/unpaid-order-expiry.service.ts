@@ -5,6 +5,7 @@ import { orderDeliveryAt, releaseReservations } from './inventory/stock.service.
 import { orderEvent, sumVerifiedPayments } from './admin-order.service.js';
 import { emitAdminNotification } from './analytics/notifications.service.js';
 import { restoreOrderPoints } from './loyalty-policy.service.js';
+import { subtractWorkingMinutes } from './delivery-policy.service.js';
 
 /** Đơn còn chờ khoản trả trước (chuyển khoản/ví, hoặc tiền cọc COD). */
 export const UNPAID_ORDER_STATUSES = ['Chờ thanh toán', 'Thanh toán thất bại', 'Đã xác nhận đơn hàng'];
@@ -22,8 +23,12 @@ export const HIDE_EXPIRED_PAYMENT_FROM_CUSTOMER = {
 };
 /** "Chờ thanh toán" kéo dài tối đa 24 giờ. */
 export const ORDER_PAYMENT_WINDOW_MS = 24 * 3600_000;
-/** Đơn gấp: phải thanh toán trước giờ nhận 4 giờ (vd nhận 20:00 thì thanh toán trước 16:00). */
-export const PAY_BEFORE_DELIVERY_MS = 4 * 3600_000;
+/**
+ * Đơn giao gần: phải thanh toán trước giờ nhận 4 giờ làm việc (06:30–22:00).
+ * Vd nhận 20:00 → trước 16:00; nhận 10:00 → trước 21:30 hôm trước.
+ */
+export const PAY_BEFORE_DELIVERY_WORK_MINUTES = 4 * 60;
+const payCutoff = (delivery: number) => subtractWorkingMinutes(delivery, PAY_BEFORE_DELIVERY_WORK_MINUTES);
 
 /** Khoản bắt buộc trả trước: COD là tiền cọc, phương thức khác là toàn bộ đơn. */
 export function requiredPrepayment(order: any): number {
@@ -41,15 +46,15 @@ export function isNearDeliveryOrder(order: any): boolean {
 
 /**
  * Hạn thanh toán của đơn (khác hạn 5 phút của mã QR):
- * - Đơn giao gần (≤ 24 giờ): phải thanh toán trước giờ nhận 4 giờ (nhận 20:00 → trước 16:00).
+ * - Đơn giao gần (≤ 24 giờ): phải thanh toán trước giờ nhận 4 giờ làm việc (nhận 20:00 → trước 16:00).
  * - Đơn giao xa (> 24 giờ): "Chờ thanh toán" kéo dài 24 giờ kể từ lúc đặt.
  */
 export function orderPaymentDeadline(order: any): Date | null {
   const created = order?.NGAY_TAO ? new Date(order.NGAY_TAO).getTime() : NaN;
   const delivery = orderDeliveryAt(order)?.getTime() ?? NaN;
-  if (Number.isFinite(delivery) && isNearDeliveryOrder(order)) return new Date(delivery - PAY_BEFORE_DELIVERY_MS);
+  if (Number.isFinite(delivery) && isNearDeliveryOrder(order)) return payCutoff(delivery);
   if (Number.isFinite(created)) return new Date(created + ORDER_PAYMENT_WINDOW_MS);
-  return Number.isFinite(delivery) ? new Date(delivery - PAY_BEFORE_DELIVERY_MS) : null;
+  return Number.isFinite(delivery) ? payCutoff(delivery) : null;
 }
 
 /** Đơn đã kết thúc vì quá hạn thanh toán (quy tắc mới hoặc đơn cũ bị hủy tự động trước đây). */

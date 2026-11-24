@@ -43,7 +43,23 @@ export interface QuoteFulfillment {
 /* ===== Quy tắc giờ giao phía khách (backend kiểm tra lại) ===== */
 export const SHOP_PHONE = '0909477488';
 export const URGENT_DELIVERY_MESSAGE = 'Đơn hàng của bạn giao gấp. Vui lòng liên hệ với số điện thoại';
-const URGENT_LEAD_MS = 4 * 60 * 60 * 1000;
+const URGENT_LEAD_MINUTES = 4 * 60;
+/** Giờ làm việc của shop (06:30–22:00): mốc 4 giờ trước giờ giao chỉ đếm thời gian trong khung này. */
+export const WORK_OPEN_MINUTES = 6 * 60 + 30;
+export const WORK_CLOSE_MINUTES = 22 * 60;
+const VN_OFFSET_MS = 7 * 3_600_000;
+const DAY_MS = 86_400_000;
+
+/** Số phút nằm trong giờ làm việc giữa hai thời điểm (giờ Việt Nam); giống backend workingMinutesBetween. */
+export function workingMinutesBetween(from: Date | number, to: Date | number): number {
+  const a = new Date(from).getTime(), b = new Date(to).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 0;
+  let total = 0;
+  for (let day = Math.floor((a + VN_OFFSET_MS) / DAY_MS) * DAY_MS - VN_OFFSET_MS; day < b; day += DAY_MS) {
+    total += Math.max(0, Math.min(day + WORK_CLOSE_MINUTES * 60_000, b) - Math.max(day + WORK_OPEN_MINUTES * 60_000, a));
+  }
+  return Math.floor(total / 60_000);
+}
 
 /** Ngày hiện tại theo giờ Việt Nam, dạng YYYY-MM-DD. */
 export function vnTodayIso(now = new Date()): string {
@@ -87,10 +103,10 @@ export function isWithin24h(isoDate: string, time: string, now = new Date()): bo
   return !!at && at.getTime() - now.getTime() < 24 * 60 * 60 * 1000;
 }
 
-/** Lịch giao còn dưới 4 giờ: không nhận online, khách gọi shop. */
+/** Lịch giao còn dưới 4 giờ làm việc (06:30–22:00): không nhận online, khách gọi shop. */
 export function isUrgentDelivery(isoDate: string, time: string, now = new Date()): boolean {
   const at = vnDeliveryDate(isoDate, time);
-  return !!at && at.getTime() > now.getTime() && at.getTime() - now.getTime() < URGENT_LEAD_MS;
+  return !!at && at.getTime() > now.getTime() && workingMinutesBetween(now, at) < URGENT_LEAD_MINUTES;
 }
 
 @Injectable({ providedIn: 'root' })

@@ -1,12 +1,12 @@
 import { InventoryError } from './inventory/helpers.js';
-import { isWithinShopHours, URGENT_CONTACT_PHONE } from './delivery-policy.service.js';
+import { isWithinShopHours, URGENT_CONTACT_PHONE, workingMinutesBetween } from './delivery-policy.service.js';
 import { slot24h } from './time-format.js';
 
 /**
  * Quy tắc khách tự sửa lịch giao (ngày/khung giờ) trên trang chi tiết đơn:
  * - Lịch mới còn từ 24 giờ trở lên: cập nhật trực tiếp.
  * - Lịch mới còn từ 4 đến dưới 24 giờ: không cập nhật trực tiếp, khách liên hệ shop.
- * - Lịch hiện tại còn dưới 4 giờ: khóa sửa ngày/giờ, khách gọi shop.
+ * - Lịch hiện tại còn dưới 4 giờ làm việc (06:30–22:00): khóa sửa ngày/giờ, khách gọi shop.
  * - Không nhận giờ đã qua hoặc ngoài 08:00–22:00.
  * Mỗi đơn chỉ được sửa thông tin giao hàng một lần (kiểm tra ở controller).
  */
@@ -15,7 +15,7 @@ export const LOCK_RESCHEDULE_MINUTES = 4 * 60;
 export const RESCHEDULE_CONTACT_CODE = 'RESCHEDULE_CONTACT_SHOP';
 export const RESCHEDULE_LOCKED_CODE = 'RESCHEDULE_LOCKED';
 export const RESCHEDULE_CONTACT_MESSAGE = `Lịch giao mới cách hiện tại dưới 24 giờ nên shop cần kiểm tra hoa và người giao trước. Vui lòng liên hệ shop qua hotline ${URGENT_CONTACT_PHONE} hoặc chat để đổi lịch.`;
-export const RESCHEDULE_LOCKED_MESSAGE = `Đơn sắp đến giờ giao (dưới 4 giờ) nên không đổi ngày/giờ trên website. Vui lòng gọi shop ${URGENT_CONTACT_PHONE}.`;
+export const RESCHEDULE_LOCKED_MESSAGE = `Đơn sắp đến giờ giao (dưới 4 giờ làm việc) nên không đổi ngày/giờ trên website. Vui lòng gọi shop ${URGENT_CONTACT_PHONE}.`;
 
 const dateKeyOf = (value: unknown): string => {
   if (!value) return '';
@@ -44,8 +44,7 @@ export type RescheduleMode = 'direct' | 'contact' | 'locked';
 export function rescheduleModeForOrder(order: any, now = new Date()): RescheduleMode {
   const current = deliveryWindow(order?.NGAY_MUON_GIAO, order?.KHUNG_GIO_MUON_GIAO);
   if (!current) return 'direct';
-  const minutes = (current.start.getTime() - now.getTime()) / 60_000;
-  if (minutes < LOCK_RESCHEDULE_MINUTES) return 'locked';
+  if (current.start.getTime() <= now.getTime() || workingMinutesBetween(now, current.start) < LOCK_RESCHEDULE_MINUTES) return 'locked';
   return 'direct';
 }
 
@@ -69,8 +68,8 @@ export function assertCustomerReschedule(order: any, deliveryDate: unknown, deli
   if (next.start.getTime() <= now.getTime()) throw new InventoryError(400, 'Thời gian giao mới đã qua. Vui lòng chọn lại.');
   if (!isWithinShopHours(next.start, next.end)) throw new InventoryError(400, 'Shop chỉ giao hàng từ 08:00 đến 22:00. Vui lòng chọn lại giờ giao.');
   const minutes = (next.start.getTime() - now.getTime()) / 60_000;
-  if (minutes < LOCK_RESCHEDULE_MINUTES) {
-    throw new InventoryError(409, `Lịch giao mới còn dưới 4 giờ. Vui lòng gọi shop ${URGENT_CONTACT_PHONE}.`, { code: RESCHEDULE_LOCKED_CODE, phone: URGENT_CONTACT_PHONE });
+  if (workingMinutesBetween(now, next.start) < LOCK_RESCHEDULE_MINUTES) {
+    throw new InventoryError(409, `Lịch giao mới còn dưới 4 giờ làm việc. Vui lòng gọi shop ${URGENT_CONTACT_PHONE}.`, { code: RESCHEDULE_LOCKED_CODE, phone: URGENT_CONTACT_PHONE });
   }
   if (minutes < DIRECT_RESCHEDULE_MINUTES) {
     throw new InventoryError(409, RESCHEDULE_CONTACT_MESSAGE, { code: RESCHEDULE_CONTACT_CODE, phone: URGENT_CONTACT_PHONE });

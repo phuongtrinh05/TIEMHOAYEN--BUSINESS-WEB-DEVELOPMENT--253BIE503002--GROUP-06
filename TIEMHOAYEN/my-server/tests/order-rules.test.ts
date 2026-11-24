@@ -17,7 +17,7 @@ test('Admin được bỏ qua bước UI trung gian khi các điều kiện giao
   assert.equal(allowedOrderStatuses(order, 200000, 'Admin', true).includes('Đã giao'), true);
 });
 
-test('Hạn thanh toán: giao xa 24 giờ, giao gần trước giờ nhận 4 giờ', async () => {
+test('Hạn thanh toán: giao xa 24 giờ, giao gần trước giờ nhận 4 giờ làm việc', async () => {
   const { isUnpaidPastDeadline, orderPaymentDeadline } = await import('../services/unpaid-order-expiry.service.js');
   const created = new Date('2026-11-10T08:00:00+07:00');
   // Nhận hàng xa (3 ngày sau): hạn = 24 giờ kể từ lúc đặt.
@@ -33,6 +33,9 @@ test('Hạn thanh toán: giao xa 24 giờ, giao gần trước giờ nhận 4 gi
   // Nhận sau 26 giờ (> 24 giờ) là đơn giao xa: hạn vẫn là 24 giờ kể từ lúc đặt, không phải trước giờ nhận 4 giờ.
   const farSoon = { ...far, NGAY_MUON_GIAO: new Date('2026-11-11T00:00:00.000Z'), KHUNG_GIO_MUON_GIAO: '10:00' };
   assert.equal(orderPaymentDeadline(farSoon)?.toISOString(), new Date('2026-11-11T08:00:00+07:00').toISOString());
+  // Đặt 18:00, nhận 10:00 sáng hôm sau: 4 giờ làm việc (06:30–22:00) tính lùi qua đêm → hạn 21:30 tối hôm đặt.
+  const overnight = { ...far, NGAY_TAO: new Date('2026-11-10T18:00:00+07:00'), NGAY_MUON_GIAO: new Date('2026-11-11T00:00:00.000Z'), KHUNG_GIO_MUON_GIAO: '10:00' };
+  assert.equal(orderPaymentDeadline(overnight)?.toISOString(), new Date('2026-11-10T21:30:00+07:00').toISOString());
 });
 
 test('Đơn chưa thanh toán bị hủy khi quá hạn (đơn nhận 14:00 phải trả trước 10:00)', async () => {

@@ -501,7 +501,7 @@
               </div>
               <div class="form-hint" *ngIf="form.deliveryDate && !deliverySlots.length">Hôm nay đã hết giờ giao, vui lòng chọn ngày khác.</div>
               <div class="form-error" *ngIf="urgentDeliverySelected && !errors.deliverySlot">
-                Lịch giao dưới 4 giờ là đơn gấp, vui lòng xử lý qua số {{ shopPhone }}.
+                Lịch giao dưới 4 giờ làm việc (06:30–22:00) là đơn gấp, vui lòng xử lý qua số {{ shopPhone }}.
               </div>
               <div class="form-error" *ngIf="errors.deliverySlot">{{ errors.deliverySlot }}</div>
             </div>

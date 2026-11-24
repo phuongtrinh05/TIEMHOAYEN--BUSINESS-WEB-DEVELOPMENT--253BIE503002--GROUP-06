@@ -7,7 +7,7 @@ import { COLLECTIONS, MATERIAL_STATUS, PO_STATUS, RESERVATION_STATUS } from './i
 import { computeBuildable, incomingByMaterial, pendingDemandByMaterial, supplierOptionsFor } from './inventory/availability.service.js';
 import { getActiveBom, getActiveBomMap } from './inventory/bom.service.js';
 import { REQUESTS, REQUEST_STATUS, publicRequest, assertReservedStockUsable, SALES_CONFIRMED_ORDER_STATUS } from './order-request.service.js';
-import { assertDeliverySlotStart, classifyDeliverySchedule } from './delivery-policy.service.js';
+import { assertDeliverySlotStart, classifyDeliverySchedule, subtractWorkingMinutes } from './delivery-policy.service.js';
 import { requestByVerifiedPhone } from './order-access.service.js';
 import { reserveOrderLines } from './order-stock.service.js';
 import { releaseReservations, sweepExpiredReservations } from './inventory/stock.service.js';
@@ -80,7 +80,8 @@ function deliveryAt(date: unknown, time: unknown) {
   return parsed;
 }
 const SALES_PAYMENT_WINDOW_MS = 24 * 60 * 60 * 1000;
-const PAYMENT_CUTOFF_LEAD_MS = 4 * 60 * 60 * 1000;
+/** Hạn thanh toán: trước giờ giao 4 giờ làm việc (06:30–22:00). */
+const PAYMENT_CUTOFF_WORK_MINUTES = 4 * 60;
 const PREPARATION_LEAD_MS = 3 * 60 * 60 * 1000;
 /**
  * Quyết định giữ tồn khi Sales chốt đơn:
@@ -133,7 +134,7 @@ async function planOrderStock(items: any[], neededAt: Date, session: ClientSessi
 }
 function salesPaymentDeadline(delivery: any, acceptedAt: Date, urgentOverride = false) {
   const scheduledAt = deliveryAt(delivery?.date, delivery?.time);
-  const paymentCutoff = scheduledAt.getTime() - PAYMENT_CUTOFF_LEAD_MS;
+  const paymentCutoff = subtractWorkingMinutes(scheduledAt, PAYMENT_CUTOFF_WORK_MINUTES).getTime();
   const deadlineMs = Math.min(acceptedAt.getTime() + SALES_PAYMENT_WINDOW_MS, paymentCutoff);
   if (deadlineMs <= acceptedAt.getTime()) {
     if (!urgentOverride) throw new InventoryError(409, 'Lịch giao đã quá gần thời điểm chuẩn bị; cần đổi lịch hoặc xác nhận xử lý đơn gấp sau khi đã thống nhất với khách.');
