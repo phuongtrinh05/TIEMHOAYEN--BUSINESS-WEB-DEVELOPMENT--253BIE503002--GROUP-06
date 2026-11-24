@@ -12,7 +12,8 @@ const customerOrderGroup = (status: unknown, hasAfterSales = false) => {
   if (/đã hủy|hủy đơn|thanh toán thất bại/.test(value)) return 'cancelled';
   if (/chờ thanh toán|chờ xác nhận thanh toán|chờ đặt cọc|tam_cho_qr/.test(value)) return 'payment';
   if (/hoàn thành|đã giao|giao thành công/.test(value)) return 'completed';
-  if (/đã đặt hàng thành công|đang chuẩn bị|chờ giao hàng|chờ vận chuyển|đang giao/.test(value)) return 'shipping';
+  // "Chờ xử lý": đơn cũ đã cọc/thanh toán, đang chờ shop xử lý → cùng nhóm Chờ giao hàng.
+  if (/chờ xử lý|đã đặt hàng thành công|đang chuẩn bị|chờ giao hàng|chờ vận chuyển|đang giao/.test(value)) return 'shipping';
   return 'all';
 };
 const failure = (res: Response, error: any) => res.status(error instanceof InventoryError ? error.status : 500).json({ message: error instanceof InventoryError ? error.message : 'Không thể xác thực tra cứu lúc này.' });
@@ -90,7 +91,7 @@ export async function lookupHistory(req: Request, res: Response) {
     const afterSalesOrderIds = [...new Set(allAfterSales.map(row => row.orderId).filter(Boolean))];
     const filteredParts: any[] = [baseQuery];
     if (group === 'payment') filteredParts.push({ TRANG_THAI: { $regex: 'chờ thanh toán|chờ xác nhận thanh toán|chờ đặt cọc|tam_cho_qr', $options: 'i' } });
-    if (group === 'shipping') filteredParts.push({ TRANG_THAI: { $regex: 'đã đặt hàng thành công|đang chuẩn bị|chờ giao hàng|chờ vận chuyển|đang giao', $options: 'i' } });
+    if (group === 'shipping') filteredParts.push({ TRANG_THAI: { $regex: 'chờ xử lý|đã đặt hàng thành công|đang chuẩn bị|chờ giao hàng|chờ vận chuyển|đang giao', $options: 'i' } });
     if (group === 'completed') filteredParts.push({ TRANG_THAI: { $regex: 'hoàn thành|đã giao|giao thành công', $options: 'i' } });
     if (group === 'returns') filteredParts.push({ $or: [
       { TRANG_THAI: { $regex: 'hoàn tiền|trả hàng|đổi hàng', $options: 'i' } },
