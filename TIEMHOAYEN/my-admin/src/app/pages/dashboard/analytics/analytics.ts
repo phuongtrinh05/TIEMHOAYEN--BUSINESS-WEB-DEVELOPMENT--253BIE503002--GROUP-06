@@ -162,34 +162,18 @@ export class Analytics implements OnInit {
       ],
     };
   });
-  /**
-   * Hai trục (tiền bên trái, số đơn bên phải) dùng chung mốc 0: khi LN gộp âm làm trục trái xuống dưới 0,
-   * trục phải được hạ theo cùng tỉ lệ để vạch 0 của hai trục nằm trên một đường.
-   */
-  revenueOptions = computed<ChartConfiguration<'bar'>['options']>(() => {
-    const chart = this.revenueChart();
-    const money = chart.datasets.filter((d: any) => d.yAxisID !== 'y1').flatMap((d: any) => (d.data as any[]).map(Number)).filter(Number.isFinite);
-    const orders = chart.datasets.filter((d: any) => d.yAxisID === 'y1').flatMap((d: any) => (d.data as any[]).map(Number)).filter(Number.isFinite);
-    const leftMin = Math.min(0, ...money);
-    const leftMax = Math.max(1, ...money);
-    const rightMax = Math.max(1, ...orders);
-    // Phần âm chiếm bao nhiêu so với phần dương của trục trái → trục phải lấy đúng tỉ lệ đó.
-    const negRatio = leftMin < 0 ? -leftMin / leftMax : 0;
-    const yMax = leftMax * 1.08;
-    const y1Max = Math.ceil(rightMax * 1.08);
-    return {
-      ...C.barOptions({ money: true, legend: true }),
-      scales: {
-        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12, font: { size: 11 } } },
-        y: { min: leftMin < 0 ? -negRatio * yMax : 0, max: yMax, grid: { color: (ctx: any) => (ctx.tick?.value === 0 ? '#CDBDB6' : '#F1ECEA') }, ticks: { font: { size: 11 }, callback: (v) => F.compact(Number(v)) } },
-        y1: { min: -negRatio * y1Max, max: y1Max, position: 'right', grid: { display: false }, ticks: { font: { size: 11 }, precision: 0, callback: (v) => (Number(v) < 0 ? '' : F.num(Number(v))) }, title: { display: true, text: 'đơn', font: { size: 11 } } },
-      },
-      plugins: {
-        legend: { position: 'top', align: 'end', labels: { boxWidth: 14, font: { size: 12 } } },
-        tooltip: { callbacks: { label: (c: any) => `${c.dataset.label}: ${c.dataset.yAxisID === 'y1' ? F.num(Number(c.raw)) + ' đơn' : F.money(Number(c.raw))}` } },
-      },
-    };
-  });
+  revenueOptions: ChartConfiguration<'bar'>['options'] = {
+    ...C.barOptions({ money: true, legend: true }),
+    scales: {
+      x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12, font: { size: 11 } } },
+      y: { beginAtZero: true, grid: { color: '#F1ECEA' }, ticks: { font: { size: 11 }, callback: (v) => F.compact(Number(v)) } },
+      y1: { beginAtZero: true, position: 'right', grid: { display: false }, ticks: { font: { size: 11 }, precision: 0 }, title: { display: true, text: 'đơn', font: { size: 11 } } },
+    },
+    plugins: {
+      legend: { position: 'top', align: 'end', labels: { boxWidth: 14, font: { size: 12 } } },
+      tooltip: { callbacks: { label: (c: any) => `${c.dataset.label}: ${c.dataset.yAxisID === 'y1' ? F.num(Number(c.raw)) + ' đơn' : F.money(Number(c.raw))}` } },
+    },
+  };
 
   weekdayChart = computed<ChartConfiguration<'bar'>['data']>(() => {
     const w = this.data()?.revenue.byWeekday || [];

@@ -62,7 +62,7 @@
             <button [class.active]="revenueMetric() === 'cash'" (click)="revenueMetric.set('cash')">Tiền đã thu</button>
           </div>
         </div>
-        <div class="chart-fill"><canvas baseChart type="bar" [data]="revenueChart()" [options]="revenueOptions()"></canvas></div>
+        <div class="chart-fill"><canvas baseChart type="bar" [data]="revenueChart()" [options]="revenueOptions"></canvas></div>
         @if (d.revenue.coverage !== null && d.revenue.coverage < 100) {
         }
       </section>
