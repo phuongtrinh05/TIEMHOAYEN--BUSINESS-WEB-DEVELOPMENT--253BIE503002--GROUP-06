@@ -643,7 +643,7 @@ export class AccountComponent implements OnInit, OnDestroy {
             subtotal: Number(item.TAM_TINH || 0),
             total: item.TONG_TIEN || 0,
             status: item.TRANG_THAI as Order['status'],
-            reviewLabel: this.reviewProgressLabel(Number(item.DANH_GIA_DA_GUI || 0), Number(item.DANH_GIA_TONG_SAN_PHAM || 0)),
+            reviewLabel: this.reviewProgressLabel(Number(item.DANH_GIA_DA_GUI || 0), Number(item.DANH_GIA_TONG_SAN_PHAM || 0), item.DANH_GIA_SO_SAO_TB, item.TRANG_THAI),
           }))
           .filter(order => !this.isExpiredPaymentOrder(order));
 
@@ -658,10 +658,14 @@ export class AccountComponent implements OnInit, OnDestroy {
       }
     });
   }
-  private reviewProgressLabel(reviewed: number, total: number): string {
-    if (!total || reviewed <= 0) return 'Chưa đánh giá';
-    if (reviewed >= total) return 'Đã đánh giá';
-    return `Đã đánh giá ${reviewed}/${total} sản phẩm`;
+  /** Cột Đánh giá: lấy theo mã đơn từ server (số sản phẩm đã đánh giá + số sao trung bình). */
+  private reviewProgressLabel(reviewed: number, total: number, averageStars?: number | null, status?: string): string {
+    const stars = averageStars ? ` · ${String(averageStars).replace('.', ',')}★` : '';
+    if (reviewed > 0 && total && reviewed < total) return `Đã đánh giá ${reviewed}/${total} sản phẩm${stars}`;
+    if (reviewed > 0) return `Đã đánh giá${stars}`;
+    // Chỉ đơn đã giao/hoàn thành mới đánh giá được; đơn đang xử lý hiển thị rõ để không bị hiểu là chưa tải dữ liệu.
+    if (!/hoàn thành|đã giao|giao thành công/i.test(String(status || ''))) return 'Đánh giá sau khi nhận hàng';
+    return 'Chưa đánh giá';
   }
   loadCustomerVouchers(): void {
     const saved = localStorage.getItem('khachHang');

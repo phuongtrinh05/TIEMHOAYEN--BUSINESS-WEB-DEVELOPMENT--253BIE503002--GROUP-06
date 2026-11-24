@@ -391,9 +391,16 @@ export const getCustomerOrders = async (req: Request, res: Response) => {
       const set = productsByOrder.get(row.DON_HANG_ID) || new Set<string>(); set.add(String(row.SAN_PHAM_ID)); productsByOrder.set(row.DON_HANG_ID, set);
     });
     const reviewsByOrder = new Map<string, Set<string>>();
+    const starsByOrder = new Map<string, number[]>();
     reviews.forEach(row => {
       const set = reviewsByOrder.get(row.DON_HANG_ID) || new Set<string>(); set.add(String(row.SAN_PHAM_ID)); reviewsByOrder.set(row.DON_HANG_ID, set);
+      const stars = Number(row.SO_SAO);
+      if (stars >= 1 && stars <= 5) starsByOrder.set(row.DON_HANG_ID, [...(starsByOrder.get(row.DON_HANG_ID) || []), stars]);
     });
+    const averageStars = (orderId: string) => {
+      const list = starsByOrder.get(orderId) || [];
+      return list.length ? Math.round(list.reduce((sum, value) => sum + value, 0) / list.length * 10) / 10 : null;
+    };
 
     return res.status(200).json(
       orders
@@ -406,6 +413,8 @@ export const getCustomerOrders = async (req: Request, res: Response) => {
           TRANG_THAI: order.TRANG_THAI,
           DANH_GIA_DA_GUI: reviewsByOrder.get(order.DON_HANG_ID)?.size || 0,
           DANH_GIA_TONG_SAN_PHAM: productsByOrder.get(order.DON_HANG_ID)?.size || 0,
+          // Số sao trung bình của các đánh giá đã gửi cho đơn này (lấy theo DON_HANG_ID); null nếu chưa có.
+          DANH_GIA_SO_SAO_TB: averageStars(order.DON_HANG_ID),
         })),
     );
   } catch (error: any) {

@@ -49,6 +49,7 @@ export interface CustomerOrder {
   TRANG_THAI: string;
   DANH_GIA_DA_GUI?: number;
   DANH_GIA_TONG_SAN_PHAM?: number;
+  DANH_GIA_SO_SAO_TB?: number | null;
 }
 
 export interface CustomerVoucher {
