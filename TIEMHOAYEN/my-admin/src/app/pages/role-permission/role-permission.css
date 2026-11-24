@@ -330,3 +330,151 @@
     opacity:.5;
     cursor:not-allowed;
 }
+
+
+/* =====================================================================
+   ĐỒNG BỘ GIAO DIỆN THEO TRANG NGUYÊN VẬT LIỆU (chỉ giao diện, không đổi luồng)
+   ===================================================================== */
+.role-page { background: #f9fafb; color: #263238; font-family: var(--font-body, "Nunito Sans", sans-serif); font-size: 13px; line-height: 1.5; }
+
+/* Khung danh sách & thẻ KPI */
+.role-page .order-table-card,
+.role-page .transaction-card,
+.role-page .article-table-card,
+.role-page .account-card,
+.role-page .audit-card,
+.role-page .permission-card { background: #fff; border: 1px solid #ececec; border-radius: 12px; box-shadow: 0 1px 4px rgba(0, 0, 0, .06); }
+.role-page .stat-card,
+.role-page .summary-card { background: #fff; border: 1px solid #eee7e7; border-radius: 10px; box-shadow: 0 1px 4px rgb(0 0 0 / 6%); }
+
+/* Thanh công cụ */
+.role-page .search-box,
+.role-page .order-search,
+.role-page .article-search { height: 38px; border: 1px solid transparent; border-radius: 8px; background: #f8f9fa; }
+.role-page .search-box input,
+.role-page .order-search input,
+.role-page .article-search input { font-size: 13px; background: transparent; }
+.role-page .tool-btn,
+.role-page .toolbar-btn,
+.role-page .filter-clear-btn,
+.role-page .clear-filter-btn,
+.role-page .cancel-btn,
+.role-page .cancel-add-btn,
+.role-page .dispose-cancel,
+.role-page .reset-btn,
+.role-page .muted-btn,
+.role-page .btn-undo,
+.role-page .btn-clear,
+.role-page .btn-refresh,
+.role-page .action-btn--cancel,
+.role-page .close-btn { height: 38px; border: 1px solid #d9dee5; border-radius: 8px; background: #fff; color: #4d5968; font-size: 13px; font-weight: 500; }
+.role-page .tool-btn:hover:not(:disabled),
+.role-page .toolbar-btn:hover:not(:disabled),
+.role-page .filter-clear-btn:hover:not(:disabled),
+.role-page .clear-filter-btn:hover:not(:disabled),
+.role-page .cancel-btn:hover:not(:disabled),
+.role-page .cancel-add-btn:hover:not(:disabled),
+.role-page .dispose-cancel:hover:not(:disabled),
+.role-page .reset-btn:hover:not(:disabled),
+.role-page .muted-btn:hover:not(:disabled),
+.role-page .btn-undo:hover:not(:disabled),
+.role-page .btn-clear:hover:not(:disabled),
+.role-page .btn-refresh:hover:not(:disabled),
+.role-page .action-btn--cancel:hover:not(:disabled),
+.role-page .close-btn:hover:not(:disabled) { border-color: #731919; color: #731919; background: #fff; }
+.role-page .export-btn,
+.role-page .btn-export,
+.role-page .save-btn,
+.role-page .save-add-btn,
+.role-page .apply-btn,
+.role-page .filter-apply-btn,
+.role-page .btn-save,
+.role-page .btn-search,
+.role-page .confirm-btn,
+.role-page .action-btn--save { height: 38px; border: 1px solid #731919; border-radius: 8px; background: #731919; color: #fff; font-size: 13px; font-weight: 600; }
+.role-page .export-btn:hover:not(:disabled),
+.role-page .btn-export:hover:not(:disabled),
+.role-page .save-btn:hover:not(:disabled),
+.role-page .save-add-btn:hover:not(:disabled),
+.role-page .apply-btn:hover:not(:disabled),
+.role-page .filter-apply-btn:hover:not(:disabled),
+.role-page .btn-save:hover:not(:disabled),
+.role-page .btn-search:hover:not(:disabled),
+.role-page .confirm-btn:hover:not(:disabled),
+.role-page .action-btn--save:hover:not(:disabled) { background: #5c1414; border-color: #5c1414; color: #fff; }
+.role-page .icon-btn,
+.role-page .edit-row-btn,
+.role-page .row-btn { border: none; background: none; color: #6b7280; border-radius: 6px; }
+.role-page .icon-btn:hover:not(:disabled),
+.role-page .edit-row-btn:hover:not(:disabled),
+.role-page .row-btn:hover:not(:disabled) { background: #fde8ea; color: #731919; }
+.role-page .dropdown-menu,
+.role-page .filter-menu,
+.role-page .sort-menu,
+.role-page .export-dropdown,
+.role-page .sort-dropdown,
+.role-page .toolbar-dropdown,
+.role-page .sort-popup,
+.role-page .filter-panel { border: 1px solid #ececec; border-radius: 10px; box-shadow: 0 10px 25px rgba(0, 0, 0, .12); }
+
+/* Bảng */
+.role-page table th { background: #ffd9d9; color: #731919; font-size: 13px; font-weight: 600; padding: 16px 12px; }
+.role-page table td { color: #263238; font-size: 13px; padding: 14px 12px; border-bottom: 1px solid #e5e7eb; }
+.role-page table tbody tr:hover td { background: #fffafa; }
+.role-page .empty-row { color: #8a8f98; }
+
+/* Nhãn trạng thái (giữ màu theo trạng thái, chỉ đồng bộ hình dạng) */
+.role-page .status-badge,
+.role-page .order-status,
+.role-page .payment-badge,
+.role-page .category-badge,
+.role-page .wctype-badge,
+.role-page .role-badge,
+.role-page .status-tag,
+.role-page .reconciliation-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+/* Phân trang */
+.role-page .page-nav,
+.role-page .page-btn--nav { height: 38px; min-width: 88px; padding: 0 16px; border: 1px solid #d9dee5; border-radius: 8px; background: #fff; color: #111; font-size: 13px; font-weight: 500; box-shadow: 0 1px 4px rgb(0 0 0 / 8%); }
+.role-page .page-nav:hover:not(:disabled),
+.role-page .page-btn--nav:hover:not(:disabled) { border-color: #731919; color: #731919; }
+.role-page .page-numbers button,
+.role-page .page-btn:not(.page-btn--nav) { height: 36px; min-width: 36px; padding: 0 6px; border: 1px solid #d9dee5; border-radius: 6px; background: #fff; color: #003c3c; font-size: 13px; }
+.role-page .page-numbers button.active,
+.role-page .page-btn.page-btn--active { background: #ffd4d7; border-color: #ffd4d7; color: #731919; font-weight: 700; }
+
+/* Popup / form */
+.role-page .add-modal-overlay,
+.role-page .popup-overlay,
+.role-page .dispose-overlay,
+.role-page .wc-modal-overlay,
+.role-page .modal-backdrop,
+.role-page .edit-modal-overlay { background: rgba(17, 24, 39, .42); }
+.role-page .add-modal,
+.role-page .create-product-popup,
+.role-page .dispose-modal,
+.role-page .wc-modal,
+.role-page .modal-card,
+.role-page .detail-popup { border-radius: 12px; box-shadow: 0 20px 50px rgba(0, 0, 0, .25); font-size: 13px; }
+.role-page .form-group input:not([type=checkbox]):not([type=radio]):not([type=file]),
+.role-page .form-group select,
+.role-page .wc-input,
+.role-page .wc-select,
+.role-page .filter-select,
+.role-page .toolbar-select,
+.role-page .filter-group select,
+.role-page .filter-field input,
+.role-page .filter-field select { height: 38px; border: 1px solid #d9dee5; border-radius: 8px; font-size: 13px; }
+.role-page .form-group textarea,
+.role-page .wc-textarea { border: 1px solid #d9dee5; border-radius: 8px; font-size: 13px; }
+.role-page .form-group input:not([type=checkbox]):not([type=radio]):not([type=file]):focus,
+.role-page .form-group select:focus,
+.role-page .wc-input:focus,
+.role-page .wc-select:focus,
+.role-page .filter-select:focus,
+.role-page .toolbar-select:focus,
+.role-page .filter-group select:focus,
+.role-page .filter-field input:focus,
+.role-page .filter-field select:focus,
+.role-page .form-group textarea:focus,
+.role-page .wc-textarea:focus { outline: 2px solid #ffd4d7; border-color: #c97a7a; box-shadow: none; }

@@ -507,3 +507,151 @@
   color: #94a3b8;
   margin: 0 4px;
 }
+
+
+/* =====================================================================
+   ĐỒNG BỘ GIAO DIỆN THEO TRANG NGUYÊN VẬT LIỆU (chỉ giao diện, không đổi luồng)
+   ===================================================================== */
+.audit-page { background: #f9fafb; color: #263238; font-family: var(--font-body, "Nunito Sans", sans-serif); font-size: 13px; line-height: 1.5; }
+
+/* Khung danh sách & thẻ KPI */
+.audit-page .order-table-card,
+.audit-page .transaction-card,
+.audit-page .article-table-card,
+.audit-page .account-card,
+.audit-page .audit-card,
+.audit-page .permission-card { background: #fff; border: 1px solid #ececec; border-radius: 12px; box-shadow: 0 1px 4px rgba(0, 0, 0, .06); }
+.audit-page .stat-card,
+.audit-page .summary-card { background: #fff; border: 1px solid #eee7e7; border-radius: 10px; box-shadow: 0 1px 4px rgb(0 0 0 / 6%); }
+
+/* Thanh công cụ */
+.audit-page .search-box,
+.audit-page .order-search,
+.audit-page .article-search { height: 38px; border: 1px solid transparent; border-radius: 8px; background: #f8f9fa; }
+.audit-page .search-box input,
+.audit-page .order-search input,
+.audit-page .article-search input { font-size: 13px; background: transparent; }
+.audit-page .tool-btn,
+.audit-page .toolbar-btn,
+.audit-page .filter-clear-btn,
+.audit-page .clear-filter-btn,
+.audit-page .cancel-btn,
+.audit-page .cancel-add-btn,
+.audit-page .dispose-cancel,
+.audit-page .reset-btn,
+.audit-page .muted-btn,
+.audit-page .btn-undo,
+.audit-page .btn-clear,
+.audit-page .btn-refresh,
+.audit-page .action-btn--cancel,
+.audit-page .close-btn { height: 38px; border: 1px solid #d9dee5; border-radius: 8px; background: #fff; color: #4d5968; font-size: 13px; font-weight: 500; }
+.audit-page .tool-btn:hover:not(:disabled),
+.audit-page .toolbar-btn:hover:not(:disabled),
+.audit-page .filter-clear-btn:hover:not(:disabled),
+.audit-page .clear-filter-btn:hover:not(:disabled),
+.audit-page .cancel-btn:hover:not(:disabled),
+.audit-page .cancel-add-btn:hover:not(:disabled),
+.audit-page .dispose-cancel:hover:not(:disabled),
+.audit-page .reset-btn:hover:not(:disabled),
+.audit-page .muted-btn:hover:not(:disabled),
+.audit-page .btn-undo:hover:not(:disabled),
+.audit-page .btn-clear:hover:not(:disabled),
+.audit-page .btn-refresh:hover:not(:disabled),
+.audit-page .action-btn--cancel:hover:not(:disabled),
+.audit-page .close-btn:hover:not(:disabled) { border-color: #731919; color: #731919; background: #fff; }
+.audit-page .export-btn,
+.audit-page .btn-export,
+.audit-page .save-btn,
+.audit-page .save-add-btn,
+.audit-page .apply-btn,
+.audit-page .filter-apply-btn,
+.audit-page .btn-save,
+.audit-page .btn-search,
+.audit-page .confirm-btn,
+.audit-page .action-btn--save { height: 38px; border: 1px solid #731919; border-radius: 8px; background: #731919; color: #fff; font-size: 13px; font-weight: 600; }
+.audit-page .export-btn:hover:not(:disabled),
+.audit-page .btn-export:hover:not(:disabled),
+.audit-page .save-btn:hover:not(:disabled),
+.audit-page .save-add-btn:hover:not(:disabled),
+.audit-page .apply-btn:hover:not(:disabled),
+.audit-page .filter-apply-btn:hover:not(:disabled),
+.audit-page .btn-save:hover:not(:disabled),
+.audit-page .btn-search:hover:not(:disabled),
+.audit-page .confirm-btn:hover:not(:disabled),
+.audit-page .action-btn--save:hover:not(:disabled) { background: #5c1414; border-color: #5c1414; color: #fff; }
+.audit-page .icon-btn,
+.audit-page .edit-row-btn,
+.audit-page .row-btn { border: none; background: none; color: #6b7280; border-radius: 6px; }
+.audit-page .icon-btn:hover:not(:disabled),
+.audit-page .edit-row-btn:hover:not(:disabled),
+.audit-page .row-btn:hover:not(:disabled) { background: #fde8ea; color: #731919; }
+.audit-page .dropdown-menu,
+.audit-page .filter-menu,
+.audit-page .sort-menu,
+.audit-page .export-dropdown,
+.audit-page .sort-dropdown,
+.audit-page .toolbar-dropdown,
+.audit-page .sort-popup,
+.audit-page .filter-panel { border: 1px solid #ececec; border-radius: 10px; box-shadow: 0 10px 25px rgba(0, 0, 0, .12); }
+
+/* Bảng */
+.audit-page table th { background: #ffd9d9; color: #731919; font-size: 13px; font-weight: 600; padding: 16px 12px; }
+.audit-page table td { color: #263238; font-size: 13px; padding: 14px 12px; border-bottom: 1px solid #e5e7eb; }
+.audit-page table tbody tr:hover td { background: #fffafa; }
+.audit-page .empty-row { color: #8a8f98; }
+
+/* Nhãn trạng thái (giữ màu theo trạng thái, chỉ đồng bộ hình dạng) */
+.audit-page .status-badge,
+.audit-page .order-status,
+.audit-page .payment-badge,
+.audit-page .category-badge,
+.audit-page .wctype-badge,
+.audit-page .role-badge,
+.audit-page .status-tag,
+.audit-page .reconciliation-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+/* Phân trang */
+.audit-page .page-nav,
+.audit-page .page-btn--nav { height: 38px; min-width: 88px; padding: 0 16px; border: 1px solid #d9dee5; border-radius: 8px; background: #fff; color: #111; font-size: 13px; font-weight: 500; box-shadow: 0 1px 4px rgb(0 0 0 / 8%); }
+.audit-page .page-nav:hover:not(:disabled),
+.audit-page .page-btn--nav:hover:not(:disabled) { border-color: #731919; color: #731919; }
+.audit-page .page-numbers button,
+.audit-page .page-btn:not(.page-btn--nav) { height: 36px; min-width: 36px; padding: 0 6px; border: 1px solid #d9dee5; border-radius: 6px; background: #fff; color: #003c3c; font-size: 13px; }
+.audit-page .page-numbers button.active,
+.audit-page .page-btn.page-btn--active { background: #ffd4d7; border-color: #ffd4d7; color: #731919; font-weight: 700; }
+
+/* Popup / form */
+.audit-page .add-modal-overlay,
+.audit-page .popup-overlay,
+.audit-page .dispose-overlay,
+.audit-page .wc-modal-overlay,
+.audit-page .modal-backdrop,
+.audit-page .edit-modal-overlay { background: rgba(17, 24, 39, .42); }
+.audit-page .add-modal,
+.audit-page .create-product-popup,
+.audit-page .dispose-modal,
+.audit-page .wc-modal,
+.audit-page .modal-card,
+.audit-page .detail-popup { border-radius: 12px; box-shadow: 0 20px 50px rgba(0, 0, 0, .25); font-size: 13px; }
+.audit-page .form-group input:not([type=checkbox]):not([type=radio]):not([type=file]),
+.audit-page .form-group select,
+.audit-page .wc-input,
+.audit-page .wc-select,
+.audit-page .filter-select,
+.audit-page .toolbar-select,
+.audit-page .filter-group select,
+.audit-page .filter-field input,
+.audit-page .filter-field select { height: 38px; border: 1px solid #d9dee5; border-radius: 8px; font-size: 13px; }
+.audit-page .form-group textarea,
+.audit-page .wc-textarea { border: 1px solid #d9dee5; border-radius: 8px; font-size: 13px; }
+.audit-page .form-group input:not([type=checkbox]):not([type=radio]):not([type=file]):focus,
+.audit-page .form-group select:focus,
+.audit-page .wc-input:focus,
+.audit-page .wc-select:focus,
+.audit-page .filter-select:focus,
+.audit-page .toolbar-select:focus,
+.audit-page .filter-group select:focus,
+.audit-page .filter-field input:focus,
+.audit-page .filter-field select:focus,
+.audit-page .form-group textarea:focus,
+.audit-page .wc-textarea:focus { outline: 2px solid #ffd4d7; border-color: #c97a7a; box-shadow: none; }
