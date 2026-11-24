@@ -29,7 +29,7 @@ type HistoryTab='all'|'payment'|'shipping'|'completed'|'returns'|'cancelled'|'re
     </header>
     <section class="summary" aria-label="Tóm tắt">
       <div><span><i class="bi bi-hourglass-split" aria-hidden="true"></i> Đơn đang xử lý</span><b>{{tabCount('shipping')}}</b></div>
-      <div class="due"><span><i class="bi bi-wallet2" aria-hidden="true"></i> Còn phải thanh toán</span><b>{{totalRemaining|number:'1.0-0'}}đ</b><small>{{remainingOrders}} đơn chưa thanh toán đủ</small></div>
+      <div class="due"><span><i class="bi bi-wallet2" aria-hidden="true"></i> Cần thanh toán trước</span><b>{{totalRemaining|number:'1.0-0'}}đ</b><small>{{remainingOrders}} đơn chưa trả đủ cọc/tiền trước</small></div>
       <div><span><i class="bi bi-chat-heart" aria-hidden="true"></i> Yêu cầu đang tư vấn</span><b>{{tabCount('requests')}}</b></div>
     </section>
     <nav class="tabs" aria-label="Lọc đơn hàng">@for(tab of tabs;track tab.id){<button type="button" [class.active]="activeTab===tab.id" [attr.aria-current]="activeTab===tab.id?'page':null" (click)="selectTab(tab.id)"><span>{{tab.label}}</span><b>{{tabCount(tab.id)}}</b></button>}</nav>
@@ -213,7 +213,7 @@ export class RequestHistory implements OnInit,OnDestroy{
  orderStep(o:any){const t=String(o?.TRANG_THAI||'');if(/hủy|hoàn tiền|trả hàng|thất bại/i.test(t))return-1;if(/đã giao|hoàn thành/i.test(t))return 3;if(/đang giao/i.test(t))return 2;if(/chuẩn bị|chờ vận chuyển/i.test(t))return 1;return 0}
  /** Tổng còn phải trả: chỉ tính lại khi tải tab "Tất cả", để đổi tab không làm con số nhảy về 0. */
  totalRemaining=0;remainingOrders=0;
- private updateRemaining(){const unpaid=this.orders.filter(o=>this.orderStep(o)>=0&&Number(o.paymentSummary?.remaining||0)>0);this.totalRemaining=unpaid.reduce((sum,o)=>sum+Number(o.paymentSummary?.remaining||0),0);this.remainingOrders=unpaid.length}isCancelled(o:any){return/hủy/i.test(String(o.TRANG_THAI||''))}
+ /** Server tính trên mọi đơn (không theo trang): tổng tiền cọc/tiền trả trước còn thiếu của đơn chưa hoàn thành, chưa hủy. */private updateRemaining(due:any){if(!due)return;this.totalRemaining=Number(due.amount||0);this.remainingOrders=Number(due.orders||0)}isCancelled(o:any){return/hủy/i.test(String(o.TRANG_THAI||''))}
   isPaymentFailed(o:any){return/thất bại/i.test(String(o.TRANG_THAI||''))}
   /** Ghi chú thay cho thanh tiến trình khi đơn không đi theo luồng giao thông thường. */
   progressNote(o:any){return this.isPaymentFailed(o)?'Thanh toán không thành công – đơn không được thực hiện':this.isCancelled(o)?'Đơn đã hủy':'Đơn đang được shop hỗ trợ hoàn tiền / đổi trả'}
@@ -290,7 +290,7 @@ export class RequestHistory implements OnInit,OnDestroy{
        this.requests = result.requests || [];
        this.orders = result.orders || [];
        this.counts = result.counts || {};
-       if (all) this.updateRemaining();
+       this.updateRemaining(result.prepaymentDue);
        this.total = Number(requests ? result.totalRequests : all ? result.total : result.totalOrders) || 0;
        this.cdr.markForCheck();
      },

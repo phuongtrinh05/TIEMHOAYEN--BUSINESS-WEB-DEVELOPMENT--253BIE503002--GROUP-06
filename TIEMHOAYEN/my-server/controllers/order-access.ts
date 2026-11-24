@@ -1,4 +1,4 @@
-import { expiredPaymentInfo } from '../services/unpaid-order-expiry.service.js';
+import { expiredPaymentInfo, requiredPrepayment } from '../services/unpaid-order-expiry.service.js';
 import type { Request, Response, NextFunction } from 'express';
 import { InventoryError } from '../services/inventory/helpers.js';
 import { authorizeCheckout, authorizeOrder, createCheckoutLookupAccess, lookupAccess, ownedOrderQuery, ownedRequestQuery, phonePattern, requestOrderOtp, revokeOrderAccess, verifyOrderOtp } from '../services/order-access.service.js';
@@ -83,7 +83,7 @@ export async function lookupHistory(req: Request, res: Response) {
     // These datasets are independent. Start them together instead of waiting for
     // the order list before counting Sales requests.
     const [allOrderStates, allRequestCount] = await Promise.all([
-      ordersCollection.find(baseQuery,{projection:{_id:0,DON_HANG_ID:1,TRANG_THAI:1}}).toArray(),
+      ordersCollection.find(baseQuery,{projection:{_id:0,DON_HANG_ID:1,TRANG_THAI:1,TONG_TIEN:1,TIEN_COC:1,PHUONG_THUC_THANH_TOAN:1,KHONG_YEU_CAU_COC:1}}).toArray(),
       requestsCollection.countDocuments(baseRequestQuery),
     ]);
     const allOrderIds = allOrderStates.map(order => order.DON_HANG_ID);
@@ -185,8 +185,22 @@ export async function lookupHistory(req: Request, res: Response) {
       const bucket = customerOrderGroup(order.TRANG_THAI, afterMap.has(order.DON_HANG_ID));
       if (bucket !== 'all') counts[bucket as 'payment'|'shipping'|'completed'|'returns'|'cancelled']++;
     }
+    // "Cần thanh toán trước": trên TẤT CẢ đơn trong phạm vi (không theo trang), chỉ đơn chưa hoàn thành/hủy/hỗ trợ.
+    // Mỗi đơn cộng phần trả trước còn thiếu: COD là tiền cọc, chuyển khoản/ví là toàn bộ đơn; đơn không yêu cầu cọc = 0.
+    const prepayCandidates = allOrderStates.filter(order => {
+      const bucket = customerOrderGroup(order.TRANG_THAI, afterMap.has(order.DON_HANG_ID));
+      return (bucket === 'payment' || bucket === 'shipping') && !order.KHONG_YEU_CAU_COC;
+    });
+    const prepayReceipts = prepayCandidates.length ? await (await getCollection<any>('THANH_TOAN')).find({ DON_HANG_ID: { $in: prepayCandidates.map(order => order.DON_HANG_ID) } }).toArray() : [];
+    const receiptsByOrder = new Map<string, any[]>();
+    for (const receipt of prepayReceipts) receiptsByOrder.set(receipt.DON_HANG_ID, [...(receiptsByOrder.get(receipt.DON_HANG_ID) || []), receipt]);
+    const prepaymentDue = { amount: 0, orders: 0 };
+    for (const order of prepayCandidates) {
+      const due = Math.max(0, requiredPrepayment(order) - Math.max(0, sumVerifiedPayments(receiptsByOrder.get(order.DON_HANG_ID) || [])));
+      if (due > 0) { prepaymentDue.amount += due; prepaymentDue.orders++; }
+    }
     const statuses = [...new Set(allOrderStates.map(row => String(row.TRANG_THAI || '')).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'vi'));
-    res.json({orders:enrichedOrders,requests:enrichedRequests,totalOrders,totalRequests,total:scope === 'all' ? totalOrders + totalRequests : scope === 'requests' ? totalRequests : totalOrders,page,pageSize,counts,statuses:scope === 'requests' ? [] : statuses,scope,group});
+    res.json({orders:enrichedOrders,requests:enrichedRequests,prepaymentDue,totalOrders,totalRequests,total:scope === 'all' ? totalOrders + totalRequests : scope === 'requests' ? totalRequests : totalOrders,page,pageSize,counts,statuses:scope === 'requests' ? [] : statuses,scope,group});
   } catch(e) { failure(res,e); }
 }
 export async function endLookup(req: Request, res: Response) {
