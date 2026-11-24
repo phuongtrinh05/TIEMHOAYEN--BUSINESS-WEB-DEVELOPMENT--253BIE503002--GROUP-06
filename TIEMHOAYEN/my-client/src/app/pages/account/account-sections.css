@@ -186,3 +186,7 @@
 .order-table .sort-header i { font-size: 13px; opacity: .35; transition: opacity .2s; }
 .order-table .sort-header:hover i, .order-table .sort-header.is-sorted i { opacity: 1; color: #731919; }
 .order-table .sort-header.is-sorted { color: #731919; }
+
+/* Mã đơn bấm được: mở trang chi tiết đơn (giống nút Xem chi tiết) */
+.order-table .order-id-link { padding: 0; border: 0; background: transparent; color: var(--primary-color, #731919); font: inherit; text-align: center; overflow-wrap: anywhere; word-break: break-all; cursor: pointer; }
+.order-table .order-id-link:hover, .order-table .order-id-link:focus-visible { text-decoration: underline; text-underline-offset: 3px; }

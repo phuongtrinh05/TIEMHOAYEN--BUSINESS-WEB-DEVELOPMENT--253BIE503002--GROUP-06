@@ -171,7 +171,9 @@
 
                 <tbody>
                   <tr *ngFor="let order of displayedOrders">
-                    <td class="order-id">{{ order.id }}</td>
+                    <td class="order-id">
+                      <button type="button" class="order-id-link" (click)="goToOrderDetail(order)" [title]="'Xem chi tiết đơn ' + order.id">{{ order.id }}</button>
+                    </td>
                     <td class="order-date">{{ order.date }}</td>
                     <td class="order-total">{{ formatPrice(order.total) }}</td>
                     <td>
