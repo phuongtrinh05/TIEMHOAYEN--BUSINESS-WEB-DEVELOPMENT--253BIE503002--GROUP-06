@@ -8,7 +8,7 @@
       {{ toastMessage }}
     </div>
 
-    <p>Giá đang hiển thị là dự tính. Backend sẽ tính lại giá, phí giao, ưu đãi và cọc; tạo đơn không ghi nhận đã thu tiền.</p><p *ngIf="creationResult?.summary">Kết quả backend: Tổng {{creationResult.summary.total | number:'1.0-0'}}đ · Trả trước {{creationResult.paymentAmount | number:'1.0-0'}}đ · Chưa ghi nhận thanh toán.</p><!-- ===== PAGE META ===== -->
+    <p *ngIf="creationResult?.summary">Kết quả backend: Tổng {{creationResult.summary.total | number:'1.0-0'}}đ · Trả trước {{creationResult.paymentAmount | number:'1.0-0'}}đ · Chưa ghi nhận thanh toán.</p><!-- ===== PAGE META ===== -->
     <div class="order-meta">
       <div class="order-meta__left">
         <div class="order-meta__title">
