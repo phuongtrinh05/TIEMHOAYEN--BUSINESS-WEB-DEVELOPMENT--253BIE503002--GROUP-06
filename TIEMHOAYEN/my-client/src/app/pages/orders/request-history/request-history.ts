@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, inject, OnDestroy, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, HostBinding, Input, inject, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -24,7 +24,8 @@ type HistoryTab='all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
     }</section>
   }@else{
     <header class="page-head">
-      <div><h1>Đơn hàng của tôi</h1><p>Theo dõi đơn hoa và các yêu cầu đặt hàng bạn đã gửi cho shop.</p></div>
+      <div><h1>{{guestMode?'Đơn hàng đã tra cứu':'Đơn hàng của tôi'}}</h1><p>{{guestMode?'Các đơn hoa và yêu cầu đặt hàng theo số điện thoại bạn vừa xác minh.':'Theo dõi đơn hoa và các yêu cầu đặt hàng bạn đã gửi cho shop.'}}</p></div>
+      @if(guestMode){<button type="button" class="end-lookup" (click)="end()">Kết thúc tra cứu</button>}
       <label class="search"><i class="bi bi-search" aria-hidden="true"></i><input [(ngModel)]="search" placeholder="Tìm mã đơn, mã yêu cầu hoặc tên hoa" aria-label="Tìm đơn hàng"></label>
     </header>
     <section class="summary" aria-label="Tóm tắt">
@@ -56,6 +57,10 @@ type HistoryTab='all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
     @if(total>20){<div class="pager"><button type="button" (click)="page=page-1;load()" [disabled]="page===1">← Trước</button><span>Trang {{page}}</span><button type="button" (click)="page=page+1;load()" [disabled]="page*20>=total">Sau →</button></div>}
   }
 </main>`,styles:[`
+:host(.embedded){min-height:0;background:transparent}
+:host(.embedded) .page{max-width:none;padding:0}
+.end-lookup{flex:none;align-self:center;padding:9px 16px;border:1px solid #d9b382;border-radius:999px;background:#fff;color:#731919;font:800 13px 'Nunito Sans',sans-serif;cursor:pointer}
+
 :host{display:block;min-height:100vh;background:#fff8f5;color:#351919;font-family:'Nunito Sans',sans-serif}
 .page{max-width:1120px;margin:auto;padding:32px 24px 64px}
 /* Xác minh / cảnh báo (giữ như cũ) */
@@ -189,6 +194,10 @@ button:disabled{opacity:.5;cursor:not-allowed}
 }
 `]})
 export class RequestHistory implements OnInit,OnDestroy{
+  /** Nhúng trong trang Tra cứu đơn của khách vãng lai: cùng giao diện với Đơn hàng của tôi. */
+  @Input() guestMode = false;
+  @HostBinding('class.embedded') get embedded() { return this.guestMode; }
+
  readonly access=inject(OrderAccessService);private service=inject(OrderService);private cdr=inject(ChangeDetectorRef);private route=inject(ActivatedRoute);private router=inject(Router);readonly tabs:{id:HistoryTab;label:string}[]=[{id:'all',label:'Tất cả'},{id:'shipping',label:'Chờ giao hàng'},{id:'completed',label:'Đã giao'},{id:'returns',label:'Đang hỗ trợ'},{id:'cancelled',label:'Đã hủy'},{id:'requests',label:'Yêu cầu đặt hàng'}];activeTab:HistoryTab='all';search='';pendingFilter='all';counts:any={};orderId='';requests:any[]=[];orders:any[]=[];phone='';code='';challengeId='';error='';notice='';busy=false;resendAt=0;now=Date.now();page=1;total=0;pendingRequestId='';private timer?:ReturnType<typeof setInterval>;private lastRefreshAt=0;private refreshing=false;
  private requestEvents?: Subscription;
  private historyLoad?: Subscription;
