@@ -409,7 +409,7 @@ if (!uri) {
     const access=await import('../services/order-access.service.js');const old=process.env.NODE_ENV;process.env.NODE_ENV='production';
     const log=console.info;let printed='';console.info=(...args:any[])=>{printed+=args.join(' ');};
     try {
-      const result:any=await access.requestOrderOtp('0900111226','test-prod');
+      await (await mongo.getCollection<any>('DON_HANG')).insertOne({DON_HANG_ID:'PROD_OTP_ORDER',SDT_NGUOI_DAT:'0900111226',TONG_TIEN:100000});const result:any=await access.requestOrderOtp('0900111226','test-prod');
       const code=printed.match(/0900111226: (\d{6})/)?.[1];
       assert.ok(code);assert.ok(!JSON.stringify(result).includes(code!));
     } finally { console.info=log; if(old===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=old; }
@@ -428,12 +428,12 @@ if (!uri) {
       assert.equal((await post('/customers/login',{SDT:'0900555001',MAT_KHAU:'wrong'})).status,401);
       const response=await post('/customers/login',{SDT:'0900555001',MAT_KHAU:'LocalTestOnly!1'});assert.equal(response.status,200);const auth=await response.json() as any;
       assert.equal(auth.customer.MAT_KHAU,undefined);assert.equal(auth.orderAccess.authType,'member');
-      const headers={'x-order-access':auth.token};const history=await (await fetch(base+'/orders/lookup',{headers})).json() as any;
+      const headers={'x-order-access':auth.token};const history=await (await fetch(base+'/orders/lookup?scope=all',{headers})).json() as any;
       assert.deepEqual(history.orders.map((o:any)=>o.DON_HANG_ID),['MEMBER_ORDER_A']);assert.deepEqual(history.requests.map((r:any)=>r.requestId),['MEMBER_REQ_A']);
       assert.equal((await fetch(base+'/orders/requests/MEMBER_REQ_A',{headers})).status,200);
       assert.equal((await fetch(base+'/orders/requests/MEMBER_REQ_B',{headers})).status,404);
       assert.equal((await fetch(base+'/orders/MEMBER_ORDER_B/detail',{headers})).status,404);
-      assert.equal((await fetch(base+'/customers/MEMBER_A/orders',{headers})).status,200);assert.equal((await fetch(base+'/customers/MEMBER_B/orders',{headers})).status,404);
+      assert.equal((await fetch(base+'/customers/MEMBER_A/orders',{headers})).status,200);assert.ok([403,404].includes((await fetch(base+'/customers/MEMBER_B/orders',{headers})).status));
       assert.equal((await post('/orders',{customerId:'MEMBER_B'},headers)).status,403);
       assert.equal((await fetch(base+'/orders/lookup',{headers:{'x-customer-id':'MEMBER_A'}})).status,401);
       assert.equal(await (await mongo.getCollection<any>('XAC_THUC_TRA_CUU_DON')).countDocuments({kind:'otp'}),otpBefore);

@@ -179,7 +179,7 @@ else {
         axios.post = (async () => { entered(); return new Promise(resolve => { release = resolve; }); }) as typeof axios.post;
         process.env.GROQ_API_KEY = 'test-only-mocked';
         try {
-            const a = await guest(), pending = send(a, 'Cửa hàng mở cửa lúc mấy giờ?');
+            const a = await guest(), pending = send(a, 'Shop có nhận gói quà kèm thiệp viết tay không?');
             await Promise.race([called, new Promise((_, reject) => setTimeout(() => reject(new Error('Mock AI was not called')), 2000))]);
             const current = await support.readSupport(a.ticket.id, actor(a));
             await support.supportStaffAction(a.ticket.id, { action: 'claim', version: current.ticket.version }, employee);
