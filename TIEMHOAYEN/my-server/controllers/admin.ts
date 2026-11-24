@@ -1,6 +1,6 @@
 import { AFTER_SALES,afterSalesChange,afterSalesRead,orderEvent,ensureCancelRefundCase,pendingCashTotal,pendingCashRows,CASH_PENDING_STATUS,CASH_COLLECTION_METHODS,orderStaffKind,paidForDeliveryCheck } from '../services/admin-order.service.js';
 import { emitAdminNotification } from '../services/analytics/notifications.service.js';
-import { restoreOrderPoints } from '../services/loyalty-policy.service.js';
+import { restoreOrderPoints, settleCompletedOrder } from '../services/loyalty-policy.service.js';
 import { Request, Response } from 'express';
 import { getCollection, getNextPrefixedId, escapeRegex } from '../mongo.js';
 import { getAdminOrderDetailById, priceCheckout, slot24h, sumVerifiedPayments, summarizePayments, assertOrderTransition, assertOrderTransitionForRole, allowedOrderStatuses, assertRoleCanSetOrderStatus, assertRoleCanDoOrderAction, paymentSucceeded } from '../services/admin-order.service.js';
@@ -1408,6 +1408,7 @@ export const updateAdminOrderStatus = async (req: Request, res: Response) => {
       } as any,
       { session },
     );
+    if (status === 'Hoàn thành' && current.TRANG_THAI !== 'Hoàn thành') await settleCompletedOrder(session, current);
     });
     invalidateAnalyticsCache(); // Dashboard lấy số mới ở lần xem tiếp theo
     const declared = cashDeclared as { paymentId: string; amount: number; method: string } | null;

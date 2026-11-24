@@ -2,6 +2,7 @@ import { getCollection } from '../mongo.js';
 import { withTransaction } from './inventory/helpers.js';
 import { DELIVERED_ORDER_STATUSES, orderEvent, summarizePayments, supportDeadline, AFTER_SALES, AFTER_SALES_STATUS, AFTER_SALES_SLA_MS } from './admin-order.service.js';
 import { emitAdminNotification } from './analytics/notifications.service.js';
+import { settleCompletedOrder } from './loyalty-policy.service.js';
 
 export const AUTO_COMPLETE_ACTOR = 'AUTO_COMPLETE';
 
@@ -55,6 +56,7 @@ export async function autoCompleteDeliveredOrders(now = new Date()) {
           { session },
         );
         if (write.modifiedCount !== 1) return 'skip';
+        await settleCompletedOrder(session, order);
         await orderEvent(session, `${orderId}:status:Hoàn thành`, order.KHACH_HANG_ID || null, orderId, 'Đơn hàng đã hoàn thành',
           'Cảm ơn bạn đã mua hoa tại Tiệm Hoa Yên. Bạn có thể đánh giá sản phẩm trong trang đơn hàng.');
         return decision;

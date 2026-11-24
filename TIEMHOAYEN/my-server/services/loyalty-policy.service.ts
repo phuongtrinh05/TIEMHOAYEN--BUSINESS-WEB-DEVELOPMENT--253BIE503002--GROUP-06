@@ -1,6 +1,7 @@
 import type { ClientSession } from 'mongodb';
 import { getCollection } from '../mongo.js';
 import { InventoryError } from './inventory/helpers.js';
+import { normalizeTier } from './voucher-policy.service.js';
 
 export const LOYALTY_POLICY_STATUS = Object.freeze({
   enabled: true,
@@ -109,6 +110,8 @@ export async function awardCompletedOrderPoints(session: ClientSession, order: a
   const earned = Math.floor(paidProductValue / 10_000);
   if (!earned) return;
   const ledger = await getCollection<any>('LICH_SU_DIEM');
+  // Lỗi trùng khóa trong transaction sẽ hủy cả transaction, nên phải kiểm tra trước khi ghi.
+  if (await ledger.findOne({ NGUON_LOAI: 'DON_HANG', NGUON_ID: order.DON_HANG_ID, LOAI_BUT_TOAN: 'CONG' }, { session })) return;
   try {
     await ledger.insertOne({ NGUON_LOAI: 'DON_HANG', NGUON_ID: order.DON_HANG_ID, LOAI_BUT_TOAN: 'CONG', KHACH_HANG_ID: customerId, SO_DIEM: earned, CO_SO_TINH: paidProductValue, NGAY_TAO: new Date() }, { session });
   } catch (error: any) {
@@ -123,4 +126,40 @@ export async function awardCompletedOrderPoints(session: ClientSession, order: a
   );
   await ledger.updateOne({ NGUON_LOAI: 'DON_HANG', NGUON_ID: order.DON_HANG_ID, LOAI_BUT_TOAN: 'CONG' }, { $set: { SO_DU_SAU: points(updated?.DIEM_TICH_LUY), HET_HAN_LUC: expiresAt } }, { session });
   await (await getCollection<any>('DON_HANG')).updateOne({ DON_HANG_ID: order.DON_HANG_ID }, { $set: { DA_CONG_DIEM_THUONG: true, DIEM_THUONG_DA_CONG: earned } }, { session });
+}
+
+const TIER_RANK: Record<string, number> = { dong: 0, bac: 1, vang: 2, 'kim cuong': 3 };
+export const tierForSpending = (total: number) => (total >= 6_000_000 ? 'Kim cương' : total >= 3_000_000 ? 'Vàng' : total >= 1_000_000 ? 'Bạc' : 'Đồng');
+
+/** Tính lại tổng tiền hàng đơn hoàn thành; chỉ nâng hạng, không hạ hạng và không đổi nhãn hạng lạ. */
+export async function refreshCustomerTier(session: ClientSession, customerId: string) {
+  const customers = await getCollection<any>('KHACH_HANG');
+  const customer = await customers.findOne({ KHACH_HANG_ID: customerId }, { session });
+  if (!customer) return;
+  const [row] = await (await getCollection<any>('DON_HANG')).aggregate([
+    { $match: { KHACH_HANG_ID: customerId, TRANG_THAI: 'Hoàn thành' } },
+    { $group: { _id: null, total: { $sum: { $ifNull: ['$TAM_TINH', 0] } } } },
+  ], { session }).toArray();
+  const total = Number(row?.total || 0), next = tierForSpending(total);
+  const currentRank = TIER_RANK[normalizeTier(customer.LOAI_THANH_VIEN || 'Đồng')], nextRank = TIER_RANK[normalizeTier(next)];
+  await customers.updateOne({ KHACH_HANG_ID: customerId }, { $set: {
+    TONG_TAM_TINH_HOAN_THANH: total,
+    ...(currentRank !== undefined && nextRank > currentRank ? { LOAI_THANH_VIEN: next } : {}),
+  } }, { session });
+}
+
+async function orderHasRefund(session: ClientSession, order: any) {
+  if (String(order?.LY_DO_HOAN_TIEN_TRA_HANG || '').trim()) return true;
+  const orderId = order.DON_HANG_ID;
+  if (await (await getCollection<any>('THANH_TOAN')).findOne({ DON_HANG_ID: orderId, LOAI_GIAO_DICH: 'HOAN_TIEN' }, { session, projection: { _id: 1 } })) return true;
+  const cases = await (await getCollection<any>('HOAN_TIEN')).find({ DON_HANG_ID: orderId }, { session }).toArray();
+  return cases.some((row: any) => !/từ chối|hủy/i.test(String(row.status ?? row.TRANG_THAI ?? '')));
+}
+
+/** Gọi trong transaction, sau khi đơn đã chuyển sang "Hoàn thành". */
+export async function settleCompletedOrder(session: ClientSession, order: any) {
+  const customerId = String(order?.KHACH_HANG_ID || '');
+  if (!customerId) return;
+  if (!(await orderHasRefund(session, order))) await awardCompletedOrderPoints(session, order);
+  await refreshCustomerTier(session, customerId);
 }
