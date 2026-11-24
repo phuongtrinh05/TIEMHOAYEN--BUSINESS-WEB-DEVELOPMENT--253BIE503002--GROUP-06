@@ -262,6 +262,58 @@
   </div>
 </section>
 
+<!-- POPUP NHẬP MÃ OTP XÁC MINH ĐĂNG KÝ -->
+<div class="otp-popup-overlay" *ngIf="showOtpPopup">
+  <div class="otp-popup" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="register-otp-title">
+    <button type="button" class="popup-close" (click)="closeOtpPopup()" aria-label="Đóng">
+      <i class="bi bi-x-lg"></i>
+    </button>
+    <h2 class="otp-popup__title" id="register-otp-title">Xác minh đăng ký</h2>
+
+    <p class="otp-popup__desc">
+      {{ otpDestinationMessage }}<br>
+      Hãy nhập mã 6 chữ số vào các ô dưới đây
+    </p>
+
+    <div class="otp-popup__inputs" [class.is-busy]="otpChecking">
+      <input
+        *ngFor="let value of otpValues; let i = index; trackBy: trackOtpIndex"
+        [id]="'register-otp-' + i"
+        type="text"
+        inputmode="numeric"
+        autocomplete="one-time-code"
+        maxlength="1"
+        class="otp-popup__input"
+        [attr.aria-label]="'Chữ số thứ ' + (i + 1)"
+        [class.is-invalid]="!!otpError"
+        [disabled]="otpExceeded"
+        [value]="otpValues[i]"
+        (keydown)="onOtpKeydown($event, i)"
+        (paste)="onOtpPaste($event)"
+      >
+    </div>
+    <p class="otp-popup__status" role="status">
+      <ng-container *ngIf="otpChecking"><span class="login-spinner" aria-hidden="true"></span> Đang xác minh…</ng-container>
+      <ng-container *ngIf="!otpChecking && otpNotice"><span class="otp-popup__notice">{{ otpNotice }}</span></ng-container>
+    </p>
+    <p class="error-msg otp-popup__error" role="alert">{{ otpError }}</p>
+
+    <div class="otp-popup__resend">
+      <span class="otp-countdown" [class.is-expired]="otpTimers.expiresSeconds <= 0">
+        {{ otpTimers.expiresSeconds > 0 ? 'Mã hết hạn sau ' + otpTimers.expiresSeconds + ' giây' : 'Mã đã hết hạn' }}
+      </span>
+      <button
+        type="button"
+        class="otp-popup__resend-button"
+        (click)="resendOtp()"
+        [disabled]="otpSending || otpChecking || otpTimers.resendSeconds > 0"
+      >
+        {{ otpSending ? 'Đang gửi…' : (otpTimers.resendSeconds > 0 ? 'Gửi lại sau ' + otpTimers.resendSeconds + 's' : 'Gửi mã mới') }}
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- POPUP ĐĂNG KÝ THÀNH CÔNG -->
 <div class="success-popup-overlay" *ngIf="showSuccessPopup" (click)="dismissSuccessPopup()">
   <div class="success-popup" (click)="$event.stopPropagation()">

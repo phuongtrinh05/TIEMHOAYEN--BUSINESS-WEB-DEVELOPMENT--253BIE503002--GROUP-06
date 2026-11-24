@@ -23,12 +23,20 @@ test('auth + account administration feedback rules', { skip: !process.env.TEST_M
     return { status, body };
   };
   try {
-    // KH01: mật khẩu yếu bị từ chối; không còn xác minh email nên tài khoản hoạt động ngay.
+    // KH01: mật khẩu yếu bị từ chối; đăng ký xong tài khoản ở trạng thái Chờ xác minh, phải nhập OTP mới dùng được.
     let r = await call(registerCustomer, { body: { TEN: 'Khách Test', GIOI_TINH: 'Nữ', SDT: '0911111111', EMAIL: 'KH@Example.test', MAT_KHAU: 'weakpass' } });
     assert.equal(r.status, 400); assert.equal(r.body.field, 'password');
     r = await call(registerCustomer, { body: { TEN: 'Khách Test', GIOI_TINH: 'Nữ', SDT: '0911111111', EMAIL: 'KH@Example.test', MAT_KHAU: 'Strong#Pass1' } });
-    assert.equal(r.status, 201); assert.equal(r.body.customer.TRANG_THAI, 'Hoạt động'); assert.equal(r.body.customer.EMAIL, 'kh@example.test');
-    assert.equal(r.body.requiresVerification, false);
+    assert.equal(r.status, 201); assert.equal(r.body.customer.TRANG_THAI, 'Chờ xác minh'); assert.equal(r.body.customer.EMAIL, 'kh@example.test');
+    assert.equal(r.body.requiresVerification, true);
+    // Chưa nhập OTP thì chưa đăng nhập được.
+    r = await call(loginCustomer, { body: { SDT: '0911111111', MAT_KHAU: 'Strong#Pass1' } });
+    assert.equal(r.status, 403); assert.equal(r.body.unverified, true);
+    // Đăng ký lại khi còn Chờ xác minh: cập nhật thông tin, không báo trùng số.
+    r = await call(registerCustomer, { body: { TEN: 'Khách Test', GIOI_TINH: 'Nữ', SDT: '0911111111', EMAIL: 'KH@Example.test', MAT_KHAU: 'Strong#Pass1' } });
+    assert.equal(r.status, 201); assert.equal(r.body.requiresVerification, true);
+    // Mô phỏng khách đã nhập đúng OTP (luồng OTP đăng ký được kiểm thử ở otp-email.test.ts).
+    await db.collection('KHACH_HANG').updateOne({ SDT: '0911111111' }, { $set: { TRANG_THAI: 'Hoạt động' } });
     r = await call(registerCustomer, { body: { TEN: 'Khách Test', GIOI_TINH: 'Nữ', SDT: '0911111111', EMAIL: 'other@example.test', MAT_KHAU: 'Strong#Pass1' } });
     assert.equal(r.status, 409); assert.equal(r.body.field, 'phone');
     // Email không bắt buộc: bỏ trống vẫn đăng ký được; có nhập thì phải đúng định dạng và không trùng.
@@ -40,11 +48,11 @@ test('auth + account administration feedback rules', { skip: !process.env.TEST_M
     assert.equal(r.status, 400); assert.equal(r.body.field, 'email');
     r = await call(registerCustomer, { body: { TEN: 'Email Trùng', GIOI_TINH: 'Nam', SDT: '0922220003', EMAIL: 'kh@example.test', MAT_KHAU: 'Strong#Pass1' } });
     assert.equal(r.status, 409); assert.equal(r.body.field, 'email');
-    // Tài khoản cũ còn "Chờ xác minh" được kích hoạt khi đăng nhập đúng mật khẩu.
-    await db.collection('KHACH_HANG').updateOne({ SDT: '0922220000' }, { $set: { TRANG_THAI: 'Chờ xác minh' } });
+    // Tài khoản Chờ xác minh không được tự kích hoạt khi đăng nhập.
     r = await call(loginCustomer, { body: { SDT: '0922220000', MAT_KHAU: 'Strong#Pass1' } });
-    assert.equal(r.status, 200);
-    assert.equal((await db.collection('KHACH_HANG').findOne({ SDT: '0922220000' }))!.TRANG_THAI, 'Hoạt động');
+    assert.equal(r.status, 403); assert.equal(r.body.unverified, true);
+    assert.equal((await db.collection('KHACH_HANG').findOne({ SDT: '0922220000' }))!.TRANG_THAI, 'Chờ xác minh');
+    await db.collection('KHACH_HANG').updateMany({ SDT: { $in: ['0922220000', '0922220001'] } }, { $set: { TRANG_THAI: 'Hoạt động' } });
     const customerId = (await db.collection('KHACH_HANG').findOne({ SDT: '0911111111' }))!.KHACH_HANG_ID;
 
     // SĐT chưa đăng ký báo riêng; sai mật khẩu báo riêng; sai 5 lần thì khóa tạm, mật khẩu đúng cũng bị chặn.

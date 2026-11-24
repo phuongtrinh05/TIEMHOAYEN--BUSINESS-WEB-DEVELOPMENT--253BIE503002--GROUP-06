@@ -1192,3 +1192,400 @@ body {
 @keyframes register-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .btn-spinner { animation-duration: 2s; } }
 
+
+
+/* ===== Popup nhập mã OTP xác minh đăng ký (cùng giao diện với popup OTP ở trang Đăng nhập) ===== */
+.otp-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(2px);
+}
+
+.otp-popup {
+  position: relative;
+  width: min(560px, 88vw);
+  padding: 30px 56px 34px;
+  background: rgba(255, 248, 245, 0.96);
+  border-radius: 18px;
+  text-align: center;
+  box-shadow: 0 10px 32px rgba(115, 25, 25, 0.22);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.otp-popup__title {
+  font-family: var(--font-heading);
+  font-size: clamp(1.65rem, 2.65vw, 2.25rem);
+  font-weight: 800;
+  color: var(--accent-color);
+  margin-bottom: 10px;
+}
+
+.otp-popup__desc {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-style: italic;
+  line-height: 1.45;
+  color: #4f5b6b;
+  margin-bottom: 24px;
+}
+
+.otp-popup__inputs {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  margin-bottom: 28px;
+}
+
+.otp-popup__input {
+  width: 56px;
+  height: 56px;
+  background: rgba(255, 248, 245, 0.9);
+  border: 1.5px solid var(--text-color);
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  text-align: center;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.otp-popup__input:focus {
+  border-color: var(--accent-color);
+  background: #fff;
+}
+
+.otp-popup__button {
+  display: block;
+  width: min(420px, 100%);
+  height: 54px;
+  margin: 0 auto 22px;
+  border: none;
+  border-radius: 10px;
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--primary-color);
+  transition: background 0.2s, transform 0.1s, color 0.2s;
+}
+
+.otp-popup__button.is-default {
+  background: rgba(217, 179, 130, 0.3);
+  color: var(--primary-color);
+  cursor: pointer;
+  opacity: 1;
+}
+
+.otp-popup__button.is-disabled {
+  background: #d9d9d9;
+  color: #888;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.otp-popup__button.is-ready {
+  background: var(--accent-color);
+  color: var(--primary-color);
+  cursor: pointer;
+  opacity: 1;
+}
+
+.otp-popup__button.is-ready:hover {
+  background: var(--accent-color);
+  transform: translateY(-1px);
+}
+
+.otp-popup__resend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 44px;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--primary-color);
+}
+
+.otp-popup__resend-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--primary-color);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.otp-popup__resend-button:hover {
+  color: var(--color-scarlet-red);
+}
+
+.popup-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.3rem;
+  color: #aaa;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.popup-close:hover {
+  color: var(--color-scarlet-red);
+}
+
+.forgot-popup-overlay,
+.otp-popup-overlay {
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(2px);
+}
+
+.forgot-popup,
+.otp-popup {
+  width: min(460px, calc(100vw - 32px));
+  padding: clamp(28px, 3vw, 34px) clamp(28px, 4vw, 42px);
+  background: rgba(255, 248, 245, 0.96);
+  backdrop-filter: none;
+  border: none;
+  border-radius: 18px;
+  box-shadow: 0 10px 32px rgba(115, 25, 25, 0.22);
+}
+
+.otp-popup {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.forgot-popup__title,
+.otp-popup__title {
+  font-family: var(--font-heading);
+  font-size: clamp(1.48rem, 2.1vw, 1.86rem);
+  font-weight: 800;
+  color: var(--accent-color);
+  margin: 0 34px 10px;
+  line-height: 1.18;
+}
+
+.forgot-popup__desc,
+.otp-popup__desc {
+  max-width: 330px;
+  margin: 0 auto 20px;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-style: normal;
+  line-height: 1.48;
+  color: var(--text-color);
+}
+
+.otp-popup__desc {
+  max-width: 100%;
+  font-style: italic;
+  color: rgba(36, 24, 24, 0.62);
+  
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.otp-popup__inputs {
+  width: 100%;
+  gap: clamp(8px, 1.6vw, 12px);
+  margin-bottom: 8px;
+}
+
+.otp-popup__error {
+  width: min(100%, 336px);
+  min-height: 16px;
+  margin: 0 auto 18px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.otp-popup__input {
+  width: clamp(38px, 8vw, 46px);
+  height: clamp(40px, 8vw, 46px);
+  background: rgba(255, 248, 245, 0.82);
+  border: 1.5px solid var(--text-color);
+  border-radius: 9px;
+  font-size: 1.18rem;
+  font-weight: 800;
+}
+
+.otp-popup__input:focus {
+  border-color: var(--accent-color);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 0 0 3px rgba(217, 179, 130, 0.18);
+}
+
+.forgot-popup__button,
+.otp-popup__button {
+  width: min(300px, 74%);
+  height: 38px;
+  margin: 2px auto 16px;
+  border: none;
+  border-radius: 9px;
+  font-family: var(--font-heading);
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--accent-color) 30%, transparent);
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.forgot-popup__button.is-default,
+.forgot-popup__button.is-disabled,
+.forgot-popup__button.is-ready,
+.otp-popup__button.is-default,
+.otp-popup__button.is-disabled,
+.otp-popup__button.is-ready {
+  background: color-mix(in srgb, var(--accent-color) 30%, transparent);
+  color: var(--primary-color);
+  cursor: pointer;
+  opacity: 1;
+}
+
+.forgot-popup__button:hover,
+.forgot-popup__button.is-default:hover,
+.forgot-popup__button.is-disabled:hover,
+.forgot-popup__button.is-ready:hover,
+.otp-popup__button:hover,
+.otp-popup__button.is-default:hover,
+.otp-popup__button.is-disabled:hover,
+.otp-popup__button.is-ready:hover {
+  background: var(--accent-color);
+  transform: none;
+}
+
+.otp-popup__resend {
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  color: rgba(36, 24, 24, 0.76);
+}
+
+.otp-popup__resend-button {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--primary-color);
+}
+
+.popup-close {
+  top: 14px;
+  right: 14px;
+  width: 30px;
+  height: 30px;
+  color: rgba(115, 25, 25, 0.62);
+  background: transparent;
+  font-size: 1rem;
+}
+
+.popup-close:hover {
+  color: var(--primary-color);
+  background: transparent;
+}
+
+@media (max-width: 768px) {
+  .forgot-popup,
+  .otp-popup {
+    width: min(430px, calc(100vw - 32px));
+    padding: 24px 18px;
+  }
+  .otp-popup__desc {
+    white-space: normal;
+  }
+  .forgot-popup__button,
+  .otp-popup__button {
+    width: 100%;
+  }
+}
+
+.form-input:-webkit-autofill,
+.form-input:-webkit-autofill:hover,
+.form-input:-webkit-autofill:focus,
+.forgot-popup__input:-webkit-autofill,
+.forgot-popup__input:-webkit-autofill:hover,
+.forgot-popup__input:-webkit-autofill:focus,
+.otp-popup__input:-webkit-autofill,
+.otp-popup__input:-webkit-autofill:hover,
+.otp-popup__input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #fdfaf7 inset;
+  box-shadow: 0 0 0 1000px #fdfaf7 inset;
+  -webkit-text-fill-color: var(--text-color);
+  caret-color: var(--text-color);
+}
+
+.login-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: 8px;
+  vertical-align: -2px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: login-spin .7s linear infinite;
+}
+
+@keyframes login-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .login-spinner { animation-duration: 2s; }
+}
+
+.otp-input.is-invalid, .otp-popup__input.is-invalid { border: 2px solid #dc3545; color: #dc3545; background: #fff5f5; }
+
+.otp-popup__inputs.is-busy {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.otp-popup__status {
+  min-height: 1.2em;
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: rgba(36, 24, 24, 0.76);
+}
+
+.otp-popup__notice {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+.otp-popup__error {
+  display: block;
+  min-height: 2.4em;
+  margin: 2px auto 6px;
+  text-align: center;
+}
+
+.otp-countdown {
+  font-variant-numeric: tabular-nums;
+  color: rgba(36, 24, 24, 0.76);
+}
+
+.otp-countdown.is-expired {
+  color: var(--color-scarlet-red);
+}
+
+.otp-popup__resend-button:disabled {
+  color: #9a9a9a;
+  cursor: not-allowed;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
