@@ -6,7 +6,7 @@ import { Subscription } from 'rxjs';
 import { apiBaseUrl, orderAccessSession } from '../../services/api-config';
 
 @Component({ selector: 'app-marketing-preferences', standalone: true, imports: [FormsModule], template: `
-  @if(!prompt){<button class="settings-link" type="button" (click)="openSettings()"><i class="bi bi-envelope-heart"></i> Bật thông báo nhận ưu đãi</button>}
+  @if(!prompt){<button class="settings-link" type="button" (click)="openSettings()"><i class="bi bi-envelope-heart"></i> {{ready&&allowed?'Đang nhận thông báo ưu đãi':'Bật thông báo nhận ưu đãi'}}</button>}
   @if(visible){<div class="consent-overlay"><section class="consent-dialog" role="dialog" aria-modal="true" [attr.aria-labelledby]="prompt?'marketing-welcome-title':'marketing-settings-title'" (keydown)="dialogKey($event)">
     <div class="dialog-top"><span class="flower"><i class="bi bi-envelope-heart"></i></span><button class="close" type="button" [disabled]="busy" aria-label="Đóng" (click)="dismiss()">×</button></div>
     @if(!challengeId){
@@ -21,7 +21,7 @@ import { apiBaseUrl, orderAccessSession } from '../../services/api-config';
     }
     @if(message){<div class="message" role="status">{{message}}</div>}
     @if(challengeId){<div class="dialog-actions otp-actions"><button class="primary" type="button" [disabled]="busy||!ready" (click)="verifyOtp()">{{busy?'Đang xác nhận…':'Xác nhận'}}</button></div>}
-    @else {<div class="dialog-actions"><button class="secondary" type="button" [id]="prompt?'marketing-consent-decline':'marketing-settings-decline'" [disabled]="busy||!ready" (click)="save(false)">{{prompt?'Không, cảm ơn':'Tắt thông báo'}}</button><button class="primary" type="button" [disabled]="busy||!ready" (click)="hasEmail?save(true):requestOtp()">{{busy?'Đang xử lý…':hasEmail?'Bật thông báo':'Gửi mã OTP'}}</button></div>
+    @else {<div class="dialog-actions"><button class="secondary" type="button" [id]="prompt?'marketing-consent-decline':'marketing-settings-decline'" [disabled]="busy||!ready" (click)="save(false)">{{prompt?'Không, cảm ơn':'Tắt thông báo'}}</button><button class="primary" type="button" [disabled]="busy||!ready||allowed" (click)="hasEmail?save(true):requestOtp()">{{busy?'Đang xử lý…':allowed?'Đã bật':hasEmail?'Bật thông báo':'Gửi mã OTP'}}</button></div>
     @if(!prompt&&ready){<small class="current-status">Hiện tại: {{allowed?'Đang bật thông báo ưu đãi':'Chưa bật thông báo ưu đãi'}}</small>}}
   </section></div>}
   @if(!prompt&&notice){<small class="settings-notice" role="status">{{notice}}</small>}
@@ -35,7 +35,6 @@ export class MarketingPreferences implements OnInit, OnDestroy {
   allowed = false; ready = false; busy = false; visible = false; message = ''; notice = ''; email = ''; emailInput = ''; hasEmail = false;
   challengeId = ''; emailMasked = ''; otp = '';
   ngOnInit() {
-    if (!this.prompt) return;
     this.navigation = this.router.events.subscribe(e => { if (e instanceof NavigationEnd) this.check(); });
     this.check();
   }
@@ -47,12 +46,12 @@ export class MarketingPreferences implements OnInit, OnDestroy {
     if (!session || session.authType !== 'member') { this.visible = false; this.checkedToken = ''; if (force) this.notice = 'Đăng nhập lại để cập nhật tùy chọn nhận tin.'; return; }
     const token = session.accessToken;
     try { this.dismissedToken = sessionStorage.getItem('marketingWelcomeDismissed') || this.dismissedToken; } catch {}
-    if (!force && (this.router.url.startsWith('/login') || this.router.url.startsWith('/register') || this.checkedToken === token || this.dismissedToken === token)) return;
+    if (!force && (this.router.url.startsWith('/login') || this.router.url.startsWith('/register') || this.checkedToken === token || (this.prompt && this.dismissedToken === token))) return;
     this.checkedToken = token; const generation = ++this.generation; this.ready = false;
     this.http.get<any>(apiBaseUrl() + '/marketing/preferences', { headers: { 'x-order-access': token } }).subscribe({ next: r => {
       if (generation !== this.generation || orderAccessSession()?.accessToken !== token) return;
       this.allowed = r.allowed; this.email = String(r.email || ''); this.hasEmail = Boolean(r.hasEmail && this.email); this.emailInput = this.hasEmail ? this.email : ''; this.challengeId = ''; this.otp = ''; this.ready = true;
-      if (force || !r.answered) this.show(); this.cdr.markForCheck();
+      if (force || (this.prompt && !r.answered)) this.show(); this.cdr.markForCheck();
     }, error: () => {
       if (generation !== this.generation) return;
       this.checkedToken = ''; this.message = 'Chưa tải được tùy chọn. Vui lòng thử lại.'; if (force) this.notice = this.message; this.cdr.markForCheck();
