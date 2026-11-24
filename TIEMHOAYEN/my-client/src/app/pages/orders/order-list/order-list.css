@@ -88,3 +88,6 @@
 @media(max-width:560px){.request-results .customer-request-card{grid-template-columns:68px minmax(0,1fr);padding:13px;gap:12px}.request-results .request-photo{width:68px;height:68px}.request-results .request-actions{grid-template-columns:1fr}.request-schedule{align-items:flex-start;flex-wrap:wrap}.request-next{align-items:flex-start}.request-next b{display:none}}
 
 .payment-expired-note{margin:6px 0 0;color:#a15c00;font-size:13px;display:flex;gap:4px;align-items:center}
+
+/* Phiên tra cứu đang mở: trang dùng nguyên khung của "Đơn hàng của tôi" (cùng độ rộng, lề) để hai giao diện đồng nhất. */
+.lookup-page.embedded-history{width:auto;padding:0}

@@ -24,8 +24,7 @@ type HistoryTab='all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
     }</section>
   }@else{
     <header class="page-head">
-      <div><h1>{{guestMode?'Đơn hàng đã tra cứu':'Đơn hàng của tôi'}}</h1><p>{{guestMode?'Các đơn hoa và yêu cầu đặt hàng theo số điện thoại bạn vừa xác minh.':'Theo dõi đơn hoa và các yêu cầu đặt hàng bạn đã gửi cho shop.'}}</p></div>
-      @if(guestMode){<button type="button" class="end-lookup" (click)="end()">Kết thúc tra cứu</button>}
+      <div><h1>{{guestMode?'Đơn hàng đã tra cứu':'Đơn hàng của tôi'}}</h1><p>{{guestMode?'Các đơn hoa và yêu cầu đặt hàng theo số điện thoại bạn vừa xác minh.':'Theo dõi đơn hoa và các yêu cầu đặt hàng bạn đã gửi cho shop.'}}</p>@if(guestMode){<button type="button" class="end-lookup" (click)="end()"><i class="bi bi-box-arrow-right" aria-hidden="true"></i> Kết thúc tra cứu</button>}</div>
       <label class="search"><i class="bi bi-search" aria-hidden="true"></i><input [(ngModel)]="search" placeholder="Tìm mã đơn, mã yêu cầu hoặc tên hoa" aria-label="Tìm đơn hàng"></label>
     </header>
     <section class="summary" aria-label="Tóm tắt">
@@ -58,8 +57,7 @@ type HistoryTab='all'|'shipping'|'completed'|'returns'|'cancelled'|'requests';
   }
 </main>`,styles:[`
 :host(.embedded){min-height:0;background:transparent}
-:host(.embedded) .page{max-width:none;padding:0}
-.end-lookup{flex:none;align-self:center;padding:9px 16px;border:1px solid #d9b382;border-radius:999px;background:#fff;color:#731919;font:800 13px 'Nunito Sans',sans-serif;cursor:pointer}
+.end-lookup{display:inline-flex;align-items:center;gap:6px;margin-top:12px;padding:8px 16px;border:1px solid #d9b382;border-radius:999px;background:#fff;color:#731919;font:800 13px 'Nunito Sans',sans-serif;cursor:pointer}
 
 :host{display:block;min-height:100vh;background:#fff8f5;color:#351919;font-family:'Nunito Sans',sans-serif}
 .page{max-width:1120px;margin:auto;padding:32px 24px 64px}

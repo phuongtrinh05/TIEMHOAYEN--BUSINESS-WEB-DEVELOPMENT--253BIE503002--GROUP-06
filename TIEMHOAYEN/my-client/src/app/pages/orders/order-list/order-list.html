@@ -1,4 +1,4 @@
-<main class="lookup-page">
+<main class="lookup-page" [class.embedded-history]="!!access.session&&!lookupCode">
   @if(!access.session||lookupCode){<section class="intro"><h1>Tra cứu đơn hàng</h1></section>}
   @if(error&&access.session){<div class="alert" role="alert">{{error}}</div>}
   @if(!access.session){
@@ -18,7 +18,7 @@
       </div>
     </section>
   }@else{
-    @if(!lookupCode){<app-request-history [guestMode]="true"></app-request-history>}
+    @if(!lookupCode){<app-request-history [guestMode]="access.session?.authType!=='member'"></app-request-history>}
     @else{
     <div class="lookup-actions">@if(isMember){<a routerLink="/order-requests">Đơn hàng của tôi</a>}<button type="button" (click)="end()">Kết thúc tra cứu</button></div>
     @if(!lookupCode){<nav class="lookup-tabs" aria-label="Nhóm đơn hàng">@for(tab of tabs;track tab.id){<button type="button" [class.active]="activeTab===tab.id" (click)="selectTab(tab.id)"><span>{{tab.label}}</span><b>{{tabCount(tab.id)}}</b></button>}</nav>}
