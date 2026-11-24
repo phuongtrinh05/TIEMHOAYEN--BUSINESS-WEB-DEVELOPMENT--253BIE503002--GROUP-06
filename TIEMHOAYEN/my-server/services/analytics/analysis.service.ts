@@ -115,11 +115,14 @@ export const getAnalysis = async (query: any) => {
   };
 
   /* ================= 1. XU HƯỚNG DOANH THU ================= */
-  const revCur = zeros(); const revPrev = zeros(); const ordCur = zeros(); const ordPrev = zeros(); const gpCur = zeros(); const cashCur = zeros();
+  const revCur = zeros(); const revPrev = zeros(); const ordCur = zeros(); const ordPrev = zeros(); const gpCur = zeros(); const cashCur = zeros(); const gpPrev = zeros(); const cashPrev = zeros();
   cur.completed.forEach((o) => { put(revCur, idx, o.completedAt, o.netRevenue); put(ordCur, idx, o.completedAt, 1); });
   old.completed.forEach((o) => { put(revPrev, pidx, o.completedAt, o.netRevenue); put(ordPrev, pidx, o.completedAt, 1); });
   cur.lines.forEach((l) => { if (l.cost !== null) put(gpCur, idx, ds.ordersById.get(l.orderId)?.completedAt || null, l.revenue - l.cost); });
   cur.cash.forEach((p) => put(cashCur, idx, p.paidAt, p.amount));
+  // Kỳ so sánh cho biểu đồ LN gộp / Tiền đã thu (giống đường so sánh của Doanh thu).
+  old.lines.forEach((l) => { if (l.cost !== null) put(gpPrev, pidx, ds.ordersById.get(l.orderId)?.completedAt || null, l.revenue - l.cost); });
+  old.cash.forEach((p) => put(cashPrev, pidx, p.paidAt, p.amount));
 
   const byWeekday = WEEKDAYS.map((label) => ({ label, revenue: 0, orders: 0 }));
   cur.completed.forEach((o) => { const w = vnParts(o.completedAt!).dow; byWeekday[w].revenue += o.netRevenue; byWeekday[w].orders++; });
@@ -139,7 +142,7 @@ export const getAnalysis = async (query: any) => {
     series: {
       labels: buckets.map((b) => b.label), prevLabels: prevBuckets.map((b) => b.label),
       netRevenue: revCur, netRevenuePrev: revPrev.length ? revPrev : zeros(), completedOrders: ordCur, completedOrdersPrev: ordPrev,
-      grossProfit: gpCur, cashCollected: cashCur,
+      grossProfit: gpCur, cashCollected: cashCur, grossProfitPrev: gpPrev, cashCollectedPrev: cashPrev,
     },
     byWeekday: weekdayOrdered,
     coverage: cur.coverage,

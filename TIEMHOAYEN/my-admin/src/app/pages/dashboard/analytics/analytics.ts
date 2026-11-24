@@ -150,13 +150,16 @@ export class Analytics implements OnInit {
     if (!d) return { labels: [], datasets: [] };
     const s = d.revenue.series;
     const m = this.revenueMetric();
-    const main = m === 'profit' ? s.grossProfit : m === 'cash' ? s.cashCollected : s.netRevenue;
+    // Biểu đồ chỉ vẽ phần ≥ 0 (ngày LN gộp âm hiển thị 0) để hai trục cùng gốc 0; số liệu thẻ KPI giữ nguyên.
+    const nonNeg = (arr?: number[]) => arr?.map((v) => Math.max(0, Number(v) || 0));
+    const main = nonNeg(m === 'profit' ? s.grossProfit : m === 'cash' ? s.cashCollected : s.netRevenue)!;
     const label = m === 'profit' ? 'Lợi nhuận gộp' : m === 'cash' ? 'Tiền đã thu' : 'Doanh thu thuần';
     return {
       labels: s.labels,
       datasets: [
         C.lineSet(label, main, F.PALETTE[0], false, true) as any,
-        ...(m === 'revenue' ? [C.lineSet(this.compareShort(), s.netRevenuePrev, F.PALETTE[1], true) as any] : []),
+        // Đường nét đứt kỳ so sánh cho cả Doanh thu, LN gộp và Tiền đã thu.
+        ...((m === 'profit' ? s.grossProfitPrev : m === 'cash' ? s.cashCollectedPrev : s.netRevenuePrev) ? [C.lineSet(this.compareShort(), nonNeg(m === 'profit' ? s.grossProfitPrev : m === 'cash' ? s.cashCollectedPrev : s.netRevenuePrev)!, F.PALETTE[1], true) as any] : []),
         { ...C.barSet('Đơn hoàn thành', s.completedOrders, 'rgba(201,162,122,0.35)'), yAxisID: 'y1' },
       ],
     };
