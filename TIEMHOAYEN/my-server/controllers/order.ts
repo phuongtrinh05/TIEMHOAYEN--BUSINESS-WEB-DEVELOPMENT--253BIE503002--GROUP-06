@@ -687,6 +687,11 @@ export const getOrderDetail = async (req: Request, res: Response) => {
     const receipts = await (await getCollection<any>('THANH_TOAN')).find({DON_HANG_ID:orderId}).toArray();
     const paid = Math.max(0,sumVerifiedPayments(receipts));
     const hasReview = await reviewCollection.findOne({ DON_HANG_ID: orderId }, { projection: { DANH_GIA_ID: 1 } });
+    // Số sản phẩm đã đánh giá / cần đánh giá để trang chi tiết hiện nút "Viết đánh giá" khi đơn đã giao.
+    const [reviewedProductIds, orderProductIds] = await Promise.all([
+      reviewCollection.distinct('SAN_PHAM_ID', { DON_HANG_ID: orderId }),
+      detailCollection.distinct('SAN_PHAM_ID', { DON_HANG_ID: orderId }),
+    ]);
     const publicOrder = Object.fromEntries(Object.entries(order).filter(([key]) => [
       'DON_HANG_ID','KHACH_HANG_ID','NGAY_TAO','TRANG_THAI','TAM_TINH','PHI_VAN_CHUYEN','TIEN_COC','TONG_TIEN','PHUONG_THUC_THANH_TOAN',
       'NGAY_MUON_GIAO','KHUNG_GIO_MUON_GIAO','LOI_NHAN_THIEP','AN_THONG_TIN','YEU_CAU_VAT','GUI_ANH_QUA_ZALO','TEN_NGUOI_NHAN',
@@ -698,6 +703,8 @@ export const getOrderDetail = async (req: Request, res: Response) => {
       ...publicOrder,
       GHI_CHU: String(order.GHI_CHU || '').split(' | ')[0],
       DA_DANH_GIA: hasReview ? 1 : 0,
+      DANH_GIA_DA_GUI: reviewedProductIds.length,
+      DANH_GIA_TONG_SAN_PHAM: orderProductIds.length,
       // Hạn thanh toán của đơn (khác hạn 5 phút của QR) và lý do nếu đơn đã quá hạn.
       HAN_THANH_TOAN_DON: orderPaymentDeadline(order)?.toISOString() || null,
       QUA_HAN_THANH_TOAN: expiredPaymentInfo(order),

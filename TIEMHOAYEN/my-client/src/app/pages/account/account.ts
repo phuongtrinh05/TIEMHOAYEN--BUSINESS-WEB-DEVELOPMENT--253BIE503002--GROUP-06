@@ -34,6 +34,8 @@ interface Order {
   total: number;
   status: string;
   reviewLabel: string;
+  reviewedCount: number;
+  reviewTotal: number;
 }
 
 interface WishlistItem {
@@ -325,6 +327,15 @@ export class AccountComponent implements OnInit, OnDestroy {
 
   orderSortAria(key: string): 'ascending' | 'descending' | 'none' {
     return this.orderSortKey !== key ? 'none' : this.orderSortDir === 'asc' ? 'ascending' : 'descending';
+  }
+
+  /** Đơn đã giao/hoàn thành còn sản phẩm chưa đánh giá: hiện nút mở trang Đánh giá đơn hàng. */
+  canReviewOrder(order: Order): boolean {
+    return order.reviewTotal > 0 && order.reviewedCount < order.reviewTotal && /hoàn thành|đã giao|giao thành công/i.test(String(order.status || ''));
+  }
+
+  goToOrderReview(order: Order): void {
+    this.router.navigate(['/order-review'], { queryParams: { orderId: order.id } });
   }
 
   get ordersTotalPages(): number {
@@ -695,6 +706,8 @@ export class AccountComponent implements OnInit, OnDestroy {
             subtotal: Number(item.TAM_TINH || 0),
             total: item.TONG_TIEN || 0,
             status: item.TRANG_THAI as Order['status'],
+            reviewedCount: Number(item.DANH_GIA_DA_GUI || 0),
+            reviewTotal: Number(item.DANH_GIA_TONG_SAN_PHAM || 0),
             reviewLabel: this.reviewProgressLabel(Number(item.DANH_GIA_DA_GUI || 0), Number(item.DANH_GIA_TONG_SAN_PHAM || 0), item.DANH_GIA_SO_SAO_TB, item.TRANG_THAI),
           }))
           .filter(order => !this.isExpiredPaymentOrder(order));

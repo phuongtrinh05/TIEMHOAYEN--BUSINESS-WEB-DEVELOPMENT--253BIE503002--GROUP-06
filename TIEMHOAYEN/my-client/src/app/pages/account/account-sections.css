@@ -190,3 +190,8 @@
 /* Mã đơn bấm được: mở trang chi tiết đơn (giống nút Xem chi tiết) */
 .order-table .order-id-link { padding: 0; border: 0; background: transparent; color: var(--primary-color, #731919); font: inherit; text-align: center; overflow-wrap: anywhere; word-break: break-all; cursor: pointer; }
 .order-table .order-id-link:hover, .order-table .order-id-link:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Cột Đánh giá: nút mở trang Đánh giá đơn hàng cho đơn đã giao */
+.order-table .btn-review-order { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border: 0; border-radius: 7px; background: #d9b382; color: #5b1414; font-size: 13px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.order-table .btn-review-order:hover { background: #731919; color: #fff; }
+.order-table .review-progress { margin-top: 4px; font-size: 12px; color: #8a6e65; }

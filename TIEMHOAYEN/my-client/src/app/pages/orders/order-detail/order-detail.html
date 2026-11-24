@@ -313,7 +313,8 @@
                 <td data-label="Số lượng">{{ product.quantity }}</td>
                 <td data-label="Thành tiền">{{ product.price * product.quantity | number:'1.0-0' }}đ</td>
                 <td data-label="Đánh giá">
-                  <span *ngIf="!product.reviewed">Chưa đánh giá</span>
+                  <button type="button" class="review-link" *ngIf="!product.reviewed && canReview()" (click)="goToReview()">Đánh giá ngay</button>
+                  <span *ngIf="!product.reviewed && !canReview()">Chưa đánh giá</span>
                   <span *ngIf="product.reviewed">Đã đánh giá {{ product.rating }}/5 ★</span>
                 </td>
               </tr>

@@ -1375,3 +1375,7 @@ h3{
 
 /* Dropdown dùng chung trong form hậu mãi */
 .support-field{display:flex;flex-direction:column;gap:6px;color:#613d36;font-weight:700}
+
+/* Cột Đánh giá: đơn đã giao thì mở trang Đánh giá đơn hàng */
+.review-link { padding: 6px 12px; border: 1.5px solid #731919; border-radius: 999px; background: #fff; color: #731919; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.review-link:hover { background: #731919; color: #fff; }
