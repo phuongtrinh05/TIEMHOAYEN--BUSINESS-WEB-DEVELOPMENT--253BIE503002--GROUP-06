@@ -1,5 +1,5 @@
 <main class="lookup-page">
-  @if(!access.session||lookupCode){<section class="intro"><h1>Tra cứu đơn hàng của khách vãng lai</h1></section>}
+  @if(!access.session||lookupCode){<section class="intro"><h1>Tra cứu đơn hàng</h1></section>}
   @if(error&&access.session){<div class="alert" role="alert">{{error}}</div>}
   @if(!access.session){
     <section class="verify-card" [class.otp-step]="!!challengeId">
