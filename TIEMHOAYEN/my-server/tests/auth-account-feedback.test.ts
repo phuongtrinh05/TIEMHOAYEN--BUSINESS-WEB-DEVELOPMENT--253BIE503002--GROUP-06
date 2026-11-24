@@ -47,12 +47,12 @@ test('auth + account administration feedback rules', { skip: !process.env.TEST_M
     assert.equal((await db.collection('KHACH_HANG').findOne({ SDT: '0922220000' }))!.TRANG_THAI, 'Hoạt động');
     const customerId = (await db.collection('KHACH_HANG').findOne({ SDT: '0911111111' }))!.KHACH_HANG_ID;
 
-    // KH02: không lộ SĐT có tồn tại; sai 5 lần thì khóa tạm, mật khẩu đúng cũng bị chặn.
+    // SĐT chưa đăng ký báo riêng; sai mật khẩu báo riêng; sai 5 lần thì khóa tạm, mật khẩu đúng cũng bị chặn.
     r = await call(loginCustomer, { body: { SDT: '0900000000', MAT_KHAU: 'x' } });
-    assert.equal(r.status, 401);
+    assert.equal(r.status, 404); assert.match(r.body.message, /chưa được đăng ký/);
     for (let i = 1; i <= 4; i++) {
       r = await call(loginCustomer, { body: { SDT: '0911111111', MAT_KHAU: 'Wrong#Pass1' } });
-      assert.equal(r.status, 401); assert.equal(r.body.remainingAttempts, 5 - i);
+      assert.equal(r.status, 401); assert.equal(r.body.remainingAttempts, 5 - i); assert.match(r.body.message, /^Mật khẩu không đúng/);
     }
     r = await call(loginCustomer, { body: { SDT: '0911111111', MAT_KHAU: 'Wrong#Pass1' } });
     assert.equal(r.status, 429); assert.equal(r.body.locked, true);

@@ -208,8 +208,10 @@ export class LoginComponent implements OnInit, OnDestroy {
             const remaining = body.remainingAttempts;
             this.loginError = body.message
               || (typeof remaining === 'number'
-                ? `Số điện thoại hoặc mật khẩu không đúng. Bạn còn ${remaining} lần thử.`
-                : 'Số điện thoại hoặc mật khẩu không đúng.');
+                ? `Mật khẩu không đúng. Bạn còn ${remaining} lần thử.`
+                : 'Mật khẩu không đúng.');
+          } else if (err.status === 404) {
+            this.loginError = body.message || 'Số điện thoại này chưa được đăng ký tài khoản.';
           } else {
             this.loginError = body.message || 'Đăng nhập thất bại. Vui lòng thử lại.';
           }

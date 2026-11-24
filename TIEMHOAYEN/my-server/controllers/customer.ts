@@ -210,15 +210,15 @@ export const loginCustomer = async (req: Request, res: Response) => {
 
     const customerCollection = await getCustomerCollection();
     const customer = await customerCollection.findOne({ SDT: phone });
-    // Không tiết lộ số điện thoại có tồn tại hay không (KH02).
+    // Báo rõ từng trường hợp: số chưa đăng ký khác với sai mật khẩu.
     if (!customer || !isActiveRow(customer)) {
-      await audit(req, 'DANG_NHAP', 'KHACH_HANG', { LY_DO: 'Sai thông tin' }, false);
-      return res.status(401).json({ message: 'Số điện thoại hoặc mật khẩu không đúng.' });
+      await audit(req, 'DANG_NHAP', 'KHACH_HANG', { LY_DO: 'Số điện thoại chưa đăng ký' }, false);
+      return res.status(404).json({ field: 'SDT', message: 'Số điện thoại này chưa được đăng ký tài khoản.' });
     }
     assertLoginNotLocked(customer);
     if (!await verifyPassword(password, customer.MAT_KHAU)) {
       await audit(req, 'DANG_NHAP', customer.KHACH_HANG_ID, { LY_DO: 'Sai mật khẩu' }, false);
-      throw wrongPasswordError(await recordLoginFailure('KHACH_HANG', customer), 'Số điện thoại hoặc mật khẩu không đúng.');
+      throw wrongPasswordError(await recordLoginFailure('KHACH_HANG', customer), 'Mật khẩu không đúng.');
     }
     // Tài khoản cũ còn "Chờ xác minh" (từ khi còn bắt buộc xác minh email) được kích hoạt khi đăng nhập đúng mật khẩu.
     if (/chờ xác minh/i.test(String(customer.TRANG_THAI || ''))) {

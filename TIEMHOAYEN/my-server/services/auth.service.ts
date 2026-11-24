@@ -75,7 +75,7 @@ export async function recordLoginFailure(type: AccountType, account: any) {
   }
   return MAX_LOGIN_FAILURES - failures;
 }
-export function wrongPasswordError(remaining: number, label = 'Thông tin đăng nhập không đúng.') {
+export function wrongPasswordError(remaining: number, label = 'Mật khẩu không đúng.') {
   if (remaining <= 0) return new AuthError(429, `Bạn đã nhập sai mật khẩu quá ${MAX_LOGIN_FAILURES} lần. Tài khoản tạm khóa đăng nhập ${LOGIN_LOCK_MINUTES} phút. Vui lòng dùng Quên mật khẩu để đặt lại.`, { locked: true, retryAfterMinutes: LOGIN_LOCK_MINUTES });
   return new AuthError(401, `${label} Bạn còn ${remaining} lần thử.`, { remainingAttempts: remaining });
 }
@@ -180,7 +180,7 @@ export async function login(type: AccountType, req: Request) {
   const account = await (await collection(type)).findOne(type === 'KHACH_HANG' ? { SDT: identifier } : { EMAIL: identifier });
   if (!account) {
     await audit(req, 'DANG_NHAP', type, {}, false);
-    throw new AuthError(401, 'Thông tin đăng nhập không đúng.');
+    throw new AuthError(404, type === 'KHACH_HANG' ? 'Số điện thoại này chưa được đăng ký tài khoản.' : 'Email này chưa được đăng ký tài khoản nhân viên.');
   }
   assertLoginNotLocked(account);
   if (!await verifyPassword(password, account.MAT_KHAU)) {
