@@ -49,9 +49,6 @@
         }
       </div>
       <div class="mini">
-        @for (k of subKpis(); track k.key) {
-          <span class="mini-item"><span class="muted">{{ k.label }}</span> <b>{{ f.kpiValue(k.value, k.unit) }}</b></span>
-        }
         @if (isEmptyRange() && ov.latestOrderAt) {
           <span class="mini-note no-print"><i class="bi bi-info-circle"></i> Kỳ này chưa có đơn · đơn gần nhất {{ f.dateOnly(ov.latestOrderAt) }}
             <button class="link" (click)="jumpToLatest()">Xem tháng đó</button></span>
@@ -65,7 +62,6 @@
     <section class="block no-print">
       <div class="block-head">
         <h2>Việc cần xử lý</h2>
-        <span class="block-sub">Tính đến hiện tại · bấm để mở danh sách</span>
       </div>
       <nav class="todos" aria-label="Việc cần xử lý">
         @for (n of ov.needAction; track n.key) {
@@ -142,7 +138,6 @@
       <section class="block">
         <div class="block-head">
           <h2>Dự báo</h2>
-          <span class="block-sub">Tính từ hôm nay theo trung bình gần đây · không phụ thuộc bộ lọc ngày</span>
         </div>
         <div class="grid g-4-4-4">
           <section class="panel fixed h-360">
