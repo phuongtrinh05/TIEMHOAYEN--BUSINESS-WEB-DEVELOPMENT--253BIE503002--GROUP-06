@@ -1023,8 +1023,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     // Đơn quá hạn thanh toán: còn ≥ 4 giờ làm việc trước giờ giao thì chỉ "Thanh toán lại", không "Đặt lại đơn này";
     // còn dưới 4 giờ (hoặc server không cho gia hạn) thì mới "Đặt lại đơn này".
     if (status !== 'payment_failed' && status !== 'payment') return false;
-    const expired = !!this.order.paymentExpiredReason || !!this.order.paymentRetryExpired;
-    return expired && this.order.paymentRetryAllowed === false;
+    return this.paymentDeadlinePassed() && this.order.paymentRetryAllowed !== true;
   }
 
   async reorder(): Promise<void> {
@@ -1114,8 +1113,17 @@ export class OrderDetail implements OnInit, OnDestroy {
   canRetryPayment(): boolean {
     const status = this.normalizeStatus(this.order.status);
     if (status !== 'payment_failed' && status !== 'payment') return false;
-    // Server chưa trả THANH_TOAN_LAI (bản cũ) thì giữ hành vi cũ; có thì theo quyết định của server.
-    return this.order.paymentRetryAllowed !== false;
+    // Theo quyết định của server (THANH_TOAN_LAI). Nếu server chưa trả trường này thì đơn đã quá hạn
+    // không hiện "Thanh toán lại" mà hiện "Đặt lại đơn này".
+    if (typeof this.order.paymentRetryAllowed === 'boolean') return this.order.paymentRetryAllowed;
+    return !this.paymentDeadlinePassed();
+  }
+
+  /** Đơn đã quá hạn thanh toán (theo server, theo lý do quá hạn, hoặc hạn thanh toán của đơn đã qua). */
+  private paymentDeadlinePassed(): boolean {
+    if (this.order.paymentRetryExpired || this.order.paymentExpiredReason) return true;
+    const deadline = this.order.paymentDeadline ? Date.parse(this.order.paymentDeadline) : NaN;
+    return Number.isFinite(deadline) && deadline <= Date.now();
   }
 
   goToReview(): void {
