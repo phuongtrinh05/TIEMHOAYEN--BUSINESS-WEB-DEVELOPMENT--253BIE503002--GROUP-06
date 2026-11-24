@@ -316,7 +316,7 @@
                 <app-ui-select name="deliveryTime" class="delivery-time-select"
                   [(ngModel)]="formData.deliveryTime" (ngModelChange)="onDeliveryTimeChange()"
                   required #deliveryTime="ngModel" ariaLabel="Khung giờ giao"
-                  [options]="deliveryTimeSelectOptions" placeholder="Chọn khung giờ giao (08:00 - 22:00)"
+                  [options]="deliveryTimeSelectOptions" placeholder="Chọn khung giờ giao (06:30 - 22:00)"
                   emptyText="Ngày này đã hết khung giờ giao"
                   [invalid]="!!((deliveryTime.invalid && (deliveryTime.touched || orderForm.submitted)) || deliveryScheduleError)">
                 </app-ui-select>

@@ -7,7 +7,7 @@ import { slot24h } from './time-format.js';
  * - Lịch mới còn từ 24 giờ trở lên: cập nhật trực tiếp.
  * - Lịch mới còn từ 4 đến dưới 24 giờ: không cập nhật trực tiếp, khách liên hệ shop.
  * - Lịch hiện tại còn dưới 4 giờ làm việc (06:30–22:00): khóa sửa ngày/giờ, khách gọi shop.
- * - Không nhận giờ đã qua hoặc ngoài 08:00–22:00.
+ * - Không nhận giờ đã qua hoặc ngoài 06:30–22:00.
  * Mỗi đơn chỉ được sửa thông tin giao hàng một lần (kiểm tra ở controller).
  */
 export const DIRECT_RESCHEDULE_MINUTES = 24 * 60;
@@ -66,7 +66,7 @@ export function assertCustomerReschedule(order: any, deliveryDate: unknown, deli
   const next = deliveryWindow(nextDay, nextSlot);
   if (!next) throw new InventoryError(400, 'Ngày hoặc khung giờ giao không hợp lệ.');
   if (next.start.getTime() <= now.getTime()) throw new InventoryError(400, 'Thời gian giao mới đã qua. Vui lòng chọn lại.');
-  if (!isWithinShopHours(next.start, next.end)) throw new InventoryError(400, 'Shop chỉ giao hàng từ 08:00 đến 22:00. Vui lòng chọn lại giờ giao.');
+  if (!isWithinShopHours(next.start, next.end)) throw new InventoryError(400, 'Shop chỉ giao hàng từ 06:30 đến 22:00. Vui lòng chọn lại giờ giao.');
   const minutes = (next.start.getTime() - now.getTime()) / 60_000;
   if (workingMinutesBetween(now, next.start) < LOCK_RESCHEDULE_MINUTES) {
     throw new InventoryError(409, `Lịch giao mới còn dưới 4 giờ làm việc. Vui lòng gọi shop ${URGENT_CONTACT_PHONE}.`, { code: RESCHEDULE_LOCKED_CODE, phone: URGENT_CONTACT_PHONE });

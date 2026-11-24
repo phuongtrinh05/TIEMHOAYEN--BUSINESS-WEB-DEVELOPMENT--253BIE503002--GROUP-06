@@ -1501,7 +1501,7 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   /**
    * Quy tắc đổi lịch (server kiểm tra lại):
-   * ≥ 24 giờ cập nhật trực tiếp; 4–24 giờ liên hệ shop; < 4 giờ làm việc (06:30–22:00) gọi shop; không nhận giờ đã qua hoặc ngoài 08:00–22:00.
+   * ≥ 24 giờ cập nhật trực tiếp; 4–24 giờ liên hệ shop; < 4 giờ làm việc (06:30–22:00) gọi shop; không nhận giờ đã qua hoặc ngoài 06:30–22:00.
    */
   private checkReschedule(deliveryDate: string, deliveryTime: string): string {
     const sameDate = deliveryDate === this.toInputDate(this.shippingDateLabel);
@@ -1513,7 +1513,7 @@ export class OrderDetail implements OnInit, OnDestroy {
     const minutes = (startAt - Date.now()) / 60000;
     const toMinutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
     if (!Number.isFinite(startAt) || minutes <= 0) return 'Thời gian giao mới đã qua. Vui lòng chọn lại.';
-    if (toMinutes(start) < 8 * 60 || toMinutes(end) > 22 * 60 || toMinutes(end) < toMinutes(start)) return 'Shop chỉ giao hàng từ 08:00 đến 22:00. Vui lòng chọn lại giờ giao.';
+    if (toMinutes(start) < 6 * 60 + 30 || toMinutes(end) > 22 * 60 || toMinutes(end) < toMinutes(start)) return 'Shop chỉ giao hàng từ 06:30 đến 22:00. Vui lòng chọn lại giờ giao.';
     if (workingMinutesBetween(Date.now(), startAt) < 4 * 60) return `Lịch giao mới còn dưới 4 giờ làm việc. Vui lòng gọi shop ${this.shopPhone}.`;
     if (minutes < 24 * 60) return `Lịch giao mới cách hiện tại dưới 24 giờ nên shop cần kiểm tra hoa và người giao trước. Vui lòng liên hệ shop qua hotline ${this.shopPhone} hoặc chat để đổi lịch.`;
     return '';

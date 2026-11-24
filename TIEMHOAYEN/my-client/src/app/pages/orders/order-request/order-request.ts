@@ -200,7 +200,7 @@ export class OrderRequest implements OnInit, OnDestroy {
     this.scheduleTimeError = this.requestedTime ? '' : 'Vui lòng chọn giờ giao.';
     if (this.scheduleDateError || this.scheduleTimeError) { this.cdr.markForCheck(); return false; }
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(this.requestedTime)) this.scheduleTimeError = 'Giờ giao không hợp lệ.';
-    else if (this.requestedTime < '08:00' || this.requestedTime > '22:00') this.scheduleTimeError = 'Shop chỉ giao từ 08:00 đến 22:00.';
+    else if (this.requestedTime < '06:30' || this.requestedTime > '22:00') this.scheduleTimeError = 'Shop chỉ giao từ 06:30 đến 22:00.';
     const deliveryAt = new Date(`${this.requestedDate}T${this.requestedTime}:00+07:00`);
     if (!Number.isFinite(deliveryAt.getTime())) this.scheduleDateError = 'Ngày giao không hợp lệ.';
     else if (deliveryAt.getTime() <= Date.now()) this.scheduleDateError = 'Ngày giờ giao phải ở tương lai.';

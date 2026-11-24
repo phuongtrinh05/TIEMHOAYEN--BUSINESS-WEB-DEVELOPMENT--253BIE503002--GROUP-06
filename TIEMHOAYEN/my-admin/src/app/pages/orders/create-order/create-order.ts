@@ -38,10 +38,10 @@ export function vnDeliveryDate(isoDate: string, time: string): Date | null {
   return Number.isNaN(value.getTime()) ? null : value;
 }
 
-/** Giống trang Khách: khung 30 phút trong 08:00–22:00 (giá trị là giờ bắt đầu, khung cuối 21:30–22:00). */
+/** Giống trang Khách: khung 30 phút trong 06:30–22:00 (giá trị là giờ bắt đầu, khung cuối 21:30–22:00). */
 export function deliveryTimeSlots(isoDate: string, now = new Date()): string[] {
   const slots: string[] = [];
-  for (let minutes = 8 * 60; minutes <= 22 * 60 - 30; minutes += 30) {
+  for (let minutes = 6 * 60 + 30; minutes <= 22 * 60 - 30; minutes += 30) {
     slots.push(`${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`);
   }
   if (!isoDate) return slots;
@@ -896,7 +896,7 @@ export class CreateOrder implements OnInit {
     if (!this.form.deliveryDate) this.errors.deliveryDate = 'Vui lòng chọn ngày giao hàng';
     else if (this.form.deliveryDate < vnTodayIso()) this.errors.deliveryDate = 'Ngày giao phải từ hôm nay trở đi';
     if (!this.form.deliverySlot) this.errors.deliverySlot = 'Vui lòng chọn giờ giao';
-    else if (!this.deliverySlots.includes(this.form.deliverySlot)) this.errors.deliverySlot = 'Giờ giao đã qua, vui lòng chọn lại (08:00–22:00)';
+    else if (!this.deliverySlots.includes(this.form.deliverySlot)) this.errors.deliverySlot = 'Giờ giao đã qua, vui lòng chọn lại (06:30–22:00)';
     else if (this.urgentDeliverySelected) this.errors.deliverySlot = `Lịch giao dưới 4 giờ làm việc là đơn gấp, vui lòng xử lý qua số ${SHOP_PHONE}`;
     if (!this.form.provinceCode) this.errors.provinceCode = 'Vui lòng chọn Tỉnh/Thành phố';
     if (!this.form.districtCode) this.errors.districtCode = 'Vui lòng chọn Quận/Huyện';

@@ -276,7 +276,7 @@ export function validateCheckoutDelivery(delivery: any) {
   const startAt = new Date(`${date}T${values[0]}:00+07:00`);
   const day = new Date(`${date}T00:00:00Z`);
   if (!Number.isFinite(at.getTime()) || !Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== date || startAt.getTime() <= Date.now()) throw new InventoryError(400, 'Ngày giao không tồn tại hoặc lịch giao đã qua.', { code: 'DELIVERY_IN_PAST' });
-  // Cả khung giờ phải nằm trong 08:00–22:00; không tự chuyển lịch ngoài giờ thành yêu cầu Sales.
+  // Cả khung giờ phải nằm trong 06:30–22:00; không tự chuyển lịch ngoài giờ thành yêu cầu Sales.
   assertWithinShopHours(startAt, at);
   return { ...delivery, date, time: slot, deliveryAt: at.toISOString(), deliveryStartAt: startAt.toISOString() };
 }

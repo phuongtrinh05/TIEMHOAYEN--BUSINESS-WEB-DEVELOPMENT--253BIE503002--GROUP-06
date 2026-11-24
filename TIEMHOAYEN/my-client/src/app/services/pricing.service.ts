@@ -84,10 +84,10 @@ export function deliverySlotLabel(value: unknown): string {
   return `${times[0]} - ${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
 }
 
-/** Khung 30 phút trong 08:00–22:00 (giá trị là giờ bắt đầu, khung cuối 21:30–22:00); hôm nay chỉ còn khung chưa bắt đầu. */
+/** Khung 30 phút trong 06:30–22:00 (giá trị là giờ bắt đầu, khung cuối 21:30–22:00); hôm nay chỉ còn khung chưa bắt đầu. */
 export function deliveryTimeSlots(isoDate: string, now = new Date()): string[] {
   const slots: string[] = [];
-  for (let minutes = 8 * 60; minutes <= 22 * 60 - 30; minutes += 30) {
+  for (let minutes = 6 * 60 + 30; minutes <= 22 * 60 - 30; minutes += 30) {
     slots.push(`${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`);
   }
   if (!isoDate) return slots;

@@ -902,7 +902,7 @@ export const updateShippingInfo = async (req: Request, res: Response) => {
     if (!/^0\d{9}$/.test(receiverPhone)) return res.status(400).json({ message: 'Số điện thoại người nhận phải gồm 10 chữ số, bắt đầu bằng 0.' });
     if (!deliveryAddress || deliveryAddress.length > 500) return res.status(400).json({ message: 'Vui lòng nhập địa chỉ giao hàng.' });
 
-    // Đổi ngày/giờ: ≥ 24 giờ cập nhật thẳng; 4–24 giờ liên hệ shop; < 4 giờ khóa; ngoài 08:00–22:00 hoặc đã qua thì từ chối.
+    // Đổi ngày/giờ: ≥ 24 giờ cập nhật thẳng; 4–24 giờ liên hệ shop; < 4 giờ khóa; ngoài 06:30–22:00 hoặc đã qua thì từ chối.
     const schedule = assertCustomerReschedule(order, deliveryDate, deliveryTime);
     const set: Record<string, unknown> = {
       TEN_NGUOI_NHAN: receiverName,

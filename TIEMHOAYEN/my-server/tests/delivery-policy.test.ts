@@ -24,27 +24,30 @@ test('24 hours or more goes straight to checkout', () => {
   assert.equal(classifyDeliverySchedule('2026-11-02T08:00:00+07:00', now).scheduleClass, 'FROM_24H');
   assert.equal(classifyDeliverySchedule('2026-11-02T09:59:00+07:00', new Date('2026-11-01T10:00:00+07:00')).scheduleClass, 'UNDER_24H');
 });
-test('before 08:00 or after 22:00 is rejected, never turned into a request', () => {
-  assert.throws(() => classifyDeliverySchedule('2026-11-02T07:30:00+07:00', now), (error: any) => error.details.code === 'OUTSIDE_SHOP_HOURS');
+test('before 06:30 or after 22:00 is rejected, never turned into a request', () => {
+  assert.throws(() => classifyDeliverySchedule('2026-11-02T06:00:00+07:00', now), (error: any) => error.details.code === 'OUTSIDE_SHOP_HOURS');
   assert.throws(() => classifyDeliverySchedule('2026-11-01T22:30:00+07:00', now), (error: any) => error.details.code === 'OUTSIDE_SHOP_HOURS');
   assert.equal(classifyDeliverySchedule('2026-11-01T22:00:00+07:00', now).scheduleClass, 'UNDER_24H');
 });
 test('a slot crossing 22:00 is checked as a whole', () => {
   assert.equal(isWithinShopHours('2026-11-01T20:00:00+07:00', '2026-11-01T22:00:00+07:00'), true);
   assert.equal(isWithinShopHours('2026-11-01T21:00:00+07:00', '2026-11-01T23:00:00+07:00'), false);
-  assert.equal(isWithinShopHours('2026-11-01T07:00:00+07:00', '2026-11-01T09:00:00+07:00'), false);
+  assert.equal(isWithinShopHours('2026-11-01T06:00:00+07:00', '2026-11-01T09:00:00+07:00'), false);
 });
 test('past delivery is rejected; UTC-stored values compare in Vietnam time', () => {
   assert.throws(() => classifyDeliverySchedule('2026-11-01T07:00:00+07:00', now), (error: any) => error.details.code === 'DELIVERY_IN_PAST');
   // 2026-11-01T01:00Z = 08:00 giờ Việt Nam → trong giờ shop.
   assert.equal(isWithinShopHours('2026-11-01T01:00:00Z'), true);
-  assert.equal(isWithinShopHours('2026-11-01T00:30:00Z'), false);
+  // 2026-10-31T23:30Z = 06:30 giờ Việt Nam → mở khung giao; 23:00Z = 06:00 → ngoài giờ.
+  assert.equal(isWithinShopHours('2026-10-31T23:30:00Z'), true);
+  assert.equal(isWithinShopHours('2026-10-31T23:00:00Z'), false);
 });
-test('a 30-minute slot must start between 08:00 and 21:30', () => {
+test('a 30-minute slot must start between 06:30 and 21:30', () => {
+  assert.doesNotThrow(() => assertDeliverySlotStart('2026-11-01T06:30:00+07:00'));
   assert.doesNotThrow(() => assertDeliverySlotStart('2026-11-01T08:00:00+07:00'));
   assert.doesNotThrow(() => assertDeliverySlotStart('2026-11-01T21:30:00+07:00'));
   assert.throws(() => assertDeliverySlotStart('2026-11-01T22:00:00+07:00'), (error: any) => error.details.code === 'OUTSIDE_SHOP_HOURS');
-  assert.throws(() => assertDeliverySlotStart('2026-11-01T07:30:00+07:00'), (error: any) => error.details.code === 'OUTSIDE_SHOP_HOURS');
+  assert.throws(() => assertDeliverySlotStart('2026-11-01T06:00:00+07:00'), (error: any) => error.details.code === 'OUTSIDE_SHOP_HOURS');
 });
 
 test('4-hour lead counts only shop working hours 06:30–22:00', () => {

@@ -416,7 +416,7 @@ describe('CreateOrder', () => {
       expect(component.fullDeliveryAddress).toBe('12 Nguyễn Huệ, Phường Tân Định, Quận 1, Thành phố Hồ Chí Minh');
     });
 
-    it('chặn giờ ngoài 08:00–22:00 và ngày đã qua', () => {
+    it('chặn giờ ngoài 06:30–22:00 và ngày đã qua', () => {
       component.form.deliveryDate = '2000-01-01';
       component.form.deliverySlot = '23:00';
       component.validate();
