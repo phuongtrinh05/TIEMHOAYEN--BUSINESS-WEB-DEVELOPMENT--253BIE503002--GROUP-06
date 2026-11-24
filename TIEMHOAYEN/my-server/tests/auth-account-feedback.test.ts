@@ -10,7 +10,7 @@ test('auth + account administration feedback rules', { skip: !process.env.TEST_M
   process.env.MONGO_DATABASE = `AUTH_FEEDBACK_${randomUUID().replaceAll('-', '')}_LOCAL_TEST`;
   const mongo = await import('../mongo.js');
   const { hashPassword } = await import('../utils/passwordHash.js');
-  const { loginCustomer, registerCustomer } = await import('../controllers/customer.js');
+  const { loginCustomer, registerCustomer, verifyRegisterOtp } = await import('../controllers/customer.js');
   const { loginAdminEmployee } = await import('../controllers/rolePermission.js');
   const auth = await import('../services/auth.service.js');
   const { attachVerifiedStaff } = await import('../middleware/verifiedStaff.js');
@@ -32,11 +32,18 @@ test('auth + account administration feedback rules', { skip: !process.env.TEST_M
     // Chưa nhập OTP thì chưa đăng nhập được.
     r = await call(loginCustomer, { body: { SDT: '0911111111', MAT_KHAU: 'Strong#Pass1' } });
     assert.equal(r.status, 403); assert.equal(r.body.unverified, true);
-    // Đăng ký lại khi còn Chờ xác minh: cập nhật thông tin, không báo trùng số.
-    r = await call(registerCustomer, { body: { TEN: 'Khách Test', GIOI_TINH: 'Nữ', SDT: '0911111111', EMAIL: 'KH@Example.test', MAT_KHAU: 'Strong#Pass1' } });
-    assert.equal(r.status, 201); assert.equal(r.body.requiresVerification, true);
-    // Mô phỏng khách đã nhập đúng OTP (luồng OTP đăng ký được kiểm thử ở otp-email.test.ts).
-    await db.collection('KHACH_HANG').updateOne({ SDT: '0911111111' }, { $set: { TRANG_THAI: 'Hoạt động' } });
+    // Đăng ký lại khi còn Chờ xác minh: cập nhật thông tin, không báo trùng số, gửi mã mới qua SMS.
+    await db.collection('XAC_THUC_TAI_KHOAN').updateMany({}, { $set: { GUI_LAI_SAU: new Date(Date.now() - 1000) } });
+    const originalLog = console.log; let smsLog = '';
+    console.log = (...args: any[]) => { smsLog += args.join(' '); };
+    try { r = await call(registerCustomer, { body: { TEN: 'Khách Test', GIOI_TINH: 'Nữ', SDT: '0911111111', EMAIL: 'KH@Example.test', MAT_KHAU: 'Strong#Pass1' } }); }
+    finally { console.log = originalLog; }
+    assert.equal(r.status, 201); assert.equal(r.body.requiresVerification, true); assert.equal(r.body.delivery, 'sms');
+    // Nhập đúng OTP đăng ký: tài khoản hoạt động và được đăng nhập luôn (có token phiên thành viên).
+    const regCode = smsLog.match(/0911111111: (\d{6})/)![1];
+    r = await call(verifyRegisterOtp, { body: { challengeId: r.body.challengeId, OTP: regCode } });
+    assert.equal(r.status, 200); assert.match(r.body.token, /^oa_[a-f0-9]{64}$/);
+    assert.equal(r.body.orderAccess.customerId, r.body.customer.KHACH_HANG_ID); assert.equal(r.body.customer.TRANG_THAI, 'Hoạt động');
     r = await call(registerCustomer, { body: { TEN: 'Khách Test', GIOI_TINH: 'Nữ', SDT: '0911111111', EMAIL: 'other@example.test', MAT_KHAU: 'Strong#Pass1' } });
     assert.equal(r.status, 409); assert.equal(r.body.field, 'phone');
     // Email không bắt buộc: bỏ trống vẫn đăng ký được; có nhập thì phải đúng định dạng và không trùng.
@@ -68,7 +75,8 @@ test('auth + account administration feedback rules', { skip: !process.env.TEST_M
     assert.equal(r.status, 429);
     await db.collection('KHACH_HANG').updateOne({ KHACH_HANG_ID: customerId }, { $unset: { KHOA_DANG_NHAP_DEN: '' } });
     r = await call(loginCustomer, { body: { SDT: '0911111111', MAT_KHAU: 'Strong#Pass1' } });
-    assert.equal(r.status, 200); assert.equal(r.body.lastLogin, null);
+    // Lần đăng nhập trước là phiên tự tạo khi xác minh OTP đăng ký.
+    assert.equal(r.status, 200); assert.equal(r.body.lastLogin.device, 'Chrome trên Windows');
     const memberToken = r.body.token;
     r = await call(loginCustomer, { body: { SDT: '0911111111', MAT_KHAU: 'Strong#Pass1' } });
     assert.equal(r.body.lastLogin.device, 'Chrome trên Windows');

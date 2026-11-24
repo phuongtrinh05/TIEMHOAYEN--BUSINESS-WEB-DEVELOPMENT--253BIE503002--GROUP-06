@@ -9,6 +9,7 @@ import { customerAccess } from '../middleware/customerAccess.js';
 import {
   getAllCustomers,
   registerCustomer,
+  verifyRegisterOtp,
   loginCustomer,
   getCustomerById,
   updateCustomerById,
@@ -41,6 +42,8 @@ router.get('/', requireAdminPermission('customers'), getAllCustomers);
 
 // Đăng ký
 router.post('/', registerCustomer);
+// Nhập đúng OTP đăng ký: kích hoạt tài khoản và đăng nhập luôn
+router.post('/register/verify-otp', verifyRegisterOtp);
 
 // Đăng nhập
 router.post('/login', loginCustomer);

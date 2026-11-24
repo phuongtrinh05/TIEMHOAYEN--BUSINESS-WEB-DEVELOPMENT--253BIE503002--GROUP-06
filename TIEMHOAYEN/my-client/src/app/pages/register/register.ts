@@ -8,6 +8,7 @@ import {
 } from '../../services/register.service';
 import { LoginService } from '../../services/login.service';
 import { OFFLINE_MESSAGE, OtpTimers, isOffline, otpErrorText } from '../../services/otp-helpers';
+import { startMemberSession } from '../../services/session-auth';
 
 type FieldKey = 'name' | 'gender' | 'phone' | 'email' | 'password';
 
@@ -46,6 +47,8 @@ export class RegisterComponent implements OnInit, OnDestroy {
   otpExceeded = false;
   private challengeId = '';
   private registeredPhone = '';
+  /** Đã tạo được phiên đăng nhập sau khi xác minh OTP đăng ký. */
+  signedIn = false;
   readonly otpTimers = new OtpTimers(() => this.cdr.markForCheck());
 
   /** Lỗi theo từng trường do server trả về (field). */
@@ -235,13 +238,23 @@ export class RegisterComponent implements OnInit, OnDestroy {
     this.otpError = '';
     this.otpNotice = '';
     this.otpChecking = true;
-    this.loginService.verifyOtp({ challengeId: this.challengeId, OTP: this.otpValues.join(''), purpose: 'DANG_KY' })
+    this.registerService.verifyRegisterOtp({ challengeId: this.challengeId, OTP: this.otpValues.join('') })
       .pipe(timeout(30000), finalize(() => { this.otpChecking = false; this.cdr.markForCheck(); }))
       .subscribe({
-        next: () => {
+        next: (res: any) => {
           this.otpTimers.stop();
           this.showOtpPopup = false;
           this.formError = '';
+          // Đăng ký thành công là vào thẳng tài khoản, không phải đăng nhập lại.
+          try {
+            startMemberSession(res);
+            localStorage.setItem('tiemHoaYenRememberLogin', 'true');
+            localStorage.setItem('tiemHoaYenRememberedPhone', this.registeredPhone);
+            sessionStorage.removeItem('tiemHoaYenSessionAuth');
+            this.signedIn = true;
+          } catch {
+            this.signedIn = false;
+          }
           this.showSuccessPopup = true;
         },
         error: (err) => {
@@ -284,13 +297,14 @@ export class RegisterComponent implements OnInit, OnDestroy {
       });
   }
 
+  /** Đã tự đăng nhập thì vào trang chủ; nếu chưa tạo được phiên thì về trang Đăng nhập. */
   closeSuccessPopup(): void {
     this.showSuccessPopup = false;
     window.dispatchEvent(new Event('auth-changed'));
-    this.router.navigate(['/login']);
+    this.router.navigate([this.signedIn ? '/' : '/login']);
   }
 
   dismissSuccessPopup(): void {
-    this.showSuccessPopup = false;
+    this.closeSuccessPopup();
   }
 }
