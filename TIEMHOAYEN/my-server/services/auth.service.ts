@@ -250,14 +250,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const maskEmail = (email: string) => email.replace(/^(.).*(@.*)$/, '$1***$2');
 const maskPhone = (phone: string) => phone.replace(/^(\d{3})\d+(\d{3})$/, '$1****$2');
 const escapePattern = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// Khách hàng quên mật khẩu: không tiết lộ tài khoản có tồn tại hay không (KH03).
-const genericRecoveryResponse = () => ({
-  challengeId: digest(randomBytes(16).toString('hex')), expiresIn: OTP_TTL_SECONDS, resendAfter: OTP_RESEND_SECONDS,
-  attemptLimit: otpAttemptLimit('KHACH_HANG'), delivery: 'registered',
-  message: `Nếu thông tin trùng khớp với tài khoản đã đăng ký, mã xác minh đã được gửi tới email/số điện thoại đã đăng ký. Mã có hiệu lực ${OTP_TTL_SECONDS} giây.`,
-});
 export async function sendChallenge(type: AccountType, req: Request, purpose = 'KHOI_PHUC_MAT_KHAU') {
-  const customerRecovery = type === 'KHACH_HANG' && purpose === 'KHOI_PHUC_MAT_KHAU';
   const rawIdentifier = String(req.body.EMAIL || req.body.email || req.body.SDT || req.body.identifier || '').trim();
   const isEmail = rawIdentifier.includes('@');
   const identifier = isEmail ? rawIdentifier.toLowerCase() : rawIdentifier.replace(/[\s.-]/g, '');
@@ -271,7 +264,7 @@ export async function sendChallenge(type: AccountType, req: Request, purpose = '
   const account = await (await collection(type)).findOne(query);
   const usable = account && !account.DA_XOA && (purpose === 'DANG_KY' ? account.TRANG_THAI === 'Chờ xác minh' : active(account));
   if (!usable) {
-    if (customerRecovery) return genericRecoveryResponse();
+    // SĐT/email chưa đăng ký: báo lỗi ngay thay vì vẫn mở màn nhập OTP.
     if (!account || account.DA_XOA) throw new AuthError(404, 'Không tìm thấy tài khoản với thông tin này. Vui lòng kiểm tra lại.');
     throw new AuthError(403, purpose === 'DANG_KY' ? 'Tài khoản không ở trạng thái chờ xác minh.' : 'Tài khoản chưa xác minh hoặc đã bị khóa.');
   }
@@ -308,7 +301,6 @@ export async function sendChallenge(type: AccountType, req: Request, purpose = '
     throw error;
   }
   await audit(req, 'GUI_OTP', account[accountKey(type)], { MUC_DICH: purpose, KENH: sms ? 'SMS' : 'EMAIL' });
-  if (customerRecovery) return { ...genericRecoveryResponse(), challengeId: id };
   return {
     challengeId: id, expiresIn: OTP_TTL_SECONDS, resendAfter: OTP_RESEND_SECONDS, attemptLimit, delivery: sms ? 'sms' : 'email',
     message: sms ? `Mã xác minh đã được gửi tới số điện thoại ${maskPhone(String(account.SDT))}. Mã có hiệu lực ${OTP_TTL_SECONDS} giây.`
