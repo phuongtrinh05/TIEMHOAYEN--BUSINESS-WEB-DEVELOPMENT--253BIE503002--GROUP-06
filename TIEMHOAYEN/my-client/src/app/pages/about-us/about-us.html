@@ -1,8 +1,14 @@
 <div class="about-page">
 
     <!-- HERO -->
-    <section class="hero reveal">
-        <img src="assets/images/about-us-banner.png" alt="Tiệm Hoa Yên – Hoa tươi từ tâm, đẹp trong từng khoảnh khắc">
+    <section class="hero">
+        <img class="hero-bg" src="assets/images/homepage-banner-main.png" alt="" aria-hidden="true">
+        <div class="hero-copy reveal reveal-left">
+            <span class="kicker">Về chúng tôi</span>
+            <h1>Tiệm Hoa Yên</h1>
+            <p class="hero-tag">Hoa tươi từ tâm, đẹp trong từng khoảnh khắc.</p>
+            <p class="hero-sub">Một tiệm hoa nhỏ ở Quận 3, TP.HCM, cắm hoa theo giờ giao để mỗi bó đến tay người nhận khi còn tươi nhất.</p>
+        </div>
     </section>
 
     <!-- CÂU CHUYỆN -->
@@ -26,7 +32,7 @@
         </div>
 
         <div class="story-visual reveal reveal-right">
-            <img src="assets/images/about-us-hoa.png" alt="Bó hoa hồng của Tiệm Hoa Yên">
+            <img src="assets/images/homepage-SerenityBlossom.png" alt="Bó hoa hồng kem của Tiệm Hoa Yên">
             <div class="story-quote">
                 <i class="bi bi-quote" aria-hidden="true"></i>
                 <p>Gửi yêu thương qua từng đóa hoa, trao bình yên trong từng khoảnh khắc.</p>
@@ -93,14 +99,25 @@
 
     <!-- KÊU GỌI -->
     <section class="cta reveal">
-        <div class="cta-inner">
-            <div>
-                <h2>Sắp có dịp cần tặng hoa?</h2>
-                <p>Chọn một bó có sẵn hoặc tự phối hoa, màu và số cành theo ý bạn trên mô hình 3D.</p>
+        <div class="cta-card">
+            <div class="cta-media">
+                <img src="assets/images/homepage-PinkWhisper.png" alt="Bó hoa tulip hồng của Tiệm Hoa Yên" loading="lazy">
             </div>
-            <div class="cta-actions">
-                <a class="btn-primary" routerLink="/category">Chọn hoa ngay <i class="bi bi-arrow-right"></i></a>
-                <a class="btn-ghost" routerLink="/design3d"><i class="bi bi-box"></i> Thiết kế bó hoa 3D</a>
+            <div class="cta-body">
+                <i class="bi bi-flower2 cta-deco deco-a" aria-hidden="true"></i>
+                <i class="bi bi-flower1 cta-deco deco-b" aria-hidden="true"></i>
+                <span class="kicker">Sẵn sàng gửi hoa</span>
+                <h2>Sắp có dịp cần tặng hoa?</h2>
+                <p>Chọn một bó có sẵn, hoặc tự phối loại hoa, màu và số cành theo ý bạn trên mô hình 3D. Tiệm lo phần còn lại.</p>
+                <ul class="cta-chips">
+                    <li><i class="bi bi-clock"></i> Giao 08:00–22:00</li>
+                    <li><i class="bi bi-calendar2-check"></i> Đặt trước từ 4 giờ</li>
+                    <li><i class="bi bi-camera"></i> Ảnh bó hoa trước khi giao</li>
+                </ul>
+                <div class="cta-actions">
+                    <a class="btn-primary" routerLink="/category">Chọn hoa ngay <i class="bi bi-arrow-right"></i></a>
+                    <a class="btn-ghost" routerLink="/design3d"><i class="bi bi-box"></i> Thiết kế bó hoa 3D</a>
+                </div>
             </div>
         </div>
     </section>
