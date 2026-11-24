@@ -5,7 +5,7 @@ import { orderDeliveryAt, releaseReservations } from './inventory/stock.service.
 import { orderEvent, sumVerifiedPayments } from './admin-order.service.js';
 import { emitAdminNotification } from './analytics/notifications.service.js';
 import { restoreOrderPoints } from './loyalty-policy.service.js';
-import { subtractWorkingMinutes } from './delivery-policy.service.js';
+import { subtractWorkingMinutes, workingMinutesBetween } from './delivery-policy.service.js';
 
 /** Đơn còn chờ khoản trả trước (chuyển khoản/ví, hoặc tiền cọc COD). */
 export const UNPAID_ORDER_STATUSES = ['Chờ thanh toán', 'Thanh toán thất bại', 'Đã xác nhận đơn hàng'];
@@ -36,8 +36,12 @@ export function requiredPrepayment(order: any): number {
 }
 
 /** Đơn giao gần: giờ nhận cách lúc đặt không quá 24 giờ; ngược lại là đơn giao xa. */
+/** Mốc bắt đầu tính hạn thanh toán: lúc đặt, hoặc lúc khách thanh toán lại một đơn đã quá hạn (gia hạn). */
+const paymentWindowStart = (order: any) => order?.GIA_HAN_THANH_TOAN_LUC || order?.NGAY_TAO;
+
 export function isNearDeliveryOrder(order: any): boolean {
-  const created = order?.NGAY_TAO ? new Date(order.NGAY_TAO).getTime() : NaN;
+  const start = paymentWindowStart(order);
+  const created = start ? new Date(start).getTime() : NaN;
   const delivery = orderDeliveryAt(order)?.getTime() ?? NaN;
   if (!Number.isFinite(delivery)) return false;
   if (!Number.isFinite(created)) return true;
@@ -50,7 +54,8 @@ export function isNearDeliveryOrder(order: any): boolean {
  * - Đơn giao xa (> 24 giờ): "Chờ thanh toán" kéo dài 24 giờ kể từ lúc đặt.
  */
 export function orderPaymentDeadline(order: any): Date | null {
-  const created = order?.NGAY_TAO ? new Date(order.NGAY_TAO).getTime() : NaN;
+  const start = paymentWindowStart(order);
+  const created = start ? new Date(start).getTime() : NaN;
   const delivery = orderDeliveryAt(order)?.getTime() ?? NaN;
   if (Number.isFinite(delivery) && isNearDeliveryOrder(order)) return payCutoff(delivery);
   if (Number.isFinite(created)) return new Date(created + ORDER_PAYMENT_WINDOW_MS);
@@ -61,6 +66,25 @@ export function orderPaymentDeadline(order: any): Date | null {
 export function isExpiredPaymentOrder(order: any): boolean {
   return order?.HET_HAN_THANH_TOAN === true
     || (String(order?.TRANG_THAI || '') === 'Đã hủy' && String(order?.LY_DO_HUY || '') === UNPAID_PAST_DELIVERY_REASON);
+}
+
+/**
+ * Khách được "Thanh toán lại" khi đơn còn chờ khoản trả trước và giờ giao còn ít nhất 4 giờ làm việc,
+ * kể cả đơn đã "Thanh toán thất bại" vì quá hạn (đơn được gia hạn thay vì phải đặt lại).
+ * Không gia hạn đơn có điểm thưởng đã được hoàn (tránh dùng điểm hai lần) hoặc đơn tạo từ Yêu cầu đặt hàng (Sales xử lý lại).
+ */
+export function paymentRetryEligibility(order: any, now = new Date()): { allowed: boolean; expired: boolean; reason?: string; code?: string } {
+  const deadline = orderPaymentDeadline(order);
+  const expired = isExpiredPaymentOrder(order) || (!!deadline && deadline.getTime() <= now.getTime());
+  if (order?.KHONG_YEU_CAU_COC) return { allowed: false, expired, reason: 'Đơn không cần thanh toán trước.', code: 'NO_PREPAYMENT' };
+  if (!UNPAID_ORDER_STATUSES.includes(String(order?.TRANG_THAI || ''))) return { allowed: false, expired, reason: 'Trạng thái đơn không cho phép thanh toán lại.', code: 'STATUS' };
+  const delivery = orderDeliveryAt(order);
+  if (!delivery || workingMinutesBetween(now, delivery) < PAY_BEFORE_DELIVERY_WORK_MINUTES) {
+    return { allowed: false, expired, reason: expired ? 'Đơn đã quá hạn thanh toán và còn dưới 4 giờ làm việc trước giờ giao, vui lòng đặt lại đơn.' : 'Đơn còn dưới 4 giờ làm việc trước giờ giao nên không thể tạo mã thanh toán mới.', code: expired ? 'ORDER_PAYMENT_EXPIRED' : 'ORDER_PAYMENT_TOO_LATE' };
+  }
+  if (expired && order?.DA_HOAN_DIEM_THUONG === true) return { allowed: false, expired, reason: 'Điểm thưởng của đơn đã được hoàn lại, vui lòng đặt lại đơn.', code: 'ORDER_PAYMENT_EXPIRED' };
+  if (expired && order?.YEU_CAU_DAT_HANG_ID) return { allowed: false, expired, reason: 'Đơn từ Yêu cầu đặt hàng đã quá hạn thanh toán, vui lòng liên hệ shop.', code: 'ORDER_PAYMENT_EXPIRED' };
+  return { allowed: true, expired };
 }
 
 /** Lý do hiển thị cho khách/Admin khi đơn quá hạn thanh toán. */

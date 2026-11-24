@@ -57,6 +57,9 @@ interface OrderDetailView {
   paymentExpiredReason?: string;
   paymentExpiredAt?: string | null;
   paymentDeadline?: string | null;
+  /** Server quyết định: còn ≥ 4 giờ làm việc trước giờ giao thì được thanh toán lại (kể cả đơn đã quá hạn). */
+  paymentRetryAllowed?: boolean | null;
+  paymentRetryExpired?: boolean;
   returnRefundReason: string;
   rejectReason: string;
   hasReviewed: boolean;
@@ -409,6 +412,8 @@ export class OrderDetail implements OnInit, OnDestroy {
       paymentExpiredReason: String(row.QUA_HAN_THANH_TOAN?.reason || ''),
       paymentExpiredAt: row.QUA_HAN_THANH_TOAN?.at || null,
       paymentDeadline: row.HAN_THANH_TOAN_DON || null,
+      paymentRetryAllowed: typeof row.THANH_TOAN_LAI?.allowed === 'boolean' ? row.THANH_TOAN_LAI.allowed : null,
+      paymentRetryExpired: !!row.THANH_TOAN_LAI?.expired,
       returnRefundReason: String(row.LY_DO_HOAN_TIEN_TRA_HANG || ''),
       rejectReason: String(row.LY_DO_TU_CHOI || ''),
       hasReviewed: Number(row.DA_DANH_GIA || 0) > 0,
@@ -1014,8 +1019,12 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   canReorder(): boolean {
     const status = this.normalizeStatus(this.order.status);
-    // Đơn "Thanh toán thất bại" vì quá hạn thanh toán cũng được đặt lại.
-    return status === 'completed' || status === 'cancelled' || (status === 'payment_failed' && !!this.order.paymentExpiredReason);
+    if (status === 'completed' || status === 'cancelled') return true;
+    // Đơn quá hạn thanh toán: còn ≥ 4 giờ làm việc trước giờ giao thì chỉ "Thanh toán lại", không "Đặt lại đơn này";
+    // còn dưới 4 giờ (hoặc server không cho gia hạn) thì mới "Đặt lại đơn này".
+    if (status !== 'payment_failed' && status !== 'payment') return false;
+    const expired = !!this.order.paymentExpiredReason || !!this.order.paymentRetryExpired;
+    return expired && this.order.paymentRetryAllowed === false;
   }
 
   async reorder(): Promise<void> {
@@ -1104,7 +1113,9 @@ export class OrderDetail implements OnInit, OnDestroy {
 
   canRetryPayment(): boolean {
     const status = this.normalizeStatus(this.order.status);
-    return status === 'payment_failed' || status === 'payment';
+    if (status !== 'payment_failed' && status !== 'payment') return false;
+    // Server chưa trả THANH_TOAN_LAI (bản cũ) thì giữ hành vi cũ; có thì theo quyết định của server.
+    return this.order.paymentRetryAllowed !== false;
   }
 
   goToReview(): void {
