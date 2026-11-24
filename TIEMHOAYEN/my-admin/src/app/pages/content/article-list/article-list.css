@@ -1482,3 +1482,151 @@
 .inline-edit-input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
 }
+
+
+/* =====================================================================
+   ĐỒNG BỘ GIAO DIỆN THEO TRANG NGUYÊN VẬT LIỆU (chỉ giao diện, không đổi luồng)
+   ===================================================================== */
+.article-list-page { background: #f9fafb; color: #263238; font-family: var(--font-body, "Nunito Sans", sans-serif); font-size: 13px; line-height: 1.5; }
+
+/* Khung danh sách & thẻ KPI */
+.article-list-page .order-table-card,
+.article-list-page .transaction-card,
+.article-list-page .article-table-card,
+.article-list-page .account-card,
+.article-list-page .audit-card,
+.article-list-page .permission-card { background: #fff; border: 1px solid #ececec; border-radius: 12px; box-shadow: 0 1px 4px rgba(0, 0, 0, .06); }
+.article-list-page .stat-card,
+.article-list-page .summary-card { background: #fff; border: 1px solid #eee7e7; border-radius: 10px; box-shadow: 0 1px 4px rgb(0 0 0 / 6%); }
+
+/* Thanh công cụ */
+.article-list-page .search-box,
+.article-list-page .order-search,
+.article-list-page .article-search { height: 38px; border: 1px solid transparent; border-radius: 8px; background: #f8f9fa; }
+.article-list-page .search-box input,
+.article-list-page .order-search input,
+.article-list-page .article-search input { font-size: 13px; background: transparent; }
+.article-list-page .tool-btn,
+.article-list-page .toolbar-btn,
+.article-list-page .filter-clear-btn,
+.article-list-page .clear-filter-btn,
+.article-list-page .cancel-btn,
+.article-list-page .cancel-add-btn,
+.article-list-page .dispose-cancel,
+.article-list-page .reset-btn,
+.article-list-page .muted-btn,
+.article-list-page .btn-undo,
+.article-list-page .btn-clear,
+.article-list-page .btn-refresh,
+.article-list-page .action-btn--cancel,
+.article-list-page .close-btn { height: 38px; border: 1px solid #d9dee5; border-radius: 8px; background: #fff; color: #4d5968; font-size: 13px; font-weight: 500; }
+.article-list-page .tool-btn:hover:not(:disabled),
+.article-list-page .toolbar-btn:hover:not(:disabled),
+.article-list-page .filter-clear-btn:hover:not(:disabled),
+.article-list-page .clear-filter-btn:hover:not(:disabled),
+.article-list-page .cancel-btn:hover:not(:disabled),
+.article-list-page .cancel-add-btn:hover:not(:disabled),
+.article-list-page .dispose-cancel:hover:not(:disabled),
+.article-list-page .reset-btn:hover:not(:disabled),
+.article-list-page .muted-btn:hover:not(:disabled),
+.article-list-page .btn-undo:hover:not(:disabled),
+.article-list-page .btn-clear:hover:not(:disabled),
+.article-list-page .btn-refresh:hover:not(:disabled),
+.article-list-page .action-btn--cancel:hover:not(:disabled),
+.article-list-page .close-btn:hover:not(:disabled) { border-color: #731919; color: #731919; background: #fff; }
+.article-list-page .export-btn,
+.article-list-page .btn-export,
+.article-list-page .save-btn,
+.article-list-page .save-add-btn,
+.article-list-page .apply-btn,
+.article-list-page .filter-apply-btn,
+.article-list-page .btn-save,
+.article-list-page .btn-search,
+.article-list-page .confirm-btn,
+.article-list-page .action-btn--save { height: 38px; border: 1px solid #731919; border-radius: 8px; background: #731919; color: #fff; font-size: 13px; font-weight: 600; }
+.article-list-page .export-btn:hover:not(:disabled),
+.article-list-page .btn-export:hover:not(:disabled),
+.article-list-page .save-btn:hover:not(:disabled),
+.article-list-page .save-add-btn:hover:not(:disabled),
+.article-list-page .apply-btn:hover:not(:disabled),
+.article-list-page .filter-apply-btn:hover:not(:disabled),
+.article-list-page .btn-save:hover:not(:disabled),
+.article-list-page .btn-search:hover:not(:disabled),
+.article-list-page .confirm-btn:hover:not(:disabled),
+.article-list-page .action-btn--save:hover:not(:disabled) { background: #5c1414; border-color: #5c1414; color: #fff; }
+.article-list-page .icon-btn,
+.article-list-page .edit-row-btn,
+.article-list-page .row-btn { border: none; background: none; color: #6b7280; border-radius: 6px; }
+.article-list-page .icon-btn:hover:not(:disabled),
+.article-list-page .edit-row-btn:hover:not(:disabled),
+.article-list-page .row-btn:hover:not(:disabled) { background: #fde8ea; color: #731919; }
+.article-list-page .dropdown-menu,
+.article-list-page .filter-menu,
+.article-list-page .sort-menu,
+.article-list-page .export-dropdown,
+.article-list-page .sort-dropdown,
+.article-list-page .toolbar-dropdown,
+.article-list-page .sort-popup,
+.article-list-page .filter-panel { border: 1px solid #ececec; border-radius: 10px; box-shadow: 0 10px 25px rgba(0, 0, 0, .12); }
+
+/* Bảng */
+.article-list-page table th { background: #ffd9d9; color: #731919; font-size: 13px; font-weight: 600; padding: 16px 12px; }
+.article-list-page table td { color: #263238; font-size: 13px; padding: 14px 12px; border-bottom: 1px solid #e5e7eb; }
+.article-list-page table tbody tr:hover td { background: #fffafa; }
+.article-list-page .empty-row { color: #8a8f98; }
+
+/* Nhãn trạng thái (giữ màu theo trạng thái, chỉ đồng bộ hình dạng) */
+.article-list-page .status-badge,
+.article-list-page .order-status,
+.article-list-page .payment-badge,
+.article-list-page .category-badge,
+.article-list-page .wctype-badge,
+.article-list-page .role-badge,
+.article-list-page .status-tag,
+.article-list-page .reconciliation-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+/* Phân trang */
+.article-list-page .page-nav,
+.article-list-page .page-btn--nav { height: 38px; min-width: 88px; padding: 0 16px; border: 1px solid #d9dee5; border-radius: 8px; background: #fff; color: #111; font-size: 13px; font-weight: 500; box-shadow: 0 1px 4px rgb(0 0 0 / 8%); }
+.article-list-page .page-nav:hover:not(:disabled),
+.article-list-page .page-btn--nav:hover:not(:disabled) { border-color: #731919; color: #731919; }
+.article-list-page .page-numbers button,
+.article-list-page .page-btn:not(.page-btn--nav) { height: 36px; min-width: 36px; padding: 0 6px; border: 1px solid #d9dee5; border-radius: 6px; background: #fff; color: #003c3c; font-size: 13px; }
+.article-list-page .page-numbers button.active,
+.article-list-page .page-btn.page-btn--active { background: #ffd4d7; border-color: #ffd4d7; color: #731919; font-weight: 700; }
+
+/* Popup / form */
+.article-list-page .add-modal-overlay,
+.article-list-page .popup-overlay,
+.article-list-page .dispose-overlay,
+.article-list-page .wc-modal-overlay,
+.article-list-page .modal-backdrop,
+.article-list-page .edit-modal-overlay { background: rgba(17, 24, 39, .42); }
+.article-list-page .add-modal,
+.article-list-page .create-product-popup,
+.article-list-page .dispose-modal,
+.article-list-page .wc-modal,
+.article-list-page .modal-card,
+.article-list-page .detail-popup { border-radius: 12px; box-shadow: 0 20px 50px rgba(0, 0, 0, .25); font-size: 13px; }
+.article-list-page .form-group input:not([type=checkbox]):not([type=radio]):not([type=file]),
+.article-list-page .form-group select,
+.article-list-page .wc-input,
+.article-list-page .wc-select,
+.article-list-page .filter-select,
+.article-list-page .toolbar-select,
+.article-list-page .filter-group select,
+.article-list-page .filter-field input,
+.article-list-page .filter-field select { height: 38px; border: 1px solid #d9dee5; border-radius: 8px; font-size: 13px; }
+.article-list-page .form-group textarea,
+.article-list-page .wc-textarea { border: 1px solid #d9dee5; border-radius: 8px; font-size: 13px; }
+.article-list-page .form-group input:not([type=checkbox]):not([type=radio]):not([type=file]):focus,
+.article-list-page .form-group select:focus,
+.article-list-page .wc-input:focus,
+.article-list-page .wc-select:focus,
+.article-list-page .filter-select:focus,
+.article-list-page .toolbar-select:focus,
+.article-list-page .filter-group select:focus,
+.article-list-page .filter-field input:focus,
+.article-list-page .filter-field select:focus,
+.article-list-page .form-group textarea:focus,
+.article-list-page .wc-textarea:focus { outline: 2px solid #ffd4d7; border-color: #c97a7a; box-shadow: none; }

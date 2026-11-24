@@ -1125,3 +1125,78 @@ tbody tr.editing-row td {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
+
+/* =====================================================================
+   ĐỒNG BỘ GIAO DIỆN THEO TRANG NGUYÊN VẬT LIỆU (chỉ giao diện, không đổi luồng)
+   Thẻ KPI · thanh công cụ · bảng · nhãn trạng thái · phân trang · popup
+   ===================================================================== */
+.customer-page { background: #f9fafb; color: #263238; font-family: var(--font-body, "Nunito Sans", sans-serif); font-size: 13px; line-height: 1.5; }
+
+/* Thẻ KPI */
+.customer-page .summary-row { gap: 16px; margin-bottom: 24px; }
+.customer-page .summary-card { border: 1px solid #eee7e7; border-radius: 10px; padding: 16px 18px; min-height: 104px; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / 6%); }
+.customer-page button.summary-card.active { border-color: #731919; box-shadow: 0 0 0 2px #ffd4d7; }
+.customer-page .summary-label { color: #454b54; font-size: 13px; font-weight: 600; }
+.customer-page .summary-body strong { font-size: 26px; font-weight: 700; color: #2c2c2c; }
+.customer-page .summary-body small { color: #8a8f98; font-size: 12px; }
+
+/* Khung danh sách */
+.customer-page .customer-card { border: 1px solid #ececec; border-radius: 12px; padding: 24px; box-shadow: 0 1px 4px rgba(0, 0, 0, .06); }
+
+/* Thanh công cụ */
+.customer-page .toolbar { gap: 8px; margin-bottom: 20px; }
+.customer-page .search-box { height: 38px; max-width: 420px; margin-right: auto; border: 1px solid transparent; border-radius: 8px; background: #f8f9fa; padding: 0 10px; }
+.customer-page .search-box input { font-size: 13px; }
+.customer-page .toolbar-actions { gap: 8px; }
+.customer-page .status-filter button { height: 38px; border-radius: 8px; font-size: 13px; }
+.customer-page .status-filter button.active { background: #731919; border-color: #731919; color: #fff; }
+.customer-page .tool-btn,
+.customer-page .retry-btn { height: 38px; padding: 0 14px; border: 1px solid #d9dee5; border-radius: 8px; background: #fff; color: #4d5968; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.customer-page .tool-btn:hover,
+.customer-page .retry-btn:hover { border-color: #731919; color: #731919; background: #fff; }
+.customer-page .export-btn { height: 38px; padding: 0 14px; border: 1px solid #731919; border-radius: 8px; background: #731919; color: #fff; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.customer-page .export-btn:hover { background: #5c1414; color: #fff; }
+.customer-page .dropdown-menu { border: 1px solid #ececec; border-radius: 10px; box-shadow: 0 10px 25px rgba(0, 0, 0, .12); }
+.customer-page .filter-group select { height: 38px; border: 1px solid #d9dee5; border-radius: 8px; font-size: 13px; }
+
+/* Bảng */
+.customer-page .table-wrapper { border-radius: 8px; }
+.customer-page thead tr { background: transparent; }
+.customer-page th { height: auto; padding: 16px 12px; background: #ffd9d9; color: #731919; font-size: 13px; font-weight: 600; }
+.customer-page th:first-child { border-radius: 8px 0 0 0; }
+.customer-page th:last-child { border-radius: 0 8px 0 0; }
+.customer-page td { height: auto; padding: 14px 12px; border-bottom: 1px solid #e5e7eb; color: #263238; font-size: 13px; }
+.customer-page tbody tr:hover td { background: #fffafa; }
+.customer-page .empty-row { color: #8a8f98; padding: 28px 8px; }
+.customer-page .link-cell { color: #731919; font-weight: 600; }
+.customer-page .edit-row-btn { border: none; background: none; color: #6b7280; border-radius: 6px; padding: 4px 6px; }
+.customer-page .edit-row-btn:hover:not(:disabled) { background: #fde8ea; color: #731919; }
+
+/* Nhãn trạng thái */
+.customer-page .status-badge { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 0; }
+.customer-page .status-badge.status-active { background: #e7f6ee; color: #1f7a4d; }
+.customer-page .status-badge.status-pending { background: #fff4d6; color: #92600a; }
+.customer-page .status-badge.status-locked { background: #fde8e8; color: #b42318; }
+
+/* Phân trang */
+.customer-page .pagination { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; margin-top: 32px; }
+.customer-page .page-nav { justify-self: start; height: 38px; min-width: 88px; padding: 0 16px; border: 1px solid #d9dee5; border-radius: 8px; background: #fff; color: #111; font-size: 13px; font-weight: 500; box-shadow: 0 1px 4px rgb(0 0 0 / 8%); display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.customer-page .page-nav:last-child { justify-self: end; }
+.customer-page .page-nav:hover:not(:disabled) { border-color: #731919; color: #731919; }
+.customer-page .page-numbers { gap: 10px; justify-content: center; }
+.customer-page .page-numbers button { height: 36px; min-width: 36px; padding: 0 6px; border: 1px solid #d9dee5; border-radius: 6px; background: #fff; color: #003c3c; font-size: 13px; }
+.customer-page .page-numbers button.active { background: #ffd4d7; border-color: #ffd4d7; color: #731919; font-weight: 700; }
+.customer-page .page-numbers button.dots { border-color: transparent; background: transparent; }
+.customer-page .page-numbers button:hover:not(.active):not(.dots) { border-color: #731919; background: #fff; }
+
+/* Popup khóa / mở khóa */
+.customer-page .lock-backdrop { background: rgba(17, 24, 39, .42); }
+.customer-page .lock-dialog { border-radius: 12px; box-shadow: 0 20px 50px rgba(0, 0, 0, .25); font-size: 13px; }
+.customer-page .lock-dialog h3 { color: #731919; font-size: 17px; font-weight: 600; }
+.customer-page .lock-field textarea { border: 1px solid #d9dee5; border-radius: 8px; font-size: 13px; }
+.customer-page .lock-field textarea:focus { outline: 2px solid #ffd4d7; border-color: #c97a7a; }
+.customer-page .lock-cancel { height: 38px; padding: 0 14px; border: 1px solid #d9dee5; border-radius: 8px; background: #fff; color: #4d5968; font-weight: 500; }
+.customer-page .lock-confirm { height: 38px; padding: 0 14px; border-radius: 8px; border: 1px solid #731919; background: #731919; color: #fff; font-weight: 600; }
+.customer-page .lock-confirm.unlock { background: #1f7a4d; border-color: #1f7a4d; }
+.customer-page .toast { background: #1f2937; color: #fff; border-radius: 10px; font-size: 13px; box-shadow: 0 10px 25px rgba(0, 0, 0, .2); }
+.customer-page .toast.error { background: #8a1c13; }

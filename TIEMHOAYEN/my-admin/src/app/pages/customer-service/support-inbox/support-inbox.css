@@ -154,3 +154,9 @@ dd { margin:4px 0; overflow-wrap:anywhere; }
 @media(max-width:1200px) { .inbox.with-info { grid-template-columns:230px minmax(0,1fr); position:relative; }.info { position:absolute; right:0; top:0; bottom:0; width:290px; z-index:6; box-shadow:-8px 0 30px #44222a15; }.inbox { grid-template-columns:230px minmax(0,1fr); } }
 @media(max-width:800px) { .support-page { padding:10px; }.inbox,.inbox.with-info { grid-template-columns:190px minmax(0,1fr); }.ticket { padding:9px 5px; gap:6px; }.ticket .avatar { width:28px; height:28px; font-size:10px; }.ticket-top time { display:none; }.messages { padding:12px; }.thread-header { padding:12px; }.conversation-bar { padding:8px; flex-wrap:wrap; }.assignee { display:none; }.message-content { max-width:90%; }.toolbar-actions { gap:9px; }.test-fields { grid-template-columns:1fr; } }
 @media(max-width:560px) { .inbox,.inbox.with-info { grid-template-columns:130px minmax(0,1fr); min-height:580px; }.ticket .avatar { display:none; }.list-filters { flex-direction:column; }.search { margin:0 6px 8px; padding-left:6px; }.search input { font-size:10px; }.list-heading { padding:12px 7px; }.list-heading h2 { font-size:12px; }.thread-title p { font-size:10px; }.thread-header>.avatar { display:none; }.tabs a { padding:9px; }.toolbar-actions>a { display:none; }.conversation-actions { gap:4px; }.compact { font-size:10px; padding:7px; } }
+
+/* Hộp thư vừa khít màn hình theo tỷ lệ: khung trang cao đúng phần còn lại dưới thanh tiêu đề admin (70px)
+   và lề nội dung (24px × 2), có tính hệ số zoom của admin; hộp thư giãn hết phần còn lại. */
+.support-page { box-sizing: border-box; display: flex; flex-direction: column; height: calc(100vh / var(--admin-zoom, 1) - 70px - 48px); min-height: 560px; }
+.support-page > .toolbar { flex: 0 0 auto; }
+.support-page > .inbox { flex: 1 1 auto; height: auto; min-height: 0; max-height: none; }

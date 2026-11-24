@@ -162,7 +162,7 @@
 
                         <td>{{ item.endDate | date: 'dd/MM/yyyy' }}</td>
 
-                        <td>{{ item.status }}</td>
+                        <td><span class="badge-s" [class.ok]="item.status === 'Đang diễn ra'" [class.info]="item.status === 'Sắp diễn ra'" [class.waiting]="item.status === 'Tạm dừng'" [class.gray]="item.status === 'Đã kết thúc'">{{ item.status }}</span></td>
 
                         <td class="action-col">
                             <div class="action-buttons">
