@@ -21,7 +21,7 @@
         <button class="inv-btn" type="button" [class.filter-active]="filtersOpen || typeFilter || groupFilter || includeHidden" [attr.aria-expanded]="filtersOpen" aria-controls="material-filters" (click)="filtersOpen = !filtersOpen"><i class="bi bi-funnel"></i> Bộ lọc</button>
         <button class="inv-btn" type="button" (click)="load()" title="Tải lại" aria-label="Tải lại danh sách" [disabled]="loading()"><i class="bi bi-arrow-clockwise"></i></button>
 
-        <button class="inv-btn material-add-btn" type="button" (click)="openCreate()" title="Thêm nguyên vật liệu" aria-label="Thêm nguyên vật liệu"><i class="bi bi-plus-circle" aria-hidden="true"></i></button>
+        @if (canCreate) {<button class="inv-btn material-add-btn" type="button" (click)="openCreate()" title="Thêm nguyên vật liệu" aria-label="Thêm nguyên vật liệu"><i class="bi bi-plus-circle" aria-hidden="true"></i></button>}
         <button class="inv-btn primary material-export-btn" type="button" (click)="exportCsv()" title="Xuất danh sách CSV"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button>
 
       </div>
@@ -91,8 +91,8 @@
                 <td class="num">{{ m.threshold | number }}<div class="muted">tối đa {{ m.maxLevel | number }}</div></td>
                 <td><span class="badge-s" [class]="m.stockStatus">{{ m.status }}</span></td>
                 <td (click)="$event.stopPropagation()">
-                  <button class="inv-icon-btn" title="Sửa" aria-label="Sửa nguyên liệu" (click)="openEdit(m)"><i class="bi bi-pencil-square"></i></button>
-                  <button class="inv-icon-btn" title="Lập phiếu nhập" aria-label="Lập phiếu nhập nguyên liệu" (click)="goImport(m.code)"><i class="bi bi-box-arrow-in-down"></i></button>
+                  @if (canUpdate) {<button class="inv-icon-btn" title="Sửa" aria-label="Sửa nguyên liệu" (click)="openEdit(m)"><i class="bi bi-pencil-square"></i></button>}
+                  @if (canCreate) {<button class="inv-icon-btn" title="Lập phiếu nhập" aria-label="Lập phiếu nhập nguyên liệu" (click)="goImport(m.code)"><i class="bi bi-box-arrow-in-down"></i></button>}
                 </td>
               </tr>
             } @empty {
@@ -142,6 +142,7 @@
           <div class="inv-kpi"><div class="label">Giá vốn BQ</div><div class="value" style="font-size:18px">{{ d.material.averageCost | number }}đ</div><div class="muted">dùng trong {{ d.usedInBoms }} BOM</div></div>
         </div>
 
+        @if (canUpdate) {
         <div class="inv-section-title"><i class="bi bi-exclamation-octagon"></i> Đánh dấu không đạt (hoa héo/dập trong kho)</div>
         <div class="inv-toolbar">
           <select class="inv-select sm" style="width:200px" [(ngModel)]="damageForm.sourceId">
@@ -153,6 +154,7 @@
           <button class="inv-btn sm danger" (click)="markDamaged()"><i class="bi bi-flag"></i> Ghi nhận không đạt</button>
         </div>
         <div class="muted">Chỉ đánh dấu phần chưa giữ. Tồn thực không đổi cho tới khi lập phiếu xuất "Xuất hủy NVL cách ly".</div>
+        }
 
           }
           @case('sources') {
@@ -249,9 +251,9 @@
         }
       </div>
       <div class="inv-modal-foot">
-        <button class="inv-btn danger" (click)="toggleActive(d.material)">{{ d.material.active ? 'Ngừng sử dụng' : 'Kích hoạt lại' }}</button>
-        <button class="inv-btn" (click)="goImport(d.material.code)"><i class="bi bi-box-arrow-in-down"></i> Lập phiếu nhập</button>
-        <button class="inv-btn primary" (click)="openEdit(d.material)"><i class="bi bi-pencil"></i> Sửa thông tin</button>
+        @if (d.material.active ? canDelete : canUpdate) {<button class="inv-btn danger" (click)="toggleActive(d.material)">{{ d.material.active ? 'Ngừng sử dụng' : 'Kích hoạt lại' }}</button>}
+        @if (canCreate) {<button class="inv-btn" (click)="goImport(d.material.code)"><i class="bi bi-box-arrow-in-down"></i> Lập phiếu nhập</button>}
+        @if (canUpdate) {<button class="inv-btn primary" (click)="openEdit(d.material)"><i class="bi bi-pencil"></i> Sửa thông tin</button>}
       </div>
     </div>
   </div>

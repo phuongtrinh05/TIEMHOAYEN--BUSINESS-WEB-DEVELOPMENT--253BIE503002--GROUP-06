@@ -1,7 +1,7 @@
 <div class="inv-page">
   <div class="inv-card">
 
-<div class="inv-toolbar inv-list-tools"><div class="grow"><input class="inv-input" placeholder="Tìm mã, tên, SĐT, email, người đại diện…" [(ngModel)]="search" (ngModelChange)="refilter()"></div><button class="inv-btn" type="button" [class.inv-filter-active]="filtersOpen || statusFilter" [attr.aria-expanded]="filtersOpen" (click)="filtersOpen = !filtersOpen"><i class="bi bi-funnel"></i> Bộ lọc</button><button class="inv-btn" type="button" title="Tải lại" aria-label="Tải lại" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button><button class="inv-btn inv-add-btn" type="button" (click)="openCreate()" title="Thêm nhà cung cấp" aria-label="Thêm nhà cung cấp"><i class="bi bi-plus-circle" aria-hidden="true"></i></button><button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button></div>
+<div class="inv-toolbar inv-list-tools"><div class="grow"><input class="inv-input" placeholder="Tìm mã, tên, SĐT, email, người đại diện…" [(ngModel)]="search" (ngModelChange)="refilter()"></div><button class="inv-btn" type="button" [class.inv-filter-active]="filtersOpen || statusFilter" [attr.aria-expanded]="filtersOpen" (click)="filtersOpen = !filtersOpen"><i class="bi bi-funnel"></i> Bộ lọc</button><button class="inv-btn" type="button" title="Tải lại" aria-label="Tải lại" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button>@if (canCreate) {<button class="inv-btn inv-add-btn" type="button" (click)="openCreate()" title="Thêm nhà cung cấp" aria-label="Thêm nhà cung cấp"><i class="bi bi-plus-circle" aria-hidden="true"></i></button>}<button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button></div>
 @if (filtersOpen) { <div class="inv-toolbar inv-filter-panel"><select class="inv-select" style="width:180px" [(ngModel)]="statusFilter" (ngModelChange)="refilter()">
         <option value="">Mọi trạng thái</option>
         @for (s of statuses(); track s) { <option [value]="s">{{ s }}</option> }
@@ -71,7 +71,7 @@
 
           <div class="inv-source-toolbar">
             <h4>Nguyên liệu cung cấp</h4>
-            <button class="inv-btn" type="button" [attr.aria-expanded]="sourceFormOpen()" (click)="sourceFormOpen() ? resetLink() : sourceFormOpen.set(true)"><i class="bi" [class.bi-plus-lg]="!sourceFormOpen()" [class.bi-chevron-up]="sourceFormOpen()" aria-hidden="true"></i> {{ sourceFormOpen() ? 'Thu gọn' : 'Thêm nguồn cung' }}</button>
+            @if (canCreate) {<button class="inv-btn" type="button" [attr.aria-expanded]="sourceFormOpen()" (click)="sourceFormOpen() ? resetLink() : sourceFormOpen.set(true)"><i class="bi" [class.bi-plus-lg]="!sourceFormOpen()" [class.bi-chevron-up]="sourceFormOpen()" aria-hidden="true"></i> {{ sourceFormOpen() ? 'Thu gọn' : 'Thêm nguồn cung' }}</button>}
           </div>
           @if (sourceFormOpen()) {
           <div class="inv-source-form">
@@ -116,7 +116,7 @@
                     <td class="num">{{ l.DON_GIA | number }}đ</td><td class="num">{{ l.SO_NGAY_GIAO }} ngày</td><td>{{ l.GIO_CHOT_DON || '—' }}</td>
                     <td class="num">{{ l.SL_DAT_TOI_THIEU }}</td><td>{{ l.MUC_TIN_CAY }}</td><td class="num">{{ l.UU_TIEN }}</td>
                     <td class="muted">{{ l.NGAY_XAC_MINH | date: 'dd/MM/yyyy' }}</td>
-                    <td><button class="inv-icon-btn" (click)="editLink(l)"><i class="bi bi-pencil-square"></i></button><button class="inv-icon-btn" (click)="removeLink(l)"><i class="bi bi-trash"></i></button></td>
+                    <td>@if (canUpdate) {<button class="inv-icon-btn" (click)="editLink(l)"><i class="bi bi-pencil-square"></i></button>}@if (canDelete) {<button class="inv-icon-btn" (click)="removeLink(l)"><i class="bi bi-trash"></i></button>}</td>
                   </tr>
                 } @empty { <tr><td colspan="9" class="inv-empty">Chưa khai báo NVL nào.</td></tr> }
               </tbody>
@@ -125,9 +125,9 @@
         }
       </div>
       <div class="inv-modal-foot">
-        @if (selected()) { <button class="inv-btn danger me-auto" (click)="remove(selected()!)">Xóa / ngừng hợp tác</button> }
+        @if (canDelete && selected()) { <button class="inv-btn danger me-auto" (click)="remove(selected()!)">Xóa / ngừng hợp tác</button> }
         <button class="inv-btn" (click)="formOpen.set(false)">Đóng</button>
-        @if (tab() === 'info') { <button class="inv-btn primary" [disabled]="saving()" (click)="save()">{{ saving() ? 'Đang lưu…' : 'Lưu' }}</button> }
+        @if (tab() === 'info' && (selected() ? canUpdate : canCreate)) { <button class="inv-btn primary" [disabled]="saving()" (click)="save()">{{ saving() ? 'Đang lưu…' : 'Lưu' }}</button> }
       </div>
     </div>
   </div>

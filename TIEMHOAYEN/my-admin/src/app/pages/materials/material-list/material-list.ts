@@ -1,6 +1,7 @@
 import { InventoryPagerComponent } from '../inventory-pager';
 import { InventoryDialogComponent } from '../inventory-dialog';
 import { CommonModule } from '@angular/common';
+import { AdminApiService } from '../../../services/admin-api.service';
 import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -31,6 +32,12 @@ const EMPTY_FORM: MaterialForm = {
   styleUrls: ['../inventory.css', './material-list.css'],
 })
 export class MaterialListComponent implements OnInit {
+  /** Quyền module "materials" của tài khoản (Nhân viên bán hàng chỉ có xem): ẩn nút thêm/sửa/xóa/ghi nhận; backend cũng chặn. */
+  private readonly perms = inject(AdminApiService);
+  readonly canCreate = this.perms.can('materials', 'create');
+  readonly canUpdate = this.perms.can('materials', 'update');
+  readonly canDelete = this.perms.can('materials', 'delete');
+
   @ViewChild(InventoryDialogComponent) private dialog!: InventoryDialogComponent;
   private readonly api = inject(InventoryApiService);
   private readonly router = inject(Router);
@@ -190,6 +197,7 @@ export class MaterialListComponent implements OnInit {
 
   /* ---------- Thêm / sửa ---------- */
   openCreate(): void {
+    if (!(this.canCreate)) return;
     this.editingCode = null;
     this.form = { ...EMPTY_FORM };
     this.formError.set('');
@@ -197,6 +205,7 @@ export class MaterialListComponent implements OnInit {
   }
 
   openEdit(m: InvMaterial): void {
+    if (!(this.canUpdate)) return;
     this.editingCode = m.code;
     this.form = { ...m };
     this.formError.set('');
@@ -298,6 +307,7 @@ export class MaterialListComponent implements OnInit {
   }
 
   markDamaged(): void {
+    if (!(this.canUpdate)) return;
     const d = this.detail();
     if (!d) return;
     const qty = Number(this.damageForm.quantity);

@@ -2,6 +2,7 @@ import { InventoryDialogComponent } from '../inventory-dialog';
 import { exportInventoryCsv } from '../inventory-csv';
 import { InventoryPagerComponent } from '../inventory-pager';
 import { CommonModule } from '@angular/common';
+import { AdminApiService } from '../../../services/admin-api.service';
 import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -35,6 +36,12 @@ const EMPTY_LINK = {
   styleUrls: ['../inventory.css', './supplier-list.css'],
 })
 export class SupplierListComponent implements OnInit {
+  /** Quyền module "materials" của tài khoản (Nhân viên bán hàng chỉ có xem): ẩn nút thêm/sửa/xóa/ghi nhận; backend cũng chặn. */
+  private readonly perms = inject(AdminApiService);
+  readonly canCreate = this.perms.can('materials', 'create');
+  readonly canUpdate = this.perms.can('materials', 'update');
+  readonly canDelete = this.perms.can('materials', 'delete');
+
   @ViewChild(InventoryDialogComponent) private dialog!: InventoryDialogComponent;
   readonly sourceFormOpen = signal(false);
   exportCsv(): void { exportInventoryCsv('supplier-list', ['Mã NCC','Tên','Người đại diện','SĐT','Email','Địa chỉ','Trạng thái'], this.filtered().map(s => [s.NHA_CUNG_CAP_ID, s.TEN_NHA_CUNG_CAP, s.NGUOI_DAI_DIEN, s.SDT, s.EMAIL, s.DIA_CHI, s.TRANG_THAI])); }
@@ -98,6 +105,7 @@ export class SupplierListComponent implements OnInit {
   refilter(): void { this.listPage.set(1); this.tick.update((x) => x + 1); }
 
   openCreate(): void {
+    if (!(this.canCreate)) return;
     this.selected.set(null);
     this.form = { ...EMPTY_SUPPLIER };
     this.formError.set('');

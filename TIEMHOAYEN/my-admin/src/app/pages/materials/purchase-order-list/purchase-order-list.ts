@@ -2,6 +2,7 @@ import { InventoryDialogComponent } from '../inventory-dialog';
 import { exportInventoryCsv } from '../inventory-csv';
 import { InventoryPagerComponent } from '../inventory-pager';
 import { CommonModule } from '@angular/common';
+import { AdminApiService } from '../../../services/admin-api.service';
 import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -34,6 +35,12 @@ const NEXT_STATUS: Record<string, string[]> = {
   styleUrls: ['../inventory.css'],
 })
 export class PurchaseOrderListComponent implements OnInit {
+  /** Quyền module "materials" của tài khoản (Nhân viên bán hàng chỉ có xem): ẩn nút thêm/sửa/xóa/ghi nhận; backend cũng chặn. */
+  private readonly perms = inject(AdminApiService);
+  readonly canCreate = this.perms.can('materials', 'create');
+  readonly canUpdate = this.perms.can('materials', 'update');
+  readonly canDelete = this.perms.can('materials', 'delete');
+
   @ViewChild(InventoryDialogComponent) private dialog!: InventoryDialogComponent;
   exportCsv(): void { exportInventoryCsv('purchase-order-list', ['Mã PO','NCC','Ngày đặt','Dự kiến giao','Giá trị','Trạng thái'], this.filtered().map(po => [po.PO_ID, this.supplierName(po.NHA_CUNG_CAP_ID), po.NGAY_DAT, po.NGAY_GIO_DU_KIEN_GIAO, po.TONG_TIEN_DU_KIEN, po.TRANG_THAI])); }
   readonly listPage = signal(1);
@@ -89,6 +96,7 @@ export class PurchaseOrderListComponent implements OnInit {
   refilter(): void { this.listPage.set(1); this.tick.update((x) => x + 1); }
 
   openCreate(): void {
+    if (!(this.canCreate)) return;
     this.editingId = null;
     this.header = { supplierId: '', expectedAt: '', note: '' };
     this.lines = [{ materialId: '', quantity: 0, unitCost: 0 }];
@@ -98,6 +106,7 @@ export class PurchaseOrderListComponent implements OnInit {
   }
 
   openEdit(po: InvPurchaseOrder): void {
+    if (!(this.canUpdate)) return;
     this.editingId = po.PO_ID;
     this.header = { supplierId: po.NHA_CUNG_CAP_ID, expectedAt: po.NGAY_GIO_DU_KIEN_GIAO ? this.toLocal(po.NGAY_GIO_DU_KIEN_GIAO) : '', note: po.GHI_CHU || '' };
     this.lines = po.CHI_TIET.map((l) => ({ materialId: l.NGUYEN_VAT_LIEU_ID, quantity: l.SL_DAT, unitCost: l.DON_GIA_DU_KIEN }));
@@ -154,6 +163,7 @@ export class PurchaseOrderListComponent implements OnInit {
   }
 
   receive(po: InvPurchaseOrder): void {
+    if (!(this.canCreate)) return;
     this.router.navigate(['/materials/imports'], { queryParams: { new: 1, po: po.PO_ID } });
   }
 

@@ -1,5 +1,6 @@
 import { InventoryDialogComponent } from '../inventory-dialog';
 import { CommonModule } from '@angular/common';
+import { AdminApiService } from '../../../services/admin-api.service';
 import { Component, OnInit, computed, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { exportInventoryCsv } from '../inventory-csv';
@@ -26,6 +27,12 @@ interface EditLine { materialId: string; quantity: number; role: string; substit
   styleUrls: ['../inventory.css'],
 })
 export class BomListComponent implements OnInit {
+  /** Quyền module "materials" của tài khoản (Nhân viên bán hàng chỉ có xem): ẩn nút thêm/sửa/xóa/ghi nhận; backend cũng chặn. */
+  private readonly perms = inject(AdminApiService);
+  readonly canCreate = this.perms.can('materials', 'create');
+  readonly canUpdate = this.perms.can('materials', 'update');
+  readonly canDelete = this.perms.can('materials', 'delete');
+
   @ViewChild(InventoryDialogComponent) private dialog!: InventoryDialogComponent;
   recipeFilter = '';
   readonly productError = signal('');
@@ -125,6 +132,7 @@ export class BomListComponent implements OnInit {
 
   /** Tạo phiên bản mới: sao chép BOM hiệu lực (hoặc công thức cũ) để sửa. */
   newVersion(): void {
+    if (!(this.canCreate)) return;
     const base = this.active()?.lines || this.legacy();
     this.editBomId = null;
     this.allowSubstitution = this.active()?.CHO_THAY_THE_NVL ?? true;
@@ -136,6 +144,7 @@ export class BomListComponent implements OnInit {
   }
 
   editDraft(b: InvBom): void {
+    if (!(this.canUpdate)) return;
     this.editBomId = b.BOM_ID;
     this.allowSubstitution = b.CHO_THAY_THE_NVL;
     this.editNote = b.GHI_CHU || '';

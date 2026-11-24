@@ -1,7 +1,7 @@
 <div class="inv-page">
   <div class="inv-card">
 
-<div class="inv-toolbar inv-list-tools"><button class="inv-btn" type="button" [class.inv-filter-active]="filtersOpen || statusFilter" [attr.aria-expanded]="filtersOpen" (click)="filtersOpen = !filtersOpen"><i class="bi bi-funnel"></i> Bộ lọc</button><button class="inv-btn" type="button" title="Tải lại" aria-label="Tải lại" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button><button class="inv-btn inv-add-btn" type="button" (click)="openCreate()" title="Tạo PO" aria-label="Tạo PO"><i class="bi bi-plus-circle" aria-hidden="true"></i></button><button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button></div>
+<div class="inv-toolbar inv-list-tools"><button class="inv-btn" type="button" [class.inv-filter-active]="filtersOpen || statusFilter" [attr.aria-expanded]="filtersOpen" (click)="filtersOpen = !filtersOpen"><i class="bi bi-funnel"></i> Bộ lọc</button><button class="inv-btn" type="button" title="Tải lại" aria-label="Tải lại" (click)="load()"><i class="bi bi-arrow-clockwise"></i></button>@if (canCreate) {<button class="inv-btn inv-add-btn" type="button" (click)="openCreate()" title="Tạo PO" aria-label="Tạo PO"><i class="bi bi-plus-circle" aria-hidden="true"></i></button>}<button class="inv-btn primary" type="button" (click)="exportCsv()"><i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Xuất</button></div>
 @if (filtersOpen) { <div class="inv-toolbar inv-filter-panel"><select class="inv-select" style="width:200px" [(ngModel)]="statusFilter" (ngModelChange)="refilter()">
         <option value="">Mọi trạng thái</option>
         @for (s of ['Nháp','Chờ NCC xác nhận','Đang giao','Giao thành công','Đã hủy']; track s) { <option [value]="s">{{ s }}</option> }
@@ -24,16 +24,16 @@
                 }
               </td>
               <td>{{ po.NGAY_GIO_DU_KIEN_GIAO ? (po.NGAY_GIO_DU_KIEN_GIAO | date: 'dd/MM/yyyy HH:mm') : '—' }}
-                @if (po.TRANG_THAI === 'Đang giao') { <button class="inv-icon-btn" title="NCC báo đổi giờ giao" (click)="updateExpected(po)"><i class="bi bi-calendar-event"></i></button> }
+                @if (canUpdate && po.TRANG_THAI === 'Đang giao') { <button class="inv-icon-btn" title="NCC báo đổi giờ giao" (click)="updateExpected(po)"><i class="bi bi-calendar-event"></i></button> }
               </td>
               <td class="num">{{ ['Đang giao','Chờ NCC xác nhận'].includes(po.TRANG_THAI) ? pending(po) : '—' }}</td>
               <td class="num">{{ po.TONG_TIEN_DU_KIEN | number }}đ</td>
               <td><span class="badge-s" [class]="statusClass(po.TRANG_THAI)">{{ po.TRANG_THAI }}</span></td>
               <td>
                 <div class="inv-po-actions">
-                  @if (po.TRANG_THAI === 'Nháp' || po.TRANG_THAI === 'Chờ NCC xác nhận') { <button class="inv-icon-btn" title="Sửa PO" aria-label="Sửa PO" (click)="openEdit(po)"><i class="bi bi-pencil-square"></i></button> }
-                  @if (po.TRANG_THAI === 'Đang giao') { <button class="inv-icon-btn" title="Nhận hàng" aria-label="Nhận hàng" (click)="receive(po)"><i class="bi bi-box-arrow-in-down"></i></button> }
-                  @for (s of nextStatus[po.TRANG_THAI] || []; track s) {
+                  @if (canUpdate && (po.TRANG_THAI === 'Nháp' || po.TRANG_THAI === 'Chờ NCC xác nhận')) { <button class="inv-icon-btn" title="Sửa PO" aria-label="Sửa PO" (click)="openEdit(po)"><i class="bi bi-pencil-square"></i></button> }
+                  @if (canCreate && po.TRANG_THAI === 'Đang giao') { <button class="inv-icon-btn" title="Nhận hàng" aria-label="Nhận hàng" (click)="receive(po)"><i class="bi bi-box-arrow-in-down"></i></button> }
+                  @for (s of (canUpdate ? nextStatus[po.TRANG_THAI] || [] : []); track s) {
                     <button class="inv-icon-btn" [class.inv-action-danger]="s === 'Đã hủy'" [title]="s === 'Chờ NCC xác nhận' ? 'Gửi NCC' : s === 'Đang giao' ? 'NCC xác nhận' : s === 'Giao thành công' ? 'Đóng PO' : 'Hủy PO'" [attr.aria-label]="s" (click)="changeStatus(po, s)"><i class="bi" [class.bi-send]="s === 'Chờ NCC xác nhận'" [class.bi-truck]="s === 'Đang giao'" [class.bi-check2-circle]="s === 'Giao thành công'" [class.bi-x-circle]="s === 'Đã hủy'"></i></button>
                   }
                 </div>
