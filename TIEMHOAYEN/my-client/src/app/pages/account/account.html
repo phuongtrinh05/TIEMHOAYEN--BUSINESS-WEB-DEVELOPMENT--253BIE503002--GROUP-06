@@ -135,24 +135,21 @@
           </div>
         }
 
-        @if (activeSection === 'orders' || activeSection === 'order-history') {
-          <!-- 2. ĐƠN HÀNG CỦA TÔI / LỊCH SỬ ĐƠN HÀNG (cùng một bảng, lọc theo trạng thái) -->
+        @if (activeSection === 'orders') {
+          <!-- 2. ĐƠN HÀNG CỦA TÔI: gộp đơn đang xử lý và lịch sử đơn hàng trong một bảng -->
           <div class="section-card mb-4" [id]="activeSection">
             <div class="section-title section-title--with-action">
-              <span>{{ activeSection === 'order-history' ? 'Lịch sử đơn hàng' : 'Đơn hàng của tôi' }}</span>
+              <span>Đơn hàng của tôi</span>
               <a class="section-link" routerLink="/order-list">
                 <i class="bi bi-search"></i> Tra cứu &amp; lọc nâng cao
               </a>
             </div>
 
-            <p class="section-hint" *ngIf="activeSection === 'order-history'">
-              Các đơn đã giao, đã hoàn thành, đã hủy hoặc trả hàng.
-            </p>
 
             <p class="section-empty" *ngIf="!ordersLoaded && !ordersLoadError">Đang tải đơn hàng…</p>
             <p class="section-empty section-empty--error" *ngIf="ordersLoadError">{{ ordersLoadError }}</p>
             <p class="section-empty" *ngIf="ordersLoaded && !ordersLoadError && currentOrderList.length === 0">
-              {{ activeSection === 'order-history' ? 'Chưa có đơn hàng nào đã hoàn tất hoặc đã hủy.' : 'Bạn không có đơn hàng nào đang xử lý.' }}
+              Bạn chưa có đơn hàng nào.
             </p>
 
             <div class="table-responsive" *ngIf="currentOrderList.length > 0">

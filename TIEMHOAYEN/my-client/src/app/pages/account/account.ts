@@ -287,8 +287,9 @@ export class AccountComponent implements OnInit, OnDestroy {
     return this.orders.filter(order => this.isFinishedOrder(order));
   }
 
+  /** "Đơn hàng của tôi" gồm cả đơn đang xử lý và lịch sử (đã giao, hoàn thành, hủy, trả hàng), mới nhất trước. */
   get currentOrderList(): Order[] {
-    return this.activeSection === 'order-history' ? this.historyOrders : this.activeOrders;
+    return this.orders;
   }
 
   get displayedOrders(): Order[] {
@@ -518,7 +519,7 @@ export class AccountComponent implements OnInit, OnDestroy {
   /** Tải dữ liệu của mục đang mở (mỗi nhóm dữ liệu chỉ tải một lần). */
   private loadAccountSection(section: AccountSection): void {
     const dataKey =
-      section === 'orders' || section === 'order-history' || section === 'points' ? 'orders'
+      section === 'orders' || section === 'points' ? 'orders'
       : section === 'vouchers' ? 'vouchers'
       : section === 'wishlist' ? 'wishlist'
       : section === 'addresses' ? 'addresses'
