@@ -43,6 +43,8 @@ export function assertStrongPassword(password: string) {
 
 // ===== Giới hạn đăng nhập sai và lần đăng nhập gần nhất (AD01, KH02) =====
 export const MAX_LOGIN_FAILURES = 5;
+/** Số lần sai mật khẩu tối đa trước khi khóa tạm: khách 5 lần, nhân viên/Admin 3 lần (quyền cao hơn nên chặt hơn). */
+export const loginFailureLimit = (type: AccountType) => type === 'NHAN_VIEN' ? 3 : MAX_LOGIN_FAILURES;
 export const LOGIN_LOCK_MINUTES = 15;
 export const OTP_TTL_SECONDS = 60;
 export const OTP_RESEND_SECONDS = 60;
@@ -56,11 +58,11 @@ export function describeDevice(userAgent: unknown) {
   const os = /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad|iOS/.test(ua) ? 'iOS' : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'Hệ điều hành khác';
   return `${browser} trên ${os}`;
 }
-export function assertLoginNotLocked(account: any) {
+export function assertLoginNotLocked(account: any, limit = MAX_LOGIN_FAILURES) {
   const until = account?.KHOA_DANG_NHAP_DEN ? new Date(account.KHOA_DANG_NHAP_DEN) : null;
   if (until && until.getTime() > Date.now()) {
     const minutes = Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60000));
-    throw new AuthError(429, `Bạn đã nhập sai mật khẩu quá ${MAX_LOGIN_FAILURES} lần. Vui lòng thử lại sau ${minutes} phút hoặc dùng Quên mật khẩu để đặt lại.`, { locked: true, retryAfterMinutes: minutes });
+    throw new AuthError(429, `Bạn đã nhập sai mật khẩu quá ${limit} lần. Vui lòng thử lại sau ${minutes} phút hoặc dùng Quên mật khẩu để đặt lại.`, { locked: true, retryAfterMinutes: minutes });
   }
 }
 // Ghi nhận một lần sai mật khẩu; khóa tạm khi chạm ngưỡng. Trả về số lần còn lại.
@@ -69,14 +71,15 @@ export async function recordLoginFailure(type: AccountType, account: any) {
   const key = { [accountKey(type)]: account[accountKey(type)] };
   const row = await c.findOneAndUpdate(key, { $inc: { SO_LAN_DANG_NHAP_SAI: 1 } }, { returnDocument: 'after' });
   const failures = Number(row?.SO_LAN_DANG_NHAP_SAI || 0);
-  if (failures >= MAX_LOGIN_FAILURES) {
+  const limit = loginFailureLimit(type);
+  if (failures >= limit) {
     await c.updateOne(key, { $set: { SO_LAN_DANG_NHAP_SAI: 0, KHOA_DANG_NHAP_DEN: new Date(Date.now() + LOGIN_LOCK_MINUTES * 60000) } });
     return 0;
   }
-  return MAX_LOGIN_FAILURES - failures;
+  return limit - failures;
 }
-export function wrongPasswordError(remaining: number, label = 'Mật khẩu không đúng.') {
-  if (remaining <= 0) return new AuthError(429, `Bạn đã nhập sai mật khẩu quá ${MAX_LOGIN_FAILURES} lần. Tài khoản tạm khóa đăng nhập ${LOGIN_LOCK_MINUTES} phút. Vui lòng dùng Quên mật khẩu để đặt lại.`, { locked: true, retryAfterMinutes: LOGIN_LOCK_MINUTES });
+export function wrongPasswordError(remaining: number, label = 'Mật khẩu không đúng.', limit = MAX_LOGIN_FAILURES) {
+  if (remaining <= 0) return new AuthError(429, `Bạn đã nhập sai mật khẩu quá ${limit} lần. Tài khoản tạm khóa đăng nhập ${LOGIN_LOCK_MINUTES} phút. Vui lòng dùng Quên mật khẩu để đặt lại.`, { locked: true, retryAfterMinutes: LOGIN_LOCK_MINUTES });
   return new AuthError(401, `${label} Bạn còn ${remaining} lần thử.`, { remainingAttempts: remaining });
 }
 // Lưu lần đăng nhập hiện tại, trả về lần đăng nhập trước đó để hiển thị cho người dùng.
@@ -182,10 +185,10 @@ export async function login(type: AccountType, req: Request) {
     await audit(req, 'DANG_NHAP', type, {}, false);
     throw new AuthError(404, type === 'KHACH_HANG' ? 'Số điện thoại này chưa được đăng ký tài khoản.' : 'Email này chưa được đăng ký tài khoản nhân viên.');
   }
-  assertLoginNotLocked(account);
+  assertLoginNotLocked(account, loginFailureLimit(type));
   if (!await verifyPassword(password, account.MAT_KHAU)) {
     await audit(req, 'DANG_NHAP', account[accountKey(type)], { LY_DO: 'Sai mật khẩu' }, false);
-    throw wrongPasswordError(await recordLoginFailure(type, account));
+    throw wrongPasswordError(await recordLoginFailure(type, account), undefined, loginFailureLimit(type));
   }
   if (!active(account)) throw new AuthError(403, 'Tài khoản chưa xác minh hoặc đã bị khóa.');
   if (!isPasswordHash(account.MAT_KHAU)) {

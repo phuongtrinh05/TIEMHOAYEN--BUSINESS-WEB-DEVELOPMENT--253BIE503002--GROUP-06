@@ -13,6 +13,8 @@ test('auth + account administration feedback rules', { skip: !process.env.TEST_M
   const { loginCustomer, registerCustomer, verifyRegisterOtp } = await import('../controllers/customer.js');
   const { loginAdminEmployee } = await import('../controllers/rolePermission.js');
   const auth = await import('../services/auth.service.js');
+  // Giới hạn sai mật khẩu: khách 5 lần, nhân viên/Admin 3 lần.
+  assert.equal(auth.loginFailureLimit('KHACH_HANG'), 5); assert.equal(auth.loginFailureLimit('NHAN_VIEN'), 3);
   const { attachVerifiedStaff } = await import('../middleware/verifiedStaff.js');
   const customersApi = await import('../controllers/admin-customer.js');
   const db = await mongo.getDb();
