@@ -253,6 +253,34 @@ export class OrderRequests implements OnInit, OnDestroy {
   open(row: any) { this.workTab = 'stock'; this.chatOpen = false; this.showDecision = false; this.showOriginalConfirm = false; this.urgentDealConfirmed = false; this.urgentDealNote = ''; this.paymentReceivedConfirmed = false; this.paymentReceivedAmount = null; this.paymentReference = ''; this.replacementChoice = {}; this.proposalReplacementChoice = {}; this.approvedReplacements = {}; this.contact = { outcome: 'connected', note: '', followUpAt: '', readBackConfirmed: false }; this.active = row; this.editing = false; this.draft = null; this.pendingEdit = false; this.catalogLoaded = false; this.optionsLoading = false; this.optionsError = ''; this.sourcesLoading = false; this.sourcesLoaded = false; this.optionsUpdatedAt = null; this.options = null; this.message = ''; this.note = ''; this.search = ''; this.messages = []; this.loadOptions(); }
   /** Ngày phương án lưu dạng yyyy-mm-dd, ngày gốc dạng dd/mm/yyyy: luôn hiển thị dd/mm/yyyy. */
   displayDate(value: string) { return /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('/') : value || ''; }
+  get minDeliveryDate() {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date());
+  }
+  get draftDeliverySlots(): string[] {
+    const slots: string[] = [];
+    for (let minutes = 6 * 60 + 30; minutes <= 21 * 60 + 30; minutes += 30) {
+      const slot = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+      const at = new Date(`${this.draft?.date || ''}T${slot}:00+07:00`);
+      if (!this.draft?.date || (Number.isFinite(at.getTime()) && at.getTime() > Date.now())) slots.push(slot);
+    }
+    return slots;
+  }
+  onDraftDeliveryDateChange(value: string) {
+    if (!this.draft) return;
+    this.draft.date = value;
+    if (this.draft.time && !this.draftDeliverySlots.includes(this.draft.time)) this.draft.time = '';
+  }
+  openDeliveryDatePicker(input: HTMLInputElement) {
+    if (typeof input.showPicker === 'function') input.showPicker();
+    else { input.focus(); input.click(); }
+  }
+  isDraftUrgentSlot(slot: string) {
+    if (!this.draft?.date || !slot) return false;
+    const at = new Date(`${this.draft.date}T${slot}:00+07:00`).getTime();
+    return Number.isFinite(at) && at > Date.now() && at - Date.now() < 4 * 60 * 60 * 1000;
+  }
   get totalPages() { return Math.max(1, Math.ceil(Number(this.total || 0) / 20)); }
   closeDetail() { this.active = null; this.editing = false; this.draft = null; this.showOriginalConfirm = false; this.showDecision = false; }
   openOriginalConfirmation() {
