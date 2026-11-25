@@ -20,6 +20,7 @@ export class AfterSales implements OnInit {
   ];
   get isAdmin(){return String(localStorage.getItem('adminRole')||'').trim().toLowerCase()==='admin';}
   get activeCount(){return this.rows.filter(row=>row.active).length;}
+  isVideoUrl(url:string){return /\.(mp4|webm|mov)(\?|$)/i.test(String(url||''));}
   ngOnInit(){this.search=this.route.snapshot.queryParamMap.get('orderId')||this.route.snapshot.queryParamMap.get('requestId')||'';this.load();}
   load(){const selectedId=this.selected?.requestId;this.loading=true;this.error='';this.api.getAfterSales({search:this.search.trim(),status:this.status,type:this.type,issueType:this.issueType,limit:'50'}).subscribe({next:r=>{this.rows=r.requests||[];this.total=Number(r.total||0);this.summary=r.summary||{count:this.total,totalApproved:0,totalRefunded:0};this.loading=false;const requested=this.route.snapshot.queryParamMap.get('requestId')||selectedId;if(requested)this.select(this.rows.find((x:any)=>x.requestId===requested)||this.rows[0]);else if(this.search&&this.rows.length===1)this.select(this.rows[0]);else if(!this.rows.length)this.selected=null;this.cdr.markForCheck();},error:e=>this.fail(e)});}
   typeLabel(value:string){return value==='exchange'?'Đổi hoặc giao bổ sung':value==='return'?'Trả lại sản phẩm':value==='refund'?'Hoàn tiền':value||'Chưa xác định';}
