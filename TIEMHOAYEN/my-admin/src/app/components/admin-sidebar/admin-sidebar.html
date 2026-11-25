@@ -11,6 +11,7 @@
 
     <div class="menu-section">
         <ng-container *ngFor="let item of mainMenuItems">
+            <ng-container *ngIf="canView(item.module)">
             <a
                 [routerLink]="canView(item.module) ? item.route : null"
                 [routerLinkActiveOptions]="{ exact: !!item.exact }"
@@ -31,7 +32,7 @@
             </a>
             <div class="submenu" *ngIf="item.children?.length && !isCollapsed && isGroupOpen(item)">
                 <a
-                    *ngFor="let child of item.children"
+                    *ngFor="let child of visibleChildren(item)"
                     [routerLink]="canView(child.module) ? child.route : null"
                     routerLinkActive="active"
                     [routerLinkActiveOptions]="{ exact: !!child.exact }"
@@ -42,14 +43,16 @@
                     <span>{{ child.label }}</span>
                 </a>
             </div>
+            </ng-container>
         </ng-container>
     </div>
 
-    <div class="menu-section">
+    <div class="menu-section" *ngIf="hasAdminItems">
         <p class="menu-title">Admin</p>
 
+        <ng-container *ngFor="let item of adminMenuItems">
         <a
-            *ngFor="let item of adminMenuItems"
+            *ngIf="canView(item.module)"
             [routerLink]="canView(item.module) ? item.route : null"
             routerLinkActive="active"
             class="menu-item"
@@ -60,6 +63,7 @@
             <i class="bi" [ngClass]="item.icon"></i>
             <span>{{ item.label }}</span>
         </a>
+        </ng-container>
     </div>
 
     <div class="sidebar-footer">

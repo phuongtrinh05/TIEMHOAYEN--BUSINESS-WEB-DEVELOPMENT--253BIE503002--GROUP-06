@@ -1300,17 +1300,24 @@ h3{
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
   padding: 10px; border: 1.5px dashed #c9957c; background: #fff8f4; color: #731919;
   font-weight: 700; cursor: pointer;
+  width: auto; min-width: 176px; padding: 10px 18px;
 }
+.after-sales-modal .evidence-upload-button span { white-space: nowrap; text-align: center; line-height: 1.3; }
+.after-sales-modal .evidence-upload-button.is-empty { flex: 1 1 100%; flex-direction: row; gap: 12px; height: 76px; border-radius: 14px; }
+.after-sales-modal .evidence-upload-button.is-empty i { font-size: 28px; }
+.after-sales-modal .evidence-upload-button:not(:disabled):hover { background: #fdeee6; border-color: #b97a60; }
+.after-sales-modal .evidence-note { display: block; margin-top: 8px; }
 .after-sales-modal .evidence-upload-button i { font-size: 24px; }
 .after-sales-modal .evidence-upload-button:disabled { opacity: .55; cursor: not-allowed; }
 .evidence-note,
 .after-sales-supplement > small { color: #967d74; font-size: 12px; font-weight: 500; }
-.after-sales-modal .review-request-button { margin-top: 22px; }
+.after-sales-modal .review-request-button { display: block; margin: 22px 0 0 auto; padding: 12px 32px; border-radius: 10px; }
 .after-sales-modal .after-sales-supplement .supplement-submit { width: fit-content; margin-top: 6px; }
 
 @media(max-width:480px){
-  .evidence-preview,
-  .evidence-upload-button { width: 88px; height: 88px; }
+  .evidence-preview { width: 88px; height: 88px; }
+  .evidence-upload-button { height: 88px; }
+  .after-sales-modal .evidence-upload-button { min-width: 150px; }
 }
 
 /* ===== Hỗ trợ đơn hàng: một hàng duy nhất ở cuối trang ===== */
@@ -1379,3 +1386,44 @@ h3{
 /* Cột Đánh giá: đơn đã giao thì mở trang Đánh giá đơn hàng */
 .review-link { padding: 6px 12px; border: 1.5px solid #731919; border-radius: 999px; background: #fff; color: #731919; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; white-space: nowrap; }
 .review-link:hover { background: #731919; color: #fff; }
+
+
+/* ===== Hồ sơ hỗ trợ trong modal: gọn và dễ đọc hơn ===== */
+.after-sales-modal .after-sales-case { padding: 18px 20px; border: 1px solid #ead5c5; border-left: 4px solid #d9b382; border-radius: 14px; background: #fffaf7; display: grid; gap: 12px; }
+.after-sales-modal .after-sales-case + .after-sales-case { margin-top: 14px; }
+.after-sales-modal .case-head small { font-size: 10.5px; letter-spacing: .12em; color: #a06f5c; font-weight: 800; }
+.after-sales-modal .case-head strong { margin-top: 2px; font-size: 15px; color: #3b2a26; }
+.after-sales-modal .case-head > span { white-space: nowrap; }
+.after-sales-modal .case-desc { margin: 0; padding: 10px 14px; border-radius: 10px; background: #fff; border: 1px solid #f0e1d6; color: #4a3731; font-size: 15px; font-weight: 600; }
+.after-sales-modal .case-tags { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.after-sales-modal .case-tags .case-items, .after-sales-modal .case-tags .case-media { display: contents; }
+.after-sales-modal .case-tags span, .after-sales-modal .case-tags a { margin: 0; padding: 6px 12px; border: 1px solid #ecd8cb; border-radius: 999px; background: #fff; color: #731919; font-size: 12.5px; font-weight: 600; text-decoration: none; }
+.after-sales-modal .case-tags a { display: inline-flex; align-items: center; gap: 6px; }
+.after-sales-modal .case-tags a:hover { background: #fdeee6; }
+.after-sales-modal .case-timeline { margin: 0; padding: 12px 0 0; border-top: 1px dashed #e8d3c5; display: flex; flex-direction: column; gap: 8px; }
+.after-sales-modal .case-timeline li { position: relative; flex-direction: row; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 0 0 18px; border: 0; background: none; }
+.after-sales-modal .case-timeline li::before { content: ''; position: absolute; left: 0; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: #d9b382; }
+.after-sales-modal .case-timeline li b { font-size: 13.5px; color: #3b2a26; }
+.after-sales-modal .case-timeline li small { font-size: 12px; color: #937a70; }
+.after-sales-modal .after-sales-message:not(:empty) { margin: 14px 0 0; padding: 10px 14px; border-radius: 10px; background: #f6efe9; color: #731919; font-size: 13.5px; font-weight: 600; }
+
+
+/* ===== Thanh trạng thái hồ sơ hỗ trợ ===== */
+.after-sales-modal .case-steps { display: flex; margin: 0; padding: 14px 0 2px; border-top: 1px dashed #e8d3c5; list-style: none; overflow-x: auto; }
+.after-sales-modal .case-steps li { position: relative; flex: 1 1 0; min-width: 96px; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.after-sales-modal .case-steps li + li::before { content: ''; position: absolute; top: 13px; right: 50%; width: 100%; height: 3px; border-radius: 3px; background: #ead8cc; }
+.after-sales-modal .case-steps li.is-done + li::before, .after-sales-modal .case-steps li.is-done + li.is-current::before { background: #d9b382; }
+.after-sales-modal .case-steps .step-dot { position: relative; z-index: 1; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #d9b382; color: #fff; font-size: 13px; border: 3px solid #fffaf7; box-shadow: 0 0 0 1px #d9b382; }
+.after-sales-modal .case-steps li.is-current .step-dot { background: #731919; box-shadow: 0 0 0 1px #731919, 0 0 0 5px #73191920; }
+.after-sales-modal .case-steps li.is-success .step-dot { background: #2f7d46; box-shadow: 0 0 0 1px #2f7d46, 0 0 0 5px #2f7d4622; }
+.after-sales-modal .case-steps li.is-rejected .step-dot { background: #b3262e; box-shadow: 0 0 0 1px #b3262e, 0 0 0 5px #b3262e22; }
+.after-sales-modal .case-steps li b { font-size: 12.5px; line-height: 1.25; color: #3b2a26; }
+.after-sales-modal .case-steps li.is-current b { color: #731919; }
+.after-sales-modal .case-steps li.is-success b { color: #2f7d46; }
+.after-sales-modal .case-steps li small { font-size: 11px; color: #937a70; }
+@media (max-width: 560px) {
+  .after-sales-modal .case-steps { flex-direction: column; gap: 14px; overflow: visible; padding-left: 4px; }
+  .after-sales-modal .case-steps li { flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; text-align: left; min-width: 0; }
+  .after-sales-modal .case-steps li + li::before { top: auto; bottom: 100%; right: auto; left: 13px; width: 3px; height: 14px; }
+  .after-sales-modal .case-steps li small { margin-left: auto; }
+}
