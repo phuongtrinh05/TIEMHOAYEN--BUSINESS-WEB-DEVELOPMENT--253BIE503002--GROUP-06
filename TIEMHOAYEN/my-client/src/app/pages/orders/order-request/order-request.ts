@@ -13,6 +13,8 @@ import { REQUEST_STEPS, requestStage } from '../request-stage';
   templateUrl: './order-request.html', styleUrls: ['./order-request.css', './order-request-refinement.css', '../request-status-tone.css'] })
 export class OrderRequest implements OnInit, OnDestroy {
   readonly slotLabel = deliverySlotLabel;
+  /** Ngày giao lưu theo 2 kiểu (dd/mm/yyyy lúc gửi, yyyy-mm-dd sau khi đổi lịch); luôn hiện dd/mm/yyyy. */
+  displayDate(value: string) { return /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value.split('-').reverse().join('/') : value || ''; }
   @Input() requestId = '';
   @Input() compact = false;
   private route = inject(ActivatedRoute);
