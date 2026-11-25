@@ -1048,3 +1048,19 @@
 .pcc-send { flex: none; border: 0; border-radius: 999px; padding: 6px 14px; background: #8e2a4e; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }
 .pcc-send:disabled { opacity: .6; cursor: default; }
 .pcc-close { flex: none; border: 0; background: none; color: #9a8a90; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
+
+
+/* ===== Form để lại thông tin: hiện như một tin nhắn của trợ lý trong khung chat ===== */
+.contact-row { margin: 8px 12px; }
+.contact-row .message.support-form.contact-handoff { width: 100%; max-width: calc(100% - 35px); margin: 0; padding: 12px 13px 13px; border: 1px solid #ecd3c4; border-radius: 13px; border-top-left-radius: 4px; background: #fffaf7; box-shadow: none; }
+.contact-handoff .contact-lead { margin: 0 0 4px; color: #5a4440; font-size: 12.5px; line-height: 1.55; }
+.contact-handoff .contact-lead strong { display: block; margin-bottom: 2px; color: #781b20; font-size: 14px; }
+.contact-handoff label { display: block; margin: 9px 0 0; color: #604946; font-size: 12px; font-weight: 700; }
+.contact-handoff label .optional { color: #9a8580; font-weight: 500; }
+.contact-handoff input { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 9px 11px; border: 1px solid #e3cfc7; border-radius: 9px; background: #fff; font-size: 13px; }
+.contact-handoff .contact-actions { display: flex; align-items: center; gap: 10px; margin-top: 13px; }
+.contact-handoff .contact-submit { flex: 1; min-height: 38px; margin: 0; border: 0; border-radius: 9px; background: #781b20; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
+.contact-handoff .contact-submit:hover:not(:disabled) { background: #5a1215; }
+.contact-handoff .contact-submit:disabled { opacity: .6; cursor: default; }
+.contact-handoff .contact-skip { padding: 8px 6px; border: 0; background: none; color: #8a6f6a; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.contact-handoff .contact-skip:hover:not(:disabled) { color: #781b20; text-decoration: underline; }
