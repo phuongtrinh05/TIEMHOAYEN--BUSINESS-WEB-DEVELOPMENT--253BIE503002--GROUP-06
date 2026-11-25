@@ -269,17 +269,24 @@ if (!uri) {
       assert.equal(r.bottleneck.materialId, 'NVL075');
     });
 
-    test('đơn tương lai: PO đang giao kịp → available; quá hạn PO → need_review', async () => {
-      const deliver = new Date(Date.now() + 3 * 86_400_000); deliver.setHours(10, 0, 0, 0);
+    test('đơn giao từ 24 giờ được thanh toán thẳng; PO đang giao chỉ cập nhật dự báo', async () => {
+      const deliveryDay = new Date(Date.now() + 3 * 86_400_000 + 7 * 3_600_000).toISOString().slice(0, 10);
+      const deliver = new Date(`${deliveryDay}T10:00:00+07:00`);
       const before = await avail.checkProductAvailability('SPA', 3, deliver.toISOString());
-      assert.equal(before.decision, 'need_review');
+      assert.equal(before.decision, 'available');
+      assert.equal(before.canCheckoutDirectly, true);
+      assert.ok(before.forecast?.some(row => row.short));
       const po: any = await master.createPurchaseOrder({ supplierId: 'NCC001', expectedAt: new Date(Date.now() + 86_400_000), lines: [{ materialId: 'NVL001', quantity: 50 }, { materialId: 'NVL051', quantity: 10 }] }, actor);
       await master.changePurchaseOrderStatus(po.PO_ID, K.PO_STATUS.waiting, actor);
       const stillWaiting = await avail.checkProductAvailability('SPA', 3, deliver.toISOString());
-      assert.equal(stillWaiting.decision, 'need_review'); // PO chưa "Đang giao" không tính
+      assert.equal(stillWaiting.decision, 'available');
+      assert.deepEqual(stillWaiting.forecast, before.forecast);
       await master.changePurchaseOrderStatus(po.PO_ID, K.PO_STATUS.shipping, actor);
       const ok = await avail.checkProductAvailability('SPA', 3, deliver.toISOString());
       assert.equal(ok.decision, 'available');
+      assert.equal(ok.canCheckoutDirectly, true);
+      assert.ok(ok.forecast?.length);
+      assert.ok(ok.forecast.every(row => !row.short));
     });
 
     test('BOM: không trùng NVL, phải có NVL Chính, thay thế phải cùng nhóm', async () => {
@@ -579,7 +586,12 @@ if (!uri) {
       const expiry=held.reservations[0].HET_HAN_LUC.getTime()-held.reservations[0].TAO_LUC.getTime();assert.equal(expiry,300000);
       await stock.releaseReservations({paymentSessionId:'SNAP-OLD-KEY'},actor);
       await bom.createBomVersion('SP-SNAP',{activate:true,lines:[{materialId:'SNAP-FIX',quantity:9,role:'Chính'}]},actor);
-      await (await mongo.getCollection<any>(K.COLLECTIONS.order)).insertOne({_id:'DH-SNAP',DON_HANG_ID:'DH-SNAP',TRANG_THAI:'Chờ xử lý',THOI_DIEM_CHUAN_BI_DU_KIEN: new Date(Date.now() + 3_600_000), TONG_TIEN: 0});
+      await (await mongo.getCollection<any>(K.COLLECTIONS.order)).insertOne({
+        _id: 'DH-SNAP', DON_HANG_ID: 'DH-SNAP', TRANG_THAI: 'Chờ xử lý',
+        NGAY_MUON_GIAO: new Date(Date.now() + 86_400_000),
+        KHUNG_GIO_MUON_GIAO: '10:00 - 10:30',
+        THOI_DIEM_CHUAN_BI_DU_KIEN: new Date(Date.now() + 3_600_000), TONG_TIEN: 0,
+      });
       await (await mongo.getCollection<any>(K.COLLECTIONS.orderDetail)).insertOne({DON_HANG_ID:'DH-SNAP',SAN_PHAM_ID:'SP-SNAP',SO_LUONG:3,BOM_SNAPSHOT:snapshot});
       await withTransaction(session=>reserveOrderLines(session,[{id:'SP-SNAP',qty:3,bom:snapshot}],{status:K.RESERVATION_STATUS.official,orderId:'DH-SNAP',actor}));
       assert.equal((await material('SNAP-FIX')).TON_DANG_GIU,6);

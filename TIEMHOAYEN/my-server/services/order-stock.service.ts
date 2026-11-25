@@ -5,7 +5,11 @@ import { reserveMaterialNeeds, reserveProducts, type ReserveContext } from './in
 /** Custom bouquets use their agreed material snapshot, never the catalog BOM. All lines share one transaction. */
 export async function reserveOrderLines(session: ClientSession, items: any[], context: ReserveContext) {
   const usesMaterialSnapshot = (item: any) => item.custom || item.bom?.useMaterialSnapshot === true;
-  const catalog = items.filter(item => !usesMaterialSnapshot(item)).map(item => ({ productId: item.id, quantity: item.qty }));
+  const catalog = items.filter(item => !usesMaterialSnapshot(item)).map(item => ({
+    productId: item.id,
+    quantity: item.qty,
+    bomSnapshot: item.bom,
+  }));
   if (catalog.length) await reserveProducts(catalog, context, session);
   const needs = new Map<string, number>();
   for (const item of items.filter(usesMaterialSnapshot)) {
