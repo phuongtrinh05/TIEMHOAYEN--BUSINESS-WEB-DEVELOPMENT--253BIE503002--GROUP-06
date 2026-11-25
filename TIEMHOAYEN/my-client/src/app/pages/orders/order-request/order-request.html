@@ -51,7 +51,7 @@
       @if (!hasCreatedOrder && request.orderSummary) { <p>Đơn hàng: {{request.orderSummary.status}} · Thanh toán: {{request.orderSummary.paymentStatus}}</p> }
       @if (feedback) { <p role="status">{{feedback}}</p> }
       @if (!hasCreatedOrder && canChange) {
-        <details class="schedule-change"><summary>Đổi lịch hoặc dừng yêu cầu</summary>
+        <details class="schedule-change"><summary>Đổi lịch giao</summary>
           <div class="schedule-body">
             @if (!showSchedule) { <button class="secondary" (click)="editSchedule()"><i class="bi bi-calendar-event" aria-hidden="true"></i> Đề nghị đổi lịch giao</button> }
             @if (showSchedule) {
