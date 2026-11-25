@@ -262,6 +262,20 @@ async function applyInternalSubstitutions(item: any, rawSubstitutions: any, sess
   return { ...item, bom: { ...item.bom, source: 'SAN_PHAM_SUBSTITUTION', useMaterialSnapshot: true, materials, substitutions } };
 }
 
+/** Voucher/điểm của yêu cầu gốc, chỉ áp lại khi phương án giữ đúng mẫu và số lượng khách đã gửi. */
+function originalDiscounts(row: any, items: any[], subtotal: number) {
+  const none = { productDiscount: 0, loyaltyDiscount: 0, loyaltyPoints: 0, voucher: null as any };
+  const original = row.originalSummary || {};
+  const originalQty = new Map((row.items || []).map((item: any) => [String(item.productId), Number(item.quantity)]));
+  const sameItems = items.length === originalQty.size && items.every(item => originalQty.get(String(item.id)) === Number(item.qty));
+  if (!sameItems) return none;
+  const productDiscount = Math.min(subtotal, Math.max(0, Math.round(Number(original.productDiscount || 0))));
+  const loyaltyDiscount = Math.min(subtotal - productDiscount, Math.max(0, Math.round(Number(original.loyaltyDiscount || 0))));
+  return { productDiscount, loyaltyDiscount,
+    loyaltyPoints: loyaltyDiscount > 0 ? Math.max(0, Number(original.loyaltyPoints || 0)) : 0,
+    voucher: productDiscount > 0 || Number(original.shippingDiscount || 0) > 0 ? row.originalVoucher || null : null };
+}
+
 /** A proposal is a new immutable commercial snapshot; it never overwrites the original request. */
 export async function propose(id: string, body: any, employee: any) {
   return withTransaction(async session => {
@@ -277,7 +291,10 @@ export async function propose(id: string, body: any, employee: any) {
     const subtotal = amount(items.reduce((sum, i) => sum + i.qty * i.price, 0));
     const shippingFee = amount(body.shippingFee || 0);
     const cardFee = amount(row.giftCard?.fee || 0);
-    const total = amount(subtotal + shippingFee + cardFee);
+    // Giữ voucher/điểm khách đã dùng lúc gửi yêu cầu khi Sales giữ nguyên mẫu và số lượng gốc
+    // (chỉ đổi lịch, phí giao, cách thanh toán...). Đổi mẫu/số lượng thì phương án mới không kèm ưu đãi cũ.
+    const discounts = originalDiscounts(row, items, subtotal);
+    const total = amount(subtotal + shippingFee + cardFee - discounts.productDiscount - discounts.loyaltyDiscount);
     const method = body.paymentMethod === 'cod' ? 'cod' : body.paymentMethod === 'bank' ? 'bank' : '';
     if (!method) throw new InventoryError(400, 'Chọn chuyển khoản toàn bộ hoặc cọc rồi thanh toán khi nhận hàng.');
     const depositAmount = method === 'cod' ? depositByPolicy(subtotal, total, items) : 0;
@@ -307,7 +324,9 @@ export async function propose(id: string, body: any, employee: any) {
     const quote = { id: randomUUID(), revision: Math.max(Number(row.quote?.revision || 0), ...(row.quoteHistory || []).map((q: any) => Number(q.revision || 0))) + 1, createdAt: new Date(), createdBy: employee.NHAN_VIEN_ID,
       items, delivery: { ...row.delivery, date: body.date, time: body.time }, deliveryAt: at,
       giftCard: row.giftCard || null,
-      summary: { subtotal, shippingFee, cardFee, total, depositAmount, loyaltyDiscount: 0, loyaltyPoints: 0 },
+      summary: { subtotal, shippingFee, cardFee, total, depositAmount, productDiscount: discounts.productDiscount,
+        loyaltyDiscount: discounts.loyaltyDiscount, loyaltyPoints: discounts.loyaltyPoints },
+      voucherApplied: Boolean(discounts.voucher),
       payment: { method, methodName: method === 'cod' ? 'Đặt cọc theo chính sách, còn lại COD' : 'Chuyển khoản', amountToPay: method === 'cod' ? depositAmount : total },
       note: optionalText(body.note), urgentOverride, urgentConfirmationNote,
       agreedByPhone, agreementNote,
@@ -340,8 +359,9 @@ export async function confirmOriginalRequest(id: string, body: any, employee: an
   const confirmedAmount = Number(paymentConfirmation.amount);
   const paymentReference = String(paymentConfirmation.referenceCode || '').trim();
   if (paymentConfirmation.confirmed !== true) throw new InventoryError(400, 'Sales phải xác nhận đã nhận tiền của khách trước khi chốt đơn.');
-  if (!Number.isSafeInteger(confirmedAmount) || confirmedAmount <= 0) throw new InventoryError(400, 'Số tiền đã nhận phải là số nguyên dương.');
-  if (!/^[\w./:-]{3,100}$/.test(paymentReference)) throw new InventoryError(400, 'Nhập mã giao dịch hoặc mã biên nhận hợp lệ (3–100 ký tự).');
+  // 0đ chỉ hợp lệ khi phương án không yêu cầu trả trước (COD tạm tính dưới 300.000đ); so khớp với phương án ở bước dưới.
+  if (!Number.isSafeInteger(confirmedAmount) || confirmedAmount < 0) throw new InventoryError(400, 'Số tiền đã nhận phải là số nguyên không âm.');
+  if (confirmedAmount > 0 && !/^[\w./:-]{3,100}$/.test(paymentReference)) throw new InventoryError(400, 'Nhập mã giao dịch hoặc mã biên nhận hợp lệ (3–100 ký tự).');
   // Giữ trạng thái/phương án trước khi chốt để trả lại đúng như cũ nếu tạo đơn thất bại.
   const before = await requests.findOne({ _id: id }, { projection: { status: 1, quote: 1 } });
   const quote = await propose(id, { ...body, confirmOriginal: true }, employee);
@@ -369,9 +389,10 @@ export async function confirmOriginalRequest(id: string, body: any, employee: an
   } as any, { returnDocument: 'after', includeResultMetadata: false });
   if (!accepted) throw new InventoryError(409, 'Yêu cầu vừa thay đổi. Vui lòng tải lại.');
   try {
-    await convertProposal(id, { quoteId: quote.id, version: accepted.version, paymentConfirmation: {
+    // Không có khoản trả trước thì không ghi nhận phiếu thu; đơn lên thẳng "Đã đặt hàng thành công", thu đủ khi giao.
+    await convertProposal(id, { quoteId: quote.id, version: accepted.version, paymentConfirmation: confirmedAmount > 0 ? {
       confirmed: true, amount: confirmedAmount, referenceCode: paymentReference,
-    } }, employee);
+    } : undefined }, employee);
   } catch (error: any) {
     // Không tạo được đơn (vd. thiếu NVL): trả yêu cầu về đúng trạng thái trước khi bấm để Sales xử lý tiếp.
     await requests.updateOne({ _id: id, version: accepted.version, status: REQUEST_STATUS.accepted, 'quote.id': quote.id }, {
@@ -479,7 +500,9 @@ export async function convertProposal(id: string, body: any, employee: any) {
       ...(waitForIncoming ? { inventoryMode: 'FUTURE_DEMAND', prepStartAt,
         staffOverride: { reason: stockPlan.uncovered.length ? 'Sales chốt đơn khi hệ thống còn thiếu NVL (chưa có hàng nhập đủ trên hệ thống)' : 'Sales chốt đơn chờ hàng về',
           at: new Date(), actor: employee.NHAN_VIEN_ID, shortages: stockPlan.shortages } } : {}) };
-    let result: any = { kind: 'order', ...await writeCheckoutOrder(session, orderId, checkoutData, { requestId: id, quote: row.quote, pendingOrderStatus: SALES_CONFIRMED_ORDER_STATUS }) };
+    let result: any = { kind: 'order', ...await writeCheckoutOrder(session, orderId, checkoutData, { requestId: id, quote: row.quote, pendingOrderStatus: SALES_CONFIRMED_ORDER_STATUS,
+      // Ưu đãi giữ từ yêu cầu gốc: ghi voucher của đơn và số điểm để trừ khi khoản thanh toán được xác nhận.
+      voucher: row.quote.voucherApplied ? row.originalVoucher || undefined : undefined, loyaltyPoints: Number(row.quote.summary?.loyaltyPoints || 0) || undefined }) };
     // Ghi "mẫu shop đã từng làm" kèm phí đã chốt cho bó 3D giữ nguyên đúng mẫu gốc của khách.
     // Chỉ để lần sau báo giá có sẵn phí; mẫu 3D vẫn luôn qua Yêu cầu đặt hàng.
     for (const item of row.quote.items) await approveDesignFromProposal(item, { ...row, requestId: row.requestId || id }, employee, session);

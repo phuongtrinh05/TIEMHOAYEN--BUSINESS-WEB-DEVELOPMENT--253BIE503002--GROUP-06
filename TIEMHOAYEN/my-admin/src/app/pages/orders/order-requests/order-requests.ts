@@ -88,8 +88,9 @@ export class OrderRequests implements OnInit, OnDestroy {
       .map((m: any) => `${m.name} thiếu ${m.missing} ${m.unit || ''}`.trim()));
   }
   get closeDealBlocked() {
-    const paymentInvalid = !this.paymentReceivedConfirmed
-      || Number(this.paymentReceivedAmount) !== this.requiredPaymentAmount
+    // Phương án không yêu cầu trả trước (COD dưới 300.000đ): chỉ cần Sales xác nhận đã thống nhất với khách.
+    const paymentInvalid = this.noPrepaymentRequired ? !this.paymentReceivedConfirmed : !this.paymentReceivedConfirmed
+      || this.paymentAmountMismatch
       || !/^[\w./:-]{3,100}$/.test(this.paymentReference.trim());
     const urgentInvalid = this.isUrgentConfirmation && (!this.urgentDealConfirmed || !this.urgentDealNote.trim());
     return paymentInvalid || urgentInvalid;
@@ -98,6 +99,26 @@ export class OrderRequests implements OnInit, OnDestroy {
     if (this.editing && this.draft) return this.draft.paymentMethod === 'cod' ? this.draftDeposit : this.draftTotal;
     if (this.active?.quote) return Number(this.active.quote.payment?.amountToPay || 0);
     return Number(this.active?.originalSummary?.total || 0);
+  }
+  /** Cách thanh toán đang áp dụng khi chốt: theo bản đang sửa, phương án đã lưu, hoặc mặc định chuyển khoản toàn bộ. */
+  get closingPaymentMethod(): 'bank' | 'cod' {
+    const method = this.editing && this.draft ? this.draft.paymentMethod : this.active?.quote?.payment?.method;
+    return method === 'cod' ? 'cod' : 'bank';
+  }
+  get closingTotal() {
+    if (this.editing && this.draft) return this.draftTotal;
+    return Number(this.active?.quote?.summary?.total ?? this.active?.originalSummary?.total ?? 0);
+  }
+  /** Tạm tính tiền hàng (không gồm phí giao, thiệp) — dùng cho mốc 300.000đ của chính sách cọc. */
+  get closingSubtotal() {
+    if (this.editing && this.draft) return this.draftSubtotal;
+    const summary = this.active?.quote?.summary || this.active?.originalSummary || {};
+    return Number(summary.subtotal ?? (Number(summary.total || 0) - Number(summary.shippingFee || 0) - Number(summary.cardFee || 0)));
+  }
+  get noPrepaymentRequired() { return this.closingPaymentMethod === 'cod' && this.requiredPaymentAmount === 0; }
+  get paymentAmountMismatch() {
+    return this.paymentReceivedAmount !== null && String(this.paymentReceivedAmount) !== ''
+      && Number(this.paymentReceivedAmount) !== this.requiredPaymentAmount;
   }
   get paymentConfirmationLabel() {
     const method = this.editing ? this.draft?.paymentMethod : this.active?.quote?.payment?.method;
@@ -291,6 +312,11 @@ export class OrderRequests implements OnInit, OnDestroy {
     this.paymentReceivedConfirmed = false;
     this.paymentReceivedAmount = this.requiredPaymentAmount;
     this.paymentReference = '';
+  }
+  /** Từ hộp chốt chuyển sang sửa phương án để đổi cách thanh toán. */
+  changePaymentFromConfirm() {
+    this.showOriginalConfirm = false;
+    this.beginEdit();
   }
   openRejectDecision() {
     if (this.busy || !this.canDecide) return;
@@ -570,10 +596,21 @@ export class OrderRequests implements OnInit, OnDestroy {
     return Math.round(item.materials.reduce((sum: number, m: any) => sum + Number(m.quantity || 0) * (this.options?.materials.find((x: any) => x.id === m.materialId)?.price || 0), 0) + Number(item.designFee || 0) + Number(item.extraFee || 0));
   }
   get draftCardFee() { return Number(this.active?.giftCard?.fee || 0); }
-  get draftTotal() { return this.draft ? this.draft.items.reduce((sum: number, i: any) => sum + this.unitPrice(i) * Number(i.qty || 0), 0) + Number(this.draft.shippingFee || 0) + this.draftCardFee : 0; }
+  get draftSubtotal() { return this.draft ? this.draft.items.reduce((sum: number, i: any) => sum + this.unitPrice(i) * Number(i.qty || 0), 0) : 0; }
+  /** Giống máy chủ: giữ voucher/điểm của yêu cầu gốc khi phương án vẫn đúng mẫu và số lượng khách gửi. */
+  get draftDiscount() {
+    if (!this.draft || !this.active) return 0;
+    const originalQty = new Map((this.active.items || []).map((item: any) => [String(item.productId), Number(item.quantity)]));
+    const items = this.draft.items || [];
+    if (items.length !== originalQty.size || items.some((item: any) => originalQty.get(String(item.id)) !== Number(item.qty))) return 0;
+    const summary = this.active.originalSummary || {};
+    const productDiscount = Math.min(this.draftSubtotal, Math.max(0, Number(summary.productDiscount || 0)));
+    return productDiscount + Math.min(this.draftSubtotal - productDiscount, Math.max(0, Number(summary.loyaltyDiscount || 0)));
+  }
+  get draftTotal() { return this.draft ? this.draftSubtotal + Number(this.draft.shippingFee || 0) + this.draftCardFee - this.draftDiscount : 0; }
   get draftDeposit() {
     if (!this.draft || this.draft.paymentMethod !== 'cod') return 0;
-    const subtotal = this.draftTotal - Number(this.draft.shippingFee || 0) - this.draftCardFee;
+    const subtotal = this.draftSubtotal;
     if (subtotal < 300000) return 0; // Chính sách: tạm tính dưới 300.000đ không cần đặt cọc
     const totalQty = this.draft.items.reduce((sum: number, item: any) => sum + Number(item.qty || 0), 0);
     const special = totalQty >= 10 || this.draft.items.some((item: any) => /cưới|sự kiện|wedding|event/i.test(String(item.name || '')));

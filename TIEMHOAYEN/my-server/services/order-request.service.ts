@@ -270,6 +270,8 @@ export async function routeCheckout(
         status: REQUEST_STATUS.waiting, assignedTo: null, assignedName: null,
         sender: payload.sender, receiver: payload.receiver ? { ...payload.receiver, address: cleanAddress(payload.receiver.address) } : payload.receiver, delivery: { ...payload.delivery, deliveryAt: prepared.delivery?.deliveryAt, deliveryStartAt: prepared.delivery?.deliveryStartAt },
         flags: payload.flags || {}, giftCard: prepared.giftCard || null, originalSummary: prepared.summary || {},
+        // Voucher đã kiểm tra lúc checkout: Sales chốt giữ nguyên mẫu thì đơn ghi nhận đúng voucher này.
+        originalVoucher: prepared.validatedVoucher || null,
         customerId: payload.customerId || null, items: snapshot,
         reason: shortage!.message, shortages: details.evaluation ? null : details,
         requestReason: codes[0] || REQUEST_REASON.materialShortage, reasonCodes: codes, reviewReason, routing,
