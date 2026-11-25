@@ -8,6 +8,7 @@ import { emitAdminNotification } from './analytics/notifications.service.js';
 import { assertDeliverySlotStart, assertWithinShopHours } from './delivery-policy.service.js';
 
 import { slot24h } from './time-format.js';
+import { hasPermission } from './role-permission.service.js';
 import { evaluateVoucher, loadVoucherContext } from './voucher-policy.service.js';
 export { slot24h };
 
@@ -998,8 +999,8 @@ export async function afterSalesChange(id: string, body: any, actor: string, act
     if(!actor) throw new InventoryError(401,'Cần xác thực nhân viên.');
     let reason=String(body.reason||'').trim();
     if(body.action==='claim') {
-      const roleKey=String(actorRole||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[đĐ]/g,'d').toLowerCase();
-      if(orderStaffKind(actorRole)!=='admin'&&!/cskh|cham soc khach hang/.test(roleKey)) throw new InventoryError(403,'Chỉ nhân viên CSKH hoặc Admin được tiếp nhận hồ sơ hậu mãi.');
+      // Quyền tiếp nhận theo ma trận phân quyền (module CSKH, mức Sửa): vai trò nào Admin cấp quyền này thì được tiếp nhận.
+      if(orderStaffKind(actorRole)!=='admin'&&!hasPermission(actorRole,'customerService','update')) throw new InventoryError(403,'Bạn chưa được cấp quyền tiếp nhận hồ sơ hậu mãi.');
       if(![AFTER_SALES_STATUS.submitted,'Chờ tiếp nhận'].includes(row.status)) throw new InventoryError(409,'Hồ sơ đã được tiếp nhận.');
       Object.assign(updates,{status:AFTER_SALES_STATUS.reviewing,assignedTo:actor,assignedAt:now,sla:{...(row.sla||{}),decideBy:new Date(now.getTime()+AFTER_SALES_SLA_MS)}});
     } else if (body.action === 'admin-approve' || body.action === 'admin-return') {
