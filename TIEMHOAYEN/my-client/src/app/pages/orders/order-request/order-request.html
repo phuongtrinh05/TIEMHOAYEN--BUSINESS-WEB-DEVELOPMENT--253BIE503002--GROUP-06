@@ -12,7 +12,14 @@
   </header>
   }
   @if (error) { <p role="alert" class="error">{{error}}</p> }
-  @if (!request) { <a [routerLink]="historyRoute">Xác minh OTP để tra cứu</a> }
+  @if (!request && !error) {
+    <section class="request-loading" aria-busy="true" aria-live="polite">
+      <div class="skeleton-line w-40"></div><div class="skeleton-line w-70 tall"></div><div class="skeleton-line w-25"></div>
+      <div class="skeleton-block"></div>
+      <span class="sr-only">Đang tải yêu cầu…</span>
+    </section>
+  }
+  @if (!request && error) { <a class="otp-link" [routerLink]="historyRoute">Xác minh OTP để tra cứu</a> }
   @if (request) {
     @if (!compact) {
     <section class="request-overview">
@@ -35,16 +42,29 @@
       @if (!hasCreatedOrder && request.workflow?.followUpAt) { <p>Lịch liên hệ tiếp theo: {{request.workflow.followUpAt | date:'dd/MM HH:mm'}}</p> }
       @if(!hasCreatedOrder){<details class="request-details" open><summary>Sản phẩm và lịch giao mong muốn</summary>
         @for (item of request.items; track item.productId) { <div class="requested-item"><img [src]="image(item.image)" [alt]="item.name"><p><strong>{{item.name}}</strong><br> Số lượng: {{item.quantity}}</p></div> }
-        @if (request.originalTotal !== null) { <p>Giá trị yêu cầu ban đầu: {{request.originalTotal | number:'1.0-0'}}đ</p> }
-        <p>Lịch giao: {{request.delivery?.date}} · {{slotLabel(request.delivery?.time)}}</p>
+        <dl class="request-meta">
+          @if (request.originalTotal !== null) { <div><dt>Giá trị yêu cầu ban đầu</dt><dd>{{request.originalTotal | number:'1.0-0'}}đ</dd></div> }
+          <div><dt>Lịch giao mong muốn</dt><dd>{{request.delivery?.date}} · {{slotLabel(request.delivery?.time)}}</dd></div>
+        </dl>
       </details>}
       @if (request.customerMessage) { <p class="message">{{request.customerMessage}}</p> }
       @if (!hasCreatedOrder && request.orderSummary) { <p>Đơn hàng: {{request.orderSummary.status}} · Thanh toán: {{request.orderSummary.paymentStatus}}</p> }
       @if (feedback) { <p role="status">{{feedback}}</p> }
       @if (!hasCreatedOrder && canChange) {
-        <details><summary>Đổi lịch hoặc dừng yêu cầu</summary>
-          <button class="secondary" (click)="editSchedule()">Đề nghị đổi lịch giao</button>
-          @if (showSchedule) { <label>Ngày giao<input type="date" [(ngModel)]="requestedDate" (ngModelChange)="clearScheduleError('date')" [class.is-invalid]="scheduleDateError">@if(scheduleDateError){<small class="field-error">{{scheduleDateError}}</small>}</label><label>Giờ giao<input type="time" min="06:30" max="21:30" step="1800" [(ngModel)]="requestedTime" (ngModelChange)="clearScheduleError('time')" [class.is-invalid]="scheduleTimeError">@if(scheduleTimeError){<small class="field-error">{{scheduleTimeError}}</small>}</label><p>Shop giao theo khung 30 phút từ 06:30 đến 22:00 (giờ bắt đầu muộn nhất 21:30) và cần ít nhất 4 giờ làm việc (06:30–22:00) để chuẩn bị. Shop sẽ kiểm tra lại. Phương án và xác nhận trước đó không còn áp dụng cho lịch mới.</p><button (click)="change('reschedule')" [disabled]="busy">Gửi lịch mới</button> }
+        <details class="schedule-change"><summary>Đổi lịch hoặc dừng yêu cầu</summary>
+          <div class="schedule-body">
+            @if (!showSchedule) { <button class="secondary" (click)="editSchedule()"><i class="bi bi-calendar-event" aria-hidden="true"></i> Đề nghị đổi lịch giao</button> }
+            @if (showSchedule) {
+              <div class="schedule-form">
+                <div class="schedule-fields">
+                  <label class="schedule-field"><span>Ngày giao</span><input type="date" [(ngModel)]="requestedDate" (ngModelChange)="clearScheduleError('date')" [class.is-invalid]="scheduleDateError">@if(scheduleDateError){<small class="field-error">{{scheduleDateError}}</small>}</label>
+                  <label class="schedule-field"><span>Giờ giao</span><input type="time" min="06:30" max="21:30" step="1800" [(ngModel)]="requestedTime" (ngModelChange)="clearScheduleError('time')" [class.is-invalid]="scheduleTimeError">@if(scheduleTimeError){<small class="field-error">{{scheduleTimeError}}</small>}</label>
+                </div>
+                <p class="schedule-note"><i class="bi bi-info-circle" aria-hidden="true"></i><span>Shop giao theo khung 30 phút từ 06:30 đến 22:00 (giờ bắt đầu muộn nhất 21:30) và cần ít nhất 4 giờ làm việc (06:30–22:00) để chuẩn bị. Shop sẽ kiểm tra lại; phương án và xác nhận trước đó không còn áp dụng cho lịch mới.</span></p>
+                <div class="schedule-actions"><button class="secondary" (click)="editSchedule()" [disabled]="busy">Hủy</button><button (click)="change('reschedule')" [disabled]="busy">Gửi lịch mới</button></div>
+              </div>
+            }
+          </div>
         </details>
       }
     </section>
