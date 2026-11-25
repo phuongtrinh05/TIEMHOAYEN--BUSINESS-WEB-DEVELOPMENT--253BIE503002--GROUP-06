@@ -141,6 +141,16 @@ export class AdminSidebar implements OnInit, OnDestroy {
     return Boolean(this.permissions[moduleKey]?.view);
   }
 
+  /** Chỉ hiện mục con mà vai trò hiện tại được phép xem. */
+  visibleChildren(item: SidebarItem): SidebarItem[] {
+    return (item.children || []).filter(child => this.canView(child.module));
+  }
+
+  /** Ẩn cả nhóm "Admin" khi vai trò không có quyền vào mục nào trong đó. */
+  get hasAdminItems(): boolean {
+    return this.adminMenuItems.some(item => this.canView(item.module));
+  }
+
   isItemActive(item: SidebarItem): boolean {
     const path = this.currentPath();
     if (item.exact) return path === item.route;

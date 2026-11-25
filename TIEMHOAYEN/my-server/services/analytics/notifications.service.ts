@@ -45,6 +45,8 @@ export const NOTIFICATION_EVENT_MATRIX = [
   { type: 'SALES_REQUEST_NEW', group: 'Đơn hàng', priority: 'Cao', module: 'orders', trigger: 'Yêu cầu đặt hàng "Chờ Sales tiếp nhận"', link: 'Yêu cầu đặt hàng', autoResolve: 'Khi Sales tiếp nhận' },
   { type: 'SALES_REQUEST_ACCEPTED', group: 'Đơn hàng', priority: 'Cao', module: 'orders', trigger: 'Khách đã đồng ý phương án → cần lên đơn', link: 'Yêu cầu đặt hàng', autoResolve: 'Khi đã lên đơn' },
   { type: 'REFUND_REQUEST', group: 'Khiếu nại', priority: 'Cao', module: 'orders', trigger: 'Đơn "Yêu cầu hoàn tiền/trả hàng"', link: 'Chi tiết đơn', autoResolve: 'Khi đơn đổi trạng thái' },
+  { type: 'AFTER_SALES_ADMIN_APPROVAL', group: 'Khiếu nại', priority: 'Cao', module: 'permissions', trigger: 'Khoản hoàn lớn (> 2.000.000đ hoặc > 50% đơn) "Chờ Admin duyệt"', link: 'Hồ sơ hậu mãi', autoResolve: 'Khi Admin duyệt hoặc trả về' },
+  { type: 'AFTER_SALES_REFUND_DUE', group: 'Khiếu nại', priority: 'Cao', module: 'payments', trigger: 'Hồ sơ đã duyệt "Chờ hoàn tiền" / "Cần đối soát hoàn tiền"', link: 'Hồ sơ hậu mãi', autoResolve: 'Khi Admin xác nhận đã hoàn tiền' },
   { type: 'SUPPORT_WAITING', group: 'Khiếu nại', priority: 'Trung bình', module: 'customerService', trigger: 'Yêu cầu hỗ trợ chờ nhân viên (Form / chuyển từ bot / khẩn)', link: 'Hộp thư hỗ trợ', autoResolve: 'Khi có nhân viên nhận / đã xử lý' },
   { type: 'REVIEW_LOW', group: 'Khiếu nại', priority: 'Trung bình', module: 'products', trigger: 'Đánh giá ≤ 2 sao', link: 'Chi tiết sản phẩm', autoResolve: 'Không' },
   { type: 'STOCK_OUT', group: 'Tồn kho', priority: 'Cao', module: 'materials', trigger: 'NVL hết khả dụng', link: 'Nguyên vật liệu', autoResolve: 'Khi khả dụng > 0' },
@@ -95,7 +97,7 @@ export const syncAdminNotifications = async (force = false) => {
     const lookback = new Date(now.getTime() - ANALYTICS_CONFIG.notificationLookbackDays * 86_400_000);
     // Đọc song song mọi nguồn; dataset/kho/đối chiếu dùng chung cache với Dashboard (allowStale=false → luôn ≤ ttl)
     const { getReconciliation, warmAnalyticsCaches } = await import('./reports.service.js');
-    const [ds, requests, tickets, reviews, alerts, lateOrders, rec] = await Promise.all([
+    const [ds, requests, tickets, reviews, alerts, lateOrders, rec, afterSalesCases] = await Promise.all([
       getDataset({ allowStale: false, fresh: force }),
       getCollection<any>('YEU_CAU_DAT_HANG').then((c) => c.find({ status: { $in: ['Chờ xử lý', 'Chờ Sales tiếp nhận', 'Khách đã đồng ý'] } }).project({ requestId: 1, status: 1, createdAt: 1, contact: 1, delivery: 1, quote: 1, items: 1, requestReason: 1, reason: 1, reviewReason: 1, routing: 1 }).limit(200).toArray()).catch(() => [] as any[]),
       getCollection<any>('YEU_CAU_HO_TRO').then((c) => c.find({ status: 'Chưa xử lý', $or: [{ mode: 'WAITING' }, { priority: 'urgent' }] }).project({ _id: 1, name: 1, source: 1, priority: 1, reason: 1 }).limit(200).toArray()).catch(() => [] as any[]),
@@ -103,6 +105,8 @@ export const syncAdminNotifications = async (force = false) => {
       getCachedInventoryAlerts({ allowStale: false, fresh: force }),
       getCollection<any>('DON_DAT_MUA_NCC').then((c) => c.find({ TRANG_THAI: PO_STATUS.shipping, NGAY_GIO_DU_KIEN_GIAO: { $lt: now } }).toArray()).catch(() => [] as any[]),
       getReconciliation({ allowStale: false, fresh: force }).catch(() => null),
+      getCollection<any>('YEU_CAU_HAU_MAI').then((c) => c.find({ active: true, status: { $in: ['Chờ Admin duyệt', 'Chờ hoàn tiền', 'Cần đối soát hoàn tiền'] } })
+        .project({ requestId: 1, orderId: 1, status: 1, requester: 1, decision: 1, description: 1, reason: 1 }).limit(200).toArray()).catch(() => [] as any[]),
     ]);
     const fmtMoney = (n: number) => `${Math.round(n).toLocaleString('vi-VN')}đ`;
     const orderLink = (id: string) => `/orders/order-detail/${encodeURIComponent(id)}`;
@@ -147,6 +151,19 @@ export const syncAdminNotifications = async (force = false) => {
         message: accepted ? `Kiểm tra tồn lần cuối và lên đơn · ${workflow.priorityLabel}.`
           : `${workflow.priorityLabel} · ${workflow.totalQuantity} bó · ${workflow.priorityReasons.join('; ') || 'Sales tiếp nhận và kiểm tra nguồn hoa'}.`,
         link: '/orders/requests', queryParams: { requestId: String(r.requestId) } });
+    });
+
+    afterSalesCases.forEach((r: any) => {
+      const who = r.requester?.name || 'Khách hàng';
+      const link = '/customer-service/after-sales';
+      const queryParams = { requestId: String(r.requestId) };
+      if (r.status === 'Chờ Admin duyệt') {
+        events.push({ key: `AFTER_SALES_ADMIN_APPROVAL:${r.requestId}`, type: 'AFTER_SALES_ADMIN_APPROVAL', group: 'Khiếu nại', priority: 'Cao', module: 'permissions', stateful: true, entityId: r.requestId,
+          title: `Cần Admin duyệt lần 2 — ${r.requestId}`, message: `${who} · đơn ${r.orderId} · dự kiến hoàn ${fmtMoney(Number(r.decision?.maxRefund || 0))}.`, link, queryParams });
+      } else if (r.status === 'Chờ hoàn tiền' || r.status === 'Cần đối soát hoàn tiền') {
+        events.push({ key: `AFTER_SALES_REFUND_DUE:${r.requestId}`, type: 'AFTER_SALES_REFUND_DUE', group: 'Khiếu nại', priority: 'Cao', module: 'payments', stateful: true, entityId: r.requestId,
+          title: `Chờ chuyển tiền hoàn — ${r.requestId}`, message: `${who} · đơn ${r.orderId} · ${fmtMoney(Number(r.decision?.maxRefund || 0))}. Chuyển tiền rồi xác nhận trong hồ sơ.`, link, queryParams });
+      }
     });
 
     tickets.forEach((t: any) => events.push({ key: `SUPPORT_WAITING:${t._id}`, type: 'SUPPORT_WAITING', group: 'Khiếu nại', priority: t.priority === 'urgent' ? 'Cao' : 'Trung bình',
@@ -208,7 +225,7 @@ export const listAdminNotifications = async (staff: { id: string | null; role: s
   // Không chờ bộ quét (đã chạy định kỳ ngầm) → trả ngay từ THONG_BAO.
   syncAdminNotifications(false).catch((e) => console.error('[notifications] sync lỗi', e));
   const role = staff.role || '';
-  const visibleModules = ['orders', 'payments', 'materials', 'customerService', 'products', 'dashboard'].filter((m) => Boolean(role) && hasPermission(role, m, 'view'));
+  const visibleModules = ['orders', 'payments', 'materials', 'customerService', 'products', 'dashboard', 'permissions'].filter((m) => Boolean(role) && hasPermission(role, m, 'view'));
   const filter: any = { KENH_THONG_BAO: 'ADMIN', MODULE: { $in: visibleModules } };
   if (query.group && NOTIFICATION_GROUPS.includes(query.group)) filter.NHOM = query.group;
   if (query.includeResolved !== 'true') filter.DA_XU_LY = { $ne: true };

@@ -192,6 +192,24 @@ export class OrderDetail implements OnInit, OnDestroy {
   afterSalesStatusLabel(status:string){return status==='Chờ Admin duyệt'?'Đang xem xét':status==='Chờ tiếp nhận'?'Đã gửi yêu cầu':status==='Cần bổ sung'?'Cần bổ sung thông tin':status==='Đã chấp nhận'?'Đã phê duyệt':status==='Bị từ chối'?'Đã từ chối':status==='Đã xử lý'?'Đã xử lý xong':status==='Đã hoàn tiền'?'Đã xử lý xong':status;}
   /** Mở hộp hỗ trợ: gửi mới khi còn hạn, hoặc theo dõi yêu cầu đã gửi. */
   canOpenOrderSupport(): boolean { return this.canRequestReturnRefund() || this.afterSales.length > 0; }
+  /** Còn sản phẩm nào chưa được xử lý hậu mãi (hồ sơ bị từ chối không tính). Hết thì không cho gửi thêm. */
+  canSubmitMoreAfterSales(): boolean {
+    const used = (productId: string) => (this.afterSales || [])
+      .filter((r: any) => !['Đã từ chối', 'Bị từ chối'].includes(String(r.status)))
+      .reduce((sum: number, r: any) => { const line = (r.items || []).find((x: any) => x.productId === productId); return sum + Number(line ? (line.approvedQuantity ?? line.quantity ?? 0) : 0); }, 0);
+    return this.products.some(p => Number(p.quantity) - used(p.id) > 0);
+  }
+  /** Class cho từng chặng trên thanh trạng thái hồ sơ. */
+  afterSalesStepClass(label: string, last: boolean): string {
+    if (!last) return 'is-done';
+    if (['Đã xử lý xong', 'Đã hoàn tiền', 'Hoàn tất'].includes(label)) return 'is-current is-success';
+    if (['Đã từ chối', 'Bị từ chối'].includes(label)) return 'is-current is-rejected';
+    return 'is-current';
+  }
+  afterSalesStepIcon(label: string, last: boolean): string {
+    if (['Đã từ chối', 'Bị từ chối'].includes(label) && last) return 'bi-x-lg';
+    return last && !['Đã xử lý xong', 'Đã hoàn tiền', 'Hoàn tất'].includes(label) ? 'bi-three-dots' : 'bi-check-lg';
+  }
   /** Thanh hỗ trợ cuối trang chỉ hiện sau khi giao thành công. */
   showSupportBar(): boolean { const status = this.normalizeStatus(this.order.status); return (status === 'delivered' || status === 'completed') && (this.canRequestReturnRefund() || this.afterSales.length > 0); }
   isVideo(file: File | string): boolean { return typeof file === 'string' ? /\.(mp4|webm|mov)(\?|$)/i.test(file) : file.type.startsWith('video/'); }
