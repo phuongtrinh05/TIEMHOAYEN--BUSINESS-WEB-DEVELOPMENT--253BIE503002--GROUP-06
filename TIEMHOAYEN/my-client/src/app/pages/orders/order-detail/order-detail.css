@@ -1427,3 +1427,19 @@ h3{
   .after-sales-modal .case-steps li + li::before { top: auto; bottom: 100%; right: auto; left: 13px; width: 3px; height: 14px; }
   .after-sales-modal .case-steps li small { margin-left: auto; }
 }
+
+
+/* ===== Hồ sơ hỗ trợ (khách): đơn giản, tên sản phẩm làm tiêu đề ===== */
+.after-sales-modal .after-sales-case { padding: 18px 20px; border: 1px solid #efe1d8; border-radius: 14px; background: #fffaf7; gap: 14px; }
+.after-sales-modal .case-head small { margin: 0 0 3px; font-size: 12px; letter-spacing: 0; font-weight: 600; color: #937a70; text-transform: none; }
+.after-sales-modal .case-head .case-title { margin: 0; font-size: 17px; line-height: 1.35; font-weight: 800; color: #3b2a26; }
+.after-sales-modal .case-note { display: grid; gap: 3px; }
+.after-sales-modal .case-note .note-label { font-size: 12px; font-weight: 700; color: #937a70; }
+.after-sales-modal .case-note p { margin: 0; padding: 0; border: 0; background: none; font-size: 14.5px; line-height: 1.6; color: #3b2a26; }
+.after-sales-modal .case-note mark { margin-left: 8px; padding: 1px 8px; border-radius: 6px; background: #ffe8a3; color: #5e4300; font-weight: 800; }
+.after-sales-modal .case-note.is-success mark { margin-left: 0; background: #d9f0df; color: #1f6a36; }
+.after-sales-modal .case-note .note-time { margin-left: 10px; font-size: 13px; color: #937a70; }
+.after-sales-modal .case-note.is-warn .note-label { color: #9a6a12; }
+.after-sales-modal .case-note .case-media { display: flex; flex-wrap: wrap; gap: 14px; }
+.after-sales-modal .case-note .case-media a { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: #731919; font-size: 14px; font-weight: 700; text-decoration: none; }
+.after-sales-modal .case-note .case-media a:hover { text-decoration: underline; }

@@ -26,3 +26,20 @@ button{cursor:pointer;border:1px solid var(--line);border-radius:9px;padding:10p
 .btn-row{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:9px;margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}.btn-row button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:42px;padding:10px 18px}.btn-row .primary{margin-right:auto}
 .danger{border-color:#efc6c9}
 @media(max-width:850px){.decision-grid{grid-template-columns:1fr}.btn-row{justify-content:stretch}.btn-row button,.btn-row .primary{flex:1 1 100%;margin-right:0}}
+
+/* ===== Chi tiết hồ sơ: gọn, dễ đọc ===== */
+.detail-head .case-code{display:block;color:#a36c72;font:700 10.5px 'Nunito Sans',sans-serif;letter-spacing:.1em}
+.detail-head .case-code b{margin-left:4px;color:#7b5a5f;font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.02em;word-break:break-all}
+.block h3{font-weight:800}
+.case-lines{display:grid;gap:8px;margin:0 0 12px;padding:0;list-style:none}
+.case-lines li{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #f0e4e0;border-radius:10px;background:#fdf9f7}
+.case-lines li>i{color:var(--wine);font-size:16px}
+.case-lines .line-name{flex:1;min-width:0;font-weight:700;color:#4a2f33;overflow:hidden;text-overflow:ellipsis}
+.case-lines code{padding:2px 7px;border-radius:6px;background:#f3ebe8;color:#8a7478;font-size:11px}
+.case-lines b{color:var(--wine);font-size:13px;white-space:nowrap}
+.evidence{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
+.evidence-label{display:inline-flex;align-items:center;gap:5px;margin-right:2px;color:#8e7c7f;font-size:12px;font-weight:700}
+.evidence a{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;background:#fff;font-weight:700}
+.evidence a:hover{background:#fdeeee}
+.block p.suggest{margin:0;padding:2px 0!important;background:none!important;color:#4a3a3c;line-height:1.6}
+.suggest mark{padding:2px 8px;border-radius:6px;background:#ffe8a3;color:#5e4300;font-weight:800}

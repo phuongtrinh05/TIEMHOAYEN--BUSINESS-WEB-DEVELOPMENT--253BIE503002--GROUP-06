@@ -1825,7 +1825,11 @@ export const getAdminAfterSales = async (req: Request,res: Response) => {try{
   for(const id of orderIds)paidByOrder.set(id,summarizePayments(receipts.filter((p:any)=>p.DON_HANG_ID===id)).successfulReceiptsTotal);
   const money=(r:any)=>{const paidAmount=paidByOrder.get(String(r.orderId))||0,approvedRefund=Number(r.decision?.maxRefund||0),refundedAmount=Number(r.refund?.amount||0);
     return {paidAmount,approvedRefund,refundedAmount,refundPercent:paidAmount>0?Math.round(refundedAmount/paidAmount*1000)/10:0};};
-  const requests=rows.map((r:any)=>({...r,...money(r)}));
+  // Tên sản phẩm cho từng dòng hồ sơ (hồ sơ chỉ lưu mã sản phẩm).
+  const productIds=[...new Set(rows.flatMap((r:any)=>(r.items||[]).map((i:any)=>String(i.productId||''))).filter(Boolean))];
+  const productRows=productIds.length?await (await getCollection<any>('SAN_PHAM')).find({SAN_PHAM_ID:{$in:productIds}},{projection:{SAN_PHAM_ID:1,TEN_SAN_PHAM:1}}).toArray():[];
+  const productNames=new Map<string,string>(productRows.map((p:any)=>[String(p.SAN_PHAM_ID),String(p.TEN_SAN_PHAM||'')]));
+  const requests=rows.map((r:any)=>({...r,...money(r),items:(r.items||[]).map((i:any)=>({...i,productName:productNames.get(String(i.productId))||''}))}));
   const summary=allForSummary.reduce((acc:any,r:any)=>{const m=money(r);acc.totalApproved+=m.approvedRefund;acc.totalRefunded+=m.refundedAmount;return acc;},{count:allForSummary.length,totalApproved:0,totalRefunded:0});
   return res.json({requests,total,page,limit,summary});
 }catch{return res.status(500).json({message:'Chưa đọc được danh sách hậu mãi.'});}};
