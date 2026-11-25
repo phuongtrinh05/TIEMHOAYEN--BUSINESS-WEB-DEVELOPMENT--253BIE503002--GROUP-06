@@ -231,7 +231,7 @@ left:15px;
     position:absolute;
     top:calc(100% + 8px);
     right:0;
-    width:230px;
+    width:260px;
     background:#FBF7F2;
     border:1px solid rgba(217,179,130,0.5);
     border-radius:16px;
@@ -841,11 +841,15 @@ z-index:100000;
 .account-user-info {
     display: flex;
     flex-direction: column;
+    flex: 1;
     min-width: 0;
 }
 
+/* Tên/SĐT dài: cắt "…" trong khung, không tràn ra ngoài dropdown (giống header chính). */
 .account-user-info strong {
-    max-width: 160px;
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
     color: #731919;
@@ -853,7 +857,9 @@ z-index:100000;
 }
 
 .account-user-info span {
-    max-width: 160px;
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
     color: #555;

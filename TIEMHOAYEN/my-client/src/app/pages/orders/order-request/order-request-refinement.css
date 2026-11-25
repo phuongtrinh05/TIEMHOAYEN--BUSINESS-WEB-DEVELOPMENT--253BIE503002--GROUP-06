@@ -201,3 +201,37 @@
 .stage-hint[data-tone='success']{background:#f4e5df;color:#731919}
 .stage-hint[data-tone='danger']{background:#fae2e2;color:#8a2424}
 @media(max-width:520px){.request-progress.steps-5 strong{font-size:10px}.request-progress.steps-5 span{width:28px;height:28px}}
+
+/* Khối thông tin + đổi lịch: cỡ chữ đồng đều, form tách khỏi nội dung phía trên. */
+.receipt:not(.compact) .request-details{font-size:14px}
+.receipt:not(.compact) .requested-item p{margin:0;line-height:1.55;color:#5b4540}
+.receipt:not(.compact) .requested-item strong{color:#402a26;font-size:15px}
+.request-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:8px 0 0}
+.request-meta>div{padding:11px 14px;border:1px solid #f0e4de;border-radius:10px;background:#fffaf8}
+.request-meta dt{margin:0 0 3px;color:#98817a;font-size:12px;font-weight:700}
+.request-meta dd{margin:0;color:#402a26;font-size:14px;font-weight:800}
+.schedule-change{margin-top:16px;padding-top:14px;border-top:1px solid #eee3de}
+.schedule-change summary{font-size:14px}
+.schedule-body{margin-top:12px}
+.receipt:not(.compact) .schedule-body>button{display:inline-flex;align-items:center;gap:7px;margin:0}
+.schedule-form{display:grid;gap:14px;padding:16px;border:1px solid #eaded8;border-radius:12px;background:#fffaf8}
+.schedule-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.schedule-field{display:grid;gap:6px;min-width:0}
+.schedule-field>span{color:#60433e;font-size:13px;font-weight:800}
+.schedule-field input{width:100%;max-width:none;height:44px;margin:0;padding:0 12px;border:1px solid #dfc9bf;border-radius:9px;background:#fff;color:#3f302d;font:600 14px 'Nunito Sans',sans-serif}
+.schedule-field input:focus{outline:none;border-color:#b98a7a;box-shadow:0 0 0 3px #d9b38235}
+.schedule-field .field-error{margin-top:0}
+.schedule-note{display:flex;gap:9px;margin:0;padding:10px 12px;border-radius:9px;background:#fff8e8;color:#6f5216;font-size:13px;line-height:1.55}
+.schedule-note i{margin-top:2px}
+.schedule-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.receipt:not(.compact) .schedule-actions button{margin:0}
+@media(max-width:560px){.schedule-fields{grid-template-columns:1fr}.schedule-actions button{flex:1}}
+
+/* Trạng thái đang tải thay cho liên kết OTP (tránh nháy giao diện cũ). */
+.request-loading{display:grid;gap:12px}
+.skeleton-line,.skeleton-block{border-radius:8px;background:linear-gradient(90deg,#f4ebe7 25%,#fbf6f4 50%,#f4ebe7 75%);background-size:200% 100%;animation:req-shimmer 1.2s linear infinite}
+.skeleton-line{height:14px}.skeleton-line.tall{height:26px}
+.skeleton-line.w-25{width:25%}.skeleton-line.w-40{width:40%}.skeleton-line.w-70{width:70%}
+.skeleton-block{height:120px;margin-top:6px}
+.otp-link{display:inline-block;margin:8px 4px}
+@keyframes req-shimmer{to{background-position:-200% 0}}

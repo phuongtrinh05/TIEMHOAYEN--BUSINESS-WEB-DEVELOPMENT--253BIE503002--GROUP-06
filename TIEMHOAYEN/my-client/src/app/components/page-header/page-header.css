@@ -210,13 +210,10 @@ display:none;
     box-shadow:0 10px 24px rgba(0,0,0,.12);
 }
 
+/* Giữ nguyên chiều cao khi cuộn: nếu co 128px -> 52px, trang bị kéo lên 76px,
+   scrollY tụt dưới ngưỡng tắt, header bung lại rồi lại co -> nhảy liên tục. */
 .menu-placeholder{
 height:128px;
-transition:height .3s ease;
-}
-
-.menu-placeholder.menu-placeholder-scrolled{
-height:52px;
 }
 
 .menu-item{
