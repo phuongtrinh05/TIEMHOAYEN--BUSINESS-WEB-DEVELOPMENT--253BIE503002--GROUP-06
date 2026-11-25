@@ -10,7 +10,7 @@ import {
 } from '../services/role-permission.service.js';
 import { hashPassword, isPasswordHash, verifyPassword } from '../utils/passwordHash.js';
 import { createStaffAccess } from '../services/order-access.service.js';
-import { active, assertLoginNotLocked, audit, AuthError, clientIp, describeDevice, recordLoginFailure, recordLoginSuccess, wrongPasswordError } from '../services/auth.service.js';
+import { active, assertLoginNotLocked, audit, AuthError, clientIp, describeDevice, loginFailureLimit, recordLoginFailure, recordLoginSuccess, wrongPasswordError } from '../services/auth.service.js';
 
 export const getAdminRolePermissions = async (_req: Request, res: Response) => {
   try {
@@ -67,11 +67,11 @@ export const loginAdminEmployee = async (req: Request, res: Response) => {
       await audit(req, 'DANG_NHAP_ADMIN', email, { LY_DO: 'Email chưa đăng ký' }, false);
       return res.status(404).json({ field: 'email', message: 'Email này chưa được đăng ký tài khoản nhân viên.' });
     }
-    assertLoginNotLocked(employee);
+    assertLoginNotLocked(employee, loginFailureLimit('NHAN_VIEN'));
     if (!(await verifyPassword(password, employee.MAT_KHAU))) {
       req.identity = { id: employee.NHAN_VIEN_ID, type: 'NHAN_VIEN', account: employee, sessionId: '' };
       await audit(req, 'DANG_NHAP_ADMIN', employee.NHAN_VIEN_ID, { LY_DO: 'Sai mật khẩu' }, false);
-      throw wrongPasswordError(await recordLoginFailure('NHAN_VIEN', employee), 'Mật khẩu không đúng.');
+      throw wrongPasswordError(await recordLoginFailure('NHAN_VIEN', employee), 'Mật khẩu không đúng.', loginFailureLimit('NHAN_VIEN'));
     }
 
     if (!active(employee)) {
