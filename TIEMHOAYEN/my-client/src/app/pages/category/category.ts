@@ -326,8 +326,8 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     return checkbox ? this.getCheckboxValue(checkbox) : '';
   }
 
-  /** Hiện tên bộ sưu tập (vd "Ngày 20/10") ở tiêu đề và chip lọc, để khách
-   *  thấy rõ đang xem đúng BST chứ không phải toàn bộ sản phẩm. */
+  /** Hiện tên bộ sưu tập (vd "Ngày 20/10") ở chip lọc. Tiêu đề vẫn giữ
+   *  "Bộ sưu tập" để đồng nhất với các trang danh mục khác. */
   private applyCollectionLabel(): void {
     const collectionId = this.currentCollectionId;
     if (!collectionId) {
@@ -336,7 +336,7 @@ export class CategoryComponent implements AfterViewInit, OnDestroy {
     const name = this.collectionNames?.[collectionId];
     if (name) {
       this.pageTitle = name;
-      this.breadcrumbFallbackLabels = ['Bộ sưu tập', name];
+      this.breadcrumbFallbackLabels = ['Bộ sưu tập'];
       this.updateBreadcrumbLabels();
       if (this.selectedFilterList) {
         this.renderSelectedFilters();
